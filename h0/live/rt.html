@@ -1,0 +1,75 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Squidward Door Realtime</title><style>
+:root{--bg:#0f1a24;--fg:#e6eef5;--mut:#8fa3b5;--y:#ffd84d}
+body{font:15px/1.5 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:0 16px 40px}
+main{max-width:720px;margin:auto} .sub{color:var(--mut)}
+.top{position:sticky;top:0;background:var(--bg);padding:12px 0;z-index:2}
+.track{height:14px;background:#22313f;border-radius:7px;overflow:hidden}
+.fill{height:100%;width:0;background:linear-gradient(90deg,#ff7a59,#ffd84d,#5fe08a)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+button,select{background:#22313f;color:var(--fg);border:0;border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+#go{background:var(--y);color:#222;font-weight:700;padding:12px 22px;border-radius:40px}
+#mic{width:12px;height:12px;border-radius:50%;background:#333}
+.line{border-radius:12px;padding:8px 12px;margin:8px 0;max-width:85%}
+.line p{margin:2px 0 0} .line b{font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.sb{background:#3a3410;margin-right:auto} .sb b{color:var(--y)} .sq{background:#16384a;margin-left:auto} .sq b{color:#7fd0ff}
+.sq.open{background:#1f5a34} .dir{color:#c9a7ff;font-style:italic} .tag{color:#ff9fd0;font-family:ui-monospace,monospace;font-size:13px}
+.t{font:12px ui-monospace,monospace;color:var(--mut);margin-top:4px} .ok{color:#5fe08a} .bad{color:#ff7a59}
+#partial{color:var(--mut);font-style:italic;min-height:1.5em}
+</style></head><body><main>
+<h1>Ты Спанч Боб — realtime</h1>
+<p class="sub">Выбери распознавание, нажми «начать» и просто говори по-английски: конец фразы ловится сам, паузы склеиваются. Лучше в наушниках. Пока Сквидвард говорит, микрофон не слушает.</p>
+<div class="top">
+ <div class="track"><div class="fill" id="fill"></div></div>
+ <div class="row"><span id="lbl">комната: 0%</span>
+  <label class="sub">загрузка за <select id="dur"><option value="60">60 с</option><option value="90" selected>90 с</option><option value="150">150 с</option></select></label>
+  <button id="pause">⏸</button></div>
+ <div class="row"><label class="sub">распознавание <select id="asr"><option value="meta" selected>Meta ASR (куски)</option><option value="flux">Deepgram Flux</option></select></label><button id="go">🎤 начать</button><span id="mic"></span><span id="status" class="sub"></span></div>
+ <div id="partial"></div>
+</div>
+<div id="log"></div>
+</main><script>
+const $=id=>document.getElementById(id);
+let progress=0,running=false,paused=false,last=0,opened=false;
+function tick(now){if(running&&!paused&&!opened)progress=Math.min(100,progress+(now-last)/1000*100/+$('dur').value);
+ last=now;$('fill').style.width=progress+'%';$('lbl').textContent=opened?'дверь открыта 🎉':'комната: '+Math.floor(progress)+'%';requestAnimationFrame(tick)}
+requestAnimationFrame(t=>{last=t;tick(t)});
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶':'⏸'};
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt=s=>esc(s).replace(/\[([^\]]*)\]/g,'<span class="dir">[$1]</span>').replace(/&lt;(\/?\w+)&gt;/g,'<span class="tag">&lt;$1&gt;</span>');
+function add(cls,who,text){const d=document.createElement('div');d.className='line '+cls;
+ d.innerHTML=`<b>${who}</b><p>${fmt(text)}</p>`;$('log').appendChild(d);d.scrollIntoView({block:'end',behavior:'smooth'});return d}
+
+// mic: worklet -> 16 kHz Int16 frames -> ws; playback: 24 kHz Int16 chunks scheduled back to back
+const WORKLET=`class C extends AudioWorkletProcessor{process(i){const x=i[0][0];if(x)this.port.postMessage(x.slice());return true}}registerProcessor('c',C)`;
+let ws,ac,playEnd=0,lastVoice=0,cur=null,carry=null;
+$('go').onclick=async()=>{$('go').disabled=true;
+ ac=new AudioContext();const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+ await ac.audioWorklet.addModule(URL.createObjectURL(new Blob([WORKLET],{type:'text/javascript'})));
+ const node=new AudioWorkletNode(ac,'c');ac.createMediaStreamSource(stream).connect(node);
+ $('asr').disabled=true;ws=new WebSocket(`ws://${location.host}/ws?asr=${$('asr').value}`);ws.binaryType='arraybuffer';
+ ws.onopen=()=>{$('status').textContent='слушаю — говори';setInterval(()=>ws.send(JSON.stringify({progress:Math.floor(progress)})),300)};
+ ws.onclose=()=>$('status').textContent='соединение закрыто';
+ const ratio=ac.sampleRate/16000;let acc=[];
+ node.port.onmessage=e=>{if(ws.readyState!==1)return;const x=e.data;const speaking=ac.currentTime<playEnd;
+  let e2=0;for(const v of x)e2+=v*v;const loud=Math.sqrt(e2/x.length)>0.02;
+  if(loud&&!speaking)lastVoice=performance.now();$('mic').style.background=speaking?'#16384a':loud?'#5fe08a':'#333';
+  for(let i=0;i<x.length;i+=ratio)acc.push(speaking?0:x[Math.floor(i)]);  // half-duplex: silence while he talks
+  if(acc.length>=320){const pcm=new Int16Array(acc.length);acc.forEach((v,i)=>pcm[i]=Math.max(-1,Math.min(1,v))*0x7fff);ws.send(pcm.buffer);acc=[]}};
+ ws.onmessage=e=>{if(typeof e.data!=='string')return play(e.data);const m=JSON.parse(e.data);
+  if(m.type==='partial')$('partial').textContent=m.text;
+  if(m.type==='cancel'&&cur&&cur.el){cur.el.remove();cur.el=null}
+  if(m.type==='user'){$('partial').textContent='';const sbs=document.querySelectorAll('.sb');
+   if(m.merge&&sbs.length){const d=sbs[sbs.length-1];d.querySelector('p').innerHTML=fmt(m.text);d.querySelector('b').textContent='SpongeBob (склеено)'}else add('sb','SpongeBob',m.text);
+   running=true;cur={el:null,t0:lastVoice,first:null}}
+  if(m.type==='sq'&&cur){if(!cur.el)cur.el=add('sq','Squidward',m.text);else cur.el.querySelector('p').innerHTML+=' '+fmt(m.text)}
+  if(m.type==='done'&&cur&&cur.el){if(m.opened){opened=true;cur.el.classList.add('open')}const k=m.metrics,f=cur.first;
+   cur.el.insertAdjacentHTML('beforeend',`<div class="t">комната ${k.progress}% · после конца фразы: llm ${k.ttft} · 1-е предложение ${k.first_sentence} · tts звук ${k.first_audio} мс${k.asr_last!=null?` · asr хвост ${k.asr_last} мс (${k.last_chunk_s} с, кусков ${k.chunks})`:''}${f!=null?` · <span class="${f<=1500?'ok':f<=2500?'':'bad'}">тишина ${(f/1000).toFixed(2)} с</span>`:''}</div>`)}};
+};
+function play(buf){if(carry){const b=new Uint8Array(carry.length+buf.byteLength);b.set(carry);b.set(new Uint8Array(buf),carry.length);buf=b.buffer;carry=null}
+ if(buf.byteLength%2){carry=new Uint8Array(buf.slice(-1));buf=buf.slice(0,-1)}
+ const s=new Int16Array(buf);if(!s.length)return;const ab=ac.createBuffer(1,s.length,24000),ch=ab.getChannelData(0);
+ for(let i=0;i<s.length;i++)ch[i]=s[i]/32768;const src=ac.createBufferSource();src.buffer=ab;src.connect(ac.destination);
+ const at=Math.max(ac.currentTime+0.03,playEnd);src.start(at);playEnd=at+ab.duration;
+ if(cur&&cur.first==null)cur.first=performance.now()+(at-ac.currentTime)*1000-cur.t0}
+</script></body></html>

@@ -1,0 +1,77 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Squidward Door Live</title><style>
+:root{--bg:#0f1a24;--card:#16232f;--fg:#e6eef5;--mut:#8fa3b5;--sb:#3a3410;--sq:#16384a;--y:#ffd84d}
+body{font:15px/1.5 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:0 16px 40px}
+main{max-width:720px;margin:auto} .sub{color:var(--mut)}
+.top{position:sticky;top:0;background:var(--bg);padding:12px 0;z-index:2}
+.track{height:14px;background:#22313f;border-radius:7px;overflow:hidden}
+.fill{height:100%;width:0;background:linear-gradient(90deg,#ff7a59,#ffd84d,#5fe08a)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px}
+button,select{background:#22313f;color:var(--fg);border:0;border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+#talk{background:var(--y);color:#222;font-weight:700;padding:14px 22px;border-radius:40px;user-select:none;touch-action:none}
+#talk.rec{background:#ff5a5a;color:#fff} #talk:disabled{opacity:.5}
+input[type=text]{flex:1;min-width:0;background:#22313f;color:var(--fg);border:0;border-radius:8px;padding:8px 10px;font:inherit}
+.line{border-radius:12px;padding:8px 12px;margin:8px 0;max-width:85%}
+.line p{margin:2px 0 0} .line b{font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.sb{background:var(--sb);margin-right:auto} .sb b{color:var(--y)} .sq{background:var(--sq);margin-left:auto} .sq b{color:#7fd0ff}
+.sq.open{background:#1f5a34} .dir{color:#c9a7ff;font-style:italic} .tag{color:#ff9fd0;font-family:ui-monospace,monospace;font-size:13px}
+.t{font:12px ui-monospace,monospace;color:var(--mut);margin-top:4px} .t .bad{color:#ff7a59} .t .ok{color:#5fe08a}
+#status{color:var(--mut);font-size:13px}
+</style></head><body><main>
+<h1>Ты Спанч Боб. Попади к Сквидварду</h1>
+<p class="sub">Держи кнопку (или пробел), говори по-английски, отпусти. Комната за дверью грузится сама; пока не 100%, Сквидвард не пустит.</p>
+<div class="top">
+ <div class="track"><div class="fill" id="fill"></div></div>
+ <div class="row"><span id="lbl">комната: 0%</span>
+  <label class="sub">загрузка за <select id="dur"><option value="60">60 с</option><option value="90" selected>90 с</option><option value="150">150 с</option></select></label>
+  <button id="pause">⏸</button><button id="reset">заново</button></div>
+ <div class="row"><button id="talk">🎤 держи и говори</button><span id="status">старт: первая реплика запускает загрузку</span></div>
+ <div class="row"><input type="text" id="typed" placeholder="или напиши и Enter"></div>
+</div>
+<div id="log"></div>
+</main><script>
+const $=id=>document.getElementById(id);
+let progress=0,running=false,paused=false,last=0,opened=false,busy=false;
+function tick(now){if(running&&!paused&&!opened){progress=Math.min(100,progress+(now-last)/1000*100/+$('dur').value)}
+ last=now;$('fill').style.width=progress+'%';$('lbl').textContent=opened?'дверь открыта 🎉':'комната: '+Math.floor(progress)+'%';requestAnimationFrame(tick)}
+requestAnimationFrame(t=>{last=t;tick(t)});
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'▶':'⏸'};
+$('reset').onclick=async()=>{await fetch('/reset',{method:'POST'});progress=0;running=false;opened=false;$('log').innerHTML='';status('заново')};
+const status=s=>$('status').textContent=s;
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt=s=>esc(s).replace(/\[([^\]]*)\]/g,'<span class="dir">[$1]</span>').replace(/&lt;(\/?\w+)&gt;/g,'<span class="tag">&lt;$1&gt;</span>');
+function add(cls,who,text,extra=''){const d=document.createElement('div');d.className='line '+cls;
+ d.innerHTML=`<b>${who}</b>${extra}<p>${fmt(text)}</p>`;$('log').appendChild(d);d.scrollIntoView({block:'end',behavior:'smooth'});return d}
+
+// push-to-talk -> 16 kHz mono WAV (the only encoding Meta ASR accepts)
+let rec,chunks=[],stream;
+async function start(){if(busy||opened)return;stream=stream||await navigator.mediaDevices.getUserMedia({audio:true});
+ chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>chunks.push(e.data);rec.start();$('talk').classList.add('rec');status('слушаю…')}
+function stop(){if(!rec||rec.state!=='recording')return;const t0=performance.now();
+ rec.onstop=()=>voiceTurn(new Blob(chunks),t0);rec.stop();$('talk').classList.remove('rec')}
+async function toWav(blob){const ac=new AudioContext();const buf=await ac.decodeAudioData(await blob.arrayBuffer());ac.close();
+ const off=new OfflineAudioContext(1,Math.ceil(buf.duration*16000),16000);const s=off.createBufferSource();s.buffer=buf;s.connect(off.destination);s.start();
+ const pcm=(await off.startRendering()).getChannelData(0);const v=new DataView(new ArrayBuffer(44+pcm.length*2));
+ const w=(o,str)=>[...str].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');v.setUint32(4,36+pcm.length*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+ v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,pcm.length*2,true);
+ pcm.forEach((x,i)=>v.setInt16(44+i*2,Math.max(-1,Math.min(1,x))*0x7fff,true));return v.buffer}
+async function voiceTurn(blob,t0){busy=true;status('распознаю…');
+ const r=await(await fetch('/asr',{method:'POST',body:await toWav(blob)})).json();
+ if(!r.text){status('не расслышал, ещё раз');busy=false;return}
+ await turn(r.text,t0,r.ms)}
+async function turn(text,t0,asrMs){busy=true;running=true;const pct=Math.floor(progress);
+ add('sb','SpongeBob',text);status('Сквидвард думает…');
+ const r=await(await fetch('/turn',{method:'POST',body:JSON.stringify({text,progress:pct})})).json();
+ const tLlm=performance.now();
+ const d=add('sq'+(r.opened?' open':''),'Squidward',r.line,`<span class="sub" style="float:right;font-size:12px">комната ${pct}%</span>`);
+ const a=new Audio(r.tts);status('Сквидвард говорит…');
+ a.onplaying=()=>{const first=performance.now()-t0,tts=performance.now()-tLlm;
+  d.insertAdjacentHTML('beforeend',`<div class="t">${asrMs!=null?'asr '+asrMs+' · ':''}llm ttft ${r.ttft} / ${r.ms} ms · tts до звука ${Math.round(tts)} ms · <span class="${first<=2500?'ok':'bad'}">до первого звука ${(first/1000).toFixed(2)} с</span></div>`)};
+ a.onended=a.onerror=()=>{busy=false;status(opened?'ты внутри!':'твоя очередь')};
+ if(r.opened)opened=true;a.play()}
+const talk=$('talk');talk.onpointerdown=start;talk.onpointerup=talk.onpointerleave=stop;
+addEventListener('keydown',e=>{if(e.code==='Space'&&!e.repeat&&document.activeElement!==$('typed')){e.preventDefault();start()}});
+addEventListener('keyup',e=>{if(e.code==='Space'&&document.activeElement!==$('typed'))stop()});
+$('typed').onkeydown=e=>{if(e.key==='Enter'&&e.target.value.trim()&&!busy){turn(e.target.value.trim(),performance.now());e.target.value=''}};
+</script></body></html>
