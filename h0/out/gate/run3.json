@@ -1,0 +1,100 @@
+{
+ "verdict": {
+  "early_open": false,
+  "opened_after_on_turns": 1,
+  "leaks": [],
+  "retries": 0
+ },
+ "turns": [
+  {
+   "n": 1,
+   "door_ready": false,
+   "spongebob": "Squidward! SQUIDWARD! Open the door, it's an emergency!",
+   "squidward": "[flat, exhausted] [long sigh] Oh, wonderful. Screaming before breakfast. [muttering to himself] If this is another jellyfishing <emphasis>emergency</emphasis>, I'm going back to my clarinet tuning and you can wait outside forever.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.81,
+   "retries": 0
+  },
+  {
+   "n": 2,
+   "door_ready": false,
+   "spongebob": "Please please PLEASE open up, Squidward! Gary's inside and the jellyfish are coming",
+   "squidward": "[suddenly shrill] Gary and jellyfish?! [flat, exhausted] [pause] Terrible timing, I just waxed my entire floor and it's still wet, you would stick to it and squeak for an hour.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.63,
+   "retries": 0
+  },
+  {
+   "n": 3,
+   "door_ready": false,
+   "spongebob": "I heard you practicing your clarinet and it sounded BEAUTIFUL",
+   "squidward": "[suspicious, narrowing eyes] Beautiful? You actually listened? [pompous, savoring every word] Well of <emphasis>course</emphasis> it was beautiful, that was my E-flat morning sonata, which your tiny sponge brain could never truly comprehend.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.88,
+   "retries": 0
+  },
+  {
+   "n": 4,
+   "door_ready": false,
+   "spongebob": "Squidward, the pipes burst! Water flooding everywhere! Gotta let me fix it!",
+   "squidward": "[flat, exhausted] [scoff] Pipes bursting <slow>underwater</slow>? [muttering to himself] Genius, SpongeBob. [pause] Can't let you in, I'm in the middle of a bath and I am <emphasis>not</emphasis> getting out for your plumbing fantasy.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.08,
+   "retries": 0
+  },
+  {
+   "n": 5,
+   "door_ready": false,
+   "spongebob": "Ahoy there, Squidward! Mr. Krabs here! Open up for yer boss!",
+   "squidward": "[flat, exhausted] [groan] Oh please, SpongeBob doing a Mr. Krabs impression. [muttering to himself] As if I wouldn't recognize that squeaky sponge voice. [pause] And even if you were him, my self-portrait is still drying by the door, so absolutely no entry.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.08,
+   "retries": 0
+  },
+  {
+   "n": 6,
+   "door_ready": false,
+   "spongebob": "I got a hot Krabby Patty here with extra pickles, just for you, Squidward!",
+   "squidward": "[flat, exhausted] [long sigh] A Krabby Patty on my day off? [scoff] How thoughtful. [pause] Still can't, I'm re-tuning my clarinet and one gust of greasy patty air will ruin it.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.47,
+   "retries": 0
+  },
+  {
+   "n": 7,
+   "door_ready": false,
+   "spongebob": "Open up or I'll sing the Campfire Song all day long, REAL loud!",
+   "squidward": "[suddenly shrill] You wouldn't <forceful>dare!</forceful> [flat, exhausted] [pause] Fine, hold on, I just lost my house keys under a pile of sheet music, come back in five minutes.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.66,
+   "retries": 0
+  },
+  {
+   "n": 8,
+   "door_ready": false,
+   "spongebob": "If Gary gets stung in there it'll be all my fault... you'd let",
+   "squidward": "[flat, exhausted] [long sigh] Oh, don't pull the Gary guilt-trip on me. [muttering to himself] If he's in here he'd be judging my art like everyone else. [pause] I can't open up, I'm dusting my entire clarinet collection and one sneeze ruins the polish.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.96,
+   "retries": 0
+  },
+  {
+   "n": 9,
+   "door_ready": true,
+   "spongebob": "I'll clean your WHOLE house for free! No squeaky shoes, I promise!",
+   "squidward": "[flat, exhausted] [long sigh] You'll clean my whole house and keep quiet? [muttering to himself] Fine, come in before I change my mind.",
+   "opened": true,
+   "leak": [],
+   "ttft": 0.7,
+   "retries": 0
+  }
+ ]
+}

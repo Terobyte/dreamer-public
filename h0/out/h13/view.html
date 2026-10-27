@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>H13 sky floor</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/app/node_modules/three/build/three.module.js"}}</script></head><body>
+<script type="module">
+// ?sky=sky_bikini_fixed&floor=floor_sand&yaw=0&pitch=0 — panorama on a sphere, a tiled floor disc
+// whose edge fades into the panorama's own ground, so there is no visible end of the map
+import * as THREE from 'three';
+const q = new URLSearchParams(location.search);
+const sky = q.get('sky') || 'sky_bikini_fixed', floor = q.get('floor') || 'floor_sand';
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 1000);
+cam.position.set(0, 1.6, 0);
+cam.rotation.order = 'YXZ'; cam.rotation.y = +(q.get('yaw') || 0) * Math.PI / 180;
+cam.rotation.x = +(q.get('pitch') || 0) * Math.PI / 180;
+const load = (f) => new Promise((ok) => new THREE.TextureLoader().load(f, (t) => { t.colorSpace = THREE.SRGBColorSpace; ok(t); }));
+const [skyT, floorT] = await Promise.all([load(sky + '.png'), load(floor + '.png')]);
+skyT.mapping = THREE.EquirectangularReflectionMapping;
+scene.background = skyT;
+floorT.wrapS = floorT.wrapT = THREE.RepeatWrapping; floorT.repeat.setScalar((q.get('r') || 20) / 2);
+floorT.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const fade = document.createElement('canvas'); fade.width = fade.height = 256;
+const g = fade.getContext('2d'), grad = g.createRadialGradient(128, 128, 40, 128, 128, 128);
+grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#000');
+g.fillStyle = grad; g.fillRect(0, 0, 256, 256);
+const disc = new THREE.Mesh(new THREE.CircleGeometry(+(q.get('r') || 20), 96),
+  new THREE.MeshBasicMaterial({map: floorT, alphaMap: new THREE.CanvasTexture(fade), transparent: true, depthWrite: false}));
+disc.rotation.x = -Math.PI / 2; scene.add(disc);
+renderer.render(scene, cam);
+document.title = 'ready';
+</script></body></html>

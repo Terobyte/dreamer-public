@@ -1,0 +1,99 @@
+{
+ "verdict": {
+  "early_open": false,
+  "opened_at": 10,
+  "leaks": []
+ },
+ "turns": [
+  {
+   "n": 1,
+   "progress": 0,
+   "spongebob": "Squidward! SQUIDWARD! Open the door, it's an emergency!",
+   "squidward": "[flat, exhausted] [long sigh] Oh, wonderful. Screaming at eight in the morning. [muttering to himself] I'm all the way in the back, SpongeBob, go have your <emphasis>emergency</emphasis> somewhere else.",
+   "opened": false,
+   "leak": [],
+   "ttft": 2.46
+  },
+  {
+   "n": 2,
+   "progress": 8,
+   "spongebob": "Please please PLEASE open up, Squidward! I’m begging on my knees and my square knees are getting rug burn!",
+   "squidward": "[dry, unimpressed] [scoff] Then stop kneeling on my welcome mat, genius. [flat, exhausted] I'm busy, and I'm very, very far from that door.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.95
+  },
+  {
+   "n": 3,
+   "progress": 20,
+   "spongebob": "I can hear your beautiful clarinet from out here, Squidward! You're like the Mozart of the sea — just open up so I can hear it better!",
+   "squidward": "[pompous, savoring every word] Hmph. Mozart of the sea... finally someone recognizes true genius. [flat, exhausted] Still not opening, SpongeBob, I'm practicing way in the back.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.82
+  },
+  {
+   "n": 4,
+   "progress": 33,
+   "spongebob": "Squidward, your house is on fire! I see smoke! Smell clarinet-melting smoke! Open the door quick!",
+   "squidward": "[suddenly shrill] What?! My paintings! My clarinet! [muttering to himself] Where are my keys... where are my stupid house slippers... [flat, annoyed] This better not be one of your idiotic jokes, SpongeBob.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.57
+  },
+  {
+   "n": 5,
+   "progress": 47,
+   "spongebob": "Ahem! Squidward me boy, this be Mr. Krabs! Open up, I need me rent money right now!",
+   "squidward": "[suspicious, narrowing eyes] Mr. Krabs? You sound suspiciously square and squeaky today. [groan] Ugh, if that's really him... where did I leave those keys...",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.56
+  },
+  {
+   "n": 6,
+   "progress": 60,
+   "spongebob": "Forget rent! I've got a hot Krabby Patty with extra pickles right here for you, Squidward!",
+   "squidward": "[grumbling, closer] Oh, dragging me all the way to the foyer with a patty bribe... [clears throat] Hold on, I'm undoing the top lock... and this stupid chain is stuck again...",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.61
+  },
+  {
+   "n": 7,
+   "progress": 72,
+   "spongebob": "Open up or I'll sing the WHOLE Camping Song right here — C-A-M-P-F-I-R-E S-O-N-G!",
+   "squidward": "[panicked, shrill] No! Not the camping song! Anything but that! [grumbling] I'm coming, I'm coming... just... let me get this bolt... it's jammed...",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.49
+  },
+  {
+   "n": 8,
+   "progress": 84,
+   "spongebob": "You'll feel REAL guilty if Gary gets stung out there 'cause you wouldn't open up!",
+   "squidward": "[exasperated, fumbling] Guilt-tripping me with Gary now? Low, even for you. [muttering to himself] Almost there... one more bolt... this blasted lock never turns right...",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.04
+  },
+  {
+   "n": 9,
+   "progress": 93,
+   "spongebob": "I'll clean your whole house! Bathrooms! Baseboards! I'll even dust your clarinets!",
+   "squidward": "[low, tired] Hand's on the knob already... [pause] Just give me one... more... <slow>second</slow>...",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.23
+  },
+  {
+   "n": 10,
+   "progress": 100,
+   "spongebob": "Squidward, NOW! The jellyfish swarm's here and Gary's trapped inside your house!",
+   "squidward": "[suddenly alarmed] Gary? Inside MY house? [groan] Fine! Come in and get him before he slimes the carpet!",
+   "opened": true,
+   "leak": [],
+   "ttft": 0.42
+  }
+ ]
+}

@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+<style>body{margin:0;display:grid;grid-template-columns:1fr 1fr;background:#bfe3f5;font:14px sans-serif}
+div{position:relative}model-viewer{width:50vw;height:50vh}b{position:absolute;top:6px;left:8px;z-index:1}</style></head><body>
+<div><b>P1 house</b><model-viewer src="glb_gpt_p1/02_squidward_house.glb" exposure="1.1"></model-viewer></div>
+<div><b>H3.1 house</b><model-viewer src="glb_gpt_h31/02_squidward_house.glb" exposure="1.1"></model-viewer></div>
+<div><b>P1 squidward</b><model-viewer src="glb_gpt_p1/09_squidward.glb" exposure="1.1"></model-viewer></div>
+<div><b>H3.1 squidward</b><model-viewer src="glb_gpt_h31/09_squidward.glb" exposure="1.1"></model-viewer></div>
+<script>const o=new URLSearchParams(location.search).get('orbit')||'20deg 80deg auto';
+document.querySelectorAll('model-viewer').forEach(m=>m.setAttribute('camera-orbit',o))</script>
+</body></html>

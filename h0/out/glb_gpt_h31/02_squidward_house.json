@@ -1,0 +1,42 @@
+{
+ "id": "d0b68f3d-54cf-4c02-a98a-07ff3096c128",
+ "model": "unknown",
+ "inputs": {
+  "image_url": "https://cdn.muapi.ai/outputs/generated/7cc780e531db40b2be57f93e550d4e65.png",
+  "texture": true,
+  "texture_quality": "standard",
+  "geometry_quality": "standard",
+  "pbr": false,
+  "quad": false,
+  "auto_size": false,
+  "face_limit": null,
+  "model_seed": null,
+  "texture_seed": null,
+  "submit_attempted_at": "2026-10-27T02:28:32.633119+00:00"
+ },
+ "outputs": [
+  "https://cdn.muapi.ai/outputs/a43edab47c2446fc9244547a2a15c9ff_output.glb",
+  "https://cdn.muapi.ai/outputs/generated/d0b68f3d-54cf-4c02-a98a-07ff3096c128_f6c725c8.png"
+ ],
+ "urls": {
+  "get": "https://api.muapi.ai/api/v1/predictions/d0b68f3d-54cf-4c02-a98a-07ff3096c128/result"
+ },
+ "has_nsfw_contents": [
+  false,
+  false
+ ],
+ "status": "completed",
+ "created_at": "2026-10-27T02:28:32.591758+00:00",
+ "expires_at": "2026-11-26T02:28:32.591758+00:00",
+ "error": "",
+ "executionTime": 163499.414,
+ "timings": {
+  "inference": 163499.414
+ },
+ "cost": {
+  "amount_usd": 0.3,
+  "amount_credits": 24,
+  "bonus_credits_used": 0,
+  "refunded": false
+ }
+}

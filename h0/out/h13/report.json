@@ -1,0 +1,39 @@
+{
+ "sky_bikini": {
+  "size": [
+   2240,
+   1120
+  ],
+  "seam_lr": 5.52
+ },
+ "sky_dusk": {
+  "size": [
+   2240,
+   1120
+  ],
+  "seam_lr": 2.91
+ },
+ "sky_city": {
+  "size": [
+   2240,
+   1120
+  ],
+  "seam_lr": 4.91
+ },
+ "floor_sand": {
+  "size": [
+   1600,
+   1600
+  ],
+  "seam_lr": 2.93,
+  "seam_tb": 3.65
+ },
+ "floor_grass": {
+  "size": [
+   1600,
+   1600
+  ],
+  "seam_lr": 1.17,
+  "seam_tb": 3.42
+ }
+}

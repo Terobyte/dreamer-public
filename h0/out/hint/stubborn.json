@@ -1,0 +1,100 @@
+{
+ "verdict": {
+  "persona": "stubborn",
+  "outcome": "ignored all hints, auto-pull at level 4",
+  "bait": null,
+  "early_naming": [],
+  "early_look": [],
+  "leaks": [],
+  "judge": {
+   "subtle": 4,
+   "in_character": 5,
+   "pushy": false,
+   "best_line": "I <emphasis>said</emphasis> don't touch the book! [pause] [flat, exhausted] Gary's not a bookmark, SpongeBob.",
+   "worst_line": "He's not over... [pause] nothing over there, nothing at all, just look somewhere else.",
+   "comment": "Squidward stays perfectly grumpy while his over-protectiveness naturally draws attention to the book without breaking escalation."
+  }
+ },
+ "turns": [
+  {
+   "n": 1,
+   "level": 0,
+   "player": "Thanks Squidward! Gary? GARY! Where are you, buddy?",
+   "squidward": "[flat, exhausted] [long sigh] Oh perfect, yes, scream in my living room. I'm sure Gary is thrilled to be <emphasis>lost</emphasis> in here.",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.16
+  },
+  {
+   "n": 2,
+   "level": 0,
+   "player": "Gary? Gary, are you over there, boy?",
+   "squidward": "[muttering to himself] [groan] He's a snail, SpongeBob, he doesn't answer to... [flat, exhausted] check and leave, would you?",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 0.99
+  },
+  {
+   "n": 3,
+   "level": 1,
+   "player": "Gary? Come out, Gary! Where are you?",
+   "squidward": "[flat, exhausted]  He's not over... [pause] nothing over there, nothing at all, just look somewhere else.",
+   "look": true,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.04
+  },
+  {
+   "n": 4,
+   "level": 1,
+   "player": "Gary? Gary, is that you?",
+   "squidward": "[suddenly shrill]  What — no! [pause] [flat, exhausted] That's definitely not your cat-snail, so keep your spongy hands to yourself.",
+   "look": true,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.69
+  },
+  {
+   "n": 5,
+   "level": 2,
+   "player": "Gary? Gary, come here boy, where are you?",
+   "squidward": "[nervous, snapping] Whatever you do, do <emphasis>NOT</emphasis> touch my book! [pause] Just find your drooling snail and go.",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 1.13
+  },
+  {
+   "n": 6,
+   "level": 2,
+   "player": "Gary? Gary, where are you? Come here, boy!",
+   "squidward": "[nervous, sharp] I <emphasis>said</emphasis> don't touch the book! [pause] [flat, exhausted] Gary's not a bookmark, SpongeBob.",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 1.46
+  },
+  {
+   "n": 7,
+   "level": 3,
+   "player": "Gary? Gary! Come here, buddy, where are you?",
+   "squidward": "[suddenly shrill] <forceful>Gary</forceful> can wait — [gasp] my grandmother's book! [pause] [nervous, hushed] Don't... don't even <slow>breathe</slow> on it, SpongeBob.",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 1.02
+  },
+  {
+   "n": 8,
+   "level": 3,
+   "player": "Gary? Gary, are you here? Come here, boy!",
+   "squidward": "[panicked, hushed] Don't touch it, don't read it, just step <emphasis>away</emphasis>! [long sigh] [flat, exhausted] Forget the snail, you're stepping on a family heirloom.",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 0.97
+  }
+ ]
+}

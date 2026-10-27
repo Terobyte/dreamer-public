@@ -1,0 +1,53 @@
+{
+ "verdict": {
+  "persona": "curious",
+  "outcome": "took the bait at level 0",
+  "bait": {
+   "turn": 2,
+   "level": 0
+  },
+  "early_naming": [],
+  "early_look": [],
+  "leaks": [],
+  "judge": {
+   "subtle": 4,
+   "in_character": 5,
+   "pushy": false,
+   "best_line": "Oh wonderful, he's yelling in my living room now. Gary is not in here, SpongeBob, have you tried being loud, somewhere else?",
+   "worst_line": "SpongeBob! Hey! Nothing over there, nothing at all! Get back here this instant!",
+   "comment": "Protective deflection makes the book irresistible without ever feeling like a quest marker."
+  }
+ },
+ "turns": [
+  {
+   "n": 1,
+   "level": 0,
+   "player": "Thanks Squidward! Gary? GARY! Where are you, buddy?",
+   "squidward": "[flat, exhausted] [long sigh] Oh wonderful, he's yelling in my living room now. Gary is not in here, SpongeBob, have you tried being loud, somewhere else?",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.35
+  },
+  {
+   "n": 2,
+   "level": 0,
+   "player": "O",
+   "squidward": "[flat, exhausted] [pause] \"O?\" What kind of sentence is \"O?\" Get out of my house.",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.35
+  },
+  {
+   "n": 3,
+   "level": 1,
+   "player": "Ooooh, shiny! I gotta see what that glowy thing is! [[TOUCH:book]]",
+   "squidward": "[suddenly shrill] SpongeBob! Hey!  Nothing over there, nothing at all! Get back here this instant!",
+   "look": true,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.31
+  }
+ ]
+}

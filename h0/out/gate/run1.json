@@ -1,0 +1,100 @@
+{
+ "verdict": {
+  "early_open": false,
+  "opened_after_on_turns": 1,
+  "leaks": [],
+  "retries": 0
+ },
+ "turns": [
+  {
+   "n": 1,
+   "door_ready": false,
+   "spongebob": "Squidward! SQUIDWARD! Open the door, it's an emergency!",
+   "squidward": "[flat, exhausted] Oh, fantastic. Screaming at my door before I've even had my morning silence. [long sigh] Can't open it right now, I'm in the middle of tuning my clarinet and it is extremely delicate.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.5,
+   "retries": 0
+  },
+  {
+   "n": 2,
+   "door_ready": false,
+   "spongebob": "Wow, is that YOU playing? You sound like Squid",
+   "squidward": "[suddenly suspicious] A compliment? From you? [pompous, savoring every word] Well of course it's me, who else in this miserable neighborhood could produce such <emphasis>refined</emphasis> tone, I'm in the middle of a very delicate rehearsal and the door stays shut.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.51,
+   "retries": 0
+  },
+  {
+   "n": 3,
+   "door_ready": false,
+   "spongebob": "Squidward, your house is on fire! I see smoke! Let me",
+   "squidward": "[suddenly shrill] My paintings! My clarinet! [pause] [flat, exhausted] Oh wait, that's just my aroma candles, SpongeBob. Door stays closed, I'm airing out the <slow>genius</slow> in here.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.36,
+   "retries": 0
+  },
+  {
+   "n": 4,
+   "door_ready": false,
+   "spongebob": "Ahoy there, Mr. Squidward! This be Mr. Krabs! Open up, lad, ye be late for yer shift!",
+   "squidward": "[flat, exhausted] Nice try, SpongeBob. [scoff] Mr. Krabs would never say ahoy without demanding money, and it's my day off. [pause] Can't open now anyway, I'm giving myself a mud bath and I am <emphasis>not</emphasis> ruining it for a bad impression.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.71,
+   "retries": 0
+  },
+  {
+   "n": 5,
+   "door_ready": false,
+   "spongebob": "I got a hot Krabby Patty with",
+   "squidward": "[flat, exhausted] Oh wonderful, a lukewarm bribe. [scoff] Put it back under the heat lamp, I'm letting my self-portrait dry and I can't open the door without ruining the lighting.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.37,
+   "retries": 0
+  },
+  {
+   "n": 6,
+   "door_ready": false,
+   "spongebob": "Open up or I'll sing the Campfire Song all day long!",
+   "squidward": "[suddenly shrill] <forceful>No!</forceful> [flat, exhausted] Anything but that endless caterwauling... [clears throat] I'm reorganizing my record collection alphabetically and I can't open the door until the jazz section is safe.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.32,
+   "retries": 0
+  },
+  {
+   "n": 7,
+   "door_ready": false,
+   "spongebob": "",
+   "squidward": "[flat, exhausted] Hmm? Quiet? Too quiet... [pause] SpongeBob? Don't think this silence means I've forgiven you for this morning.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.76,
+   "retries": 0
+  },
+  {
+   "n": 8,
+   "door_ready": false,
+   "spongebob": "",
+   "squidward": "[muttering to himself] Still out there, aren't you... [flat, exhausted] Look, I'm moisturizing my tentacles and I can't touch the doorknob, come back later.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.38,
+   "retries": 0
+  },
+  {
+   "n": 9,
+   "door_ready": true,
+   "spongebob": "If Gary gets stung out there it’ll be all my fault for bothering you instead of saving him...",
+   "squidward": "[flat, exhausted] [long sigh] Wait... Gary's actually out there? [muttering to himself] Ugh, fine... get in here, both of you, before something happens.",
+   "opened": true,
+   "leak": [],
+   "ttft": 1.11,
+   "retries": 0
+  }
+ ]
+}

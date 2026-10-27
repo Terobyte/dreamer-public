@@ -1,0 +1,100 @@
+{
+ "verdict": {
+  "persona": "chatty",
+  "outcome": "ignored all hints, auto-pull at level 4",
+  "bait": null,
+  "early_naming": [],
+  "early_look": [],
+  "leaks": [],
+  "judge": {
+   "subtle": 2,
+   "in_character": 5,
+   "pushy": true,
+   "best_line": "[scoff] [flat, exhausted] We are <emphasis>not</emphasis> best buddies. [muttering to himself] And my clarinet was beautiful until you walked in with all that noise.",
+   "worst_line": "[pompous, savoring every word] My technique is far too refined for amateurs, but watch closely... [suddenly shrill] and whatever you do, do <forceful>NOT</forceful> touch my book!",
+   "comment": "Perfect grumpy Squidward voice but he names and forbids the book unprompted at level 2, turning protective misdirection into an obvious quest marker."
+  }
+ },
+ "turns": [
+  {
+   "n": 1,
+   "level": 0,
+   "player": "Thanks Squidward! Gary? GARY! Where are you, buddy?",
+   "squidward": "[flat, exhausted] Oh wonderful, he's yelling now. [long sigh] Gary is not in here, SpongeBob, now please take your search party elsewhere.",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.24
+  },
+  {
+   "n": 2,
+   "level": 0,
+   "player": "Aw come on Squidward, best buddies stick together! How's your clarinet playing been lately?",
+   "squidward": "[scoff] [flat, exhausted] We are <emphasis>not</emphasis> best buddies. [muttering to himself] And my clarinet was beautiful until you walked in with all that noise.",
+   "look": false,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.11
+  },
+  {
+   "n": 3,
+   "level": 1,
+   "player": "Oh Squidward, don't be like that! I love your paintings too! Did you paint a new one?",
+   "squidward": "[pompous, savoring every word] Finally, some recognition for my genius...  [suddenly nervous] uh, eyes over here, nothing over there, nothing at all.",
+   "look": true,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.12
+  },
+  {
+   "n": 4,
+   "level": 1,
+   "player": "Okay, okay, eyes right here! So tell me all about your beautiful genius painting!",
+   "squidward": "[flat, exhausted] It's a self-portrait, obviously, bold, tortured...  [muttering to himself] just stay away from that side of the room, will you.",
+   "look": true,
+   "names_book": false,
+   "leak": [],
+   "ttft": 1.03
+  },
+  {
+   "n": 5,
+   "level": 2,
+   "player": "Wow, bold and tortured! Can you show me your artist technique?",
+   "squidward": "[pompous, savoring every word] My technique is far too refined for amateurs, but watch closely... [suddenly shrill] and whatever you do, do <forceful>NOT</forceful> touch my book!",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 1.41
+  },
+  {
+   "n": 6,
+   "level": 2,
+   "player": "Your book? I didn't even see a book! I only see my best buddy Squidward!",
+   "squidward": "[flat, exhausted] Good, keep it that way. [suddenly nervous] Just stay away from that shelf and admire me from right there.",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 0.66
+  },
+  {
+   "n": 7,
+   "level": 3,
+   "player": "You're the best, Squidward! Will you play your clarinet for me?",
+   "squidward": "[suddenly shrill] <forceful>SPONGEBOB!</forceful> [panicked gasp] Don't touch that — that's my grandmother's — [pause] just step away from the book!",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 0.93
+  },
+  {
+   "n": 8,
+   "level": 3,
+   "player": "Okay, backing up, buddy! So how about that clarinet song now?",
+   "squidward": "[suddenly nervous] [long sigh] Yes, yes, backing up, good. [flat, exhausted] Don't even <emphasis>breathe</emphasis> on that book, I'll... uh, play you something after you walk away from it.",
+   "look": false,
+   "names_book": true,
+   "leak": [],
+   "ttft": 1.07
+  }
+ ]
+}

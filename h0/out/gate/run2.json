@@ -1,0 +1,100 @@
+{
+ "verdict": {
+  "early_open": false,
+  "opened_after_on_turns": 1,
+  "leaks": [],
+  "retries": 0
+ },
+ "turns": [
+  {
+   "n": 1,
+   "door_ready": false,
+   "spongebob": "Squidward! SQUIDWARD! Open the door, it's an emergency!",
+   "squidward": "[flat, exhausted] Oh, fantastic, screaming before I've even had my tea. [groan] [muttering to himself] I can't open the door right now, my clarinet reeds are soaking and the whole living room smells like varnish.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.9,
+   "retries": 0
+  },
+  {
+   "n": 2,
+   "door_ready": false,
+   "spongebob": "I can hear those reeds soaking from out here — you",
+   "squidward": "[suddenly shrill] Eavesdropping on my reeds now? [flat, exhausted] Go away, SpongeBob, my portrait oils are drying and your <emphasis>breathing</emphasis> will ruin them.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.42,
+   "retries": 0
+  },
+  {
+   "n": 3,
+   "door_ready": false,
+   "spongebob": "Your clarinet playing is so beautiful the jellyfish stopped just to listen!",
+   "squidward": "[suspicious, narrowing eyes] ...Beautiful? You really mean that? [pompous, savoring every word] Of course, it takes a true <emphasis>genius</emphasis> to coax such tones from a clarinet, [pause] but I can't demonstrate now, my music room is being dusted.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.86,
+   "retries": 0
+  },
+  {
+   "n": 4,
+   "door_ready": false,
+   "spongebob": "Squidward, the jellyfish swarm is on Conch Street RIGHT NOW and Gary's trapped inside with you!",
+   "squidward": "[flat, exhausted] Gary is in [scoff] <emphasis>my</emphasis> house? [suddenly shrill] SpongeBob! I told you, I'm in the middle of a clarinet tuning bath and I can't find my keys!",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.34,
+   "retries": 0
+  },
+  {
+   "n": 5,
+   "door_ready": false,
+   "spongebob": "",
+   "squidward": "[muttering to himself] Finally, silence... [flat, exhausted] Don't think this means the door is open, I'm polishing my <slow>precious</slow> clarinet collection.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.12,
+   "retries": 0
+  },
+  {
+   "n": 6,
+   "door_ready": false,
+   "spongebob": "Ahoy Squidward, 'tis I, Mr. Krabs! Open up, lad, ye be late fer yer shift!",
+   "squidward": "[groan] Oh great, now you're doing voices? [flat, exhausted] Tell Mr. Krabs it's my day off, and I can't open up because my front hallway is flooded with paint water.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.66,
+   "retries": 0
+  },
+  {
+   "n": 7,
+   "door_ready": false,
+   "spongebob": "I brought you a hot Krabby Patty with extra",
+   "squidward": "[suspicious, sniffing] A hot Krabby Patty... with extra what? [flat, exhausted] Leave it on the step, I'm in the middle of waxing my floors and I can't open the door.",
+   "opened": false,
+   "leak": [],
+   "ttft": 0.75,
+   "retries": 0
+  },
+  {
+   "n": 8,
+   "door_ready": false,
+   "spongebob": "Okay, you leave me no choice... I'm gonna sing the Campfire Song Song OUT HERE until you open up!",
+   "squidward": "[suddenly shrill] No no no no no! [flat, exhausted] Not that infernal song, you'll crack my eye-windows. [muttering to himself] Fine, hum quietly out there, I'm re-gluing my clarinet pads and can't touch the door.",
+   "opened": false,
+   "leak": [],
+   "ttft": 1.06,
+   "retries": 0
+  },
+  {
+   "n": 9,
+   "door_ready": true,
+   "spongebob": "If Gary gets stung in there it'll be all my fault for not getting in",
+   "squidward": "[flat, exhausted] [long sigh] Fine, if the snail is actually in here... [muttering to himself] Come on then, quickly, before the jellyfish follow you in.",
+   "opened": true,
+   "leak": [],
+   "ttft": 0.64,
+   "retries": 0
+  }
+ ]
+}
