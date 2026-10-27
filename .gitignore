@@ -1,0 +1,25 @@
+# secrets — keys live only in env / career/.env
+.env
+.env.*
+
+# deps, builds, caches
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+
+# tool scratch
+.playwright-mcp/
+
+# heavy generated media (regenerable; numbers and viewers stay in git)
+h0/out/**/*.glb
+h0/out/**/*.ply
+h0/out/**/*.spz
+h0/out/**/*.mp3
+h0/out/**/*.wav
+h0/out/**/*.mp4
+h0/out/**/*.png
+h0/out/**/*.jpg
+research/video/
