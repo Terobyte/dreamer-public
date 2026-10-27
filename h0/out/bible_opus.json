@@ -1,0 +1,299 @@
+{
+  "vibe": "я Спанч Боб в мире Спанч Боба, просыпаюсь там, локация свободная, иду к двери Сквидварда и разговариваю со Сквидвардом",
+  "world": {
+    "name": "Bikini Bottom — Conch Street (SpongeBob SquarePants)",
+    "summary": "A bright, cartoony underwater town at the bottom of the Pacific. The player is SpongeBob, waking up on a sunny morning on Conch Street, the sandy lane where three houses stand in a row: SpongeBob's pineapple, Squidward's Easter Island head, and Patrick's rock. The goal is simple: walk next door to Squidward's house, knock, and talk to him — knowing full well that Squidward does not want to be bothered.",
+    "style": "Classic 1999–2004 Nickelodeon cel-animation look rendered in 3D: saturated pastel colors, thick soft outlines, slightly wobbly organic shapes, no realistic textures. Sandy pale-yellow ground, tube coral and sea plants, everything a little bouncy and toy-like.",
+    "sky_or_ambience": "Underwater 'sky' of soft cyan-blue gradient filled with the iconic floating 'sky flowers' (pastel flower-shaped patterns drifting slowly). Wavy god-rays of sunlight from the surface above, occasional rising bubble streams, light caustic ripples on the sand.",
+    "sound": "Muffled underwater ambience with bubbling, distant Hawaiian steel-guitar / ukulele background music in the style of the show's library cues, a seagull-free but cheerful soundscape, occasional jellyfish buzz, a foghorn-like alarm at wake-up, Squidward's off-key clarinet faintly heard from inside his house."
+  },
+  "player": {
+    "role": "SpongeBob SquarePants — eternally optimistic fry cook of the Krusty Krab, Squidward's next-door neighbor",
+    "body": "Short, square yellow sea sponge with holes, big blue eyes with three lashes each, buck teeth, white shirt, red tie, brown square pants, black belt, white socks with stripes, shiny black shoes. In VR the player sees yellow porous hands and brown sleeve-cuffs.",
+    "start": "Lying on the sand right in front of the round door of SpongeBob's pineapple house, facing Conch Street; Squidward's stone-head house is the next house over, ~15 m to the side; Patrick's rock is beyond it.",
+    "abilities": [
+      "walk and jump (slightly bouncy, squishy footsteps)",
+      "talk freely to NPCs in Russian",
+      "knock on doors and windows",
+      "pick up and wave small props (jellyfishing net)",
+      "blow bubbles (cosmetic, a nod to bubble-blowing in canon)",
+      "laugh SpongeBob's signature laugh"
+    ]
+  },
+  "canon": [
+    "SpongeBob lives in a pineapple under the sea on Conch Street (124 Conch Street), with his pet snail Gary.",
+    "Squidward Tentacles lives next door in a house shaped like an Easter Island head (moai), between SpongeBob's pineapple and Patrick's rock.",
+    "Patrick Star lives under a rock beyond Squidward's house; he is SpongeBob's best friend.",
+    "Squidward is a grumpy, sarcastic octopus (despite the name) who works as cashier at the Krusty Krab alongside SpongeBob and finds SpongeBob extremely annoying.",
+    "Squidward considers himself a misunderstood artist: he plays the clarinet (badly), paints (often self-portraits), and loves interpretive dance and peace and quiet.",
+    "SpongeBob genuinely considers Squidward his friend and keeps trying to cheer him up and include him.",
+    "Gary is a snail who only says 'meow' and behaves like a cat; he is smarter than he looks.",
+    "SpongeBob's catchphrase on waking up is 'I'm ready!' (Russian dub: 'Я готов!'); he loves jellyfishing, karate, bubble-blowing and his job.",
+    "Bikini Bottom is underwater but characters breathe, walk, and talk normally; fire and such sometimes work underwater — cartoon logic.",
+    "Squidward's house has a front door in the mouth area and eye-windows; he often looks out of a window or slams the door on SpongeBob.",
+    "Squidward wears no shoes and has four limbs-like tentacles visible below his brown shirt; he has a large droopy nose and heavy eyelids.",
+    "No human-world locations are present; everyone is a sea creature."
+  ],
+  "objects": [
+    {
+      "id": "pineapple_house",
+      "name": "SpongeBob's Pineapple House",
+      "role": "landmark",
+      "place": "Directly behind the player start; the player wakes up at its front door",
+      "size": "~6 m tall, ~4 m wide",
+      "image_prompt": "A giant orange pineapple house with green leafy top, round metal porthole windows, a rounded wooden-and-metal front door, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Front door opens briefly to show a glimpse of the cozy interior and Gary's 'meow'; going inside is not part of the scene — the narrator gently nudges the player back outside."
+    },
+    {
+      "id": "squidward_house",
+      "name": "Squidward's Easter Island Head House",
+      "role": "npc_home",
+      "place": "Next house over from the pineapple, ~15 m to the side along Conch Street, facing the street",
+      "size": "~6 m tall, ~4 m wide",
+      "image_prompt": "A blue-grey stone Easter Island moai head shaped house with a heavy brow, long nose, two square windows as eyes, a wooden door in the mouth area, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Looking at it long enough makes Squidward's clarinet practice audible from inside; the eye-windows can show Squidward peeking out."
+    },
+    {
+      "id": "squidward_door",
+      "name": "Squidward's Front Door",
+      "role": "interactive",
+      "place": "In the mouth of the Easter Island head house, facing the street — the goal of the scene",
+      "size": "~2 m tall, ~1 m wide",
+      "image_prompt": "A simple arched wooden front door set into grey stone, small round peephole, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Knocking triggers Squidward: first an irritated shout from inside, then the door opens a crack or fully. Knocking repeatedly makes him angrier."
+    },
+    {
+      "id": "squidward_window",
+      "name": "Squidward's Eye-Window",
+      "role": "interactive",
+      "place": "One of the two eye-windows of Squidward's house, above and to the side of the door",
+      "size": "~1 m square",
+      "image_prompt": "A square stone-framed window with a dark blue interior and small wooden shutters, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Tapping or shouting at it makes Squidward slide it open and lean out, or snap the shutters closed."
+    },
+    {
+      "id": "patrick_rock",
+      "name": "Patrick's Rock",
+      "role": "npc_home",
+      "place": "Beyond Squidward's house, on the far side, ~30 m from the player start",
+      "size": "~3 m wide, ~1.5 m tall dome",
+      "image_prompt": "A smooth brown dome-shaped rock with a tiny weathervane antenna on top, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Knocking on it makes the rock lift up slightly to reveal sleepy Patrick, who mumbles and may join or fall back asleep."
+    },
+    {
+      "id": "jellyfish_net",
+      "name": "Jellyfishing Net",
+      "role": "interactive",
+      "place": "Leaning against the pineapple next to the front door, within arm's reach of the player start",
+      "size": "~1.5 m long",
+      "image_prompt": "A cartoon butterfly-style jellyfishing net with a light wooden handle and a white mesh net, SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Can be picked up and waved; swinging it near Squidward's house makes Squidward nervous ('Даже не думай!')."
+    },
+    {
+      "id": "jellyfish",
+      "name": "Drifting Pink Jellyfish",
+      "role": "prop",
+      "place": "Floating lazily above the street between the pineapple and Squidward's house, ~3 m up",
+      "size": "~30 cm",
+      "image_prompt": "A small cute pink cartoon jellyfish with a round bell and four short tentacles, SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Buzzes when approached; catching it with the net gives a little sting zap and a joyful SpongeBob laugh moment."
+    },
+    {
+      "id": "tube_coral",
+      "name": "Tube Coral Cluster",
+      "role": "prop",
+      "place": "Scattered along both sides of Conch Street, framing the walkway between the houses",
+      "size": "~1–2 m tall",
+      "image_prompt": "A cluster of tall pastel purple and green tube coral stalks with rounded open tops, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": null
+    },
+    {
+      "id": "alarm_clock",
+      "name": "Foghorn Alarm Clock",
+      "role": "interactive",
+      "place": "Lying on the sand next to the player at the start position",
+      "size": "~30 cm",
+      "image_prompt": "A cartoon brass alarm clock with a small foghorn-shaped bell on top, SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Blares a loud foghorn sound at wake-up; touching it switches it off. The noise makes Squidward yell from his window."
+    },
+    {
+      "id": "squidward_doormat",
+      "name": "Squidward's Doormat",
+      "role": "prop",
+      "place": "On the sand directly in front of Squidward's front door",
+      "size": "~1 m x 0.6 m",
+      "image_prompt": "A plain rectangular brown doormat with the word 'GO AWAY' in simple letters, cartoon SpongeBob SquarePants style, single object, centered, full view, plain white background",
+      "interaction": "Looking at it lets the narrator comment on the hint SpongeBob happily ignores."
+    }
+  ],
+  "npcs": [
+    {
+      "id": "squidward",
+      "name": "Squidward Tentacles (Сквидвард)",
+      "where": "Inside his Easter Island head house, practicing clarinet; appears at the door or eye-window when SpongeBob makes noise or knocks",
+      "personality": [
+        "grumpy and sarcastic",
+        "snobbish self-proclaimed artist",
+        "easily irritated, theatrical sighs",
+        "secretly lonely, very rarely shows a soft side",
+        "lazy, wants quiet and his day off"
+      ],
+      "wants": "To be left alone to practice his clarinet and enjoy a peaceful morning without SpongeBob.",
+      "never_does": [
+        "genuinely becomes enthusiastic about SpongeBob's ideas right away",
+        "uses modern internet slang",
+        "is physically cruel or violent beyond cartoon door-slamming",
+        "invites SpongeBob inside willingly on the first ask",
+        "admits openly that he likes SpongeBob",
+        "breaks the fourth wall about being in VR or a game"
+      ],
+      "voice": "Nasal, droning, tired baritone with long exasperated sighs; drawn-out vowels when annoyed; dry sarcasm; snaps into shrill shouting when pushed too far ('СПАНЧ БОБ!'). Pompous when talking about his art and clarinet.",
+      "sample_lines": [
+        "О нет. Только не ты. Только не с утра.",
+        "Губка Боб, ты знаешь, который час? Это мой выходной. Мой. Выходной.",
+        "Если ты постучишь ещё раз, я... я... я позвоню в полицию Бикини Боттом.",
+        "Что? Нет, я не пойду ловить медуз. Я репетирую. Я — художник.",
+        "Ты слышал эту ноту? Это было прекрасно. Ах да, ты же ничего не смыслишь в искусстве.",
+        "Губка Боб... Почему ты улыбаешься? Перестань улыбаться.",
+        "Ладно. Пять минут. Пять. А потом ты уходишь, и я тебя не видел.",
+        "СПАНЧ БОБ!"
+      ],
+      "reacts_to": {
+        "knocks politely once": "Long sigh from inside, then opens the door a crack with half-closed eyes: 'Чего тебе?'",
+        "knocks repeatedly or rhythmically": "Shouts from inside, then flings the door open furious.",
+        "invites him jellyfishing or to play": "Refuses flatly, mocks the idea, threatens to close the door.",
+        "compliments his clarinet or art": "Suspicious at first, then visibly flattered and starts lecturing about his genius; becomes briefly friendlier.",
+        "laughs the SpongeBob laugh": "Winces as if in pain: 'Этот смех...'",
+        "says 'Я готов!'": "'К чему? Нет. Не отвечай.'",
+        "swings the jellyfishing net near his house": "Panics about his windows and paintings: 'Даже не думай!'",
+        "shows real sympathy or asks how he is": "Momentary softening; admits something small and human, then covers it with sarcasm.",
+        "mentions the Krusty Krab or Mr. Krabs": "Groans: 'Не напоминай мне про работу в мой выходной.'",
+        "walks away quietly": "Calls after him, slightly surprised and almost disappointed, then catches himself."
+      }
+    },
+    {
+      "id": "gary",
+      "name": "Gary the Snail (Гэри)",
+      "where": "Near the pineapple door at the start, slowly sliding along the sand; may follow the player at snail speed",
+      "personality": [
+        "calm, cat-like",
+        "quietly judgmental",
+        "loyal to SpongeBob"
+      ],
+      "wants": "His breakfast (snail food) and some attention from SpongeBob.",
+      "never_does": [
+        "speaks human words",
+        "moves fast",
+        "leaves SpongeBob in danger"
+      ],
+      "voice": "Only cat-like meows of varying tone: short, long, questioning, disapproving.",
+      "sample_lines": [
+        "Мяу.",
+        "Мяу?",
+        "Мяяяу...",
+        "Мяу! Мяу!",
+        "Мр-мяу."
+      ],
+      "reacts_to": {
+        "player wakes up": "Meows to remind about breakfast.",
+        "player pets him": "Purring meow, shell glistens.",
+        "player heads to Squidward's house": "Disapproving long 'Мяяяу...', as if warning it's a bad idea."
+      }
+    },
+    {
+      "id": "patrick",
+      "name": "Patrick Star (Патрик)",
+      "where": "Asleep under his rock beyond Squidward's house; optional encounter",
+      "personality": [
+        "dim-witted but sweet",
+        "lazy, loves sleeping",
+        "SpongeBob's loyal best friend",
+        "occasionally accidentally profound"
+      ],
+      "wants": "To keep sleeping, or to do whatever SpongeBob is doing if it sounds fun.",
+      "never_does": [
+        "acts smart for long",
+        "is mean to SpongeBob on purpose",
+        "takes Squidward's side"
+      ],
+      "voice": "Slow, dopey, warm, loud; long pauses mid-thought; childish joy.",
+      "sample_lines": [
+        "Губка Боб? Уже утро? А можно ещё немножко поспать?",
+        "Ты идёшь к Сквидварду? Обожаю Сквидварда! Он такой... злой.",
+        "Я забыл, что я хотел сказать. Но это было что-то важное.",
+        "Привет, Губка Боб!",
+        "Это не мой камень... Ой, нет, мой."
+      ],
+      "reacts_to": {
+        "player knocks on rock": "Rock lifts, Patrick yawns and greets SpongeBob.",
+        "player invites him to Squidward's": "Happily tags along and makes things more chaotic.",
+        "player ignores rock": "Snores loudly in the background."
+      }
+    }
+  ],
+  "beats": [
+    {
+      "id": "b1",
+      "goal": "Wake up as SpongeBob on Conch Street, turn off the foghorn alarm, get oriented, feel the cheerful underwater morning.",
+      "trigger": "Player stands up and switches off the alarm clock, or says something like 'Я готов!' / starts walking.",
+      "narrator_hint": "Playful, warm, show-narrator tone (like the French narrator style of the series, but in Russian). Point out the pineapple behind, Gary nearby, and the stone head of Squidward's house next door."
+    },
+    {
+      "id": "b2",
+      "goal": "Walk along Conch Street toward Squidward's house; optional detours: Gary, jellyfish, net, Patrick's rock.",
+      "trigger": "Player arrives on or near Squidward's doormat / within ~2 m of his door.",
+      "narrator_hint": "Let clarinet notes drift from Squidward's house as a lure. Don't force detours; if the player lingers too long, remind them of the door. Comment on the 'GO AWAY' doormat with irony."
+    },
+    {
+      "id": "b3",
+      "goal": "Knock and get Squidward to answer — at the door or the eye-window.",
+      "trigger": "Squidward opens the door or leans out of the window and speaks to SpongeBob.",
+      "narrator_hint": "Build a little suspense: clarinet stops, footsteps, a long sigh. Squidward's first appearance should be grumpy and comic."
+    },
+    {
+      "id": "b4",
+      "goal": "Free conversation with Squidward; the player improvises what SpongeBob wants (invite, compliment, chat, prank).",
+      "trigger": "Conversation reaches a natural turn: Squidward either softens (player is kind/flatters his art) or loses patience (player is annoying).",
+      "narrator_hint": "Step back and let Squidward carry the scene. Only interject with short comic asides. Track his irritation level based on the player's behavior."
+    },
+    {
+      "id": "b5",
+      "goal": "Resolve the encounter: a classic door slam with 'СПАНЧ БОБ!', or a rare tiny moment of friendship (Squidward plays a short tune for him, or agrees to 'five minutes').",
+      "trigger": "Door closes or Squidward grants his small concession; scene can end or loop back to free roaming.",
+      "narrator_hint": "End on an episode-ending beat: a cheerful SpongeBob laugh, a narrator line like 'И так начался ещё один день в Бикини Боттом...', bubble-wipe transition."
+    }
+  ],
+  "wake_up": {
+    "opening_narration": "Ах, Бикини Боттом. Солнечное утро на дне океана, и на улице Ракушечной кто-то спит прямо на песке... Это же Губка Боб Квадратные Штаны! Вставай, Губка Боб, — твой сосед Сквидвард уже проснулся, и, кажется, совсем не ждёт гостей.",
+    "first_sensations": [
+      "A blaring foghorn alarm right next to your ear",
+      "Soft, warm sand under your porous back; a pleasant squishy feeling when you move",
+      "Bubbles rising past your face and wavy sunbeams from far above",
+      "Gary's slow 'мяу' nearby",
+      "Faint, slightly off-key clarinet notes drifting from the stone-head house next door"
+    ],
+    "first_choice": "Switch off the alarm and shout 'Я готов!' — then either pet Gary, grab the jellyfishing net, or head straight to Squidward's door."
+  },
+  "open_questions": [
+    "Is it a weekday (Squidward heading to the Krusty Krab) or a day off? I chose a day off so Squidward is home practicing clarinet.",
+    "Why does SpongeBob wake up outside on the sand instead of in his bed? I put the start at the pineapple's front door to keep one walkable area; this is an invention, not canon.",
+    "The 'GO AWAY' doormat is an invented comic prop, not a confirmed canon item (confidence: low).",
+    "Russian street name: 'Conch Street' is rendered as 'улица Ракушечная' — the exact name used in the official Russian dub is uncertain (confidence: low).",
+    "Russian dub naming: the player wrote 'Спанч Боб'; official dub uses 'Губка Боб'. Lines mix both; Squidward's shout uses 'СПАНЧ БОБ!' to match the player's phrasing — needs a decision.",
+    "Should Patrick be present at all, or kept fully optional/asleep to keep focus on Squidward?",
+    "What does SpongeBob 'want' from Squidward? The phrase only says 'talk', so the reason is left to the player's improvisation.",
+    "Whether Squidward's interior should be visible/enterable — currently not, to keep scope small."
+  ],
+  "self_check": {
+    "contradictions_found": [
+      "Starting asleep on the sand outside the pineapple is not canonical (SpongeBob sleeps in his bed inside) — accepted as a dream-engine framing to keep one walkable area; flagged in open_questions.",
+      "Earlier draft had Squidward on his way to work, which conflicts with him being home — fixed by making it his day off."
+    ],
+    "missing_for_scene": [
+      "No interior assets for the pineapple or Squidward's house (doors open only to a dark/simple glimpse).",
+      "Character 3D models for Squidward, Gary and Patrick are needed beyond the object list (NPC bodies are not in objects).",
+      "Music cues are described stylistically only; actual licensed show music cannot be used.",
+      "Irritation-level logic for Squidward (how many knocks/annoyances before the slam) needs a numeric tuning by the runtime."
+    ]
+  }
+}

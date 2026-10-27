@@ -1,0 +1,326 @@
+[
+ {
+  "round": 0,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_batch",
+  "wait_ms": 1450,
+  "text": "Squidward, open the door!",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 2.1 с → 869 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_chunks",
+  "wait_ms": 765,
+  "text": "Squidward, open the door!",
+  "detail": "1 кусков, последний 2.1 с → ASR 735 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "flux",
+  "wait_ms": 1259,
+  "text": "Squidward, open the door.",
+  "detail": "eager —"
+ },
+ {
+  "round": 0,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_batch",
+  "wait_ms": 2065,
+  "text": "Quidward, I really need to come inside. There's a giant jellyfish swarm coming down the street.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 5.7 с → 1485 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_chunks",
+  "wait_ms": 1013,
+  "text": "Squidward, I really need to come in.. side, there's a giant jellyfish swarm.. Coming down the street!",
+  "detail": "3 кусков, последний 1.5 с → ASR 729 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "flux",
+  "wait_ms": 1304,
+  "text": "Squidward. I really need to come inside. There's a giant jellyfish swarm coming down the street.",
+  "detail": "eager —"
+ },
+ {
+  "round": 0,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_batch",
+  "wait_ms": 2992,
+  "text": "Weed word. Listen, Gary crawled into your house through the mail slot, and I have to get him back before Mister Krabs finds out I left the grill.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 9.8 с → 2411 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_chunks",
+  "wait_ms": 949,
+  "text": "Squeedward, listen! Gary crawled crawled into your house through. The male slot, and I have to get. him back before Mister Crabs finds! out I left the grill!",
+  "detail": "5 кусков, последний 1.8 с → ASR 658 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "flux",
+  "wait_ms": 1164,
+  "text": "Squidward. Listen. Gary crawled into your house through the mail slot, and I have to get him back before mister Crabs finds out I left the grill.",
+  "detail": "eager —"
+ },
+ {
+  "round": 0,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_batch",
+  "wait_ms": 4162,
+  "text": "Okay, okay, I know you hate it when I knock this early, but this is a real emergency, Squidward. The jellyfish are everywhere, Patrick is hiding under his rock, and you are the only one on Conch Street with a door that actually locks. Please, please, please let let me in.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 14.8 с → 3581 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_chunks",
+  "wait_ms": 715,
+  "text": "Okay, okay, I know you hate it when I knock. this early but this this is a real emergency! The Squidward the jellyfish are everywhere.. Patrick is hiding under his rock.! and you were the only one unconscious?! with a door that actually locks! Please, please, please let me in!.",
+  "detail": "7 кусков, последний 2.0 с → ASR 728 мс"
+ },
+ {
+  "round": 0,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "flux",
+  "wait_ms": 1017,
+  "text": "Okay. Okay. I know you hate it when I not this early, but this is a real emergency, Squidward. The jellyfish are everywhere. Patrick is hiding under his rock, and you are the only one on Kank Street with a door that actually locks. Please. Please. Please let me in.",
+  "detail": "eager —"
+ },
+ {
+  "round": 1,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_batch",
+  "wait_ms": 1643,
+  "text": "Squidward, open the door!",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 2.1 с → 1062 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_chunks",
+  "wait_ms": 922,
+  "text": "Squidward, open the door!",
+  "detail": "1 кусков, последний 2.1 с → ASR 910 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "flux",
+  "wait_ms": 1261,
+  "text": "Squidward, open the door.",
+  "detail": "eager —"
+ },
+ {
+  "round": 1,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_batch",
+  "wait_ms": 2203,
+  "text": "Edward, I really need to come inside. There's a a giant jellyfish swarm coming down the street.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 5.7 с → 1622 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_chunks",
+  "wait_ms": 1060,
+  "text": "Squidward, Iward, I really need to come in. there's a giant jellyfish swarm.. coming down the street.!",
+  "detail": "3 кусков, последний 1.5 с → ASR 748 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "flux",
+  "wait_ms": 1340,
+  "text": "Squidward. I really need to come inside. There's a giant jellyfish swarm coming down the street.",
+  "detail": "eager —"
+ },
+ {
+  "round": 1,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_batch",
+  "wait_ms": 2882,
+  "text": "Weed word. listen. Gary crawled into your house through the mail slot and I have to get him back before Mister Krabs finds out I left the grill.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 9.8 с → 2301 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_chunks",
+  "wait_ms": 919,
+  "text": "Squeedward, listen! Gary crawled into your house through... the male flot and I have to get. him back before Mister Crabs finds. out I left the grill!",
+  "detail": "5 кусков, последний 1.8 с → ASR 632 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "flux",
+  "wait_ms": 1167,
+  "text": "Squidward. Listen. Gary crawled into your house through the mail slot, and I have to get him back before mister Crabs finds out I left the grill.",
+  "detail": "eager —"
+ },
+ {
+  "round": 1,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_batch",
+  "wait_ms": 4471,
+  "text": "Okay, okay, I know you hate it when I knock this early, but this is a real emergency, emergency, Squidward. The jellyfish are everywhere. Patrick is hiding under his rock, and you are the only one on on Conch Street with a door that actually locks. Please, please, please let me in.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 14.8 с → 3890 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_chunks",
+  "wait_ms": 972,
+  "text": "Okay, okay, I I know you hate it when I knock.. this early, but this is a real emergency.! these Squidward the Squidward the jellyfish are everywhere!! Patrick is hiding under his rock.. and you were the only were the only one unconscious. with a door that actually locks. Please, please, please let me in!",
+  "detail": "7 кусков, последний 2.0 с → ASR 951 мс"
+ },
+ {
+  "round": 1,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "flux",
+  "wait_ms": 1056,
+  "text": "Okay. Okay. I know you hate it when I not this early, but this is a real emergency, Squidward. The jellyfish are everywhere. Patrick is hiding under his rock, and you are the only one on Kank Street with a door that actually locks. Please. Please. Please let me in.",
+  "detail": "eager —"
+ },
+ {
+  "round": 2,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_batch",
+  "wait_ms": 1440,
+  "text": "squidward open the door!",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 2.1 с → 859 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "meta_chunks",
+  "wait_ms": 619,
+  "text": "Squidward, open the door.",
+  "detail": "1 кусков, последний 2.1 с → ASR 625 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "short",
+  "speech_s": 2.1,
+  "mode": "flux",
+  "wait_ms": 1260,
+  "text": "Squidward, open the door.",
+  "detail": "eager —"
+ },
+ {
+  "round": 2,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_batch",
+  "wait_ms": 2081,
+  "text": "Quidward, I really need to come inside. There's a giant jellyfish swarm coming down the the street.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 5.7 с → 1500 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "meta_chunks",
+  "wait_ms": 969,
+  "text": "Squidward,ward, I really need to come in.. there's a giant jellyfish swarm. Coming down the street.",
+  "detail": "3 кусков, последний 1.5 с → ASR 672 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "medium",
+  "speech_s": 5.5,
+  "mode": "flux",
+  "wait_ms": 1342,
+  "text": "Squidward. I really need to come inside. There's a giant jellyfish swarm coming down the street.",
+  "detail": "eager —"
+ },
+ {
+  "round": 2,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_batch",
+  "wait_ms": 3240,
+  "text": "Weed word. listen, Gary crawled into your house through the mail slot and I have to get him back before Mister Crabs finds out I left the grill.",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 9.8 с → 2658 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "meta_chunks",
+  "wait_ms": 971,
+  "text": "Squeedward, listen. Gary crawled into your house through. The male flot and I have to get! him back before Mister Krabs finds.: out I left the the grill!",
+  "detail": "5 кусков, последний 1.8 с → ASR 667 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "pause",
+  "speech_s": 9.8,
+  "mode": "flux",
+  "wait_ms": 1207,
+  "text": "Squidward. Listen. Gary crawled into your house through the mail slot, and I have to get him back before mister Crabs finds out I left the grill.",
+  "detail": "eager —"
+ },
+ {
+  "round": 2,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_batch",
+  "wait_ms": 4143,
+  "text": "Okay, okay, I I know you hate it when I knock this early, early, but this is a real emergency, Squidward. The jellyfish are everywhere. Patrick is hiding under his rock and you are the only one on on Conch Street with a door that actually locks. Please please please let me in",
+  "detail": "ждём 0.6 с тишины + ASR всей фразы 14.8 с → 3561 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "meta_chunks",
+  "wait_ms": 822,
+  "text": "Okay, okay, I know you hate it when I knock.. this early, but this is a real emergency! These Squidward, the jellyfish are everywhere.! Patrick is hiding under his rock!. and you were the were the only one unconscious! with a door that actually locks! Please, please, please let me in!",
+  "detail": "7 кусков, последний 2.0 с → ASR 816 мс"
+ },
+ {
+  "round": 2,
+  "phrase": "long",
+  "speech_s": 14.8,
+  "mode": "flux",
+  "wait_ms": 1014,
+  "text": "Okay. Okay. I know you hate it when I not this early, but this is a real emergency, Squidward. The jellyfish are everywhere. Patrick is hiding under his rock, and you are the only one on Kank Street with a door that actually locks. Please. Please. Please let me in.",
+  "detail": "eager —"
+ }
+]
