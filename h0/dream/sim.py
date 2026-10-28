@@ -31,26 +31,33 @@ except ImportError:
 
 VOICES = {"old_woman", "old_man", "woman", "man", "child", "creature"}
 
-def _load_start():
-    """scenes/start.json is the opening scene (spec 9): place, objects, actors
-    with their voices. The sim, the background prompt and TTS all read it."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scenes", "start.json")
+def _load_start(name="start"):
+    """scenes/<name>.json is the opening scene (spec 9): place, objects, actors
+    with their voices, looks and personas, and the hero's situation. The sim,
+    the background prompt and TTS all read it."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scenes", name + ".json")
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-START = _load_start()
-START_SCENE = {
-    "objects": list(START["objects"]),
-    "actors": [a["name"] for a in START["actors"]],
-}
-START_VOICES = {a["name"]: a.get("voice") for a in START["actors"]}
-# Muse Image refuses known character names (content_policy_violation): portraits
-# are drawn from a look description, the name stays only in the log and the comic
-START_LOOKS = {a["name"]: a["look"] for a in START["actors"] if a.get("look")}
-START_PERSONAS = {a["name"]: a["persona"] for a in START["actors"] if a.get("persona")}
+def use_scene(name="start"):
+    """Pick the opening scene before a Sim is built (--scene)."""
+    global START, START_SCENE, START_VOICES, START_LOOKS, START_PERSONAS, START_PLACE
+    START = _load_start(name)
+    START_SCENE = {
+        "objects": list(START["objects"]),
+        "actors": [a["name"] for a in START["actors"]],
+    }
+    START_VOICES = {a["name"]: a.get("voice") for a in START["actors"]}
+    # Muse Image refuses known character names (content_policy_violation): portraits
+    # are drawn from a look description, the name stays only in the log and the comic
+    START_LOOKS = {a["name"]: a["look"] for a in START["actors"] if a.get("look")}
+    START_PERSONAS = {a["name"]: a["persona"] for a in START["actors"] if a.get("persona")}
+    START_PLACE = START["place"]
+
+
+use_scene("start")
 HOOK_INDEX = {"A": 0, "B": 3, "C": 5}
-START_PLACE = START["place"]
 
 
 def load_profile(pid):
@@ -157,7 +164,7 @@ class Sim:
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
-        self._hero_world = []
+        self._hero_world = [START["situation_hero"]] if START.get("situation_hero") else []
         self._actor_events = []
         self._stalled = False
         self._gen_thread = None
@@ -327,7 +334,7 @@ class Sim:
             who = line.get("who") or (self.hero if line["owner"] == "human" else None)
             event["who"] = who
             event["role"] = line.get("role") or ("hero" if line["owner"] == "human" else "actor")
-            for key in ("remarks", "level", "look", "touch"):
+            for key in ("remarks", "level", "look", "touch", "impulse"):
                 if line.get(key) is not None:
                     event[key] = line[key]
         if res is not None and line.get("dur") is not None:
@@ -944,7 +951,9 @@ def main():
     ap.add_argument("--max-dollars", type=float, default=20.0)
     ap.add_argument("--serve", action="store_true", help="live comic viewer (spec 11)")
     ap.add_argument("--port", type=int, default=8770)
+    ap.add_argument("--scene", default="start", help="opening scene: scenes/<name>.json")
     args = ap.parse_args()
+    use_scene(args.scene)
     if args.max_transitions is None:
         args.max_transitions = 10 ** 6 if args.serve else 2
     media = None

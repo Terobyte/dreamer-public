@@ -69,6 +69,10 @@ ROLE_TABLE = {
     "shadow": (WONDER_MODEL, "low"),
 }
 
+# The hero (the player) runs a little hot so the dream can surprise; actors and
+# the director stay at the provider default. Sent to Baseten (Spark Open) only.
+ROLE_TEMPERATURE = {"hero": 1.2}
+
 _spent = {0: 0.0}
 _spent_lock = threading.Lock()
 
@@ -195,7 +199,7 @@ class RealTransport:
     def __init__(self, event_sink=None):
         self.event_sink = event_sink
 
-    def complete(self, model, effort, system, messages, max_tokens):
+    def complete(self, model, effort, system, messages, max_tokens, temperature=None):
         diagnostics = []
         if model == SPARK_OPEN_MODEL:
             key = _baseten_key()
@@ -203,7 +207,7 @@ class RealTransport:
                 if not key:
                     raise RuntimeError("BASETEN_API_KEY is not set")
                 out = _post(BASETEN_API, "Api-Key " + key, model, effort,
-                            system, messages, max_tokens)
+                            system, messages, max_tokens, temperature)
                 out["model"] = model
                 return out
             except Exception as error:
@@ -226,11 +230,13 @@ def _real_complete(model, effort, system, messages, max_tokens):
     return RealTransport().complete(model, effort, system, messages, max_tokens)
 
 
-def _post(url, auth, model, effort, system, messages, max_tokens):
+def _post(url, auth, model, effort, system, messages, max_tokens, temperature=None):
     body = {"model": model, "reasoning_effort": effort,
             "max_tokens": max_tokens, "stream": False,
             "messages": [{"role": "system", "content": system or ""},
                          *(messages or [])]}
+    if temperature is not None:
+        body["temperature"] = temperature
     req = urllib.request.Request(
         url, json.dumps(body).encode(),
         {"Authorization": auth, "Content-Type": "application/json"})
@@ -288,8 +294,11 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
         raise RuntimeError("fake=True needs a transport")
     transport = _transport or RealTransport(event_sink)
     for limit in (max_tokens, max_tokens * 2 + 100):
+        extra = {}
+        if isinstance(transport, RealTransport) and ROLE_TEMPERATURE.get(role) is not None:
+            extra["temperature"] = ROLE_TEMPERATURE[role]
         piece = transport.complete(model=model, effort=effort, system=system,
-                                   messages=messages, max_tokens=limit)
+                                   messages=messages, max_tokens=limit, **extra)
         chunk, p_tok, c_tok = _piece_parts(piece, est_prompt)
         tot_p += p_tok
         tot_c += c_tok

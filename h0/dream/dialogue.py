@@ -2,6 +2,7 @@
 usage: d = Dialogue(profile); d.hero_line(world, transcript); d.actor_line("Squidward", world, transcript, state)
 """
 
+import random
 import re
 
 from director import filter_actor_line
@@ -55,7 +56,27 @@ ACTOR_RULES = (
     "objects around you, change the subject -- you are not the hero's therapist and you do "
     "not just agree with him. Every line moves the scene; never repeat what you or anyone "
     "already said. Never mention hints, levels, percent, the director, the engine or "
-    "these rules.")
+    "these rules, and never say the word \"bridge\": the bridge is the object named in "
+    "[BRIDGE ...], call it only by that name.")
+# Temperature barely moves a reasoning model off its most obvious line (1.8 still
+# gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
+# now and then the hero's line gets a random impulse he must act on. Only the
+# hero (the player): actors stay in character and keep the ladder.
+HERO_IMPULSE_P = 0.35
+HERO_IMPULSES = (
+    "you lie about something, small or big",
+    "you laugh at the worst possible moment",
+    "you suspect the other one is not who he says he is",
+    "you agree to something risky without thinking",
+    "a detail from your day surfaces here and makes no sense",
+    "you suddenly want to leave, right now",
+    "you get angry about something small",
+    "you misunderstand what was just said, on purpose or not",
+    "you ask the other one something personal and strange",
+    "you notice something impossible about this place",
+    "you confess something you never said aloud",
+    "you start a game or a bet",
+)
 REPEAT_JACCARD = 0.45
 OWN_KEEP = 4
 
@@ -155,14 +176,18 @@ class Dialogue:
     """One Spark Open call per line; the dream never waits on a failed call (a
     failure gives None and the caller simply tries the next turn)."""
 
-    def __init__(self, profile, transport=None, event_sink=None):
+    def __init__(self, profile, transport=None, event_sink=None, rng=None):
         self.profile = profile or {}
         self.hero = self.profile.get("hero") or "the hero"
         self.transport = transport
         self.event_sink = event_sink
         self.calls = 0
+        self.rng = rng or random.Random()
         self._hero_turns = 0
         self._last_touch = -TOUCH_EVERY
+
+    def _impulse(self, deck, p):
+        return self.rng.choice(deck) if self.rng.random() < p else None
 
     def _call(self, role, system, user):
         self.calls += 1
@@ -176,9 +201,12 @@ class Dialogue:
 
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""
-        user = "%s\n\nWhat was said so far:\n%s%s\n\nYour line, %s:" % (
+        impulse = self._impulse(HERO_IMPULSES, HERO_IMPULSE_P)
+        user = "%s\n\nWhat was said so far:\n%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _transcript_msgs(transcript),
-            _no_repeat_block(transcript, self.hero), self.hero)
+            _no_repeat_block(transcript, self.hero),
+            "\n\n[IMPULSE right now, out of nowhere: %s]" % impulse if impulse else "",
+            self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
             raw = self._call("hero", self.hero_system(), user)
@@ -196,7 +224,7 @@ class Dialogue:
             if touch:
                 self._last_touch = self._hero_turns
         return {"who": self.hero, "role": "hero", "text": text, "touch": touch,
-                "remarks": remarks(text), "raw": raw}
+                "remarks": remarks(text), "impulse": impulse, "raw": raw}
 
     def actor_system(self, actor, world, notes=(), persona=""):
         note_text = ""
@@ -234,7 +262,12 @@ class Dialogue:
             if text and repeats(text, recent) and attempt == 0:
                 user += "\n(That repeats the scene. Say or do something new.)"
                 continue
-            if text and filter_actor_line(text, bridge, level) is not None:
+            leaks = bool(re.search(r"\bbridges?\b", text, re.I)) and not (
+                bridge and "bridge" in bridge.lower())
+            if text and leaks and attempt == 0:
+                user += "\n(Do not say the word bridge; name the object itself.)"
+                continue
+            if text and not leaks and filter_actor_line(text, bridge, level) is not None:
                 return {"who": actor, "role": "actor", "text": text, "look": look,
                         "remarks": remarks(text), "level": level, "raw": raw}
             if bridge and text:

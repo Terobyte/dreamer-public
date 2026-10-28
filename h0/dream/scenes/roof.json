@@ -1,0 +1,8 @@
+{"id": "roof",
+ "place": "a flat city rooftop at night",
+ "situation_hero": "you just woke up lying on a city rooftop at night; you do not know how you got here; the roof door bangs open and someone runs out toward you",
+ "actors": [{"name": "Dan", "voice": "man",
+              "look": "a breathless young man in a rain-soaked hoodie, worried eyes",
+              "persona": "Dan: he says he is the hero's old friend. He just ran up eleven floors because he is sure the hero is about to jump, and he will do anything to get him away from the edge. He is scared, talks too fast, and is hiding why he really came tonight."}],
+ "objects": ["roof edge", "water tower", "roof door", "pigeon coop", "satellite dish", "broken lawn chair", "neon sign", "puddle", "fire escape", "rooftop antenna"],
+ "hooks": {"A": ["neon sign"], "B": ["pigeon coop"], "C": ["satellite dish"]}}

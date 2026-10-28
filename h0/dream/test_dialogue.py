@@ -124,6 +124,60 @@ class RepeatTest(unittest.TestCase):
             self.assertIn("Never ask an actor to calm", schema)
 
 
+class ImpulseTest(unittest.TestCase):
+    def test_impulse_reaches_prompt_and_line(self):
+        import random as _r
+        from dialogue import HERO_IMPULSES
+
+        class Always(_r.Random):
+            def random(self):
+                return 0.0
+        t = FakeTransport(["Ha! You're not Dan."])
+        line = Dialogue(load_profile("A"), transport=t, rng=Always(1)).hero_line(WORLD, [])
+        self.assertIn(line["impulse"], HERO_IMPULSES)
+        self.assertIn("[IMPULSE right now, out of nowhere: %s]" % line["impulse"],
+                      t.sent[0]["messages"][0]["content"])
+
+    def test_actor_never_gets_an_impulse(self):
+        import random as _r
+
+        class Always(_r.Random):
+            def random(self):
+                return 0.0
+        t = FakeTransport(["Get away from the edge!"])
+        Dialogue({}, transport=t, rng=Always(1)).actor_line(
+            "Dan", WORLD, [], {"hint_level": 0, "build_pct": 0, "stalled": False, "bridge": None})
+        self.assertNotIn("IMPULSE", t.sent[0]["messages"][0]["content"])
+        from llm import ROLE_TEMPERATURE
+        self.assertNotIn("actor", ROLE_TEMPERATURE)
+
+    def test_no_impulse_when_dice_say_no(self):
+        import random as _r
+
+        class Never(_r.Random):
+            def random(self):
+                return 0.99
+        t = FakeTransport(["Hi."])
+        line = Dialogue({}, transport=t, rng=Never(1)).hero_line(WORLD, [])
+        self.assertIsNone(line["impulse"])
+        self.assertNotIn("IMPULSE", t.sent[0]["messages"][0]["content"])
+
+
+class SceneSwitchTest(unittest.TestCase):
+    def test_roof_scene_is_the_opening_scene(self):
+        import sim as simmod
+        simmod.use_scene("roof")
+        try:
+            with Sim(profile="A", fake=True, speed=1000.0) as s:
+                self.assertEqual(s.place, "a flat city rooftop at night")
+                self.assertEqual(s.actors, ["Dan"])
+                self.assertIn("roof edge", s.fsm.objects)
+                self.assertIn("woke up", s._hero_world[0])
+                self.assertIn("eleven floors", s._personas["Dan"])
+        finally:
+            simmod.use_scene("start")
+
+
 class ActorLineTest(unittest.TestCase):
     def _line(self, replies, **state):
         t = FakeTransport(replies)
@@ -152,6 +206,11 @@ class ActorLineTest(unittest.TestCase):
         self.assertIsNone(line)
         line, _ = self._line(["Fine, play the clarinet."], hint_level=3)
         self.assertEqual(line["text"], "Fine, play the clarinet.")
+
+    def test_word_bridge_is_asked_again(self):
+        line, t = self._line(["Don't touch that bridge!", "Don't touch that clarinet!"], hint_level=3)
+        self.assertEqual(line["text"], "Don't touch that clarinet!")
+        self.assertEqual(t.calls, 2)
 
     def test_engine_tags_from_model_are_cut(self):
         line, _ = self._line(["[[TOUCH:clarinet]] [WORLD boom] Go away."])
