@@ -90,6 +90,32 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.id}: sill + height ${params.v} > потолок ${params.room} ${params.h}`;
     case "OPENING_NO_OUTSIDE":
       return `${params.id}: за проёмом нет комнаты (${params.edge}), нужен outside`;
+    case "PROP_HITS_WALL":
+      return `${params.id} заходит в стену ${params.edge} на ${params.d} м`;
+    case "PROP_HITS_PROP":
+      return `${params.id} входит в ${params.other} на ${params.d} м`;
+    case "PROP_IN_DOORWAY":
+      return `${params.id} в коридоре ${params.opening}`;
+    case "PROP_IN_SWING":
+      return `${params.id} в секторе ${params.opening}`;
+    case "PROP_OUTSIDE_ROOM":
+      return `${params.id}: центр (${params.x}, ${params.z}) вне ${params.room}${
+        params.other ? `; он в ${params.other}` : "; он вне всех комнат"
+      }`;
+    case "PROP_NO_FACING":
+      return `${params.id}: нужен face или yaw`;
+    case "PROP_ON_TOO_SMALL":
+      return `${params.id}: след ${params.w} × ${params.d} м не лежит на опоре ${params.other} ${params.sw} × ${params.sd} м`;
+    case "PROP_CEILING_LOW":
+      return `${params.id}: низ ${params.y0} м < ${params.min}`;
+    case "PROP_ABOVE_CEILING":
+      return `${params.id}: верх ${params.y1} м выше потолка ${params.room} ${params.h} м на ${params.d} м`;
+    case "PROP_WALL_NOT_FOUND":
+      return `${params.id}: ближайшая стена ${params.edge} в ${params.d} м (нужно < ${params.need})`;
+    case "PROP_SIZE_ODD":
+      return `${params.id}: размер не похож на ${params.cat}: ${params.bad}`;
+    case "FACE_ROOM_FAR":
+      return `${params.id}: от at до внутренней грани ${params.edge} ${params.d} м (> ${params.max}); задай yaw или точку`;
     case "ROOM_UNREACHABLE":
       return `${params.room}: комната недостижима из spawn`;
     default:

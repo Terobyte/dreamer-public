@@ -201,10 +201,10 @@
 - `PROP_OUTSIDE_ROOM` — центр OBB вне `outline` своей комнаты (`fix` `{room}`, если он в другой); `PROP_HITS_WALL` — OBB ∩ тело стены или след балки при пересечении по y; глубина = заход OBB за внутреннюю грань по нормали; `fix` = `{at}`, сдвиг по нормали на глубину + 0.01; `PROP_HITS_PROP` — OBB ∩ OBB и интервалы y пересекаются строго (опора и то, что на ней, не сравниваются), запись — у более позднего; `PROP_IN_DOORWAY` — OBB ∩ коридор и y ∩ [sill, sill + height]; `PROP_IN_SWING` — OBB ∩ сектор; `PROP_ON_TOO_SMALL` — след не внутри следа опоры; `PROP_CEILING_LOW` — `ceiling` и низ < 2.0; `PROP_ABOVE_CEILING` — верх > потолка комнаты (или низа балки над следом) + `EPS`; `PROP_WALL_NOT_FOUND` — нет ребра своей комнаты ближе 1.0 м (до оси); `PROP_NO_FACING` — нет `face`/`yaw` у `floor`/`top_of` вне `around`. Предупреждения: `PROP_SIZE_ODD` (любая сторона вне ×0.5…×1.6 от `cat`, для `hMax` — h до `hMax`), `FACE_ROOM_FAR`.
 - Предмет с `PROP_NO_FACING` или `PROP_WALL_NOT_FOUND` не размещается и дальше не проверяется (один дефект — одна запись). Ошибка копии `around`: `path` `/props/<i>`, `copy` = k, без `fix`.
 
-- [ ] `test_demo_flat_props_clean`: этап `props` demo-flat — 0 issues (стулья в 0.10 от стола, диван в 0.04 от стены)
-- [ ] `test_touching_not_hit`: `[{"op":"replace","path":"/props/2/at","value":[-3.49,1.5]}]` (задняя грань дивана x = −3.94 = внутренняя грань) и стул вплотную к столу (`around.r` 0.8) → ни `PROP_HITS_WALL`, ни `PROP_HITS_PROP`
-- [ ] `test_wall_mount_arc`: `[{"op":"add","path":"/props/-","value":{"id":"shelf","asset":"p_table","room":"living","on":{"room":"living","edge":1,"t":0.3},"y":1.2,"size":{"w":1.0,"d":0.3,"h":0.5},"mount":"wall"}}]` → этап `props`: 0 issues, `wall` "living#1"
-- [ ] `test_broken_prop_codes` — ровно свой код:
+- [x] `test_demo_flat_props_clean`: этап `props` demo-flat — 0 issues (стулья в 0.10 от стола, диван в 0.04 от стены)
+- [x] `test_touching_not_hit`: `[{"op":"replace","path":"/props/2/at","value":[-3.49,1.5]}]` (задняя грань дивана x = −3.94 = внутренняя грань) и стул вплотную к столу (`around.r` 0.8) → ни `PROP_HITS_WALL`, ни `PROP_HITS_PROP`
+- [x] `test_wall_mount_arc`: `[{"op":"add","path":"/props/-","value":{"id":"shelf","asset":"p_table","room":"living","on":{"room":"living","edge":1,"t":0.3},"y":1.2,"size":{"w":1.0,"d":0.3,"h":0.5},"mount":"wall"}}]` → этап `props`: 0 issues, `wall` "living#1"
+- [x] `test_broken_prop_codes` — ровно свой код:
   - `PROP_HITS_WALL`: `[{"op":"replace","path":"/props/2/at","value":[-3.67,1.5]}]` → `fix` `{"at": [-3.48, 1.5]}`, msg содержит `living#0` и `0.18`
   - `PROP_HITS_PROP`: `[{"op":"add","path":"/props/-","value":{"id":"pouf","asset":"p_table","room":"living","at":[-3.0,1.5],"size":{"w":0.5,"d":0.5,"h":0.4},"yaw":0}}]`
   - `PROP_IN_DOORWAY`: `[{"op":"add","path":"/props/-","value":{"id":"cab","asset":"p_table","room":"hall","at":[0,4.4],"size":{"w":1.0,"d":0.4,"h":1.8},"yaw":180}}]`
@@ -215,9 +215,9 @@
   - `PROP_CEILING_LOW`: `[{"op":"add","path":"/props/-","value":{"id":"chand","asset":"p_lamp","room":"hall","at":[0,8],"size":{"w":0.5,"d":0.5,"h":1.2},"mount":"ceiling","solid":false}}]`
   - `PROP_ABOVE_CEILING`: `[{"op":"add","path":"/props/-","value":{"id":"wardrobe","asset":"p_table","room":"hall","at":[1.5,8],"size":{"w":1.0,"d":0.5,"h":3.2},"yaw":270}}]` → msg содержит `3.2` и `3`
   - `PROP_WALL_NOT_FOUND`: `[{"op":"add","path":"/props/-","value":{"id":"shelf","asset":"p_table","room":"living","at":[0,-1],"size":{"w":1.0,"d":0.3,"h":0.5},"mount":"wall"}}]`
-- [ ] `test_prop_warnings`: `warn/PROP_SIZE_ODD`: `[{"op":"add","path":"/props/-","value":{"id":"stool","asset":"p_chair","cat":"chair","room":"living","at":[2.5,-2],"size":{"w":0.5,"d":0.5,"h":2.0},"yaw":0}}]`; тот же стул h 1.55 → нет, h 1.65 → есть; `warn/FACE_ROOM_FAR`: `[{"op":"replace","path":"/props/2/at","value":[-2,1.5]}]` → 0 ошибок, ровно своё предупреждение
-- [ ] `test_around_copy_path`: `[{"op":"replace","path":"/props/1/around","value":{"center":"table","n":1,"r":3.8,"start":270}}]` → одна копия в (−3.8, 0): `PROP_HITS_WALL` с `path` "/props/1", `copy` 0 (поле есть), без `fix`
-- [ ] реализовать
+- [x] `test_prop_warnings`: `warn/PROP_SIZE_ODD`: `[{"op":"add","path":"/props/-","value":{"id":"stool","asset":"p_chair","cat":"chair","room":"living","at":[2.5,-2],"size":{"w":0.5,"d":0.5,"h":2.0},"yaw":0}}]`; тот же стул h 1.55 → нет, h 1.65 → есть; `warn/FACE_ROOM_FAR`: `[{"op":"replace","path":"/props/2/at","value":[-2,1.5]}]` → 0 ошибок, ровно своё предупреждение
+- [x] `test_around_copy_path`: `[{"op":"replace","path":"/props/1/around","value":{"center":"table","n":1,"r":3.8,"start":270}}]` → одна копия в (−3.8, 0): `PROP_HITS_WALL` с `path` "/props/1", `copy` 0 (поле есть), без `fix`
+- [x] реализовать
 
 **Вне этой фазы:** фактический размер после сборки.
 

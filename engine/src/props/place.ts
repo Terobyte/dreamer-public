@@ -11,7 +11,7 @@ const DEFAULT_THICKNESS = 0.12;
 /** `mount: wall` needs an edge of its own room strictly closer than this to `at` */
 const WALL_SEARCH = 1.0;
 
-interface AuthorEdge {
+export interface AuthorEdge {
   id: string;
   room: string;
   i: number;
@@ -22,7 +22,7 @@ interface AuthorEdge {
   normalIn: V2;
 }
 
-interface RoomRec {
+export interface RoomRec {
   id: string;
   level: string;
   height: number;
@@ -111,7 +111,7 @@ function fracOf(e: AuthorEdge, on: any): number {
 }
 
 /** beam footprints of a room, as plan polygons */
-function beamPolys(raw: any): Array<{ poly: V2[]; h: number }> {
+export function beamPolys(raw: any): Array<{ poly: V2[]; h: number }> {
   const out: Array<{ poly: V2[]; h: number }> = [];
   for (const b of (raw?.beams ?? []) as any[]) {
     const a: V2 = [b.from[0], b.from[1]];
@@ -137,7 +137,7 @@ function beamPolys(raw: any): Array<{ poly: V2[]; h: number }> {
 }
 
 /** nearest edge of the room; `toFace` measures to the inner face, not the axis */
-function nearestEdge(p: V2, room: RoomRec, thickness: number, toFace: boolean):
+export function nearestEdge(p: V2, room: RoomRec, thickness: number, toFace: boolean):
   { e: AuthorEdge; q: V2; n: V2; d: number } | null {
   let best: { e: AuthorEdge; q: V2; n: V2; d: number } | null = null;
   for (const e of room.edges) {

@@ -3,6 +3,7 @@ import { emptyPassport, makeReport, roundReport, STAGES } from "./report/report.
 import { planStage } from "./plan/lint.js";
 import { openingsStage } from "./openings/stage.js";
 import { placeProps } from "./props/place.js";
+import { lintProps } from "./props/lint.js";
 import type { Ctx } from "./ctx.js";
 import type { Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
@@ -41,6 +42,7 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
   const openingsFailed = errors.some((e) => e.stage === "openings");
   if (!planFailed && !openingsFailed && want.includes("props")) {
     ctx.props = placeProps(ctx);
+    push(lintProps(ctx));
   }
 
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
