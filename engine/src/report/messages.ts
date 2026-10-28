@@ -132,6 +132,10 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `decal.${params.i} на ${params.edge}: пересекает decal.${params.other}`;
     case "DECAL_HIDDEN":
       return `decal.${params.i} на ${params.edge}: закрыта предметом ${params.id} в ${params.d} м от грани (нужно ≥ 0.15)`;
+    case "NAV_SPAWN_BLOCKED":
+      return `spawn в ${params.what}`;
+    case "NAV_ROOM_CUT":
+      return `${params.room}: капсула r ${params.r} м не проходит в комнату из spawn`;
     case "CAMERA_OUTSIDE":
       if (params.kind === "y") {
         return `камера ${params.id}: y ${params.y} вне [${params.a}, ${params.b}] комнаты ${params.room}`;

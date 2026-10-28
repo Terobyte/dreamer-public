@@ -503,7 +503,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       corridor,
       flatten,
       sector: null,
-      leafOpen: o.leaf ? o.leaf.open !== false : false,
+      leafOpen: o.leaf ? o.leaf.open !== false : true,
     });
   });
 

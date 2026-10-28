@@ -5,6 +5,7 @@ import { parseScene } from "../src/schema/parse.js";
 import { emptyPassport, makeReport } from "../src/report/report.js";
 import { runCheck } from "../src/check.js";
 import { topSvg } from "../src/report/topsvg.js";
+import { buildNav } from "../src/nav/grid.js";
 
 function main(): number {
   const args = process.argv.slice(2);
@@ -50,6 +51,8 @@ function main(): number {
     writeFileSync(rp, out);
     const name = basename(scenePath).replace(/\.scene\.json$/, "");
     writeFileSync(join(dirname(rp), `${name}.top.svg`), topSvg(ctx));
+    const nav = ctx.nav ?? buildNav(ctx);
+    writeFileSync(join(dirname(rp), `${name}.nav.json`), JSON.stringify(nav));
     return report.ok ? 0 : 1;
   } catch (e) {
     console.error(String(e));

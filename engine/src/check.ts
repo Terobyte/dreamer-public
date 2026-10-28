@@ -6,6 +6,7 @@ import { placeProps } from "./props/place.js";
 import { lintProps } from "./props/lint.js";
 import { decalsStage } from "./decals/place.js";
 import { checkCameras } from "./cameras/check.js";
+import { navStage } from "./nav/grid.js";
 import type { Ctx } from "./ctx.js";
 import type { Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
@@ -55,6 +56,11 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
   const decalsFailed = errors.some((e) => e.stage === "decals");
   if (upToProps && !decalsFailed && want.includes("cameras")) {
     push(checkCameras(ctx));
+  }
+
+  const camerasFailed = errors.some((e) => e.stage === "cameras");
+  if (upToProps && !decalsFailed && !camerasFailed && want.includes("nav")) {
+    push(navStage(ctx));
   }
 
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
