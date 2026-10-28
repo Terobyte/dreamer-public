@@ -32,6 +32,15 @@ DIRECTOR_SCHEMA = (
     "or neither (bridge null means wait). English.")
 
 
+LOCKED_SCHEMA = (
+    "The build is locked: bridge, destination, next_scene and hero_next can not "
+    "change now. Reply with JSON only: {\"messages\": [{\"to\": an actor on stage, "
+    "\"note\": a motivation for that actor, not a script}] (0 to 2 notes), "
+    "\"facts_update\": [], \"abort_build\": null or {\"reason\": why}, "
+    "\"wake_up\": null}. Notes help the actor lead the hero toward the locked "
+    "bridge in character. English.")
+
+
 def validate_decision(decision, objects, actors, pool):
     """Check a director decision (spec 8) with the same rules the FSM applies. Returns (ok, errs)."""
     if not isinstance(decision, dict):
@@ -132,8 +141,9 @@ class Director:
             meta = "\n[CONSULT state=%s label=%s hint=%s]" % (
                 ticket.get("state"), ticket.get("label"), ticket.get("hint"))
             if ticket.get("state") in LOCKED_STATES:
-                meta += "\n[LOCKED bridge=%s destination=%s]" % (
-                    getattr(self.fsm, "bridge", None), getattr(self.fsm, "destination", None))
+                meta += "\n[LOCKED bridge=%s destination=%s actors=%s]" % (
+                    getattr(self.fsm, "bridge", None), getattr(self.fsm, "destination", None),
+                    ", ".join(self.actors))
             if ticket.get("pending_wakeup"):
                 meta += "\n[PENDING_WAKEUP %s]" % ticket["pending_wakeup"]
         return "%s%s\nEVENTS\n%s" % (base, meta, tail)
@@ -143,6 +153,8 @@ class Director:
         locked a director may only send notes (spec 4), so the next bridge
         waits for the next idle consult either way."""
         if ticket["state"] in LOCKED_STATES:
+            if not self.fake:
+                return self._live_decision(prompt, LOCKED_SCHEMA)
             return {"messages": []}
         if not self.fake:
             return self._live_decision(prompt)
@@ -152,12 +164,12 @@ class Director:
             return d
         return {"bridge": None, "messages": []}
 
-    def _live_decision(self, prompt):
+    def _live_decision(self, prompt, schema=DIRECTOR_SCHEMA):
         """Real director consult (spec 15 step 2/4): a malformed or failed reply
         falls back to a no-op so a bad response never stalls the dream."""
         try:
             res = llm_call("director", "You are the dream director.",
-                           [{"role": "user", "content": prompt + "\n" + DIRECTOR_SCHEMA}],
+                           [{"role": "user", "content": prompt + "\n" + schema}],
                            max_tokens=800)
             decision = json.loads((res.text or "").strip())
             if not isinstance(decision, dict):

@@ -1,7 +1,8 @@
 {
   "id": "start",
   "place": "Squidward's living room",
-  "actors": [{"name": "Squidward", "voice": "squidward"}],
+  "actors": [{"name": "Squidward", "voice": "squidward",
+              "look": "a grumpy pale teal octopus man with a long droopy nose, heavy-lidded eyes and a brown shirt"}],
   "objects": [
     "clarinet",
     "old radio",

@@ -2,6 +2,7 @@
   "id": "A",
   "hero": "SpongeBob",
   "hero_voice": "spongebob",
+  "hero_look": "a cheerful little yellow porous block-shaped fellow with huge round eyes and a small red tie",
   "diary": "Mr. Krabs yelled at me in front of everyone because the fryer broke. I said nothing and kept flipping. On the bus home I hummed the lullaby grandma used to sing.",
   "wants": ["quiet", "someone to say it was not my fault"],
   "fears": ["being shouted at again tomorrow", "that I am bad at my job"],

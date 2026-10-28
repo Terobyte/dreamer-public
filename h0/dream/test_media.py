@@ -921,7 +921,10 @@ class HeroChangeTest(unittest.TestCase):
             self.assertEqual(len(new), 1)
             self.assertIn("a boy in a diver suit", new[0]["prompt"])
             self.assertIn("a boy in a diver suit", new[0]["name"])
-            self.assertIn(s.hero, new[0]["prompt"])
+            # Muse Image filters known character names: the name labels the
+            # portrait, the prompt carries only looks
+            self.assertIn(s.hero, new[0]["name"])
+            self.assertNotIn(s.hero, new[0]["prompt"])
             self.assertEqual(s.hero_voice, "man")
             self.assertEqual(s._hero_desc, "a boy in a diver suit")
         finally:

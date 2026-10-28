@@ -12,11 +12,12 @@ import re
 import tempfile
 import threading
 import math
+import queue
 
 from clock import Clock
 from director import Director
 from fsm import BuildFSM
-from inputs import sanitize
+from inputs import resolve_touch, sanitize
 from memory import Memory
 from fake import FakeTransport
 try:
@@ -44,6 +45,9 @@ START_SCENE = {
     "actors": [a["name"] for a in START["actors"]],
 }
 START_VOICES = {a["name"]: a.get("voice") for a in START["actors"]}
+# Muse Image refuses known character names (content_policy_violation): portraits
+# are drawn from a look description, the name stays only in the log and the comic
+START_LOOKS = {a["name"]: a["look"] for a in START["actors"] if a.get("look")}
 HOOK_INDEX = {"A": 0, "B": 3, "C": 5}
 START_PLACE = START["place"]
 
@@ -119,7 +123,7 @@ class Sim:
 
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
-                 max_dollars=20.0):
+                 max_dollars=20.0, dialogue=None):
         self.profile = profile
         self.speed = speed
         self.fake = fake
@@ -141,7 +145,26 @@ class Sim:
         prof = load_profile(profile)
         self.hero = prof.get("hero") or "the hero"
         self.hero_voice = prof.get("hero_voice") or "child"
+        self._looks = dict(START_LOOKS)
+        if prof.get("hero_look"):
+            self._looks[self.hero] = prof["hero_look"]
         self.budget_wake = False
+        # live dialogue (spec 6): hero and actors speak through Dialogue; without
+        # it (tests, --fake) the loop keeps its numbered placeholder lines
+        self.dialogue = dialogue
+        self.place = START_PLACE
+        self.transcript = []
+        self._notes = {}
+        self._hero_world = []
+        self._actor_events = []
+        self._stalled = False
+        self._gen_thread = None
+        self._gen_result = None
+        self._gen_lock = threading.Lock()
+        self._human_epoch = 0
+        self._prepared_meta = None
+        self._inbox = queue.Queue()
+        self.stopped = False
         self.clock = Clock(speed=speed)
         self.scene = dict(START_SCENE)
         self.actors = list(self.scene["actors"])
@@ -165,6 +188,8 @@ class Sim:
                                      "HERO REACTION: listened\n"
                                      "BRIDGE AND WHY: scripted transition"]) if fake else None,
             event_sink=self._diagnostic)
+        if prof and not self.memory.facts:
+            self._load_soul(prof)
         self.memory.set_scene("start", self.scene["objects"])
         self.director = Director(self.fsm, memory=self.memory, actors=self.actors,
                                  delay=delay, speed=speed, script=self.script,
@@ -183,7 +208,27 @@ class Sim:
         if self.logger:
             self.logger.write_event({"t": self.clock.now(), "type": "snapshot",
                                      "scene": list(self.scene["objects"]),
-                                     "actors": list(self.scene["actors"])})
+                                     "actors": list(self.scene["actors"]),
+                                     "place": self.place, "hero": self.hero,
+                                     "profile": self.profile, "speed": self.speed,
+                                     "max_dollars": self.max_dollars})
+
+    def _load_soul(self, prof):
+        """Spec 7: the core holds the hero's main desire and fear, the facts layer
+        the rest of the soul -- diary, past dream and facts hidden from the hero
+        (spec 12: the director reads what the hero does not)."""
+        self.memory.set_core(desire="; ".join(prof.get("wants") or []),
+                             anxiety="; ".join(prof.get("fears") or []))
+        facts = []
+        if prof.get("diary"):
+            facts.append({"title": "today's diary", "text": prof["diary"]})
+        if prof.get("past_dream"):
+            facts.append({"title": "past dream", "text": prof["past_dream"]})
+        for f in prof.get("facts") or []:
+            text = f.get("text") if isinstance(f, dict) else str(f)
+            if text and text not in (prof.get("past_dream") or ""):
+                facts.append({"title": " ".join(text.split()[:5]), "text": text})
+        self.memory.apply_facts([{"op": "ADD", "fact": f} for f in facts])
 
     def __enter__(self):
         return self
@@ -194,6 +239,8 @@ class Sim:
     def close(self):
         """Finish owned workers before releasing temporary memory files."""
         self.director.wait(timeout=None)
+        if self._gen_thread is not None:
+            self._gen_thread.join()
         self.memory.wait()
         self.wait_images()
         self._drain_director()
@@ -236,6 +283,16 @@ class Sim:
     def _emit(self, event):
         self._diagnostic(event)
         self.memory.add_event(event)
+        kind = event.get("type")
+        if kind == "message" and event.get("to"):
+            self._notes.setdefault(event["to"], []).append(str(event.get("note") or ""))
+        elif kind == "hint" and event.get("level") == 4 and self.fsm.bridge:
+            # L4 is a world event (spec 4): the hero sees it, the actor reacts
+            self._hero_world.append("the %s glows and hums, pulling at you" % self.fsm.bridge)
+            self._actor_events.append("the %s glows and hums on its own" % self.fsm.bridge)
+        elif kind == "stall":
+            self._stalled = True
+            self._actor_events.append("%s reached for the %s" % (self.hero, event.get("object")))
 
     def _start_line(self, line, audio_seconds=None):
         """The only playback entry point: timing, journal and memory agree."""
@@ -245,7 +302,7 @@ class Sim:
             self._line_seq += 1
             voice_label = line.get("voice")
             if not voice_label:
-                if line["owner"] == "human":
+                if line["owner"] == "human" or line.get("role") == "hero":
                     voice_label = self.hero_voice
                 else:
                     actor_name = line.get("actor") or (self.actors[0] if self.actors else None)
@@ -264,6 +321,13 @@ class Sim:
         self._line_started_at = self.clock.now()
         self._line_duration = duration
         event = {"type": "line", "turn_owner": line["owner"], "text": line["text"]}
+        if self.dialogue is not None or line.get("who"):
+            who = line.get("who") or (self.hero if line["owner"] == "human" else None)
+            event["who"] = who
+            event["role"] = line.get("role") or ("hero" if line["owner"] == "human" else "actor")
+            for key in ("remarks", "level", "look", "touch"):
+                if line.get(key) is not None:
+                    event[key] = line[key]
         if res is not None and line.get("dur") is not None:
             event["dur"] = line["dur"]
             if line.get("audio"):
@@ -275,16 +339,28 @@ class Sim:
         self._emit(event)
         # Speech input is remembered on arrival, including while it is queued.
         if line["owner"] == "npc":
-            self.memory.add_line("npc", line["text"])
+            self.memory.add_line(line.get("who") or "npc", line["text"])
+        if self.dialogue is not None:
+            self.transcript.append((event.get("who") or "?", line["text"]))
+            if event.get("role") == "actor":
+                self._stalled = False
         self._count_line()
+        if line.get("touch"):
+            self._touch(line["touch"], "hero")
         return event
 
     def npc_start(self, line, audio_seconds=None):
-        """Start an NPC line only when no human turn is waiting."""
+        """Start an NPC line only when no human turn is waiting. line is the text,
+        or a Dialogue line dict (who, role, remarks, look/touch)."""
+        meta = None
+        if isinstance(line, dict):
+            meta = {k: v for k, v in line.items() if k not in ("text", "raw")}
+            line = line["text"]
         if self.active_line is None and self.next_line is None:
-            event = self._start_line({"owner": "npc", "text": line}, audio_seconds)
+            event = self._start_line(dict(meta or {}, owner="npc", text=line), audio_seconds)
         elif self.next_line is None:
             self.prepared_npc = line
+            self._prepared_meta = meta
             self._prepared_audio_seconds = audio_seconds
             event = {"type": "line_prepared", "turn_owner": "npc", "text": line}
             self._emit(event)
@@ -301,7 +377,9 @@ class Sim:
             out.append({"type": "turn_replace", "turn_owner": "human", "text": clean,
                         "replaced": self.prepared_npc})
             self.prepared_npc = None
+            self._prepared_meta = None
             self._prepared_audio_seconds = None
+        self._human_epoch += 1
         out.append({"type": "line_queued", "turn_owner": "human", "text": clean})
         input_ev = {"type": "input", "source": "speech", "value": clean}
         out.append(input_ev)
@@ -349,8 +427,13 @@ class Sim:
                   "dur": self.clock.now() - img_start}
             if who:
                 ev["who"] = who
+            if name:
+                ev["name"] = name
             if not img["ok"]:
                 ev["fallback"] = self._rel(img.get("fallback") or img["path"])
+                err = img.get("error") or img.get("diagnostic")
+                if isinstance(err, dict) and err.get("error"):
+                    ev["error"] = str(err["error"])[:200]
             self.logger.write_event(ev)
 
         th = threading.Thread(target=work, daemon=True)
@@ -395,7 +478,8 @@ class Sim:
             return False
         self._portrait_seq += 1
         path = os.path.join(self._image_dir, "portrait_%03d.png" % self._portrait_seq)
-        self._start_image("portrait", portrait_prompt(who, prev), path, name or who,
+        look = self._looks.get(who, who)
+        self._start_image("portrait", portrait_prompt(look, prev), path, name or who,
                           who=self.hero if name else who)
         return True
 
@@ -413,9 +497,10 @@ class Sim:
         if hn.get("changes"):
             self._portraits.add(self.hero)
             new_desc = hn.get("description") or self._hero_desc
-            prev = self._hero_desc or self.hero
-            who = "%s, %s" % (self.hero, new_desc) if new_desc else self.hero
-            self._start_portrait(who, prev, name=who)
+            prev = self._hero_desc or self._looks.get(self.hero, self.hero)
+            look = new_desc or self._looks.get(self.hero, self.hero)
+            label = "%s, %s" % (self.hero, new_desc) if new_desc else self.hero
+            self._start_portrait(look, prev, name=label)
             self._hero_desc = new_desc
             if hn.get("voice"):
                 self.hero_voice = hn["voice"]
@@ -425,6 +510,12 @@ class Sim:
         self.n_transitions += 1
         ns = self.fsm.next_scene
         self.hero_next = self.fsm.hero_next
+        self.place = self.fsm.destination or "scene %d" % self.n_transitions
+        self.transcript = self.transcript[-2:]
+        self._notes = {}
+        self._actor_events = []
+        self._stalled = False
+        self._hero_world = ["you have just arrived in %s" % self.place]
         if ns:
             self.scene = {"objects": list(ns["objects"]), "actors": list(ns["actors"])}
             self.actors = [a["name"] for a in ns["actors"] if isinstance(a, dict)]
@@ -445,7 +536,10 @@ class Sim:
             if self.logger:
                 self.logger.write_event({"t": self.clock.now(), "type": "snapshot",
                                          "scene": list(self.scene["objects"]),
-                                         "actors": list(self.scene["actors"])})
+                                         "actors": list(self.scene["actors"]),
+                                         "place": self.place, "hero": self.hero,
+                                         "hero_voice": self.hero_voice,
+                                         "hero_desc": self._hero_desc})
 
     # --- main loop -----------------------------------------------------------
     def _drain_director(self):
@@ -468,8 +562,9 @@ class Sim:
         if self.next_line is not None:
             queued, self.next_line = self.next_line, None
         elif self.prepared_npc is not None:
-            queued = {"owner": "npc", "text": self.prepared_npc}
+            queued = dict(self._prepared_meta or {}, owner="npc", text=self.prepared_npc)
             self.prepared_npc = None
+            self._prepared_meta = None
             audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
         if queued is not None:
             self._start_line(queued, audio_seconds)
@@ -479,6 +574,8 @@ class Sim:
 
     def _maybe_generate_line(self):
         """Keep NPC dialogue flowing so every 4th line triggers a consult (F5/F20)."""
+        if self.dialogue is not None:
+            return self._dialogue_turn()
         now = self.clock.now()
         if (self.active_line is None and self.next_line is None
                 and self.prepared_npc is None
@@ -486,8 +583,147 @@ class Sim:
             self._last_line_gen = now
             self.npc_start("npc line %d" % (self.line_count + 1))
 
+    # --- live dialogue (spec 4-6): one line ahead, in a worker ---------------
+    def _next_speaker(self):
+        last = self.transcript[-1][0] if self.transcript else None
+        if not self.actors:
+            return self.hero, "hero"
+        if last == self.hero or last is None and self.n_transitions == 0:
+            spoken = [w for w, _ in self.transcript]
+            # rotate between actors, least recently heard first
+            pick = min(self.actors, key=lambda a: max(
+                [i for i, w in enumerate(spoken) if w == a] or [-1]))
+            return pick, "actor"
+        return self.hero, "hero"
+
+    def _dialogue_turn(self):
+        """Pick up a finished line, or start the next one while the current one
+        plays (spec 5: generate one line ahead). A line from an old scene, or
+        one overtaken by a human line, is dropped."""
+        with self._gen_lock:
+            res, self._gen_result = self._gen_result, None
+        if res is not None:
+            line, scene_no, epoch = res
+            if line is not None and scene_no == self.n_transitions and epoch == self._human_epoch:
+                self.npc_start(line)
+        busy = self._gen_thread is not None and self._gen_thread.is_alive()
+        if busy or self.prepared_npc is not None or self.next_line is not None:
+            return
+        if self.fsm.awake or self.stopped or not self._budget_ok():
+            return
+        who, role = self._next_speaker()
+        now = self.clock.now()
+        world = {"place": self.place, "objects": list(self.scene["objects"]),
+                 "actors": list(self.actors)}
+        transcript = list(self.transcript)
+        if role == "hero":
+            world_events, self._hero_world = self._hero_world, []
+            args = (world, transcript, world_events)
+            fn = self.dialogue.hero_line
+        else:
+            locked = self.fsm.state in ("building", "ready")
+            state = {"hint_level": self.fsm.hint_level(now), "build_pct": self.fsm.build_pct(now),
+                     "stalled": self._stalled, "bridge": self.fsm.bridge if locked else None}
+            events, self._actor_events = self._actor_events, []
+            args = (who, world, transcript, state, list(self._notes.get(who, [])), events)
+            fn = self.dialogue.actor_line
+        scene_no, epoch = self.n_transitions, self._human_epoch
+
+        def work():
+            line = None
+            try:
+                line = fn(*args)
+            except Exception as e:
+                self._diagnostic({"type": "line_fail", "who": who,
+                                  "error": "%s: %s" % (type(e).__name__, e)})
+            with self._gen_lock:
+                self._gen_result = (line, scene_no, epoch)
+
+        self._gen_thread = threading.Thread(target=work, daemon=True)
+        self._gen_thread.start()
+
+    # --- world input (spec 5a): click, POST /event, stop ---------------------
+    def submit(self, kind, payload=None):
+        """Thread-safe entry for the server: the main loop applies it on its next tick."""
+        self._inbox.put((kind, payload))
+
+    def _drain_inbox(self):
+        while True:
+            try:
+                kind, payload = self._inbox.get_nowait()
+            except queue.Empty:
+                return
+            if kind == "say":
+                self.human_say(str(payload or ""))
+            elif kind == "event":
+                self.post_event(payload if isinstance(payload, dict) else {})
+            elif kind == "stop":
+                self.stop()
+
+    def _touch(self, obj, source):
+        events = self.fsm.touch(self.clock.now(), obj)
+        for e in events:
+            e.setdefault("source", source)
+            self._emit(e)
+        if any(e["type"] == "transition" for e in events):
+            self._apply_transition()
+        return events
+
+    def click(self, value):
+        """Click on an object in the comic (spec 5a): resolve_touch, then the
+        hero's TOUCH under the same FSM rules; a miss is plain input."""
+        clean, out = sanitize(str(value or ""), "human")
+        for e in out:
+            self._emit(e)
+        obj, evs = resolve_touch(clean, self.fsm.objects)
+        for e in evs:
+            self._emit(e)
+        if obj is not None:
+            return self._touch(obj, "click")
+        ev = {"type": "input", "source": "click", "value": clean}
+        self._emit(ev)
+        self.director.consult_async(self.clock.now(), events=[ev])
+        return evs + [ev]
+
+    def post_event(self, payload):
+        """POST /event (spec 5a): any community tool's action, outcome included,
+        reaches the director's next consult; every text field is sanitized."""
+        source = sanitize(str(payload.get("source") or "tool"), "human")[0][:40]
+        value, rejected = sanitize(str(payload.get("value") or ""), "human")
+        if source == "click":
+            return self.click(value)
+        ev = {"type": "input", "source": source, "value": value}
+        if payload.get("outcome") is not None:
+            outcome, more = sanitize(str(payload["outcome"]), "human")
+            ev["outcome"] = outcome
+            rejected += more
+        for e in rejected:
+            self._emit(e)
+        self._emit(ev)
+        self.director.consult_async(self.clock.now(), events=[ev])
+        return [ev]
+
+    def stop(self, by="human"):
+        if not self.stopped:
+            self.stopped = True
+            self._diagnostic({"type": "stop", "by": by})
+
+    def status(self):
+        """Live state for the server's 30 s snapshot (spec 11)."""
+        now = self.clock.now()
+        return {"type": "snapshot", "t": now, "live": True,
+                "scene": list(self.scene["objects"]), "actors": list(self.scene["actors"]),
+                "place": self.place, "hero": self.hero, "speed": self.speed,
+                "build_state": self.fsm.state, "bridge": self.fsm.bridge,
+                "destination": self.fsm.destination,
+                "build_start": self.fsm.build_start, "hint_level": self.fsm.hint_level(now),
+                "build_pct": self.fsm.build_pct(now), "dollars": get_spent(),
+                "max_dollars": self.max_dollars,
+                "seq": self.logger.seq if self.logger else 0}
+
     def _tick(self):
         now = self.clock.now()
+        self._drain_inbox()
         self._maybe_start_scene_background()
         self._cycle_line()
         events = self.fsm.tick(now)
@@ -520,6 +756,8 @@ class Sim:
             self._tick()
             if self.n_transitions >= max_transitions or self.clock.now() - start >= max_seconds:
                 break
+            if self.stopped or (self.dialogue is not None and self.fsm.awake):
+                break
             if not self._budget_ok():
                 break
             if self.clock.now() - last_cost >= self.clock.scale(60.0):
@@ -544,19 +782,38 @@ class Sim:
 
 
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=90.0,
-        media=None, max_dollars=20.0):
+        media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None):
+    """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
+    the dream then goes on until "stop", the budget or a wake_up."""
     random.seed(seed)
     base = os.path.join(os.path.dirname(__file__), "..", "out", "dream", profile)
     os.makedirs(base, exist_ok=True)
     outdir = os.path.join(base, "run_%d_%d" % (seed, int(time.time() * 1000) % 1000000))
     os.makedirs(outdir, exist_ok=True)
-    if max_seconds == 90.0 and max_transitions > 0:
+    if serve is not None:
+        max_seconds = float("inf")
+    elif max_seconds == 90.0 and max_transitions > 0:
         # one full build alone takes 420/speed sim-seconds (spec 5); fake or
         # live, the run must at least outlive it plus line playback.
         max_seconds = max(max_seconds, 420.0 / max(speed, 0.01) + 120.0)
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
-             max_dollars=max_dollars) as sim:
-        sim.run(max_transitions=max_transitions, max_seconds=max_seconds)
+             max_dollars=max_dollars, dialogue=dialogue) as sim:
+        viewer = None
+        if serve is not None:
+            from server import Viewer
+            viewer = Viewer(sim=sim, run="%s/%s" % (profile, os.path.basename(outdir)))
+            port = viewer.start(serve)
+            print("dream viewer: http://localhost:%d/?run=%s" % (port, viewer.run), flush=True)
+            sim.viewer = viewer
+        if on_sim is not None:
+            on_sim(sim)
+        try:
+            sim.run(max_transitions=max_transitions, max_seconds=max_seconds)
+        finally:
+            if viewer is not None:
+                sim.stopped = True
+                time.sleep(0.5)  # let open streams send their "end"
+                viewer.stop()
     return outdir, os.path.join(outdir, "log.jsonl")
 
 
@@ -676,11 +933,19 @@ def main():
     ap.add_argument("--profile", default="A")
     ap.add_argument("--fake", action="store_true")
     ap.add_argument("--speed", type=float, default=1.0)
-    ap.add_argument("--max-transitions", type=int, default=2)
+    ap.add_argument("--max-transitions", type=int, default=None,
+                    help="default 2; with --serve unlimited (until stop)")
     ap.add_argument("--max-dollars", type=float, default=20.0)
+    ap.add_argument("--serve", action="store_true", help="live comic viewer (spec 11)")
+    ap.add_argument("--port", type=int, default=8770)
     args = ap.parse_args()
+    if args.max_transitions is None:
+        args.max_transitions = 10 ** 6 if args.serve else 2
     media = None
+    dialogue = None
     if not args.fake:
+        from dialogue import Dialogue
+        dialogue = Dialogue(load_profile(args.profile))
         # live run: real Fish voice (wav, spec 6) and real Muse Image (spec 9);
         # media failures fall back per module, never stop the dream.
         from voice import Voice
@@ -688,15 +953,18 @@ def main():
         media = {"voice": Voice(), "images": Images()}
     outdir, logpath = run(profile=args.profile, fake=args.fake, speed=args.speed,
                            max_transitions=args.max_transitions, media=media,
-                           max_dollars=args.max_dollars)
+                           max_dollars=args.max_dollars, dialogue=dialogue,
+                           serve=args.port if args.serve else None)
     rows = [json.loads(l) for l in open(logpath, encoding="utf-8")]
     transitions = sum(1 for r in rows if r["type"] == "transition")
+    stopped = any(r["type"] in ("stop", "wake_up") for r in rows)
     report = verify_run(outdir, logpath, args.max_dollars, actual_spent=get_spent())
     print("outdir=%s transitions=%d files=%d spent=%s"
           % (outdir, transitions, report["checked_files"], report["spent"]))
     for issue in report["issues"]:
         print("issue: " + issue)
-    sys.exit(0 if transitions >= args.max_transitions and report["ok"] else 1)
+    done = transitions >= args.max_transitions or (args.serve and stopped)
+    sys.exit(0 if done and report["ok"] else 1)
 
 
 if __name__ == "__main__":
