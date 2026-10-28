@@ -526,6 +526,7 @@ class Sim:
             self._personas = {a["name"]: str(a.get("persona") or "")[:400] for a in ns["actors"]
                               if isinstance(a, dict)}
             self.director.actors = self.actors
+            self.director.notes_given = []
             self.memory.set_scene(self.fsm.destination or "scene %d" % self.n_transitions,
                                   self.scene["objects"])
             self.memory.select_facts_background()

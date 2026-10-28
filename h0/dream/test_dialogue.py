@@ -75,6 +75,12 @@ class LockedDirectorNotesTest(unittest.TestCase):
         self.assertTrue(any(e["type"] == "invalid" and e.get("reason") == "target_locked"
                             for e in evs), "a locked target field is logged as invalid")
         self.assertEqual(fsm.bridge, "clarinet")
+        # the next consult sees the note it already gave, so it does not rephrase it
+        with patch("director.llm_call", fake_call):
+            d.consult_async(clock.now())
+            d.wait(2)
+        self.assertIn("NOTES ALREADY GIVEN THIS SCENE", calls[1])
+        self.assertIn("hum a lullaby", calls[1])
 
 
 class HeroLineTest(unittest.TestCase):

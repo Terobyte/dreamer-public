@@ -18,10 +18,17 @@ except ImportError:
     from .llm import call as llm_call
 
 NOTE_RULE = (
-    "A note gives the actor something new to DO or want -- play a tune, show or hide an "
-    "object, tell a story, pick a fight, invite the hero somewhere -- that keeps the scene "
-    "moving. Never ask an actor to calm, comfort, soothe or keep things quiet, never mirror "
-    "the hero's mood back at him, and never repeat an earlier note.")
+    "Notes are your only way to steer the scene, and you know what nobody on stage knows: "
+    "the hero's diary, fears, past dream and hidden facts. A good note hands ONE actor ONE "
+    "concrete playable action with subtext that secretly echoes a soul fact without naming "
+    "it -- something the actor would never think of alone. 12-30 words, an action, not a mood. "
+    "Good: \"Hum two bars of an old lullaby off-key while you tune, then deny it was you.\" "
+    "\"You lost your door key in the fog; ask him to help you find a way in.\" "
+    "Bad: \"You want your quiet evening back; steer him toward the radio.\" (a mood the "
+    "actor already has plus a direction he already follows). Send a note only when it adds "
+    "a new twist, otherwise messages: []. Never ask an actor to calm, comfort, soothe or keep "
+    "things quiet, never mirror the hero's mood back at him, never repeat an earlier note.")
+NOTES_SHOWN = 5
 
 DIRECTOR_SCHEMA = (
     "Reply with JSON only: {\"bridge\": an object name from the scene or null, "
@@ -106,6 +113,7 @@ class Director:
         self.n_consults = 0
         self.completed_events = []
         self.errors = []
+        self.notes_given = []  # (to, note) of this scene; the sim clears it on transition
         self._thread = None
         self._cur = 0
         self._events_lock = threading.Lock()
@@ -143,6 +151,9 @@ class Director:
             else:
                 parts.append(str(c))
         tail = "\n".join(parts) if parts else "(no new events)"
+        if self.notes_given:
+            tail += "\nNOTES ALREADY GIVEN THIS SCENE (do not repeat or rephrase):\n" + "\n".join(
+                "- to %s: %s" % n for n in self.notes_given[-NOTES_SHOWN:])
         base = "DIRECTOR consult: decide the next bridge or wait."
         meta = ""
         if ticket is not None:
@@ -252,6 +263,8 @@ class Director:
             decision = self._next_decision(ticket, prompt)
             now = self.clock.now()
             ev = self.fsm.finish_consult(now, ticket, decision)
+            self.notes_given += [(e.get("to"), e.get("note")) for e in ev
+                                 if e.get("type") == "message"]
             for e in ev:
                 if e.get("type") == "consult":
                     e["decision"] = decision if isinstance(decision, dict) else None
