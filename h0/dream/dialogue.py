@@ -28,6 +28,9 @@ _DOUBLE = re.compile(r"\[\[[^\[\]]*\]\]")
 _REMARK = re.compile(r"\[([^\[\]]+)\]")
 _ANGLE = re.compile(r"<[^<>]*>")
 _VOICE_TAG = re.compile(r"</?(whisper|emphasis|forceful|slow)>", re.I)
+# the model sometimes writes the word tag in square brackets, [whisper]keep[/whisper]:
+# drama-3 would take "[/whisper]" for a direction; a closed pair becomes <whisper>
+_SQUARE_TAG = re.compile(r"\[(whisper|emphasis|forceful|slow)\](.*?)\[/\1\]", re.I)
 
 # Same rule as for actors: no engine or meta words the hero could say aloud
 # (no "dream", "world", "impulse", "scene" in what he reads).
@@ -233,10 +236,15 @@ class Mind:
             parts.append("You know: " + "; ".join(self.knows) + ".")
         if self.promised:
             parts.append("Promises: " + "; ".join(self.promised) + ".")
-        if self.tried:
-            parts.append("You already tried (try something else now): "
-                         + "; ".join(self.tried) + ".")
         return "\n".join(parts)
+
+    def tried_text(self):
+        """Last thing before "Your line": in the middle of the prompt the ferryman
+        had "no souvenirs" in his memory and still said it four more times (bank r2)."""
+        if not self.tried:
+            return ""
+        return ("You already tried (try something else now): "
+                + "; ".join(self.tried) + ".")
 
     def as_dict(self):
         return {"so_far": self.so_far, "knows": list(self.knows),
@@ -276,6 +284,8 @@ def _clean_spoken(text, speaker, name=""):
     if name:
         first = re.sub(r"^\s*\**\s*" + re.escape(name) + r"\s*\**\s*:\s*", "", first, flags=re.I)
     first = _DOUBLE.sub(" ", first)
+    first = _SQUARE_TAG.sub(lambda m: "<%s>%s</%s>" % (m.group(1).lower(), m.group(2),
+                                                      m.group(1).lower()), first)
     # drama-3 word tags stay (VOICE_RULES); any other <...> is not ours to voice
     first = _ANGLE.sub(lambda m: m.group(0) if _VOICE_TAG.fullmatch(m.group(0)) else " ", first)
     first = " ".join(first.split()).strip().strip('"').strip()
@@ -390,7 +400,8 @@ class Dialogue:
         user = "%s%s\n\nJust said:\n%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
             _transcript_msgs(transcript),
-            _no_repeat_block(transcript, self.hero),
+            _no_repeat_block(transcript, self.hero)
+            + _memory_block(self.mind(self.hero).tried_text()),
             "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
@@ -439,7 +450,8 @@ class Dialogue:
                                        state.get("stalled"), self.hero)]).strip()
         user = "%s%s\n\nJust said:\n%s%s\n\nYour line, %s:" % (
             head, _memory_block(self.memory_text(actor)), _transcript_msgs(transcript),
-            _no_repeat_block(transcript, actor), actor)
+            _no_repeat_block(transcript, actor) + _memory_block(self.mind(actor).tried_text()),
+            actor)
         system = self.actor_system(actor, world, notes, persona)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):

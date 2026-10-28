@@ -222,6 +222,12 @@ class RunningBitTest(unittest.TestCase):
         self.assertIn("running bit is used up", block)
         self.assertEqual(dl.running_bits(["[a] one line only, that's one lost"]), [])
 
+    def test_square_bracket_word_tag_becomes_angle(self):
+        import dialogue as dl
+        out = dl._clean_spoken("[soft] [whisper]keep[/whisper] it or not", "actor")
+        self.assertEqual(out, "[soft] <whisper>keep</whisper> it or not")
+        self.assertEqual(dl._clean_spoken("[whisper] come here", "actor"), "[whisper] come here")
+
 
 class MemoryCompactTest(unittest.TestCase):
     REPLY = ("SO FAR: Dan ran up to the roof and begged me to step away from the edge.\n"
