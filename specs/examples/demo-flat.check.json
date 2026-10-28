@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "stages": [
+    {
+      "stage": "schema",
+      "status": "pass"
+    },
+    {
+      "stage": "plan",
+      "status": "pass"
+    },
+    {
+      "stage": "openings",
+      "status": "pass"
+    },
+    {
+      "stage": "stairs",
+      "status": "skipped"
+    },
+    {
+      "stage": "props",
+      "status": "pass"
+    },
+    {
+      "stage": "decals",
+      "status": "pass"
+    },
+    {
+      "stage": "cameras",
+      "status": "pass"
+    },
+    {
+      "stage": "nav",
+      "status": "pass"
+    }
+  ],
+  "passport": {
+    "edges": [],
+    "snaps": [],
+    "openings": [],
+    "props": [],
+    "decals": []
+  },
+  "errors": [],
+  "warnings": []
+}

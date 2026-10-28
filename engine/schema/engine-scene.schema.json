@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meta-world/engine-scene.schema.json",
+  "title": "engine-scene v0",
+  "type": "object",
+  "required": ["version", "name", "spawn", "levels", "rooms", "materials", "assets"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 0 },
+    "name": { "type": "string", "minLength": 1 },
+    "spawn": {
+      "type": "object",
+      "required": ["room", "at"],
+      "additionalProperties": false,
+      "properties": {
+        "room": { "type": "string" },
+        "at": { "$ref": "#/$defs/point2" },
+        "yaw": { "type": "number", "default": 0 }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ambient": { "type": "number", "default": 1.0 },
+        "exterior": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#808080" }
+      }
+    },
+    "materials": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tile": { "type": "string" },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+          "repeat_m": { "type": "number", "minimum": 0, "default": 1.0 }
+        },
+        "allOf": [{ "not": { "required": ["tile", "color"] } }]
+      }
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "y"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "y": { "type": "number" }
+        }
+      }
+    },
+    "rooms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+          "required": ["id", "level", "height", "walls", "floor", "ceiling"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "level": { "type": "string" },
+          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "shape": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/vertex" }
+          },
+          "circle": {
+            "type": "object",
+            "required": ["c", "r"],
+            "additionalProperties": false,
+            "properties": {
+              "c": { "$ref": "#/$defs/point2" },
+              "r": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "floor": { "type": "string" },
+          "ceiling": { "type": "string" },
+          "walls": {
+            "type": "object",
+            "required": ["material"],
+            "additionalProperties": false,
+            "properties": {
+              "material": { "type": "string" },
+              "thickness": { "type": "number", "exclusiveMinimum": 0, "default": 0.12 },
+              "bands": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["to", "material"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": { "type": "number", "exclusiveMinimum": 0 },
+                    "material": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "edges": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": ["material"],
+              "additionalProperties": false,
+              "properties": {
+                "material": { "type": "string" }
+              }
+            }
+          },
+          "beams": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from", "to", "material"],
+              "additionalProperties": false,
+              "properties": {
+                "from": { "$ref": "#/$defs/point2" },
+                "to": { "$ref": "#/$defs/point2" },
+                "material": { "type": "string" },
+                "w": { "type": "number", "minimum": 0, "default": 0.2 },
+                "h": { "type": "number", "minimum": 0, "default": 0.25 }
+              }
+            }
+          }
+        },
+        "allOf": [{ "not": { "required": ["shape", "circle"] } }]
+      }
+    },
+    "openings": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "width"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["door", "window", "arch", "gap"] },
+          "at": { "$ref": "#/$defs/point2" },
+          "on": { "$ref": "#/$defs/on" },
+          "width": { "type": "number", "exclusiveMinimum": 0 },
+          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "sill": { "type": "number", "minimum": 0 },
+          "leaf": {
+            "type": "object",
+            "required": ["decal"],
+            "additionalProperties": false,
+            "properties": {
+              "decal": { "type": "string" },
+              "open": { "type": "boolean", "default": true },
+              "swing": { "type": "string" },
+              "hinge": { "enum": ["left", "right"] },
+              "glass": { "type": "boolean" }
+            }
+          },
+          "outside": {
+            "type": "object",
+            "required": ["backdrop"],
+            "additionalProperties": false,
+            "properties": {
+              "backdrop": { "type": "string" }
+            }
+          }
+        },
+        "allOf": [{ "not": { "required": ["at", "on"] } }]
+      }
+    },
+    "props": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "asset", "room", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "asset": { "type": "string" },
+          "cat": { "type": "string" },
+          "room": { "type": "string" },
+          "at": { "$ref": "#/$defs/point2" },
+          "on": { "$ref": "#/$defs/on" },
+          "size": {
+            "type": "object",
+            "required": ["w", "d", "h"],
+            "additionalProperties": false,
+            "properties": {
+              "w": { "type": "number", "minimum": 0 },
+              "d": { "type": "number", "minimum": 0 },
+              "h": { "type": "number", "minimum": 0 }
+            }
+          },
+          "y": { "type": "number" },
+          "mount": {
+            "anyOf": [
+              { "enum": ["floor", "ceiling", "wall"] },
+              {
+                "type": "object",
+                "required": ["top_of"],
+                "additionalProperties": false,
+                "properties": {
+                  "top_of": { "type": "string" }
+                }
+              }
+            ],
+            "default": "floor"
+          },
+          "face": {
+            "anyOf": [
+              { "const": "room" },
+              { "type": "string" },
+              { "$ref": "#/$defs/point2" }
+            ]
+          },
+          "yaw": { "type": "number" },
+          "around": {
+            "type": "object",
+            "required": ["center"],
+            "additionalProperties": false,
+            "properties": {
+              "center": { "type": "string" },
+              "n": { "type": "integer", "minimum": 1 },
+              "r": { "type": "number", "minimum": 0 },
+              "start": { "type": "number" }
+            }
+          },
+          "solid": { "type": "boolean", "default": true }
+        },
+        "allOf": [
+          { "not": { "required": ["at", "on"] } },
+          { "not": { "required": ["face", "yaw"] } },
+          { "not": { "required": ["around", "at"] } },
+          { "not": { "required": ["around", "face"] } },
+          { "not": { "required": ["around", "yaw"] } }
+        ]
+      }
+    },
+    "decals": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["asset", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "asset": { "type": "string" },
+          "room": { "type": "string" },
+          "at": { "$ref": "#/$defs/point2" },
+          "on": { "$ref": "#/$defs/on" },
+          "y": { "type": "number", "default": 1.6 },
+          "size": {
+            "type": "object",
+            "required": ["w", "h"],
+            "additionalProperties": false,
+            "properties": {
+              "w": { "type": "number", "minimum": 0 },
+              "h": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        "allOf": [{ "not": { "required": ["at", "on"] } }]
+      }
+    },
+    "lights": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["point", "hemi"] },
+          "pos": { "$ref": "#/$defs/point3" },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#ffffff" },
+          "power": { "type": "number", "default": 1.0 }
+        },
+        "allOf": [
+          {
+            "if": { "required": ["kind"], "properties": { "kind": { "const": "point" } } },
+            "then": { "required": ["pos"] }
+          }
+        ]
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["kind", "prompt"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["tile", "decal", "object"] },
+          "prompt": { "type": "string" },
+          "aspect": { "type": "string", "default": "1:1" },
+          "front_deg": { "type": "number", "default": 0 }
+        }
+      }
+    },
+    "cameras": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "pos"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "ref": { "type": "string" },
+          "pos": { "$ref": "#/$defs/point3" },
+          "look": { "$ref": "#/$defs/point3" },
+          "fov": { "type": "number", "exclusiveMinimum": 0, "default": 60 }
+        }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "path"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "path": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["room", "at"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "room": { "type": "string" },
+                    "at": { "$ref": "#/$defs/point2" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "point2": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "point3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "vertex": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        {
+          "type": "object",
+          "required": ["bulge"],
+          "additionalProperties": false,
+          "properties": {
+            "bulge": { "type": "number" }
+          }
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 3
+    },
+    "on": {
+      "type": "object",
+      "required": ["room", "edge"],
+      "additionalProperties": false,
+      "properties": {
+        "room": { "type": "string" },
+        "edge": { "type": "integer", "minimum": 0 },
+        "t": { "type": "number", "minimum": 0, "maximum": 1 },
+        "m": { "type": "number" },
+        "az": { "type": "number" }
+      },
+      "allOf": [
+        { "not": { "required": ["t", "m"] } },
+        { "not": { "required": ["t", "az"] } },
+        { "not": { "required": ["m", "az"] } }
+      ]
+    }
+  }
+}

@@ -55,9 +55,9 @@
 - Ссылки — только если ajv дал 0 ошибок: `ID_DUPLICATE` (id комнат, проёмов, предметов, камер, маршрутов — одно пространство имён), `REF_UNKNOWN` (материал, ассет, комната, уровень, `around.center`, `mount.top_of`, `face: "<id>"`, `on.edge` вне `0…n−1`, ключи `room.edges`, цикл `top_of`; `routes` — нет), `REF_KIND`, `ROOM_REF_MISMATCH`, `POS_INVALID`.
 - `POS_INVALID` в этой фазе: `az` на ребре без `bulge` (не `circle`); `face: [x,z]` или `face: "<id>"` с явным `at` цели, совпадающие с `at` в пределах `EPS`. `az` вне углового диапазона дуги добавляется в фазе «Рёбра комнат» (тот же код, `stage: "schema"`, вызов из `refs.ts`). Совпадение с вычисленной целью (`around`/`top_of`) ловит `placeProps` — тоже `POS_INVALID`, не NaN.
 
-- [ ] `test_demo_flat_schema_pass`: `demo-flat` → этап `schema` = `pass`, 0 issues
-- [ ] `test_demo_full_future`: `specs/examples/demo.scene.json` → ровно одна ошибка: `SCHEMA_FUTURE_FIELD`, `path` `/stairs`
-- [ ] `test_broken_schema_codes` — у каждого файла `errors` = ровно `[свой код]` с этим `path`:
+- [x] `test_demo_flat_schema_pass`: `demo-flat` → этап `schema` = `pass`, 0 issues
+- [x] `test_demo_full_future`: `specs/examples/demo.scene.json` → ровно одна ошибка: `SCHEMA_FUTURE_FIELD`, `path` `/stairs`
+- [x] `test_broken_schema_codes` — у каждого файла `errors` = ровно `[свой код]` с этим `path`:
   - `SCHEMA_UNKNOWN_FIELD`: `[{"op":"add","path":"/rooms/0/colour","value":"#ff0000"}]` → path `/rooms/0/colour`
   - `SCHEMA_FUTURE_FIELD`: `[{"op":"add","path":"/props/0/collider","value":"hull"}]` → path `/props/0/collider`
   - `SCHEMA_TYPE`: `[{"op":"replace","path":"/rooms/0/shape/1/2/bulge","value":1.5}]` → path `/rooms/0/shape/1/2/bulge`
@@ -69,12 +69,12 @@
   - `ROOM_REF_MISMATCH`: `[{"op":"replace","path":"/decals/0/room","value":"hall"}]`
   - `POS_INVALID`: `[{"op":"replace","path":"/decals/0/on","value":{"room":"living","edge":2,"az":90}}]`
   - `SCHEMA_PARSE`: `broken/SCHEMA_PARSE.scene.json` = текст demo-flat с добавленной строкой `// comment` после `{` → path `""`, msg содержит `строка 2`
-- [ ] `test_exclusive_pairs`: проём с `at` и `on`; предмет с `face` и `yaw`; материал с `tile` и `color`; `on` с `t` и `m`; `around` вместе с `at` → по одной записи `SCHEMA_EXCLUSIVE` на объект; материал без `tile` и `color` → ровно одна запись `SCHEMA_REQUIRED`, path `/materials/<id>/tile`; `bulge` 1.5 → ровно одна запись (нет лишней на `/rooms/0/shape/1`)
-- [ ] `test_schema_code_checks`: `bulge` 0 → `SCHEMA_TYPE`; `bands` `[{"to":1.0},{"to":0.5}]` → `SCHEMA_TYPE`; `room.edges` с ключом `"9"` → `REF_UNKNOWN`; предмет `face` [0, 0] при `at` [0, 0] → `POS_INVALID`
-- [ ] `test_defaults_applied`: минимальная сцена (одна комната 4×4, окно `on` с `outside`, наклейка, свет `point`, камера, все без необязательных полей, без `props`) → после `validate` `walls.thickness` = 0.12, окно `height`/`sill` = 1.2/0.9, `decal.y` = 1.6, `light.power` = 1.0, `camera.fov` = 60, `spawn.yaw` = 0, `props` = []
-- [ ] `test_stop_after_failed_stage`: `broken/SCHEMA_TYPE` → `stages` = schema `fail`, остальные 7 `skipped`
-- [ ] `test_cli_exit_codes`: CLI на demo-flat → exit 0 и файл по `--report`; на `broken/SCHEMA_TYPE` → exit 1; на `broken/SCHEMA_PARSE` → exit 1 и отчёт с `SCHEMA_PARSE`; на несуществующем файле → exit 2
-- [ ] реализовать
+- [x] `test_exclusive_pairs`: проём с `at` и `on`; предмет с `face` и `yaw`; материал с `tile` и `color`; `on` с `t` и `m`; `around` вместе с `at` → по одной записи `SCHEMA_EXCLUSIVE` на объект; материал без `tile` и `color` → ровно одна запись `SCHEMA_REQUIRED`, path `/materials/<id>/tile`; `bulge` 1.5 → ровно одна запись (нет лишней на `/rooms/0/shape/1`)
+- [x] `test_schema_code_checks`: `bulge` 0 → `SCHEMA_TYPE`; `bands` `[{"to":1.0},{"to":0.5}]` → `SCHEMA_TYPE`; `room.edges` с ключом `"9"` → `REF_UNKNOWN`; предмет `face` [0, 0] при `at` [0, 0] → `POS_INVALID`
+- [x] `test_defaults_applied`: минимальная сцена (одна комната 4×4, окно `on` с `outside`, наклейка, свет `point`, камера, все без необязательных полей, без `props`) → после `validate` `walls.thickness` = 0.12, окно `height`/`sill` = 1.2/0.9, `decal.y` = 1.6, `light.power` = 1.0, `camera.fov` = 60, `spawn.yaw` = 0, `props` = []
+- [x] `test_stop_after_failed_stage`: `broken/SCHEMA_TYPE` → `stages` = schema `fail`, остальные 7 `skipped`
+- [x] `test_cli_exit_codes`: CLI на demo-flat → exit 0 и файл по `--report`; на `broken/SCHEMA_TYPE` → exit 1; на `broken/SCHEMA_PARSE` → exit 1 и отчёт с `SCHEMA_PARSE`; на несуществующем файле → exit 2
+- [x] реализовать
 
 **Вне этой фазы:** геометрия, паспорт, все коды кроме этапа `schema`.
 
