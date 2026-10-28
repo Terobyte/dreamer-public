@@ -69,12 +69,12 @@ class FixesTest(unittest.TestCase):
 
     def test_state_tail_present(self):
         m = make_mem()
-        text, sizes = m.build_prompt({"scene": "porch", "hint_level": 2,
+        text, sizes = m.build_prompt({"scene": "porch", "build_state": "building",
                                       "build": 45, "requirement": "bridge required",
                                       "nudged": True, "forced": False,
                                       "bridge_locked": True,
                                       "events": ["dart missed"]})
-        for marker in ("hint_level", "45", "bridge required", "nudged",
+        for marker in ("build_state", "45", "bridge required", "nudged",
                        "bridge_locked", "dart missed"):
             self.assertIn(marker, text)
         self.assertIn("tail", sizes)

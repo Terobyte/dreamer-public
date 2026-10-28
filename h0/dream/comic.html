@@ -74,9 +74,6 @@ aside { position: sticky; top: 60px; align-self: start; display: flex; flex-dire
 .big { font-size: 26px; font-weight: bold; font-variant-numeric: tabular-nums; }
 .progress { height: 10px; border: 1.5px solid var(--ink); background: #fff; margin: 4px 0; }
 .progress i { display: block; height: 100%; background: var(--accent); width: 0; }
-.ladder { display: flex; gap: 4px; }
-.ladder b { flex: 1; text-align: center; border: 1.5px solid var(--ink); font-size: 12px; background: #fff; }
-.ladder b.on { background: var(--accent); color: #fff; }
 .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
 footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 2px solid var(--ink);
   padding: 8px 16px; display: flex; gap: 8px; z-index: 5; }
@@ -107,9 +104,6 @@ footer.off { display: none; }
       <div class="progress"><i id="prog"></i></div>
       <div class="row"><span>картинки</span><span id="imgstate">—</span></div>
     </div>
-    <div class="card"><h3>Уровень намёка</h3>
-      <div class="ladder" id="ladder"><b>0</b><b>1</b><b>2</b><b>3</b><b>4</b></div>
-    </div>
     <div class="card"><h3>Расход</h3>
       <div class="big" id="dollars">$0.00</div>
       <div class="row"><span>лимит</span><span id="maxd">—</span></div>
@@ -131,7 +125,6 @@ let RUN = Q.get("run");
 const $ = (id) => document.getElementById(id);
 const strip = $("strip");
 const BUILD_S = 420;
-const LADDER = [0, 120, 240, 360];
 const BUDGETS = {core: 600, working: 1000, episodes: 900, facts: 600, decisions: 400, tail: 700};
 const OK_VERDICTS = new Set(["build", "ok", "wake_up", "abort"]);
 
@@ -141,8 +134,8 @@ let audioEl = null;
 
 function fresh() {
   return {speed: 1, place: "", hero: "", heroDesc: "", objects: [], actors: [], build: "idle",
-    bridge: null, dest: null, buildStart: null, lastT: 0, tRecv: performance.now(), hint: 0,
-    frozen: null, dollars: 0, maxD: null, portraits: {}, bg: {}, bgFallback: {}, scene: null,
+    bridge: null, dest: null, buildStart: null, lastT: 0, tRecv: performance.now(),
+    dollars: 0, maxD: null, portraits: {}, bg: {}, bgFallback: {}, scene: null,
     trans: null, lines: 0, consults: 0, lastSeq: 0, ended: false, prevHeroSrc: null};
 }
 
@@ -245,7 +238,7 @@ function apply(r) {
     }
     case "build":
       if (r.phase === "start") {
-        S.build = "building"; S.bridge = r.bridge; S.dest = r.destination; S.buildStart = r.t; S.frozen = null;
+        S.build = "building"; S.bridge = r.bridge; S.dest = r.destination; S.buildStart = r.t;
         sys("🔨 сборка: " + r.bridge + " → " + r.destination);
         markBridge();
       } else if (r.phase === "abort") {
@@ -254,10 +247,7 @@ function apply(r) {
       }
       break;
     case "ready": S.build = "ready"; sys("✓ мост готов"); break;
-    case "hint": if (r.level === 4) { S.hint = 4; sys("✨ " + (S.bridge || "мост") + " светится и тянет"); } break;
-    case "stall": S.frozen = r.level; sys("✋ рано: " + r.object + " (" + r.build_pct + "%)"); break;
-    case "touch_ignored": sys("· касание проигнорировано: " + r.object); break;
-    case "auto_touch": sys("⏱ auto_touch"); break;
+    case "door": sys(r.state === "open" ? "🚪 " + (r.object || S.bridge || "мост") + " открылась" : "🔒 заперто: " + (r.object || "") + (r.build_pct !== undefined ? " (" + r.build_pct + "%)" : "")); break;
     case "touch_ambiguous": highlight(r.candidates || []); sys("? неоднозначно: " + (r.candidates || []).join(", ")); break;
     case "touch_rejected": sys("· нет такого предмета: " + r.value); break;
     case "input": if (r.source !== "speech") sys("⇢ " + r.source + ": " + r.value + (r.outcome ? " (" + r.outcome + ")" : "")); break;
@@ -289,7 +279,6 @@ function addLine(r) {
   if (r.look) body.appendChild(el("span", "tag", "👀 " + r.look));
   if (r.touch) body.appendChild(el("span", "tag", "✋ " + r.touch));
   b.appendChild(body);
-  if (typeof r.level === "number") S.hint = Math.max(S.hint === 4 ? 4 : 0, r.level);
   feed().appendChild(b);
   if (r.audio && sound && !instant) queueAudio(src(r.audio));
   scrollDown();
@@ -358,7 +347,7 @@ function addTransition(r) {
   strip.appendChild(t);
   S.trans = t;
   S.dest = r.destination;
-  S.build = "idle"; S.bridge = null; S.buildStart = null; S.hint = 0; S.frozen = null;
+  S.build = "idle"; S.bridge = null; S.buildStart = null;
   scrollDown();
 }
 
@@ -394,11 +383,6 @@ function render() {
   el7 = Math.min(BUILD_S, el7);
   $("timer").textContent = fmt(el7) + " / 7:00" + (S.speed !== 1 ? "  ×" + S.speed : "");
   $("prog").style.width = (100 * el7) / BUILD_S + "%";
-  let lvl = S.hint;
-  if (S.build === "building") lvl = S.frozen !== null ? S.frozen : LADDER.filter((x) => el7 >= x).length - 1;
-  else if (S.build === "ready" && S.hint !== 4) lvl = 3;
-  else if (S.build === "idle") lvl = 0;
-  [...$("ladder").children].forEach((b, i) => b.classList.toggle("on", i === lvl));
   let img = "—";
   if (S.dest && S.build !== "idle") img = S.bg[S.dest] ? (S.bgFallback[S.dest] ? "запасной фон" : "фон готов") : "рисуется…";
   else if (S.bg[S.place]) img = S.bgFallback[S.place] ? "запасной фон" : "фон готов";
@@ -459,7 +443,6 @@ function startLive() {
   es.addEventListener("snapshot", (e) => {
     const s = JSON.parse(e.data);
     if (s.dollars !== undefined) S.dollars = s.dollars;
-    if (typeof s.hint_level === "number" && S.build !== "idle") S.frozen = s.hint_level;
     if (s.build_state) S.build = s.build_state;
     if (typeof s.t === "number") { S.lastT = s.t; S.tRecv = performance.now(); }
   });

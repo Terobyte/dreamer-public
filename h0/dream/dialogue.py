@@ -6,7 +6,6 @@ import random
 import re
 import threading
 
-from director import filter_actor_line
 from inputs import sanitize
 
 try:
@@ -19,6 +18,7 @@ except ImportError:
 # into what this character remembers. A 12-line window with nothing behind it made
 # actors forget the sister after a minute and loop on the window's own mood.
 TRANSCRIPT_KEEP = 8
+TICK = 4  # sim-seconds between free ticks (design doc 2026-10-28, 1.2a)
 COMPACT_EVERY = 4
 MAX_TOKENS = 1500
 
@@ -59,32 +59,7 @@ TOUCH_EVERY = 4  # hero turns between two touches; more is spam, not a choice
 
 # The actor never sees engine words (bridge, level, percent, director, state): a
 # word in the prompt is a word he can say aloud ("don't touch that damn bridge").
-# Code turns the H17 ladder and the stall stages into one plain in-world line.
-LADDER_LINES = {
-    0: "Tonight the {obj} matters, but right now you neither mention it nor look at it.",
-    1: "Your eyes keep drifting to the {obj}: put [[LOOK:{obj}]] in your line, but never say "
-       "what it is.",
-    2: "You bring up the {obj} yourself, best as a warning or a slip that makes it irresistible.",
-    3: "You name the {obj} openly and dare or invite {hero} to it.",
-    4: "The {obj} is glowing and pulling on its own; react to it.",
-}
-STALL_LINES = (
-    (30, "{hero} just reached for the {obj}: flatly refuse, you are nowhere near ready."),
-    (60, "{hero} just reached for the {obj}: refuse, but you are wavering and stalling."),
-    (91, "{hero} just reached for the {obj}: almost, but not yet; grumble and stall."),
-    (101, "{hero} just reached for the {obj}: one... more... second."),
-)
-
-
-def stage_line(obj, level, build_pct=0, stalled=False, hero="the hero"):
-    """Plain line for the actor from ladder level / stall stage; nothing without a target."""
-    if not obj:
-        return ""
-    if stalled:
-        for top, text in STALL_LINES:
-            if (build_pct or 0) < top:
-                return text.format(obj=obj, hero=hero)
-    return LADDER_LINES[max(0, min(4, int(level or 0)))].format(obj=obj, hero=hero)
+# The door is a world fact he may name at any time (design doc 2026-10-28, 7.1).
 
 
 ACTOR_RULES = (
@@ -100,7 +75,7 @@ ACTOR_RULES = (
 # Temperature barely moves a reasoning model off its most obvious line (1.8 still
 # gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
 # now and then the hero's line gets a random impulse he must act on. Only the
-# hero (the player): actors stay in character and keep the ladder.
+# hero (the player): actors stay in character and name the open bridge outright.
 HERO_IMPULSE_P = 0.35
 HERO_IMPULSES = (
     "you lie about something, small or big",
@@ -404,8 +379,7 @@ class Dialogue:
         hush = len(own) >= QUESTION_RUN and all("?" in t for t in own[-QUESTION_RUN:])
         if hush and impulse and impulse.startswith("you ask"):
             impulse = None
-        pull = world.get("pull")
-        user = "%s%s\n\nJust said:\n%s%s%s%s%s\n\nYour line, %s:" % (
+        user = "%s%s\n\nJust said:\n%s%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
             _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero)
@@ -413,8 +387,6 @@ class Dialogue:
             "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
             "\n\nYour last lines were all questions: this time ask nothing -- answer, react, "
             "claim or want something." if hush else "",
-            "\n\nThe %s is open for you now and pulling at you. If you give in and go to it, "
-            "end your line with [[TOUCH:%s]]." % (pull, pull) if pull else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
@@ -438,8 +410,8 @@ class Dialogue:
         m = _TOUCH.search(raw)
         if m:
             touch = _match(m.group(1), world.get("objects"))
-            # the open bridge is the one touch that is never spam
-            if touch != pull and self._hero_turns - self._last_touch < TOUCH_EVERY:
+            # TOUCH_EVERY holds for the open door too: touching is a choice, not a reflex
+            if self._hero_turns - self._last_touch < TOUCH_EVERY:
                 touch = None
             if touch:
                 self._last_touch = self._hero_turns
@@ -457,13 +429,13 @@ class Dialogue:
                    ACTOR_RULES, note_text))
 
     def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
-        """state: {hint_level, build_pct, stalled, bridge}. -> line dict or None.
-        On L0-L1 a line naming the bridge is asked again once, then dropped (H17)."""
+        """state: {build_pct, bridge} (kept for the log; no ladder, no stall: the actor
+        may name the door whenever he likes). -> line dict or None."""
         bridge = state.get("bridge")
-        level = int(state.get("hint_level") or 0)
-        head = "\n".join(["Just now: %s." % e for e in events]
-                         + [stage_line(bridge, level, state.get("build_pct"),
-                                       state.get("stalled"), self.hero)]).strip()
+        # the actor hears what happened, never an engine tag: a line, an outcome or a
+        # human sentence can carry [[TOUCH:...]] or [WORLD ...], and the prompt is not
+        # a place to pass them on (spec 7.1 keeps this lock, the ladder's filter is gone)
+        head = "\n".join("Just now: %s." % sanitize(e, "human")[0] for e in events).strip()
         user = "%s%s\n\nJust said:\n%s%s\n\nYour line, %s:" % (
             head, _memory_block(self.memory_text(actor)), _transcript_msgs(transcript),
             _no_repeat_block(transcript, actor) + _memory_block(self.mind(actor).tried_text()),
@@ -475,7 +447,7 @@ class Dialogue:
             clean, _ = sanitize(raw, "actor")
             look = None
             m = _LOOK.search(clean)
-            if m and not state.get("stalled"):
+            if m:
                 look = _match(m.group(1), world.get("objects")) or m.group(1).strip()
             text = _clean_spoken(clean, "actor", actor)
             if text and attempt == 0 and (repeats(text, recent) or uses_bit(
@@ -487,9 +459,7 @@ class Dialogue:
             if text and leaks and attempt == 0:
                 user += "\n(Name the thing itself.)"
                 continue
-            if text and not leaks and filter_actor_line(text, bridge, level) is not None:
+            if text and not leaks:
                 return {"who": actor, "role": "actor", "text": text, "look": look,
-                        "remarks": remarks(text), "level": level, "raw": raw}
-            if bridge and text:
-                user += "\n(Do not name the %s yet.)" % bridge
+                        "remarks": remarks(text), "raw": raw}
         return None

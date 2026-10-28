@@ -1,4 +1,4 @@
-"""Offline tests for live hero/actor lines (spec 4-6, 5a; H17 ladder).
+"""Offline tests for live hero/actor lines (spec 4-6, 5a; door as a world fact).
 usage: cd h0/dream && python3 -m unittest test_dialogue -q
 """
 
@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from dialogue import Dialogue, soul_text, stage_line
+from dialogue import Dialogue, soul_text
 from fake import FakeTransport
 from sim import START_SCENE, Sim, load_profile
 
@@ -24,16 +24,11 @@ class PromptTest(unittest.TestCase):
         self.assertNotIn("fog", soul, "past dream is the director's, not the hero's (spec 12)")
         self.assertNotIn("goes silent", soul)
 
-    def test_stage_line_has_no_engine_words(self):
-        self.assertIn("[[LOOK:clarinet]]", stage_line("clarinet", 1))
-        self.assertIn("flatly refuse", stage_line("clarinet", 1, 20, True, "SpongeBob"))
-        self.assertIn("one... more... second", stage_line("clarinet", 2, 95, True))
-        self.assertEqual(stage_line(None, 3), "")
-        for lvl in range(5):
-            for pct, st in ((10, False), (50, True), (95, True)):
-                text = stage_line("radio", lvl, pct, st).lower()
-                for word in ("bridge", "level", "percent", "director", "state", "hint", "build"):
-                    self.assertNotIn(word, text, (lvl, pct, st))
+    def test_no_ladder_left_in_dialogue(self):
+        # design doc 2026-10-28, 7.1: no L0-L4 stage lines, no stall lines
+        import dialogue
+        for gone in ("stage_line", "LADDER_LINES", "STALL_LINES"):
+            self.assertFalse(hasattr(dialogue, gone), gone)
 
 
 class DirectorSoulTest(unittest.TestCase):
@@ -166,7 +161,7 @@ class ImpulseTest(unittest.TestCase):
                 return 0.0
         t = FakeTransport(["Get away from the edge!"])
         Dialogue({}, transport=t, rng=Always(1)).actor_line(
-            "Dan", WORLD, [], {"hint_level": 0, "build_pct": 0, "stalled": False, "bridge": None})
+            "Dan", WORLD, [], {"build_pct": 0, "bridge": None})
         self.assertNotIn("out of nowhere", t.sent[0]["messages"][0]["content"])
         from llm import ROLE_TEMPERATURE
         self.assertNotIn("actor", ROLE_TEMPERATURE)
@@ -259,30 +254,41 @@ class QuestionRunTest(unittest.TestCase):
         self.assertEqual(t.calls, 1)
 
 
-class OpenBridgeTest(unittest.TestCase):
-    """Bank r4: no hero ever touched anything, every crossing was auto_touch. A
-    ready bridge is offered by name and its touch skips the TOUCH_EVERY gate."""
+class OpenDoorTest(unittest.TestCase):
+    """Design doc 2026-10-28, 7.1: the open door reaches the hero as a world event
+    ("has swung open"), there is no `pull`, and TOUCH_EVERY holds for the door too."""
 
-    def test_ready_bridge_is_offered_and_its_touch_counts_at_once(self):
+    def test_open_door_is_a_world_event_and_the_gate_holds(self):
         obj = WORLD["objects"][0]
-        world = dict(WORLD, pull=obj)
+        opened = ["the %s has swung open" % obj]
         t = FakeTransport(["[x] Fine, I'm going. [[TOUCH:%s]]" % obj] * 2)
         d = Dialogue({"hero": "Max"}, transport=t, rng=QuestionRunTest()._never())
-        d._last_touch = d._hero_turns  # a touch just happened: the gate is shut
-        line = d.hero_line(world, [])
-        self.assertIn("[[TOUCH:%s]]" % obj, t.sent[0]["messages"][0]["content"])
-        self.assertEqual(line["touch"], obj)
+        line = d.hero_line(WORLD, [], opened)
+        prompt = t.sent[0]["messages"][0]["content"]
+        self.assertIn("has swung open", prompt)
+        self.assertNotIn("open for you", prompt)
+        self.assertEqual(line["touch"], obj, "first touch of the night passes the gate")
+        t2 = FakeTransport(["[x] Again. [[TOUCH:%s]]" % obj] * 2)
+        d2 = Dialogue({"hero": "Max"}, transport=t2, rng=QuestionRunTest()._never())
+        d2._last_touch = d2._hero_turns  # a touch just happened: the gate is shut
+        self.assertIsNone(d2.hero_line(WORLD, [], opened)["touch"],
+                          "the door is no exception to TOUCH_EVERY")
+        t3 = FakeTransport(["[x] Hi."])
+        Dialogue({"hero": "Max"}, transport=t3).hero_line(WORLD, [])
+        self.assertNotIn("swung open", t3.sent[0]["messages"][0]["content"])
 
     def test_other_objects_keep_the_gate(self):
-        obj = WORLD["objects"][1]
-        t = FakeTransport(["[x] Let me see. [[TOUCH:%s]]" % obj])
+        """The gate is general, not door-only: a touch of any object right after
+        another one is dropped, so the open door is the exception-free case above."""
+        other = WORLD["objects"][1]
+        t = FakeTransport(["[x] I grab it. [[TOUCH:%s]]" % other] * 2)
         d = Dialogue({"hero": "Max"}, transport=t, rng=QuestionRunTest()._never())
-        d._last_touch = d._hero_turns
-        line = d.hero_line(dict(WORLD, pull=WORLD["objects"][0]), [])
-        self.assertIsNone(line["touch"])
-        t2 = FakeTransport(["[x] Hi."])
-        Dialogue({"hero": "Max"}, transport=t2).hero_line(WORLD, [])
-        self.assertNotIn("open for you", t2.sent[0]["messages"][0]["content"])
+        d._last_touch = d._hero_turns  # a touch just happened
+        self.assertIsNone(d.hero_line(WORLD, [])["touch"],
+                          "a non-bridge object is gated by TOUCH_EVERY too")
+        t2 = FakeTransport(["[x] I grab it. [[TOUCH:%s]]" % other] * 2)
+        d2 = Dialogue({"hero": "Max"}, transport=t2, rng=QuestionRunTest()._never())
+        self.assertEqual(d2.hero_line(WORLD, [])["touch"], other)
 
 
 class DirectorReserveTest(unittest.TestCase):
@@ -342,7 +348,7 @@ class MemoryCompactTest(unittest.TestCase):
         self._fill(d, dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY)
         d.compact(["Dan"])
         t = d.transport
-        d.actor_line("Dan", WORLD, list(d.log), {"hint_level": 0})
+        d.actor_line("Dan", WORLD, list(d.log), {})
         prompt = t.sent[-1]["messages"][0]["content"]
         self.assertIn("What you remember from earlier tonight", prompt)
         self.assertIn("try something else now", prompt)
@@ -425,37 +431,37 @@ class SceneSwitchTest(unittest.TestCase):
 class ActorLineTest(unittest.TestCase):
     def _line(self, replies, **state):
         t = FakeTransport(replies)
-        st = dict({"hint_level": 0, "build_pct": 10, "stalled": False, "bridge": "clarinet"}, **state)
+        st = dict({"build_pct": 10, "bridge": "clarinet"}, **state)
         line = Dialogue(load_profile("A"), transport=t).actor_line(
             "Squidward", WORLD, [], st, notes=["you miss your old band"], events=["x happened"])
         return line, t
 
-    def test_state_notes_and_events_reach_actor(self):
-        line, t = self._line(["[long sigh] What now, SpongeBob? [[LOOK:music stand]]"], hint_level=1)
+    def test_notes_and_events_reach_actor(self):
+        line, t = self._line(["[long sigh] What now, SpongeBob? [[LOOK:music stand]]"])
         self.assertEqual(line["look"], "music stand")
         self.assertNotIn("[[", line["text"])
         self.assertEqual(line["remarks"], ["long sigh"])
+        self.assertNotIn("level", line)
         sent = t.sent[0]
         self.assertIn("you miss your old band", sent["system"])
         user = sent["messages"][0]["content"]
-        self.assertIn("[[LOOK:clarinet]] in your line", user)
         self.assertIn("Just now: x happened.", user)
+        # no ladder: the actor gets no stage line about the bridge at all
+        self.assertNotIn("clarinet", user)
         # a word in the prompt is a word the actor can say aloud
         prompt = (sent["system"] + user).lower()
         for word in ("bridge", "hint_level", "build=", "director", "stalled", "[state", "[event"):
             self.assertNotIn(word, prompt, word)
 
-    def test_low_level_line_naming_bridge_is_asked_again_then_dropped(self):
-        line, t = self._line(["Don't touch my clarinet!", "Just sit down."], hint_level=0)
-        self.assertEqual(line["text"], "Just sit down.")
-        self.assertEqual(t.calls, 2)
-        line, t = self._line(["My clarinet!", "The clarinet!"], hint_level=1)
-        self.assertIsNone(line)
-        line, _ = self._line(["Fine, play the clarinet."], hint_level=3)
-        self.assertEqual(line["text"], "Fine, play the clarinet.")
+    def test_naming_the_door_is_always_allowed(self):
+        # design doc 2026-10-28, 7.1: the door is a world fact, no "do not name it yet"
+        line, t = self._line(["Don't touch my clarinet!", "Just sit down."])
+        self.assertEqual(line["text"], "Don't touch my clarinet!")
+        self.assertEqual(t.calls, 1)
+        self.assertNotIn("Do not name", t.sent[0]["messages"][0]["content"])
 
     def test_word_bridge_is_asked_again(self):
-        line, t = self._line(["Don't touch that bridge!", "Don't touch that clarinet!"], hint_level=3)
+        line, t = self._line(["Don't touch that bridge!", "Don't touch that clarinet!"])
         self.assertEqual(line["text"], "Don't touch that clarinet!")
         self.assertEqual(t.calls, 2)
 
@@ -484,7 +490,7 @@ class _ScriptedDialogue:
     def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
         self.turns.append((actor, dict(state), list(notes), list(events), persona))
         return {"who": actor, "role": "actor", "text": "[sigh] Go home.", "look": None,
-                "remarks": ["sigh"], "level": state["hint_level"]}
+                "remarks": ["sigh"]}
 
 
 class SimDialogueTest(unittest.TestCase):
@@ -520,12 +526,18 @@ class SimDialogueTest(unittest.TestCase):
             sim.fsm.start_build(sim.clock.now(), "clarinet", "grandma's porch")
         dlg = _ScriptedDialogue(hero_touch="clarinet")
         sim, rows = self._run(dlg, steps=60, before=build)
-        stalls = [r for r in rows if r["type"] == "stall"]
-        self.assertTrue(stalls, "early TOUCH in building is a stall")
-        self.assertEqual(stalls[0]["source"], "hero")
+        doors = [r for r in rows if r["type"] == "door"]
+        self.assertTrue(doors, "early TOUCH in building is a closed door")
+        self.assertEqual((doors[0]["state"], doors[0]["source"]), ("closed", "hero"))
+        self.assertFalse(any(r["type"] == "transition" for r in rows))
+        self.assertFalse(any(r["type"] == "stall" for r in rows))
+        hero_turns = [t for t in dlg.turns if t[0] == "hero"]
+        self.assertTrue(any("the clarinet is locked" in " ".join(t[1]) for t in hero_turns),
+                        "the locked door is a world fact for the hero")
         actor_turns = [t for t in dlg.turns if t[0] == "Squidward"]
-        self.assertTrue(any(t[1]["stalled"] and t[1]["bridge"] == "clarinet" for t in actor_turns))
-        self.assertTrue(any("reached for the clarinet" in " ".join(t[3]) for t in actor_turns))
+        self.assertTrue(any(t[1]["bridge"] == "clarinet" for t in actor_turns))
+        self.assertFalse(any("reached for" in " ".join(t[3]) for t in actor_turns),
+                         "actors get no stall cue")
 
     def test_director_message_reaches_named_actor(self):
         dlg = _ScriptedDialogue()
@@ -554,9 +566,9 @@ class WorldInputTest(unittest.TestCase):
             sim._tick()
         finally:
             sim.close()
-        stall = [r for r in self._rows(d) if r["type"] == "stall"]
-        self.assertEqual(stall[0]["object"], "clarinet")
-        self.assertEqual(stall[0]["source"], "click")
+        door = [r for r in self._rows(d) if r["type"] == "door"]
+        self.assertEqual((door[0]["object"], door[0]["state"]), ("clarinet", "closed"))
+        self.assertEqual(door[0]["source"], "click")
 
     def test_click_miss_and_dart_event_reach_director(self):
         sim, d = self._sim()
@@ -573,7 +585,7 @@ class WorldInputTest(unittest.TestCase):
         dart = [r for r in rows if r["type"] == "input" and r.get("source") == "dart"][0]
         self.assertEqual(dart["outcome"], "missed")
         self.assertNotIn("TOUCH", dart["value"])
-        self.assertFalse(any(r["type"] == "stall" or r["type"] == "transition" for r in rows))
+        self.assertFalse(any(r["type"] == "door" or r["type"] == "transition" for r in rows))
         self.assertTrue(any("threw a dart" in p and "TOUCH" not in p for p in sim.director.prompts))
 
     def test_stop_ends_run_with_stop_event(self):

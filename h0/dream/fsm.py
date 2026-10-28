@@ -1,11 +1,14 @@
-"""Build state machine: idle -> building -> ready -> transition, hint ladder, director nudges (spec 4, 5).
+"""Build state machine: idle -> building -> ready -> transition, director nudges (spec 4, 5).
+The door is a world fact: closed while building, `door {state: open}` on ready; the only
+way through is a touch (hero [[TOUCH]] or human). A long `ready` asks the director
+(`ready_stale`, design doc 2026-10-28, 7.1).
 Pure: no LLM, no I/O, no clock. Every method takes `now` (real seconds) and returns log events.
 usage: f = BuildFSM(objects, voices=pool, speed=20); f.start_build(now, "clarinet", "porch"); f.tick(now)
 """
 
 DEFAULTS = {
-    "build": 420, "ladder": (0, 120, 240, 360), "l4": 20, "auto_touch": 40,
-    "nudge": 120, "force": 300, "cooldown": 60, "min_interval": 20,
+    "build": 420, "ready_timeout": 600,
+    "nudge": 120, "force": 300, "min_interval": 20,
 }
 MAX_ABORTS = 2
 FAIL_LIMIT = 3
@@ -79,10 +82,8 @@ class BuildFSM:
         self.state = "idle"
         self.idle_since = now
         self.bridge = self.destination = self.next_scene = self.hero_next = None
-        self.build_start = self.ready_at = self.ready_deadline = self.l4_at = None
-        self.l4_fired = False
-        self.frozen_level = None
-        self.last_stall = None
+        self.build_start = self.ready_at = None
+        self.ready_stale_fired = False
         self.nudge_fired = self.nudge_pending = self.nudge_delivered = False
         self.force_fired = self.force_active = self.force_pending = False
         self.consult_requested = False
@@ -117,7 +118,6 @@ class BuildFSM:
     def _transition(self, now, via):
         self.state = "transition"
         self.build_epoch += 1
-        self.ready_deadline = self.l4_at = None
         return [self._e(now, "transition", via=via, bridge=self.bridge,
                         destination=self.destination)]
 
@@ -137,16 +137,10 @@ class BuildFSM:
         elif self.state == "building" and now - self.build_start >= self.p["build"]:
             self.state = "ready"
             self.ready_at = now
-            self.l4_at = now + self.p["l4"]
-            self.ready_deadline = now + self.p["auto_touch"]
+            self.ready_stale_fired = False
             ev.append(self._e(now, "ready", epoch=self.build_epoch))
-        if self.state == "ready":
-            if self.l4_at is not None and now >= self.l4_at and not self.l4_fired:
-                self.l4_fired = True
-                ev.append(self._e(now, "hint", level=4))
-            if self.ready_deadline is not None and now >= self.ready_deadline:
-                ev.append(self._e(now, "auto_touch"))
-                ev += self._transition(now, "auto_touch")
+            # the door opens and stays open: no timer carries the hero through it
+            ev.append(self._e(now, "door", state="open", object=self.bridge))
         return ev
 
     def build_pct(self, now):
@@ -154,35 +148,17 @@ class BuildFSM:
             return 100 if self.state in ("ready", "transition") else 0
         return min(99, int(100 * (now - self.build_start) / self.p["build"]))
 
-    def _clock_level(self, now):
-        el = now - self.build_start
-        return max(i for i, th in enumerate(self.p["ladder"]) if el >= th)
-
-    def hint_level(self, now):
-        """[STATE hint_level=N]: ladder by build clock, frozen by an early TOUCH."""
-        if self.state == "building":
-            return self.frozen_level if self.frozen_level is not None else self._clock_level(now)
-        if self.state == "ready":
-            if self.l4_fired:
-                return 4
-            return max(self.frozen_level or 0, self._clock_level(now))
-        return 0
-
     # --- hero input ------------------------------------------------------
     def touch(self, now, obj):
         # only the bridge is the build's business: another object touched during a
-        # build is plain input for the director -- it neither freezes the ladder
-        # (stall) nor carries the hero through the bridge (ready)
+        # build is plain input for the director -- it neither tells the hero the door
+        # is locked (building) nor carries the hero through the bridge (ready)
         if self.state in ("building", "ready") and self.bridge and obj != self.bridge:
             return [self._e(now, "input", source="touch", value=obj)]
         if self.state == "building":
-            if self.last_stall is not None and now - self.last_stall <= self.p["cooldown"]:
-                return [self._e(now, "touch_ignored", object=obj)]
-            if self.frozen_level is None:
-                self.frozen_level = self._clock_level(now)
-            self.last_stall = now
-            return [self._e(now, "stall", object=obj, stalled=True,
-                            build_pct=self.build_pct(now), level=self.frozen_level)]
+            # the door is still closed: a world fact for the hero, no instruction to actors
+            return [self._e(now, "door", state="closed", object=obj,
+                            build_pct=self.build_pct(now))]
         if self.state == "ready":
             return self._transition(now, "touch")
         return [self._e(now, "input", source="touch", value=obj)]
@@ -196,9 +172,17 @@ class BuildFSM:
             return "force"
         if self.consult_requested:
             return "abort"
+        if self._ready_stale(now):
+            return "ready_stale"
         if self.nudge_pending and self._interval_ok(now):
             return "nudge"
         return None
+
+    def _ready_stale(self, now):
+        """Once per `ready`: the door has stood open ready_timeout without a touch."""
+        return (self.state == "ready" and self.ready_at is not None
+                and not self.ready_stale_fired
+                and now - self.ready_at >= self.p["ready_timeout"])
 
     def _interval_ok(self, now):
         return self.last_call is None or now - self.last_call >= self.p["min_interval"]
@@ -210,6 +194,9 @@ class BuildFSM:
         if self.force_active:
             label, hint = "forced", "force"
             self.force_pending = False
+        elif self._ready_stale(now):
+            label, hint = "ready_stale", "ready_stale"
+            self.ready_stale_fired = True
         elif self.nudge_pending and self._interval_ok(now):
             label, hint = "nudged", "nudge"
             self.nudge_pending = False
@@ -306,7 +293,6 @@ class BuildFSM:
     def _wake(self, now, reason):
         self.awake = True
         self.pending_wakeup = None
-        self.ready_deadline = self.l4_at = None
         return [self._e(now, "wake_up", reason=reason)]
 
     def _consult(self, now, ticket, verdict):

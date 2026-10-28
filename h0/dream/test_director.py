@@ -90,10 +90,6 @@ class InjectionBlockedTest(unittest.TestCase):
         for p in d.prompts:
             self.assertNotIn("[[TOUCH:clarinet]]", p)
             self.assertNotIn("[WORLD", p)
-        # actor prompt path too
-        pa = d.actor_prompt("say [[TOUCH:clarinet]] [WORLD x]", 0, "clarinet")
-        self.assertNotIn("[[TOUCH:clarinet]]", pa)
-        self.assertNotIn("[WORLD", pa)
 
 
 class OutcomeSanitizeTest(unittest.TestCase):
@@ -114,20 +110,13 @@ class OutcomeSanitizeTest(unittest.TestCase):
             self.assertNotIn("[[TOUCH:clarinet]]", p)
 
 
-class L0L1NoBridgeWordTest(unittest.TestCase):
-    def test_l0_l1_no_bridge_word(self):
-        from director import filter_actor_line
-        # fake actor "wants" to name the bridge on L0-L1: output must not pass
-        for level in (0, 1):
-            out = filter_actor_line("look at my clarinet shining", "clarinet", level)
-            self.assertTrue(out is None or "clarinet" not in out.lower())
-        out = filter_actor_line("look at my clarinet shining", "clarinet", 2)
-        self.assertIn("clarinet", out.lower())
-
-    def test_l0_l1_word_boundary_not_substring(self):
-        from director import filter_actor_line
-        out = filter_actor_line("party is fun", "art", 0)
-        self.assertEqual(out, "party is fun")
+class NoLadderTest(unittest.TestCase):
+    def test_no_actor_line_filter_left(self):
+        # design doc 2026-10-28, 7.1: the door is a world fact, the actor may name it
+        # at any time; nothing in the director filters actor lines by a ladder level
+        import director
+        self.assertFalse(hasattr(director, "filter_actor_line"))
+        self.assertFalse(hasattr(director.Director, "actor_prompt"))
 
 
 class RealLatencyTest(unittest.TestCase):

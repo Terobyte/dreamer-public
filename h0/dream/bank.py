@@ -18,18 +18,29 @@ sys.path.insert(0, HERE)
 from dialogue import _phrases, repeats  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "out", "dream", "bank")
+# Phase 1: paid runs go through bench_f1.py only (ceiling + two-FAIL stop live there);
+# bench_f1 sets this in the child env, a bare `python3 bank.py` refuses
+BENCH_ENV = "DREAM_BENCH_F1"
 
 
-def run_scene(scene, dollars, speed, talk="spark-open"):
-    """One text-only dream -> its run dir (the sim prints outdir=...)."""
+def run_scene(scene, dollars, speed, talk="spark-open", max_seconds=None):
+    """One text-only dream -> its run dir (the sim prints outdir=...).
+    max_seconds is handed to sim.py as is; None keeps the sim's own default."""
     cmd = [sys.executable, os.path.join(HERE, "sim.py"), "--profile", "bank", "--scene", scene,
            "--text", "--speed", str(speed), "--max-transitions", "1",
            "--max-dollars", str(dollars), "--talk", talk]
+    if max_seconds is not None:
+        cmd += ["--max-seconds", str(max_seconds)]
     p = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE, timeout=1200)
+    log = p.stdout + p.stderr
+    # sim.py prints outdir= even when it dies (validation failure exits 1), so the
+    # exit code decides: a broken dream must not be scored as a finished run
+    if p.returncode != 0:
+        return None, "sim exited %s\n%s" % (p.returncode, log)
     for line in p.stdout.splitlines():
         if line.startswith("outdir="):
-            return os.path.realpath(line.split()[0][len("outdir="):]), p.stdout + p.stderr
-    return None, p.stdout + p.stderr
+            return os.path.realpath(line.split()[0][len("outdir="):]), log
+    return None, log
 
 
 def _spoken(text):
@@ -37,9 +48,85 @@ def _spoken(text):
     return re.sub(r"\[[^\]]*\]|<[^>]+>", " ", text)
 
 
+# design doc 2026-10-28, 7.4: "I <emphasis>dare</emphasis> you" in r1 -- tags are
+# stripped first, then the narrow pattern ("don't you dare" is not a dare)
+_DARE = re.compile(r"\bI dare you\b|\bdare you to\b|race me|you go first", re.I)
+MATTR_WINDOW = 100
+
+
+def _mattr_tokens(text):
+    """Tokens for `vocab`: [a-z']+ of the spoken text, lower case (own tokenizer:
+    _phrases may change with --lang, this must not)."""
+    return re.findall(r"[a-z']+", _spoken(text).lower())
+
+
+def mattr(tokens, window=MATTR_WINDOW):
+    """Moving-average type-token ratio: mean share of unique tokens over every
+    window of `window` tokens; a text shorter than the window is one window."""
+    if not tokens:
+        return 0.0
+    if len(tokens) <= window:
+        return len(set(tokens)) / len(tokens)
+    counts, uniq, total, n = {}, 0, 0.0, 0
+    for i, tok in enumerate(tokens):
+        counts[tok] = counts.get(tok, 0) + 1
+        if counts[tok] == 1:
+            uniq += 1
+        if i >= window:
+            old = tokens[i - window]
+            counts[old] -= 1
+            if counts[old] == 0:
+                uniq -= 1
+        if i >= window - 1:
+            total += uniq / window
+            n += 1
+    return total / n
+
+
+def _silence_turns(rows):
+    """Gaps between neighbouring lines holding >= 2 `silence` rows (7.4)."""
+    turns, run, seen_line = 0, 0, False
+    for r in rows:
+        if r["type"] == "line":
+            if seen_line and run >= 2:
+                turns += 1
+            run, seen_line = 0, True
+        elif r["type"] == "silence" and seen_line:
+            run += 1
+    return turns
+
+
+def _max_actor_streak(rows):
+    best = cur = 0
+    for r in rows:
+        if r["type"] != "line":
+            continue
+        cur = cur + 1 if r.get("role") == "actor" else 0
+        best = max(best, cur)
+    return best
+
+
+def _goal_first_line(rows):
+    """Lines of the first scene up to the first `goal done` (the closing line
+    counts); None without a done goal."""
+    n = 0
+    for r in rows:
+        if r["type"] == "transition":
+            return None
+        if r["type"] == "line":
+            n += 1
+        elif r["type"] == "goal" and r.get("status") == "done":
+            return n
+    return None
+
+
 def score(rows):
-    """Craft signals only, the taste call stays with a human reader."""
+    """Craft signals only, the taste call stays with a human reader. Metrics of
+    design doc 7.4: a metric whose events are not in the log yet reads 0,
+    goal_first_line None (action_loops, loop_cuts, lock_rejects, turn_skips come
+    with 1.1, events_fired/planned with 1.3)."""
     lines = [(r.get("who") or "?", r.get("text") or "") for r in rows if r["type"] == "line"]
+    kinds = [r["type"] for r in rows]
     by = {}
     for who, t in lines:
         by.setdefault(who, []).append(t)
@@ -58,15 +145,30 @@ def score(rows):
     spent = max([r.get("dollars") or 0 for r in rows if r["type"] == "cost"] or [0])
     words = [w.lower() for _, t in lines for w in _spoken(t).split()]
     remarks = sum(len(r.get("remarks") or []) for r in rows if r["type"] == "line")
+    roles = [r.get("role") for r in rows if r["type"] == "line"]
+    tokens = [tok for _, t in lines for tok in _mattr_tokens(t)]
+    prompt_tokens = [r.get("tokens") or 0 for r in rows if r["type"] == "prompt"]
     return {"lines": len(lines), "repeats": rep, "bits": bits,
             "hero_q": "%d/%d" % (sum("?" in t for t in hero), len(hero)),
             # craft signals for the weak-vs-strong bench: how much is said per line,
             # how varied the vocabulary is, how thick the stage directions are
             "words_per_line": round(len(words) / max(1, len(lines)), 1),
-            "vocab": round(len(set(words)) / max(1, len(words)), 2),
+            "vocab": round(mattr(tokens), 3),
             "remarks_per_line": round(remarks / max(1, len(lines)), 2),
+            "dare_lines": sum(1 for _, t in lines if _DARE.search(" ".join(_spoken(t).split()))),
+            "hero_lines": roles.count("hero"),
+            "actor_lines": roles.count("actor"),
+            "silence_turns": _silence_turns(rows),
+            "silences_per_line": round(kinds.count("silence") / max(1, len(lines)), 3),
+            "max_actor_streak": _max_actor_streak(rows),
+            "goals_done": sum(1 for r in rows if r["type"] == "goal" and r.get("status") == "done"),
+            "goal_first_line": _goal_first_line(rows),
+            "judge_calls": kinds.count("judge"),
+            "max_prompt_tokens": max(prompt_tokens or [0]),
+            "auto_touch": kinds.count("auto_touch"),
             "build": any(r["type"] == "build" and r.get("phase") == "start" for r in rows),
             "transition": any(r["type"] == "transition" for r in rows),
+            "transitions": kinds.count("transition"),
             "director_fail": sum(1 for r in rows if r["type"] == "director_fail"),
             "invalid": sum(1 for r in rows if r["type"] == "invalid"),
             "spent": round(spent, 4)}
@@ -82,14 +184,30 @@ def main():
     ap.add_argument("--talk", default="spark-open",
                     help="comma list of talk models to compare, e.g. spark-open,wonder")
     ap.add_argument("--runs", type=int, default=1, help="runs per scene per talk model")
+    ap.add_argument("--max-seconds", type=float, default=None,
+                    help="real seconds per run, passed to sim.py (bench: 67.5)")
     args = ap.parse_args()
+    if os.environ.get(BENCH_ENV) != "1":
+        print("refused: bank.py is paid, run it through bench_f1.py (ceiling, ledger)")
+        sys.exit(2)
+    # F12: roof3.json is the gate-regression fixture scene (design doc 7.2), not
+    # a bench scene -- the default list must skip it like it skips start.json
     names = [s for s in args.scenes.split(",") if s] or sorted(
         os.path.basename(p)[:-5] for p in glob.glob(os.path.join(HERE, "scenes", "*.json"))
-        if not p.endswith("start.json"))
+        if not p.endswith(("start.json", "roof3.json")))
     talks = [t for t in args.talk.split(",") if t]
     jobs = [(n, t) for n in names for t in talks for _ in range(args.runs)]
+    # the env flag alone is not a pass: the shared ceiling holds here too,
+    # counted on the expanded job list (an empty --scenes means every scene)
+    import bench_f1
+    spent = sum(r.get("dollars") or 0 for r in bench_f1.load_ledger(bench_f1.LEDGER))
+    if spent + args.max_dollars * len(jobs) > bench_f1.CEILING + 1e-9:
+        print("refused: ledger $%.2f + %d job(s) x $%.2f > ceiling $%.2f"
+              % (spent, len(jobs), args.max_dollars, bench_f1.CEILING))
+        sys.exit(2)
     with ThreadPoolExecutor(args.jobs) as ex:
-        done = list(ex.map(lambda j: j + run_scene(j[0], args.max_dollars, args.speed, j[1]), jobs))
+        done = list(ex.map(lambda j: j + run_scene(j[0], args.max_dollars, args.speed, j[1],
+                                                   args.max_seconds), jobs))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     out, total = [], 0.0
     for name, talk, rundir, log in done:
@@ -100,6 +218,7 @@ def main():
         rows = [json.loads(l) for l in open(os.path.join(rundir, "log.jsonl"), encoding="utf-8")]
         s = score(rows)
         total += s["spent"]
+        print("run=%s" % rundir, flush=True)  # bench_f1 reads the run dirs from here
         out.append("## %s  (%s)\n\n`%s`\n" % (head, os.path.basename(rundir), json.dumps(s, ensure_ascii=False)))
         for r in rows:
             if r["type"] == "line":

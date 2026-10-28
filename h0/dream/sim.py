@@ -185,7 +185,6 @@ class Sim:
         self._notes = {}
         self._hero_world = [START["situation_hero"]] if START.get("situation_hero") else []
         self._actor_events = []
-        self._stalled = False
         self._gen_thread = None
         self._gen_result = None
         self._gen_lock = threading.Lock()
@@ -223,6 +222,7 @@ class Sim:
                                  delay=delay, speed=speed, script=self.script,
                                  outdir=outdir, clock=self.clock, fake=fake)
         self.n_transitions = 0
+        self.stop_reason = None  # why the last run() loop ended (F7: main trusts this, not the wall clock)
         self.playing = False
         self.active_line = None
         self.next_line = None
@@ -327,13 +327,14 @@ class Sim:
         kind = event.get("type")
         if kind == "message" and event.get("to"):
             self._notes.setdefault(event["to"], []).append(str(event.get("note") or ""))
-        elif kind == "hint" and event.get("level") == 4 and self.fsm.bridge:
-            # L4 is a world event (spec 4): the hero sees it, the actor reacts
-            self._hero_world.append("the %s glows and hums, pulling at you" % self.fsm.bridge)
-            self._actor_events.append("the %s glows and hums on its own" % self.fsm.bridge)
-        elif kind == "stall":
-            self._stalled = True
-            self._actor_events.append("%s reached for the %s" % (self.hero, event.get("object")))
+        elif kind == "door":
+            # the door is a world fact the hero hears about: open on ready (the only
+            # road to [[TOUCH]]), locked when he tries it early; actors get no cue
+            obj = event.get("object") or self.fsm.bridge
+            if obj and event.get("state") == "open":
+                self._hero_world.append("the %s has swung open" % obj)
+            elif obj:
+                self._hero_world.append("the %s is locked, it would not budge" % obj)
 
     def _start_line(self, line, audio_seconds=None):
         """The only playback entry point: timing, journal and memory agree."""
@@ -386,8 +387,6 @@ class Sim:
             if hasattr(self.dialogue, "heard"):
                 self.dialogue.heard(event.get("who") or "?", line["text"])
                 self.dialogue.compact([self.hero] + list(self.actors), seen=len(self.transcript))
-            if event.get("role") == "actor":
-                self._stalled = False
         self._count_line()
         if line.get("touch"):
             self._touch(line["touch"], "hero")
@@ -558,7 +557,6 @@ class Sim:
         self.transcript = self.transcript[-2:]
         self._notes = {}
         self._actor_events = []
-        self._stalled = False
         self._hero_world = ["you have just arrived in %s" % self.place]
         if ns:
             self.scene = {"objects": list(ns["objects"]), "actors": list(ns["actors"])}
@@ -662,9 +660,6 @@ class Sim:
         now = self.clock.now()
         world = {"place": self.place, "objects": list(self.scene["objects"]),
                  "actors": list(self.actors)}
-        if self.fsm.state == "ready" and self.fsm.bridge:
-            # bank r4: 0 hero touches in 8 scenes, every crossing was auto_touch
-            world["pull"] = self.fsm.bridge
         transcript = list(self.transcript)
         if role == "hero":
             world_events, self._hero_world = self._hero_world, []
@@ -672,8 +667,8 @@ class Sim:
             fn = self.dialogue.hero_line
         else:
             locked = self.fsm.state in ("building", "ready")
-            state = {"hint_level": self.fsm.hint_level(now), "build_pct": self.fsm.build_pct(now),
-                     "stalled": self._stalled, "bridge": self.fsm.bridge if locked else None}
+            state = {"build_pct": self.fsm.build_pct(now),
+                     "bridge": self.fsm.bridge if locked else None}
             events, self._actor_events = self._actor_events, []
             args = (who, world, transcript, state, list(self._notes.get(who, [])), events,
                     self._personas.get(who, ""))
@@ -767,7 +762,7 @@ class Sim:
                 "place": self.place, "hero": self.hero, "speed": self.speed,
                 "build_state": self.fsm.state, "bridge": self.fsm.bridge,
                 "destination": self.fsm.destination,
-                "build_start": self.fsm.build_start, "hint_level": self.fsm.hint_level(now),
+                "build_start": self.fsm.build_start,
                 "build_pct": self.fsm.build_pct(now), "dollars": get_spent(),
                 "max_dollars": self.max_dollars,
                 "seq": self.logger.seq if self.logger else 0}
@@ -820,6 +815,23 @@ class Sim:
             self._maybe_generate_line()
             last_consult = self._maybe_consult(last_consult)
             self.clock.real_sleep(0.01)
+        # F7: name why the loop ended while the clock is still at the loop end;
+        # a `timeout` row in the log is the only proof the limit was reached.
+        if self.n_transitions >= max_transitions:
+            self.stop_reason = "transitions"
+        elif self.clock.now() - start >= max_seconds:
+            self.stop_reason = "timeout"
+            if self.logger:
+                self.logger.write_event({"t": self.clock.now(), "type": "timeout",
+                                         "reason": "max_seconds"})
+        elif self.stopped:
+            self.stop_reason = "stopped"
+        elif self.dialogue is not None and self.fsm.awake:
+            self.stop_reason = "awake"
+        elif not self._budget_ok():
+            self.stop_reason = "budget"
+        else:
+            self.stop_reason = "done"
         self.director.wait(timeout=max(5.0, self.director.delay + 2.0))
         self._drain_director()
         self.memory.wait(timeout=5.0)
@@ -832,10 +844,12 @@ class Sim:
         return self.n_transitions
 
 
-def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=90.0,
+def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None):
     """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
-    the dream then goes on until "stop", the budget or a wake_up."""
+    the dream then goes on until "stop", the budget or a wake_up.
+    max_seconds=None: 90 s, or long enough for one full build (420/speed + 120);
+    an explicit value is kept as given (the bench passes 67.5)."""
     random.seed(seed)
     base = os.path.join(os.path.dirname(__file__), "..", "out", "dream", profile)
     os.makedirs(base, exist_ok=True)
@@ -850,10 +864,12 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             stamp += 1
     if serve is not None:
         max_seconds = float("inf")
-    elif max_seconds == 90.0 and max_transitions > 0:
+    elif max_seconds is None:
         # one full build alone takes 420/speed sim-seconds (spec 5); fake or
         # live, the run must at least outlive it plus line playback.
-        max_seconds = max(max_seconds, 420.0 / max(speed, 0.01) + 120.0)
+        max_seconds = 90.0
+        if max_transitions > 0:
+            max_seconds = max(max_seconds, 420.0 / max(speed, 0.01) + 120.0)
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
              max_dollars=max_dollars, dialogue=dialogue) as sim:
         viewer = None
@@ -876,11 +892,13 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
 
 
 def run_stress(delay=8.0, speed=20.0, seed=0, max_seconds=12.0):
-    """Slow fake director in a fast world + random TOUCH: races consult_stale (spec 5)."""
+    """Slow fake director in a fast world + random TOUCH: races consult_stale (spec 5).
+    Nothing leaves `ready` by itself any more, so the runner itself throws a
+    [[TOUCH]] at the open door after READY_TOUCH sim-seconds."""
     random.seed(seed)
     rep = {"consult_stale": 0, "bridge_changes_in_building": 0, "exceptions": 0}
-    small = {"build": 40, "ladder": (0, 10, 20, 30), "l4": 2, "auto_touch": 4,
-             "nudge": 10, "force": 20, "cooldown": 5, "min_interval": 1}
+    small = {"build": 40, "ready_timeout": 8, "nudge": 10, "force": 20, "min_interval": 1}
+    READY_TOUCH = 4.0
     sim = None
     try:
         sim = Sim(profile="A", fake=True, speed=speed, delay=delay,
@@ -901,6 +919,7 @@ def run_stress(delay=8.0, speed=20.0, seed=0, max_seconds=12.0):
         start = sim.clock.now()
         last_consult = -1e9
         building_bridge = None
+        ready_since = None
         while sim.clock.now() - start < max_seconds:
             for e in sim._tick():
                 pass
@@ -911,8 +930,16 @@ def run_stress(delay=8.0, speed=20.0, seed=0, max_seconds=12.0):
                     rep["bridge_changes_in_building"] += 1
             else:
                 building_bridge = None
+            if sim.fsm.state == "ready" and sim.fsm.bridge:
+                if ready_since is None:
+                    ready_since = sim.clock.now()
+                elif sim.clock.now() - ready_since >= sim.clock.scale(READY_TOUCH):
+                    sim._touch(sim.fsm.bridge, "stress")
+                    ready_since = None
+            else:
+                ready_since = None
             if sim.fsm.objects and random.random() < 0.3:
-                sim.fsm.touch(sim.clock.now(), random.choice(sim.fsm.objects))
+                sim._touch(random.choice(sim.fsm.objects), "stress")
             # unlike Sim._maybe_consult, also consult while locked: that's
             # exactly the race (in-flight consult outlives a ready->transition)
             # this stress test is hunting for.
@@ -1001,6 +1028,9 @@ def main():
                     help="dialogue only: no Fish voice, no Muse images (scene bank runs)")
     ap.add_argument("--talk", default="spark-open",
                     help="model for hero/actors/compress: spark-open (free) | spark | wonder")
+    ap.add_argument("--max-seconds", type=float, default=None,
+                    help="stop after this many real seconds (bench: 67.5); "
+                         "default 420/speed + 120, i.e. one full build")
     args = ap.parse_args()
     use_scene(args.scene)
     set_talk_model(args.talk)
@@ -1020,7 +1050,8 @@ def main():
     outdir, logpath = run(profile=args.profile, fake=args.fake, speed=args.speed,
                            max_transitions=args.max_transitions, media=media,
                            max_dollars=args.max_dollars, dialogue=dialogue,
-                           serve=args.port if args.serve else None)
+                           serve=args.port if args.serve else None,
+                           max_seconds=args.max_seconds)
     rows = [json.loads(l) for l in open(logpath, encoding="utf-8")]
     transitions = sum(1 for r in rows if r["type"] == "transition")
     stopped = any(r["type"] in ("stop", "wake_up") for r in rows)
@@ -1029,7 +1060,13 @@ def main():
           % (outdir, transitions, report["checked_files"], report["spent"]))
     for issue in report["issues"]:
         print("issue: " + issue)
-    done = transitions >= args.max_transitions or (args.serve and stopped)
+    # a run that ran out its --max-seconds is a finished run (debt D5): the number
+    # of transitions goes on the sheet, it is not a gate. Only the loop itself
+    # confirms the timeout (a `timeout` row in the log): the wall clock around
+    # run() also covers waits and checks, so an early budget stop reads as done.
+    timed_out = (args.max_seconds is not None
+                 and any(r.get("type") == "timeout" for r in rows))
+    done = transitions >= args.max_transitions or (args.serve and stopped) or timed_out
     sys.exit(0 if done and report["ok"] else 1)
 
 

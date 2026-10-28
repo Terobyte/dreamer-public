@@ -4,7 +4,6 @@ usage: cd h0/dream && python3 -m unittest -q
 
 import json
 import os
-import re
 import threading
 
 from clock import Clock
@@ -66,15 +65,6 @@ def validate_decision(decision, objects, actors, pool):
     return (False, [err[0]]) if err else (True, [])
 
 
-def filter_actor_line(line, bridge, hint_level):
-    """H17: on L0-L1 the actor must not name the bridge (whole word); blocked -> None."""
-    if hint_level in (0, 1) and bridge:
-        pattern = r"\b" + re.escape(bridge.lower()) + r"\b"
-        if re.search(pattern, line.lower()):
-            return None
-    return line
-
-
 def _sanitize_human(text):
     return sanitize(text, "human")[0]
 
@@ -126,18 +116,6 @@ class Director:
         with self._events_lock:
             events, self.completed_events = self.completed_events, []
             return events
-
-    def actor_prompt(self, line, hint_level, bridge, build_pct=None, stalled=False):
-        """Actor-side prompt text; human injections are stripped first."""
-        clean, _ = sanitize(line, "actor")
-        kept = filter_actor_line(clean, bridge, hint_level)
-        state = "[STATE hint_level=%d" % hint_level
-        if build_pct is not None:
-            state += " build=%d%%" % build_pct
-        if stalled:
-            state += " stalled=true"
-        state += "]"
-        return "%s %s" % (state, kept if kept is not None else "...")
 
     def _prompt_text(self, events, ticket=None):
         parts = []
