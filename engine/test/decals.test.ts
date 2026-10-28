@@ -209,3 +209,97 @@ describe("decal overlap across the t=0 seam on a closed edge", () => {
     expect(stageIssues(report).map((i) => i.code)).toEqual(["DECAL_HIDDEN"]);
   });
 });
+
+describe("terra re-review", () => {
+  test("test_decal_on_snapped_axis", () => {
+    // b's corner snaps onto a's [4,0]: its edge 0 rides the merged axis z = 0
+    const room = (id: string, shape: number[][]): any => ({ id, level: "L0", height: 3, shape, floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, 2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", [[0, 0], [4, 0], [4, 4], [0, 4]]), room("b", [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]])],
+      openings: [{ id: "d", kind: "arch", at: [4, 2], width: 0.9 }],
+      decals: [{ asset: "x", room: "b", on: { room: "b", edge: 0, t: 0.5 }, size: { w: 0.5, h: 0.5 } }],
+    };
+    const { report } = runCheck(raw, { until: "decals" });
+    expect(report.errors).toEqual([]);
+    const d = (report.passport.decals as any[])[0];
+    expect(d.center[2]).toBeCloseTo(0.08, 3);
+  });
+
+  const decalAt = (m: number, w: number): any =>
+    ({ asset: "d_portrait", room: "living", on: { room: "living", edge: 3, m }, y: 1.5, size: { w, h: 0.4 } });
+
+  test("test_decal_on_opening_across_interval_split", () => {
+    // living#3 splits at m = 2 where hall's wall starts; the ranges still meet at [1.8, 1.9]
+    const { report } = runCheck(patched([
+      { op: "add", path: "/openings/-", value: { id: "w3", kind: "window", on: { room: "living", edge: 3, m: 1.7 }, width: 0.4, height: 1, sill: 1, outside: { backdrop: "d_sea" } } },
+      { op: "add", path: "/decals/-", value: decalAt(2.1, 0.6) },
+    ]), { until: "decals" });
+    expect(stageIssues(report).map((i) => i.code)).toContain("DECAL_ON_OPENING");
+  });
+
+  test("test_decal_overlap_across_interval_split", () => {
+    const { report } = runCheck(patched([
+      { op: "add", path: "/decals/-", value: decalAt(1.9, 0.6) },
+      { op: "add", path: "/decals/-", value: decalAt(2.1, 0.6) },
+    ]), { until: "decals" });
+    expect(stageIssues(report).map((i) => i.code)).toContain("DECAL_OVERLAP");
+  });
+
+  test("test_decal_vs_opening_other_level", () => {
+    const room = (id: string, level: string): any => ({ id, level, height: 3, shape: [[0, 0], [4, 0], [4, 4], [0, 4]], floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, 2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }, { id: "L1", y: 4 }],
+      rooms: [room("a", "L0"), room("b", "L1")],
+      openings: [{ id: "w", kind: "window", on: { room: "a", edge: 0, t: 0.5 }, width: 1, height: 1, sill: 1, outside: { backdrop: "x" } }],
+      decals: [{ asset: "x", room: "b", on: { room: "b", edge: 0, t: 0.5 }, y: 1.5, size: { w: 0.5, h: 0.5 } }],
+    };
+    const { report } = runCheck(raw, { until: "decals" });
+    expect(stageIssues(report)).toEqual([]);
+  });
+
+  test("test_decal_wider_than_arc_face", () => {
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "r", at: [0, 0], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [{ id: "r", level: "L0", height: 3, circle: { c: [0, 0], r: 3 }, floor: "m", ceiling: "m", walls: { material: "m" } }],
+      decals: [{ asset: "x", room: "r", on: { room: "r", edge: 0, t: 0 }, y: 1.5, size: { w: 10, h: 0.5 } }],
+    };
+    const { report } = runCheck(raw, { until: "decals" });
+    expect(stageIssues(report).map((i) => i.code)).toEqual(["DECAL_OFF_WALL"]);
+  });
+
+  test("test_decal_taller_than_room_no_y_fix", () => {
+    const { report } = runCheck(patched([
+      { op: "replace", path: "/decals/0/size/h", value: 4 },
+      { op: "replace", path: "/decals/0/y", value: 1.5 },
+    ]), { until: "decals" });
+    const e = stageIssues(report).find((i) => i.code === "DECAL_OFF_WALL")!;
+    expect(e.fix).toBeUndefined();
+  });
+
+  test("test_decal_at_search_on_snapped_axis", () => {
+    // the shared wall sits at x = 4 after snapping; [3.91, 1] is 0.09 m from it
+    const room = (id: string, shape: number[][]): any => ({ id, level: "L0", height: 3, shape, floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, 2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", [[0, 0], [4, 0], [4, 4], [0, 4]]), room("b", [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]])],
+      openings: [{ id: "d", kind: "arch", at: [4, 3], width: 0.9 }],
+      decals: [{ asset: "x", room: "b", at: [3.91, 1], y: 1.5, size: { w: 0.5, h: 0.5 } }],
+    };
+    const { report } = runCheck(raw, { until: "decals" });
+    expect(stageIssues(report)).toEqual([]);
+  });
+});
+

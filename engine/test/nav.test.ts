@@ -136,3 +136,35 @@ describe("nav", () => {
     expect(again).toEqual(nav);
   });
 });
+
+describe("terra re-review", () => {
+  it("window on an arc adds no obstacle beyond the curved wall", () => {
+    // `sea` (sill 1 m) is wall for the capsule; restoring it must give back
+    // the curved wall, not a chord rectangle reaching into the room
+    const withWin = runCheck(demoFlat()).ctx;
+    const noWin = runCheck(patched([{ op: "remove", path: "/openings/1" }])).ctx;
+    const a = buildNav(withWin);
+    const b = buildNav(noWin);
+    expect(isWalkable(b, 0, -5.28)).toBe(true);
+    expect(isWalkable(a, 0, -5.28)).toBe(true);
+  });
+});
+
+describe("terra re-review 4", () => {
+  it("arch through a curved shared wall is passable", () => {
+    const room = (id: string, shape: any[]): any => ({ id, level: "L0", height: 3, shape, floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "A", at: [0, -2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: {},
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [
+        room("A", [[3, 0, { bulge: 1 }], [-3, 0], [-3, -4], [3, -4]]),
+        room("B", [[-3, 0, { bulge: -1 }], [3, 0], [3, 6], [-3, 6]]),
+      ],
+      openings: [{ id: "arch", kind: "arch", on: { room: "A", edge: 0, t: 0.5 }, width: 0.9 }],
+    };
+    const { report } = runCheck(raw);
+    expect([...report.errors, ...report.warnings].map((e) => e.code)).not.toContain("NAV_ROOM_CUT");
+  });
+});

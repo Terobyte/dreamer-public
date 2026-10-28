@@ -3,7 +3,9 @@ import type { Issue } from "../types.js";
 import { EPS, SNAP_EPS } from "../geom/vec.js";
 import type { V2 } from "../geom/vec.js";
 import type { Interval } from "../plan/merge.js";
+import { arcFrac } from "../geom/arc.js";
 import { msg } from "../report/messages.js";
+import { autoGapHeight } from "../schema/validate.js";
 
 export interface OpeningGeo {
   id: string;
@@ -91,7 +93,10 @@ function edgeNormal(e: AuthorEdge, p: V2): V2 {
   const c = e.arc.c;
   const R = e.arc.r || 1;
   let n: V2 = [(p[0] - c[0]) / R, (p[1] - c[1]) / R];
-  if (n[0] * e.normalIn[0] + n[1] * e.normalIn[1] < 0) n = [-n[0], -n[1]];
+  // orientation from the arc midpoint, where the radial is parallel to
+  // `normalIn`; at the ends of a semicircle the radial is perpendicular to it
+  const pm = edgePoint(e, 0.5).p;
+  if ((pm[0] - c[0]) * e.normalIn[0] + (pm[1] - c[1]) * e.normalIn[1] < 0) n = [-n[0], -n[1]];
   const l = Math.hypot(n[0], n[1]) || 1;
   return [n[0] / l, n[1] / l];
 }
@@ -108,10 +113,7 @@ function fracAtPoint(e: AuthorEdge, p: V2): number {
   if (isClosed(e)) return wrapTau(specAng(p, c)) / TAU;
   const sweep = e.arc.sweep ?? 0;
   if (Math.abs(sweep) < EPS) return 0;
-  const a0 = specAng(e.from, c);
-  const rel = wrapTau(specAng(p, c) - a0);
-  const f = sweep >= 0 ? rel / sweep : (rel - TAU) / sweep;
-  return Math.min(1, Math.max(0, f));
+  return arcFrac(wrapTau(specAng(p, c) - specAng(e.from, c)), sweep);
 }
 
 function fracAtAz(e: AuthorEdge, azDeg: number): number {
@@ -119,10 +121,7 @@ function fracAtAz(e: AuthorEdge, azDeg: number): number {
   if (isClosed(e)) return wrapTau(rad) / TAU;
   const sweep = e.arc?.sweep ?? 0;
   if (Math.abs(sweep) < EPS) return 0;
-  const a0 = specAng(e.from, e.arc!.c);
-  const rel = wrapTau(rad - a0);
-  const f = sweep >= 0 ? rel / sweep : (rel - TAU) / sweep;
-  return Math.min(1, Math.max(0, f));
+  return arcFrac(wrapTau(rad - specAng(e.from, e.arc!.c)), sweep);
 }
 
 function segClosest(p: V2, a: V2, b: V2): { d: number; q: V2 } {
@@ -174,10 +173,7 @@ function closestOnArcInterval(p: V2, iv: Interval): { d: number; q: V2 } {
   if (!full) {
     const a0 = specAng(iv.from, c);
     const sweep = arcSweepOf(iv);
-    const rel = wrapTau(ang - a0);
-    const f = sweep >= 0 ? rel / sweep : (rel - TAU) / sweep;
-    const fClamped = Math.min(1, Math.max(0, f));
-    angAtF = a0 + sweep * fClamped;
+    angAtF = a0 + sweep * arcFrac(wrapTau(ang - a0), sweep);
   }
   const q: V2 = [c[0] + r * Math.sin(angAtF), c[1] + r * Math.cos(angAtF)];
   return { d: Math.hypot(p[0] - q[0], p[1] - q[1]), q };
@@ -230,9 +226,12 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       out.push(g);
       return g;
     };
+    const reject = (error: Issue): void => {
+      out.push({ id: String(o.id), kind: String(o.kind), rooms: [] as string[], error } as OpeningGeo);
+    };
 
     const width = o.width as number;
-    const height = o.height as number;
+    let height = o.height as number;
     const sill = o.sill as number;
 
     // locate: riding room, edge, m, center, axis
@@ -319,13 +318,33 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       const lvl = roomById.get(rideRoom)?.level ?? level;
       const cands = (byLevel.get(lvl) ?? []).filter(({ iv }) =>
         iv.sides.some((s) => s.room === rideRoom && s.edge === rideEdge!.i));
-      if (closed) {
+      if (closed && cands.length <= 1) {
         const hit = cands[0];
         if (!hit) return;
         picked = hit.iv;
         pickedIdx = hit.idx;
         level = lvl;
+      } else if (closed) {
+        // a circle split by a shared arc: the opening must sit inside one part
+        const L = rideEdge.len;
+        const side = (c: { iv: Interval }) => c.iv.sides.find((s) => s.room === rideRoom && s.edge === rideEdge!.i)!;
+        const hit = cands.find((c) => fitsCyclic(side(c).m, mRange, L));
+        if (!hit) {
+          const near = cands.find((c) => fitsCyclic(side(c).m, [mRange[0], mRange[0]], L)) ?? cands[0];
+          fail("OPENING_OFF_EDGE",
+            { m0: String(round3(mRange[0])), m1: String(round3(mRange[1])), edge: `${rideRoom}#${rideEdge.i}`, a: String(round3(side(near).m[0])), b: String(round3(side(near).m[1])) });
+          return;
+        }
+        picked = hit.iv;
+        pickedIdx = hit.idx;
+        level = lvl;
       } else {
+        // the authored edge bounds first: a snapped interval may reach past them
+        if (mRange[0] < -1e-6 || mRange[1] > rideEdge.len + 1e-6) {
+          fail("OPENING_OFF_EDGE",
+            { m0: String(round3(mRange[0])), m1: String(round3(mRange[1])), edge: `${rideRoom}#${rideEdge.i}`, a: "0", b: String(round3(rideEdge.len)) });
+          return;
+        }
         let hit: { iv: Interval; idx: number } | undefined;
         let addr = "";
         let addrRange: [number, number] = [0, 0];
@@ -349,9 +368,11 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       }
     } else {
       // `at` case: verify the picked interval covers mRange in riding-edge coords
-      if (!closed) {
+      {
         const side = picked.sides.find((s) => s.room === rideRoom && s.edge === rideEdge!.i);
-        const covers = side && side.m[0] - 1e-6 <= mRange[0] && mRange[1] <= side.m[1] + 1e-6;
+        const covers = side && (closed
+          ? fitsCyclic(side.m, mRange, rideEdge.len)
+          : side.m[0] - 1e-6 <= mRange[0] && mRange[1] <= side.m[1] + 1e-6);
         if (!covers) {
           const a = side ? side.m[0] : 0;
           const b = side ? side.m[1] : 0;
@@ -363,6 +384,19 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
     }
 
     const roomsList = [...new Set(picked.sides.map((s) => s.room))].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    // the leaf can only open into a room the opening joins; an invalid opening
+    // takes part in nothing downstream, not even overlap checks of later ones
+    const sw = o.leaf?.swing;
+    if (typeof sw === "string" && !roomsList.includes(sw)) {
+      const p = `${path}/leaf/swing`;
+      reject({ code: "REF_UNKNOWN", stage: "openings", path: p, msg: msg("REF_UNKNOWN", { path: p, kind: "комната проёма", v: sw, have: roomsList.join(", ") }) });
+      return;
+    }
+    // a default gap height is the lower ceiling of the sides actually resolved
+    if (autoGapHeight.has(o)) {
+      const hs = roomsList.map((r) => roomById.get(r)?.height).filter((h): h is number => typeof h === "number");
+      if (hs.length > 0) height = o.height = Math.min(...hs);
+    }
     // canonicalize to the first room in scene order so a shared wall reports
     // the same edge/m/rooms regardless of which side `on` named
     const canonRoom = roomsList[0];
@@ -404,9 +438,12 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
     // too high
     const ceils = roomsList.map((r) => ({ r, h: roomById.get(r)?.height as number })).filter((x) => typeof x.h === "number");
     const low = ceils.length > 0 ? ceils.reduce((a, b) => (b.h < a.h ? b : a)) : undefined;
-    if (low && sill + height > low.h + 1e-9) {
+    if (low && sill + height > low.h + EPS) {
+      // rounded down so the fix stays under the ceiling; a sill at (or within
+      // 1 mm of) the ceiling has no valid positive `height` to suggest
+      const fixH = Math.floor((low.h - sill) * 1000 + 1e-9) / 1000;
       fail("OPENING_TOO_HIGH", { v: String(round3(sill + height)), room: low.r, h: String(round3(low.h)) },
-        { height: round3(low.h - sill) });
+        fixH > 0 ? { height: fixH } : undefined);
       return;
     }
 
@@ -416,6 +453,22 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       return;
     }
 
+    // the author edge may sit off the merged axis (snapped corners): put the
+    // opening on the wall it cuts, i.e. the picked interval's line or circle
+    const iv = picked;
+    const onAxis = (p: V2): V2 => {
+      if (iv.arc) {
+        const c = iv.arc.c;
+        const l = Math.hypot(p[0] - c[0], p[1] - c[1]) || 1;
+        return [c[0] + ((p[0] - c[0]) * iv.arc.r) / l, c[1] + ((p[1] - c[1]) * iv.arc.r) / l];
+      }
+      const dx = iv.to[0] - iv.from[0];
+      const dz = iv.to[1] - iv.from[1];
+      const l2 = dx * dx + dz * dz || 1;
+      const k = ((p[0] - iv.from[0]) * dx + (p[1] - iv.from[1]) * dz) / l2;
+      return [iv.from[0] + dx * k, iv.from[1] + dz * k];
+    };
+    center = onAxis(center);
     const n = edgeNormal(rideEdge, center);
     const th = picked.thickness;
     // chord endpoints on the wall axis (on arcs they lie on the arc, not on the
@@ -423,7 +476,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
     const L = rideEdge.len || 1;
     const f0 = closed01Edge(rideEdge, mRange[0] / L);
     const f1 = closed01Edge(rideEdge, mRange[1] / L);
-    const ends: [V2, V2] = [edgePoint(rideEdge, f0).p, edgePoint(rideEdge, f1).p];
+    const ends: [V2, V2] = [onAxis(edgePoint(rideEdge, f0).p), onAxis(edgePoint(rideEdge, f1).p)];
     const hd = 0.8;
     const cx = (ends[0][0] + ends[1][0]) / 2;
     const cz = (ends[0][1] + ends[1][1]) / 2;
@@ -545,9 +598,7 @@ function sRange(iv: Interval, _idx: number, _lvl: string, center: V2, mRange: [n
   const Li = Math.abs(r * sweep) || 1;
   const a0 = specAng(iv.from, c);
   const sOf = (p: V2): number => {
-    const rel = wrapTau(specAng(p, c) - a0);
-    const f = sweep >= 0 ? rel / sweep : (rel - TAU) / sweep;
-    return Math.min(1, Math.max(0, f)) * Li;
+    return arcFrac(wrapTau(specAng(p, c) - a0), sweep) * Li;
   };
   const L = e.len || 1;
   const f0 = mRange[0] / L;
@@ -557,6 +608,15 @@ function sRange(iv: Interval, _idx: number, _lvl: string, center: V2, mRange: [n
   const a = sOf(p0);
   const b = sOf(p1);
   return [Math.min(a, b), Math.max(a, b)];
+}
+
+/** does `r` lie inside the side range `m` of a closed edge of length `L`?
+ *  Both may wrap past the seam: a part of a split circle runs [a, b], b ≤ a + L */
+function fitsCyclic(m: [number, number], r: [number, number], L: number): boolean {
+  if (m[1] - m[0] >= L - 1e-6) return true;
+  const lo = ((r[0] % L) + L) % L;
+  const hi = lo + (r[1] - r[0]);
+  return [0, L, -L].some((k) => m[0] - 1e-6 <= lo + k && hi + k <= m[1] + 1e-6);
 }
 
 function closed01(e: AuthorEdge, f: number): number {

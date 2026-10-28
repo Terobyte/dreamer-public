@@ -34,11 +34,10 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
     for (const i of list) (CODES[i.code].level === "warn" ? warnings : errors).push(i);
   };
 
-  const planIssues = planStage(ctx);
-  push(planIssues);
-
-  const planFailed = errors.some((e) => e.stage === "plan");
   const want: Stage[] = STAGES.slice(0, untilIdx + 1);
+  if (want.includes("plan")) push(planStage(ctx));
+
+  const planFailed = !want.includes("plan") || errors.some((e) => e.stage === "plan");
   if (!planFailed && want.includes("openings")) {
     push(openingsStage(ctx));
   }

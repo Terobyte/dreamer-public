@@ -56,7 +56,16 @@ export function applySwing(
   opts: { swingRoom: string; hinge?: "left" | "right" | null; nSwing: V2; swingFrom: V2; swingTo: V2; leafOpen: boolean; kind: string },
 ): void {
   g.swing = opts.swingRoom;
-  const { left, right } = jambsFor(g.center, g.axis, opts.nSwing, g.width);
+  // jambs are the chord ends. Spec: on an arc the jamb («откос») runs along the
+  // chord, and the chord is exactly `width` long, so its ends are the spec's
+  // "centre ± L·width/2" taken from the chord midpoint. From the axis point at
+  // `m` instead, ± L·width/2 lands off the wall, outside the room on a circle.
+  // On straight walls both readings coincide. Left/right by L = (f.z, -f.x), f = -n
+  const { L } = jambsFor(g.center, g.axis, opts.nSwing, g.width);
+  const side = (p: V2): number => (p[0] - g.center[0]) * L[0] + (p[1] - g.center[1]) * L[1];
+  const [e0, e1] = g.ends;
+  const left: V2 = side(e0) >= side(e1) ? e0 : e1;
+  const right: V2 = left === e0 ? e1 : e0;
   let hinge = opts.hinge ?? null;
   if (!hinge) {
     const dL = Math.min(

@@ -60,13 +60,13 @@ export function planStage(ctx: Ctx): Issue[] {
           segs.push({ t0: lo, t1: hi, neigh });
         }
       } else {
-        // arc edge: for shared-wall test, sides cover [0, len]
+        // arc edge: the interval side carries its own m range
         for (const iv of mine) {
           if (!iv.arc) continue;
           const side = iv.sides.find((s: Side) => s.room === r.id && s.edge === e.i)!;
           const neigh = iv.sides.find((s: Side) => !(s.room === r.id && s.edge === e.i));
           if (!neigh) continue;
-          segs.push({ t0: 0, t1: e.len, neigh });
+          segs.push({ t0: side.m[0], t1: side.m[1], neigh });
         }
       }
       segs.sort((a, b) => a.t0 - b.t0);
@@ -85,9 +85,15 @@ export function planStage(ctx: Ctx): Issue[] {
         from: e.from,
         to: e.to,
         len: e.len,
-        arc: e.arc,
+        // the report's arc is {c, r}; the sweep stays internal
+        arc: e.arc ? { c: e.arc.c, r: e.arc.r } : null,
         normal_in: e.normalIn,
-        sides: merged.map((m) => ({ room: m.room, m: [m.t0, m.t1] })),
+        // a part of a split circle may run past the seam: report it in [0, len]
+        sides: merged
+          .flatMap((m) => (m.t1 > e.len + 1e-6
+            ? [{ room: m.room, m: [m.t0, e.len] }, { room: m.room, m: [0, m.t1 - e.len] }]
+            : [{ room: m.room, m: [m.t0, m.t1] }]))
+          .sort((x, y) => x.m[0] - y.m[0]),
       });
     });
   }

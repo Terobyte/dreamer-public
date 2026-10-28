@@ -3,7 +3,7 @@ import { runCheck } from "../src/check.js";
 import { signedArea } from "../src/geom/poly.js";
 import { obbCorners } from "../src/geom/obb.js";
 import { compileRooms } from "../src/plan/rooms.js";
-import { placeProps } from "../src/props/place.js";
+import { closestOnEdge, placeProps } from "../src/props/place.js";
 import type { PropGeo } from "../src/types.js";
 import { round3 } from "../src/report/report.js";
 import { demoFlat, patched } from "./helpers/scene.js";
@@ -455,3 +455,186 @@ describe("props", () => {
     expect(Math.max(...obbCorners(p.obb).map((c) => c[0]))).toBeCloseTo(3.78, 6);
   });
 });
+
+describe("terra re-review", () => {
+  test("test_top_of_face_coincident_target", () => {
+    // vase sits on the table centre [0,0]; facing that same point is undefined
+    for (const face of [[0, 0], "table"]) {
+      const { report } = runCheck(patched([
+        { op: "remove", path: "/props/3/yaw" },
+        { op: "add", path: "/props/3/face", value: face },
+      ]), { until: "props" });
+      expect(report.errors.map((e) => [e.code, e.path])).toEqual([["POS_INVALID", "/props/3/face"]]);
+    }
+  });
+
+  test("test_closest_on_arc_outside_sweep_takes_nearer_end", () => {
+    const e: any = {
+      id: "r#0", room: "r", i: 0, from: [0, 1], to: [1, 0],
+      arc: { c: [0, 0], r: 1, sweep: Math.PI / 2 }, len: Math.PI / 2, normalIn: [0, -1],
+    };
+    const { q, d } = closestOnEdge([-0.1, 0.995], e);
+    expect(q[0]).toBeCloseTo(0, 9);
+    expect(q[1]).toBeCloseTo(1, 9);
+    expect(d).toBeCloseTo(Math.hypot(0.1, 0.005), 9);
+  });
+
+  test("test_face_target_resolved_wall_position", () => {
+    // `cab` is pulled onto living#0; a prop standing exactly where it resolves
+    // and facing it has no direction
+    const cab = { id: "cab", asset: "p_vase", cat: "vase", room: "living", at: [-3.5, 1], size: { w: 0.3, d: 0.28, h: 0.3 }, mount: "wall", y: 1.5, solid: false };
+    const first = runCheck(patched([{ op: "add", path: "/props/-", value: cab }]), { until: "props" });
+    const c = (first.ctx.props as PropGeo[]).find((p) => p.id === "cab")!.obb.c;
+    const { report } = runCheck(patched([
+      { op: "add", path: "/props/-", value: cab },
+      { op: "add", path: "/props/-", value: { id: "pot", asset: "p_vase", cat: "vase", room: "living", at: [c[0], c[1]], size: { w: 0.2, d: 0.2, h: 0.3 }, face: "cab", solid: false } },
+    ]), { until: "props" });
+    expect(report.errors.map((e) => [e.code, e.path])).toEqual([["POS_INVALID", "/props/6/face"]]);
+  });
+
+  test("test_face_room_uses_merged_wall_thickness", () => {
+    const room = (id: string, x0: number, x1: number, t?: number): any => ({
+      id, level: "L0", height: 3, shape: [[x0, 0], [x1, 0], [x1, 4], [x0, 4]],
+      floor: "m", ceiling: "m", walls: { material: "m", ...(t ? { thickness: t } : {}) },
+    });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [1, 1], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { o: { kind: "object", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", 0, 4), room("b", 4, 6, 0.4)],
+      openings: [{ id: "d", kind: "arch", at: [4, 3], width: 0.9 }],
+      props: [{ id: "p", asset: "o", cat: "vase", room: "a", at: [1.95, 2], size: { w: 0.3, d: 0.3, h: 0.5 }, face: "room", solid: false }],
+    };
+    const { report } = runCheck(raw, { until: "props" });
+    expect(report.errors).toEqual([]);
+    expect((report.passport.props as any[]).find((p) => p.id === "p").yaw).toBe(270);
+  });
+
+  test("test_hits_wall_depth_from_merged_face", () => {
+    // the shared wall of a/b is 0.4 thick: its inner face in `a` is x = 3.8
+    const room = (id: string, x0: number, x1: number, t?: number): any => ({
+      id, level: "L0", height: 3, shape: [[x0, 0], [x1, 0], [x1, 4], [x0, 4]],
+      floor: "m", ceiling: "m", walls: { material: "m", ...(t ? { thickness: t } : {}) },
+    });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [1, 1], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { o: { kind: "object", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", 0, 4), room("b", 4, 6, 0.4)],
+      openings: [{ id: "d", kind: "arch", at: [4, 3], width: 0.9 }],
+      props: [{ id: "p", asset: "o", cat: "box", room: "a", at: [3.7, 1.5], size: { w: 0.4, d: 0.4, h: 0.5 }, yaw: 0 }],
+    };
+    const { report } = runCheck(raw, { until: "props" });
+    const e = report.errors.find((x) => x.code === "PROP_HITS_WALL")!;
+    expect(e.msg).toContain("0.1 м");
+    expect(e.fix).toEqual({ at: [3.59, 1.5] });
+  });
+
+  test("test_mutual_face_targets_resolve", () => {
+    const pr = (id: string, at: number[], face: string): any => ({ id, asset: "p_vase", cat: "vase", room: "living", at, size: { w: 0.2, d: 0.2, h: 0.3 }, face, solid: false });
+    const { report } = runCheck(patched([
+      { op: "add", path: "/props/-", value: pr("a", [2, 2], "b") },
+      { op: "add", path: "/props/-", value: pr("b", [3, 2], "a") },
+    ]), { until: "props" });
+    const yaw = (id: string) => (report.passport.props as any[]).find((p) => p.id === id)?.yaw;
+    expect([yaw("a"), yaw("b")]).toEqual([90, 270]);
+  });
+
+  test("test_top_of_face_point_on_resolved_support", () => {
+    const cab = { id: "cab", asset: "p_vase", cat: "vase", room: "living", at: [-3.5, 1], size: { w: 0.8, d: 0.4, h: 0.3 }, mount: "wall", y: 1, solid: false };
+    const first = runCheck(patched([{ op: "add", path: "/props/-", value: cab }]), { until: "props" });
+    const c = (first.ctx.props as PropGeo[]).find((p) => p.id === "cab")!.obb.c;
+    const { report } = runCheck(patched([
+      { op: "add", path: "/props/-", value: cab },
+      { op: "add", path: "/props/-", value: { id: "pot", asset: "p_vase", cat: "vase", room: "living", mount: { top_of: "cab" }, size: { w: 0.2, d: 0.2, h: 0.3 }, face: [c[0], c[1]], solid: false } },
+    ]), { until: "props" });
+    expect(report.errors.map((e) => [e.code, e.path])).toEqual([["POS_INVALID", "/props/6/face"]]);
+  });
+
+  test("test_wall_search_strict_limit", () => {
+    // 0.9999995 m from living#0 is strictly closer than 1 m
+    const { report } = runCheck(patched([
+      { op: "add", path: "/props/-", value: { id: "cab", asset: "p_vase", cat: "vase", room: "living", at: [-3.0000005, 1], size: { w: 0.3, d: 0.2, h: 0.3 }, mount: "wall", y: 1.5, solid: false } },
+    ]), { until: "props" });
+    expect(report.errors.map((e) => e.code)).not.toContain("PROP_WALL_NOT_FOUND");
+    expect((report.passport.props as any[]).some((p) => p.id === "cab")).toBe(true);
+  });
+
+  test("test_face_wall_prop_authored_at_not_final", () => {
+    // `cab` is pulled from its authored [-3.5, 1] onto living#0, so a prop
+    // standing at [-3.5, 1] can still face it
+    const cab = { id: "cab", asset: "p_vase", cat: "vase", room: "living", at: [-3.5, 1], size: { w: 0.3, d: 0.28, h: 0.3 }, mount: "wall", y: 1.5, solid: false };
+    const { report } = runCheck(patched([
+      { op: "add", path: "/props/-", value: cab },
+      { op: "add", path: "/props/-", value: { id: "pot", asset: "p_vase", cat: "vase", room: "living", at: [-3.5, 1], size: { w: 0.2, d: 0.2, h: 0.3 }, face: "cab", solid: false } },
+    ]), { until: "props" });
+    expect(report.errors).toEqual([]);
+    expect((report.passport.props as any[]).find((p) => p.id === "pot").yaw).toBe(270);
+  });
+
+  const tiny = (rooms: any[], props: any[]): any => ({
+    version: 0, name: "t",
+    spawn: { room: rooms[0].id, at: [2, 1], yaw: 0 },
+    materials: { m: { color: "#ffffff" } }, assets: { o: { kind: "object", prompt: "x" } },
+    levels: [{ id: "L0", y: 0 }],
+    rooms: rooms.map((r) => ({ level: "L0", height: 3, floor: "m", ceiling: "m", walls: { material: "m" }, ...r })),
+    props,
+  });
+  const wallBox = (room: string, on: any): any => ({ id: "w", asset: "o", cat: "vase", room, on, mount: "wall", y: 1, size: { w: 0.4, d: 0.4, h: 0.4 }, solid: false });
+
+  test("test_semicircle_endpoint_normal_inward", () => {
+    // at a semicircle's end the radial is parallel to the chord: the sign must
+    // still come from the arc's orientation, not from a zero dot product
+    const raw = tiny([{ id: "r", shape: [[0, 3, { bulge: 1 }], [0, -3], [4, -3], [4, 3]] }], [wallBox("r", { room: "r", edge: 0, t: 0 })]);
+    const { report } = runCheck(raw, { until: "props" });
+    expect(report.errors).toEqual([]);
+    const w = (report.passport.props as any[]).find((p) => p.id === "w");
+    expect(w.yaw).toBe(180);
+  });
+
+  test("test_wall_prop_on_snapped_axis", () => {
+    const raw = tiny([
+      { id: "a", shape: [[0, 0], [4, 0], [4, 4], [0, 4]] },
+      { id: "b", shape: [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]] },
+    ], [wallBox("b", { room: "b", edge: 0, t: 0.5 })]);
+    raw.openings = [{ id: "d", kind: "arch", at: [4, 2], width: 0.9 }];
+    const { ctx } = runCheck(raw, { until: "props" });
+    const c = (ctx.props as PropGeo[]).find((p) => p.id === "w")!.obb.c;
+    expect(c[1]).toBeCloseTo(0.06 + 0.02 + 0.2, 6);
+  });
+
+  test("test_face_room_on_snapped_axes", () => {
+    // b's left wall snapped from x = 4.06 to the shared x = 4: the top wall is nearer
+    const raw = tiny([
+      { id: "a", shape: [[0, 0], [4, 0], [4, 4], [0, 4]] },
+      { id: "b", shape: [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]] },
+    ], [{ id: "p", asset: "o", cat: "vase", room: "b", at: [6.02, 2.06], size: { w: 0.2, d: 0.2, h: 0.3 }, face: "room", solid: false }]);
+    raw.openings = [{ id: "d", kind: "arch", at: [4, 2], width: 0.9 }];
+    const { report } = runCheck(raw, { until: "props" });
+    expect((report.passport.props as any[]).find((p) => p.id === "p").yaw).toBe(180);
+  });
+
+  test("test_wall_search_on_snapped_axis", () => {
+    // b's left wall snapped from x = 4.06 to 4: [5.03, 2] is 1.03 m from it
+    const raw = tiny([
+      { id: "a", shape: [[0, 0], [4, 0], [4, 4], [0, 4]] },
+      { id: "b", shape: [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]] },
+    ], [{ id: "w", asset: "o", cat: "vase", room: "b", at: [5.03, 2], mount: "wall", y: 1, size: { w: 0.4, d: 0.4, h: 0.4 }, solid: false }]);
+    raw.openings = [{ id: "d", kind: "arch", at: [4, 3], width: 0.9 }];
+    const { report } = runCheck(raw, { until: "props" });
+    expect(report.errors.map((e) => e.code)).toEqual(["PROP_WALL_NOT_FOUND"]);
+  });
+
+  test("test_wall_prop_wider_than_tiny_circle_is_finite", () => {
+    // the inner face of an r = 0.05 circle has no 0.2 m chord: report it, no NaN
+    const raw = tiny([{ id: "r", circle: { c: [0, 0], r: 0.05 } }],
+      [{ ...wallBox("r", { room: "r", edge: 0, t: 0 }), size: { w: 0.2, d: 0.1, h: 0.2 }, solid: true }]);
+    raw.spawn = { room: "r", at: [0, 0], yaw: 0 };
+    const { report } = runCheck(raw, { until: "props" });
+    expect(JSON.stringify(report)).not.toMatch(/NaN|null\]/);
+    expect(report.errors.map((e) => e.path)).toContain("/props/0/on");
+  });
+});
+

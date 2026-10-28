@@ -103,14 +103,18 @@ describe("openings", () => {
     };
     const { ctx } = runCheck(raw, { until: "openings" });
     const g = (ctx as any).openings[0];
-    // the cut is the chord rectangle: 4 corners, chord ends unchanged, depth = thickness/2
+    // the cut is a chord rectangle: 4 corners, chord ends unchanged; across the
+    // wall it spans thickness/2 below the chord and thickness/2 past the axis
+    // midpoint (the sagitta), so no arc segment survives between the jambs
     const path = cutPath(g);
     expect(path.length).toBe(4);
     const zc = (g.ends[0][1] + g.ends[1][1]) / 2;
+    const sag = g.center[1] - zc;
     const xs = path.map((q: any) => Math.abs(q.x) / 1000).sort((a: number, b: number) => a - b);
     for (const x of xs) expect(x).toBeCloseTo(0.5, 3);
-    const depths = path.map((q: any) => Math.abs(q.y / 1000 - zc)).sort((a: number, b: number) => a - b);
-    for (const d of depths) expect(d).toBeCloseTo(g.thickness / 2, 3);
+    const zs = path.map((q: any) => q.y / 1000 - zc);
+    expect(Math.min(...zs)).toBeCloseTo(-g.thickness / 2, 3);
+    expect(Math.max(...zs)).toBeCloseTo(sag + g.thickness / 2, 3);
   });
 
   test("test_arc_body_flat_jambs", () => {
@@ -288,3 +292,191 @@ describe("openings", () => {
     expect(o.m).toBeCloseTo(Math.PI / 2, 6);
   });
 });
+
+describe("terra re-review", () => {
+  test("test_arc_opening_at_edge_start_no_overlap", () => {
+    // living#1 has a negative sweep; a window whose range starts exactly at the
+    // edge start must map to s = 0, not to the far end of the interval
+    const { report } = runCheck(patched([
+      { op: "replace", path: "/openings/1/on", value: { room: "living", edge: 1, m: 0.5006213827176226 } },
+      { op: "replace", path: "/openings/1/width", value: 1 },
+      { op: "add", path: "/openings/-", value: { id: "w2", kind: "window", on: { room: "living", edge: 1, t: 0.8 }, width: 1, height: 1, sill: 1, outside: { backdrop: "d_sea" } } },
+    ]), { until: "openings" });
+    expect(report.errors.filter((e) => e.stage === "openings")).toEqual([]);
+  });
+
+  test("test_circle_door_hinge_on_chord_face", () => {
+    // jambs are the chord ends, the hinge sits on the swing-side face of the chord
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "r", at: [0, 0], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [{ id: "r", level: "L0", height: 3, circle: { c: [0, 0], r: 3 }, floor: "m", ceiling: "m", walls: { material: "m" } }],
+      openings: [{ id: "d", kind: "door", on: { room: "r", edge: 0, t: 0 }, width: 2, outside: { backdrop: "x" }, leaf: { decal: "x" } }],
+    };
+    const { report } = runCheck(raw, { until: "openings" });
+    expect(report.errors).toEqual([]);
+    const d = passOf(report, "d");
+    expect(Math.abs(d.hinge_at[0])).toBeCloseTo(1, 3);
+    expect(d.hinge_at[1]).toBeCloseTo(Math.sqrt(8) - 0.06, 3);
+  });
+
+  test("test_gap_height_from_resolved_level", () => {
+    // the `at` point is 0.08 m from the L0 wall and on the L1 wall: resolution
+    // takes L1, so the default height is the L1 ceiling
+    const room = (id: string, level: string, h: number, z: number): any => ({
+      id, level, height: h, shape: [[0, -4], [4, -4], [4, z], [0, z]],
+      floor: "m", ceiling: "m", walls: { material: "m" },
+    });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, -2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }, { id: "L1", y: 3 }],
+      rooms: [room("a", "L0", 2.5, 0), room("b", "L1", 3, 0.08)],
+      openings: [{ id: "g", kind: "gap", at: [2, 0.08], width: 1, outside: { backdrop: "x" } }],
+    };
+    const { report } = runCheck(raw, { until: "openings" });
+    expect(report.errors).toEqual([]);
+    const g = passOf(report, "g");
+    expect(g.rooms).toEqual(["b"]);
+    expect(g.height).toBe(3);
+  });
+
+  test("test_shared_wall_opening_listed_on_both_edges", () => {
+    const edges = flatReport.passport.edges as any[];
+    expect(edges.find((e) => e.id === "living#3").openings).toEqual(["front"]);
+    expect(edges.find((e) => e.id === "hall#0").openings).toEqual(["front"]);
+  });
+
+  test("test_on_opening_follows_snapped_axis", () => {
+    // B's corner snaps onto A's [4,0]: its edge 0 rides the merged axis z = 0,
+    // not the authored z = 0.06
+    const room = (id: string, shape: number[][]): any => ({ id, level: "L0", height: 3, shape, floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, 2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", [[0, 0], [4, 0], [4, 4], [0, 4]]), room("b", [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]])],
+      openings: [{ id: "w", kind: "window", on: { room: "b", edge: 0, t: 0.3 }, width: 1, outside: { backdrop: "x" } }],
+    };
+    const { report } = runCheck(raw, { until: "openings" });
+    expect(report.errors.filter((e) => e.path.startsWith("/openings"))).toEqual([]);
+    const w = passOf(report, "w");
+    expect(w.center[1]).toBeCloseTo(0, 3);
+  });
+
+  test("test_arc_flatten_keeps_neighbour_wall", () => {
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "r", at: [0, 0], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [
+        { id: "r", level: "L0", height: 3, circle: { c: [0, 0], r: 3 }, floor: "m", ceiling: "m", walls: { material: "m" } },
+        { id: "n", level: "L0", height: 3, shape: [[-2, 3.15], [2, 3.15], [2, 5], [-2, 5]], floor: "m", ceiling: "m", walls: { material: "m" } },
+      ],
+      openings: [{ id: "w", kind: "window", on: { room: "r", edge: 0, t: 0 }, width: 2, outside: { backdrop: "x" } }],
+    };
+    const { ctx } = runCheck(raw, { until: "openings" });
+    const body = (ctx as any).levels.get("L0").body;
+    // a strip inside n's wall band (3.09..3.21) stays solid
+    const sq = [[-10, 3095], [10, 3095], [10, 3105], [-10, 3105]].map(([x, y]) => ({ x, y }));
+    const left = Clipper.areaPaths(Clipper.intersect(body, [sq], 1));
+    expect(left).toBeCloseTo(200, 0);
+  });
+
+  test("test_too_high_sill_over_ceiling_no_negative_fix", () => {
+    const { report } = runCheck(patched([{ op: "replace", path: "/openings/1/sill", value: 4 }]), { until: "openings" });
+    const e = report.errors.find((x) => x.code === "OPENING_TOO_HIGH")!;
+    expect(e).toBeDefined();
+    const h = (e.fix as any)?.height;
+    if (h !== undefined) expect(h).toBeGreaterThan(0);
+  });
+
+  test("test_off_edge_past_authored_end", () => {
+    // b's edge 0 is 3.94 long; the snapped interval reaches 4, the edge does not
+    const room = (id: string, shape: number[][]): any => ({ id, level: "L0", height: 3, shape, floor: "m", ceiling: "m", walls: { material: "m" } });
+    const raw: any = {
+      version: 0, name: "t",
+      spawn: { room: "a", at: [2, 2], yaw: 0 },
+      materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+      levels: [{ id: "L0", y: 0 }],
+      rooms: [room("a", [[0, 0], [4, 0], [4, 4], [0, 4]]), room("b", [[4.06, 0.06], [8, 0.06], [8, 4.06], [4.06, 4.06]])],
+      openings: [{ id: "w", kind: "window", on: { room: "b", edge: 0, t: 1 }, width: 0.08, outside: { backdrop: "x" } }],
+    };
+    const { report } = runCheck(raw, { until: "openings" });
+    expect(report.errors.map((e) => [e.code, e.path])).toContainEqual(["OPENING_OFF_EDGE", "/openings/0"]);
+  });
+
+  test("test_too_high_fix_stays_valid", () => {
+    const { report } = runCheck(patched([
+      { op: "replace", path: "/openings/1/sill", value: 3.3997 },
+      { op: "replace", path: "/openings/1/height", value: 1 },
+    ]), { until: "openings" });
+    const e = report.errors.find((x) => x.code === "OPENING_TOO_HIGH")!;
+    const h = (e.fix as any)?.height;
+    if (h !== undefined) {
+      expect(h).toBeGreaterThan(0);
+      expect(3.3997 + h).toBeLessThanOrEqual(3.4);
+    }
+  });
+
+  test("test_swing_room_must_be_a_side", () => {
+    const { report } = runCheck(patched([
+      { op: "replace", path: "/openings/1/kind", value: "door" },
+      { op: "replace", path: "/openings/1/sill", value: 0 },
+      { op: "replace", path: "/openings/1/height", value: 2.1 },
+      { op: "add", path: "/openings/1/leaf", value: { decal: "d_sea", swing: "hall" } },
+    ]), { until: "openings" });
+    expect(report.errors.map((e) => [e.code, e.path])).toEqual([["REF_UNKNOWN", "/openings/1/leaf/swing"]]);
+    expect(report.errors[0].msg).toContain("living");
+    // the invalid door is out of the passport and cuts no wall
+    expect((report.passport.openings as any[]).map((o) => o.id)).not.toContain("sea");
+    // and does not block a valid window on the same wall
+    const { report: r2 } = runCheck(patched([
+      { op: "replace", path: "/openings/1/kind", value: "door" },
+      { op: "replace", path: "/openings/1/sill", value: 0 },
+      { op: "replace", path: "/openings/1/height", value: 2.1 },
+      { op: "add", path: "/openings/1/leaf", value: { decal: "d_sea", swing: "hall" } },
+      { op: "add", path: "/openings/-", value: { id: "w2", kind: "window", on: { room: "living", edge: 1, t: 0.5 }, width: 1, height: 1, sill: 1, outside: { backdrop: "d_sea" } } },
+    ]), { until: "openings" });
+    expect(r2.errors.map((e) => [e.code, e.path])).toEqual([["REF_UNKNOWN", "/openings/1/leaf/swing"]]);
+  });
+
+  test("test_too_high_within_eps", () => {
+    const { report } = runCheck(patched([{ op: "replace", path: "/openings/0/height", value: 3.0000005 }]), { until: "openings" });
+    expect(report.errors.map((e) => e.code)).not.toContain("OPENING_TOO_HIGH");
+  });
+
+  const splitCircle = (openings: any[]): any => ({
+    version: 0, name: "t",
+    spawn: { room: "r", at: [0, 0], yaw: 0 },
+    materials: { m: { color: "#ffffff" } }, assets: { x: { kind: "decal", prompt: "x" } },
+    levels: [{ id: "L0", y: 0 }],
+    rooms: [
+      { id: "r", level: "L0", height: 3, circle: { c: [0, 0], r: 3 }, floor: "m", ceiling: "m", walls: { material: "m" } },
+      { id: "n", level: "L0", height: 3, shape: [[3, 0, { bulge: -1 }], [-3, 0], [-4, 5], [4, 5]], floor: "m", ceiling: "m", walls: { material: "m" } },
+    ],
+    openings,
+  });
+
+  test("test_at_opening_straddling_split_circle", () => {
+    // [3, 0] is where the shared upper half meets r's exterior half
+    const { report } = runCheck(splitCircle([{ id: "w", kind: "window", at: [3, 0], width: 1, height: 1, sill: 1, outside: { backdrop: "x" } }]), { until: "openings" });
+    expect(report.errors.map((e) => [e.code, e.path])).toContainEqual(["OPENING_OFF_EDGE", "/openings/0"]);
+  });
+
+  test("test_shared_half_continuous_across_seam", () => {
+    // t = 0 is +Z, in the middle of the shared upper half
+    const { report } = runCheck(splitCircle([{ id: "d", kind: "arch", on: { room: "r", edge: 0, t: 0 }, width: 1 }]), { until: "openings" });
+    expect(report.errors.filter((e) => e.path.startsWith("/openings"))).toEqual([]);
+    expect((report.passport.openings as any[])[0].rooms).toEqual(["r", "n"]);
+    // r#0 meets n over az -90..90: in r's own m that is [0, 3π/2] and [9π/2, 6π]
+    const r0 = (report.passport.edges as any[]).find((e) => e.id === "r#0");
+    expect(r0.sides).toEqual([{ room: "n", m: [0, 4.712] }, { room: "n", m: [14.137, 18.85] }]);
+  });
+});
+

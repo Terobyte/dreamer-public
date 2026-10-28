@@ -416,3 +416,79 @@ describe("schema phase contract", () => {
     expect((s42 as any).openings[2].height).toBe(2.5);
   });
 });
+
+describe("terra re-review", () => {
+  it("test_around_requires_n_r", () => {
+    for (const k of ["n", "r"]) {
+      const s = demoFlat() as any;
+      delete s.props[1].around[k];
+      const { report } = runCheck(s, { until: "schema" });
+      expect(report.errors.map((e) => e.code)).toEqual(["SCHEMA_REQUIRED"]);
+    }
+    const s = demoFlat() as any;
+    delete s.props[1].around.start;
+    expect(runCheck(s, { until: "schema" }).report.errors).toEqual([]);
+  });
+
+  it("test_gap_height_ignores_other_levels", () => {
+    // hall (3.0) on L0 and a twin on L1 (2.0) share the same plan footprint
+    const s = demoFlat() as any;
+    s.levels.push({ id: "L1", y: 3.6 });
+    s.rooms.push({ ...s.rooms[1], id: "hall_up", level: "L1", height: 2 });
+    s.openings.push({ id: "g_on", kind: "gap", on: { room: "hall", edge: 2, t: 0.5 }, width: 1 });
+    s.openings.push({ id: "g_at", kind: "gap", at: [0, 12], width: 1 });
+    const { scene } = validate(s);
+    const h = (id: string) => (scene as any).openings.find((o: any) => o.id === id).height;
+    expect(h("g_on")).toBe(3);
+    expect(h("g_at")).toBe(3);
+  });
+
+  it("test_until_schema_skips_plan", () => {
+    const s = demoFlat() as any;
+    s.rooms[1].shape.splice(1, 0, [...s.rooms[1].shape[1]]);
+    const { report } = runCheck(s, { until: "schema" });
+    expect(report.errors).toEqual([]);
+    expect(report.stages.find((x: any) => x.stage === "plan")?.status).toBe("skipped");
+  });
+
+  it("test_top_of_cycle_reported_once", () => {
+    // table <-> sofa is the one defect; vase only stands on it
+    const s = demoFlat() as any;
+    s.props[0].mount = { top_of: "sofa" };
+    s.props[2].mount = { top_of: "table" };
+    const { report } = runCheck(s, { until: "schema" });
+    const refs = report.errors.filter((e) => e.code === "REF_UNKNOWN");
+    expect(refs.map((e) => e.path)).toEqual(["/props/0/mount/top_of"]);
+    expect(refs[0].msg).toContain("цикл");
+    expect(refs[0].msg).toContain("table → sofa → table");
+  });
+
+  it("test_face_opening_target", () => {
+    const s = demoFlat() as any;
+    s.props[2].face = "front";
+    expect(runCheck(s, { until: "schema" }).report.errors).toEqual([]);
+  });
+
+  it("test_defaults_around_start_and_decal_room", () => {
+    const s = demoFlat() as any;
+    delete s.props[1].around.start;
+    delete s.decals[0].room;
+    const out = validate(s) as any;
+    expect(out.issues).toEqual([]);
+    expect(out.scene.props[1].around.start).toBe(0);
+    expect(out.scene.decals[0].room).toBe(s.decals[0].on.room);
+  });
+
+  it("test_face_opening_at_coincident", () => {
+    const s = demoFlat() as any;
+    const o = s.openings[0];
+    delete o.on;
+    o.at = [0, 0];
+    s.props[0].at = [0, 0];
+    s.props[0].face = o.id;
+    delete s.props[0].yaw;
+    const issues = (validate(s) as any).issues.map((e: any) => [e.code, e.path]);
+    expect(issues).toEqual([["POS_INVALID", "/props/0/face"]]);
+  });
+});
+

@@ -2,9 +2,10 @@ import type { Ctx } from "../ctx.js";
 import type { DecalGeo, Issue, PropGeo, Stage } from "../types.js";
 import type { V2 } from "../geom/vec.js";
 import { EPS, SNAP_EPS } from "../geom/vec.js";
+import { arcFrac as fracOnSweep } from "../geom/arc.js";
 import { obbCorners } from "../geom/obb.js";
 import type { AuthorEdge, RoomRec } from "../props/place.js";
-import { edgeNormal, edgePoint, fracOf, isClosed, nearestEdge, specAng } from "../props/place.js";
+import { edgeNormal, edgePoint, fracOf, isClosed, mOnEdge, nearestEdge, onWallAxis, specAng } from "../props/place.js";
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
 
@@ -34,9 +35,7 @@ function arcFrac(e: AuthorEdge, ang: number): number {
   if (isClosed(e)) return wrapTau(ang) / TAU;
   const sweep = e.arc!.sweep ?? 0;
   if (Math.abs(sweep) < EPS) return 0;
-  const rel = wrapTau(ang - specAng(e.from, e.arc!.c));
-  const f = sweep >= 0 ? rel / sweep : rel < EPS ? 0 : (rel - TAU) / sweep;
-  return Math.min(1, Math.max(0, f));
+  return fracOnSweep(wrapTau(ang - specAng(e.from, e.arc!.c)), sweep);
 }
 
 /** `m` along the edge and depth of `p` past the inner face, measured inwards.
@@ -78,12 +77,13 @@ interface PlanInterval {
 /** the plan interval (shared-wall strip) covering `q` on edge `e` of `room`, if any */
 function findInterval(ctx: Ctx, room: RoomRec, e: AuthorEdge, q: V2): PlanInterval | undefined {
   const plan = ctx.levels?.get(room.level);
-  const m = e.arc ? null : Math.hypot(q[0] - e.from[0], q[1] - e.from[1]);
+  const m = mOnEdge(e, q);
   let best: PlanInterval | undefined;
   for (const iv of (plan?.intervals ?? []) as PlanInterval[]) {
     for (const s of iv.sides) {
       if (s.room !== e.room || s.edge !== e.i) continue;
-      if (m !== null && (m < s.m[0] - EPS || m > s.m[1] + EPS)) continue;
+      const seam = isClosed(e) && m + e.len <= s.m[1] + EPS;
+      if ((m < s.m[0] - EPS || m > s.m[1] + EPS) && !seam) continue;
       if (!best || iv.thickness > best.thickness) best = iv;
     }
   }
@@ -188,7 +188,7 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
       if (!e) continue;
       frac = fracOf(e, raw.on);
     } else if (Array.isArray(raw.at)) {
-      const near = nearestEdge([raw.at[0], raw.at[1]], room, own, false);
+      const near = nearestEdge([raw.at[0], raw.at[1]], room, own, false, (e, q) => onWallAxis(ctx, room, e, q));
       if (!near || near.d >= SNAP_EPS) {
         out.push({
           i,
@@ -209,13 +209,15 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
       continue;
     }
 
-    const q = edgePoint(e, frac);
+    const wallT = wallThicknessAt(ctx, room, e, edgePoint(e, frac), own);
+    // on the merged wall axis: a snapped corner may shift the author edge off it
+    const q = onWallAxis(ctx, room, e, edgePoint(e, frac));
     const n = edgeNormal(e, q);
-    const wallT = wallThicknessAt(ctx, room, e, q, own);
     const m = isClosed(e) ? (((frac % 1) + 1) % 1) * e.len : frac * e.len;
 
     let center2: V2;
     let delta: number;
+    let tooWide = false;
     if (!e.arc) {
       const off = wallT / 2 + FLAT_GAP;
       center2 = [q[0] + n[0] * off, q[1] + n[1] * off];
@@ -238,6 +240,7 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
         center2 = [c[0] + mR * d0[0], c[1] + mR * d0[1]];
       } else {
         const eR = faceR - FLAT_GAP;
+        tooWide = w / 2 > eR;
         const halfAng = Math.asin(Math.min(1, w / 2 / eR));
         const a = dir(axisAng - halfAng);
         const b = dir(axisAng + halfAng);
@@ -246,6 +249,8 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
           (c[1] + eR * a[1] + c[1] + eR * b[1]) / 2,
         ];
       }
+      // no chord of that width fits on the face
+      if (w / 2 > faceR) tooWide = true;
       delta = e.arc.r * Math.asin(Math.min(1, w / 2 / faceR));
     }
 
@@ -255,6 +260,8 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
       edge: e.id,
       edgeRef: e,
       iv: findInterval(ctx, room, e, q),
+      tooWide,
+      level: room.level,
       m,
       mRange: [m - delta, m + delta],
       center: [center2[0], levelY + yc, center2[1]],
@@ -268,6 +275,43 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
     });
   }
   return out;
+}
+
+/** a wall range as its centre and two end points on the wall axis */
+interface WallSpan { iv: PlanInterval; mid: V2; ends: [V2, V2] }
+
+function spanOn(iv: PlanInterval, e: AuthorEdge, m: number, mRange: [number, number]): WallSpan {
+  const at = (x: number): V2 => {
+    const f = x / (e.len || 1);
+    return edgePoint(e, isClosed(e) ? ((f % 1) + 1) % 1 : f);
+  };
+  return { iv, mid: at(m), ends: [at(mRange[0]), at(mRange[1])] };
+}
+
+/** do two ranges meet on one physical wall? The intervals give the exact
+ *  merged line or circle, so a shared-wall split between the two ranges (a
+ *  neighbour's wall starting mid-edge) does not hide the overlap */
+function sameWallOverlap(a: WallSpan, b: WallSpan): boolean {
+  const TOL = 1e-4;
+  if (!a.iv.arc && !b.iv.arc) {
+    const dx = a.iv.to[0] - a.iv.from[0];
+    const dz = a.iv.to[1] - a.iv.from[1];
+    const l = Math.hypot(dx, dz) || 1;
+    const u: V2 = [dx / l, dz / l];
+    const off = (p: V2): number => Math.abs((p[0] - a.iv.from[0]) * u[1] - (p[1] - a.iv.from[1]) * u[0]);
+    if (off(b.iv.from) > TOL || off(b.iv.to) > TOL) return false;
+    const s = (p: V2): number => (p[0] - a.iv.from[0]) * u[0] + (p[1] - a.iv.from[1]) * u[1];
+    const ra = a.ends.map(s);
+    const rb = b.ends.map(s);
+    return overlaps([Math.min(ra[0], ra[1]), Math.max(ra[0], ra[1])], [Math.min(rb[0], rb[1]), Math.max(rb[0], rb[1])]);
+  }
+  if (!a.iv.arc || !b.iv.arc) return false;
+  const c = a.iv.arc.c;
+  if (Math.hypot(c[0] - b.iv.arc.c[0], c[1] - b.iv.arc.c[1]) > TOL || Math.abs(a.iv.arc.r - b.iv.arc.r) > TOL) return false;
+  const wrapPi = (x: number): number => Math.atan2(Math.sin(x), Math.cos(x));
+  const half = (w: WallSpan): number => Math.abs(wrapPi(specAng(w.ends[1], c) - specAng(w.ends[0], c))) / 2;
+  const gap = Math.abs(wrapPi(specAng(a.mid, c) - specAng(b.mid, c)));
+  return gap < half(a) + half(b) - EPS / a.iv.arc.r;
 }
 
 /** AuthorEdge referenced by an opening's canonical "room#i" edge id */
@@ -319,9 +363,10 @@ export function decalsStage(ctx: Ctx): Issue[] {
           y1: String(round3(ySpan[1])),
           h: String(round3(g.height)),
         }),
-        fix: { y: round3(Math.min(hi, Math.max(lo, g.y))) },
+        // taller than the wall: no `y` puts it inside
+        ...(g.h <= g.height + EPS ? { fix: { y: round3(Math.min(hi, Math.max(lo, g.y))) } } : {}),
       };
-    } else if (!isClosed(g.edgeRef) && (g.mRange[0] < -EPS || g.mRange[1] > g.edgeRef.len + EPS)) {
+    } else if (g.tooWide || (!isClosed(g.edgeRef) && (g.mRange[0] < -EPS || g.mRange[1] > g.edgeRef.len + EPS))) {
       err = {
         code: "DECAL_OFF_WALL",
         stage: STAGE,
@@ -340,12 +385,16 @@ export function decalsStage(ctx: Ctx): Issue[] {
 
     if (!err && !g.noWall) {
       const hitOpening = openings.find((o) => {
-        if (!o || o.error) return false;
+        if (!o || o.error || o.intervalLevel !== g.level) return false;
         if (!overlaps(ySpan, [o.sill, o.sill + o.height])) return false;
-        if (!g.iv) return false;
+        if (!g.iv || !o.interval) return false;
         const oEdge = edgeOf(rooms, o.edge);
-        if (!oEdge || o.interval !== g.iv) return false;
-        return physicalOverlap(g.iv, g.mRange as [number, number], g.edgeRef, o.mRange as [number, number], oEdge);
+        if (!oEdge) return false;
+        if (o.interval === g.iv) {
+          return physicalOverlap(g.iv, g.mRange as [number, number], g.edgeRef, o.mRange as [number, number], oEdge);
+        }
+        return sameWallOverlap(spanOn(g.iv, g.edgeRef, g.m, g.mRange as [number, number]),
+          { iv: o.interval, mid: o.center, ends: o.ends });
       });
       if (hitOpening) {
         err = {
@@ -358,18 +407,18 @@ export function decalsStage(ctx: Ctx): Issue[] {
     }
 
     if (!err && !g.noWall) {
-      const other = seen.find(
-        (s) =>
-          !s.noWall &&
-          s.edge === g.edge &&
-          s.room === g.room &&
-          g.iv &&
-          s.iv === g.iv &&
-          overlaps(ySpan, [s.y - s.h / 2, s.y + s.h / 2]) &&
-          (!isClosed(g.edgeRef)
+      const other = seen.find((s) => {
+        if (s.noWall || s.room !== g.room || !g.iv || !s.iv) return false;
+        if (!overlaps(ySpan, [s.y - s.h / 2, s.y + s.h / 2])) return false;
+        if (s.edge === g.edge && s.iv === g.iv) {
+          return !isClosed(g.edgeRef)
             ? overlaps(g.mRange as [number, number], s.mRange as [number, number])
-            : physicalOverlap(g.iv, g.mRange as [number, number], g.edgeRef, s.mRange as [number, number], s.edgeRef)),
-      );
+            : physicalOverlap(g.iv, g.mRange as [number, number], g.edgeRef, s.mRange as [number, number], s.edgeRef);
+        }
+        // same face, split into intervals (or edges) along one wall
+        return sameWallOverlap(spanOn(g.iv, g.edgeRef, g.m, g.mRange as [number, number]),
+          spanOn(s.iv, s.edgeRef, s.m, s.mRange as [number, number]));
+      });
       if (other) {
         err = {
           code: "DECAL_OVERLAP",

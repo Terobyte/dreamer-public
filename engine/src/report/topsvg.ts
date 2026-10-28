@@ -80,11 +80,11 @@ export function topSvg(ctx: Ctx): string {
   out.push(`<g class="body" fill="#6b6b60" stroke="none">`);
   for (const [levelId, plan] of ctx.levels ?? new Map()) {
     const paths = (plan.body ?? []) as Path64[];
-    for (let k = 0; k < paths.length; k++) {
-      out.push(
-        `<polygon class="body" data-id="${esc(String(levelId))}.wall.${k}" points="${pts(pathToPoly(paths[k]))}"/>`,
-      );
-    }
+    if (paths.length === 0) continue;
+    // one compound path: clipper gives holes the opposite winding, so nonzero
+    // leaves the room floors visible inside the wall ring
+    const d = paths.map((p) => `M${pts(pathToPoly(p)).replace(/ /g, " L")} Z`).join(" ");
+    out.push(`<path class="body" data-id="${esc(String(levelId))}.wall" fill-rule="nonzero" d="${d}"/>`);
   }
   out.push(`</g>`);
 

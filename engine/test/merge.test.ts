@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Clipper } from "clipper2-ts";
+import { Clipper, PointInPolygonResult } from "clipper2-ts";
 import { runCheck } from "../src/check.js";
 import { demoFlat, patched } from "./helpers/scene.js";
 import { wallBody } from "../src/plan/body.js";
@@ -263,3 +263,117 @@ describe("plan merge", () => {
     expect(plan.body).toEqual(wallBody(plan.intervals));
   });
 });
+
+describe("terra re-review", () => {
+  it("circle_and_arc_share_a_quarter", () => {
+    const A = { id: "A", circle: { c: [0, 0], r: 3 } };
+    const B = { id: "B", shape: [[0, 3, { bulge: -(Math.SQRT2 - 1) }], [3, 0], [5, 0], [5, 5], [0, 5]] };
+    const scene = sceneWith([A, B]);
+    const { ctx } = runCheck(scene, { until: "plan" });
+    const arcs = (ctx.levels as any).get("L0").intervals.filter((iv: any) => iv.arc);
+    expect(arcs.map(roomsOf).sort()).toEqual([["A"], ["A", "B"]]);
+    const shared = arcs.find((iv: any) => iv.sides.length === 2);
+    const a = shared.sides.find((x: any) => x.room === "A");
+    expect(a.m[0]).toBeCloseTo(0, 6);
+    expect(a.m[1]).toBeCloseTo((Math.PI / 2) * 3, 6);
+    const rest = arcs.find((iv: any) => iv.sides.length === 1).sides[0];
+    expect(rest.m[0]).toBeCloseTo((Math.PI / 2) * 3, 6);
+    expect(rest.m[1]).toBeCloseTo(2 * Math.PI * 3, 6);
+    // a door on the shared quarter joins both rooms
+    scene.assets = { x: { kind: "decal", prompt: "x" } };
+    scene.openings = [{ id: "d", kind: "arch", at: [3 * Math.SQRT1_2, 3 * Math.SQRT1_2], width: 0.9 }];
+    const out = runCheck(scene, { until: "openings" });
+    expect(out.report.errors).toEqual([]);
+    expect((out.report.passport.openings as any[])[0].rooms).toEqual(["A", "B"]);
+    // `on` the circle picks the interval under the opening, on either part
+    for (const [az, rooms] of [[45, ["A", "B"]], [200, ["A"]]] as const) {
+      scene.openings = [{ id: "d", kind: "window", on: { room: "A", edge: 0, az }, width: 0.9, height: 1, sill: 1, outside: { backdrop: "x" } }];
+      const o = runCheck(scene, { until: "openings" });
+      expect(o.report.errors.filter((e) => e.path.startsWith("/openings"))).toEqual([]);
+      expect((o.report.passport.openings as any[])[0].rooms).toEqual(rooms);
+    }
+  });
+
+  it("wall_body_independent_of_interval_order", () => {
+    const A = { id: "A", shape: [[0, 0], [4, 0], [1, 1]], walls: { material: "m", thickness: 0.4 } };
+    const B = { id: "B", shape: [[0, 0], [4, -3], [4, 0]], walls: { material: "m", thickness: 0.4 } };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const ivs = (ctx.levels as any).get("L0").intervals as any[];
+    const area = (list: any[]): number => Clipper.areaPaths(wallBody(list));
+    const base = area(ivs);
+    for (let k = 1; k < ivs.length; k++) {
+      expect(area([...ivs.slice(k), ...ivs.slice(0, k)])).toBeCloseTo(base, 6);
+      expect(area([...ivs].reverse())).toBeCloseTo(base, 6);
+    }
+  });
+
+  it("side_m_from_authored_vertex", () => {
+    // B's [0.06, 4] snaps to [0, 4]: the shared interval x in [0.06.., 2] is m [0, 1.94] on B#0
+    const A = rect("A", 0, 0, 2, 4);
+    const B = { id: "B", shape: [[0.06, 4], [0.06, 8], [4, 8], [4, 4]] };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const ivs = hz((ctx.levels as any).get("L0").intervals, 4);
+    const shared = ivs.find((iv: any) => iv.sides.length === 2);
+    const b = shared.sides.find((x: any) => x.room === "B");
+    expect(b.m[0]).toBeCloseTo(4 - 2 - 0.06 + 0.06, 6);
+    expect(b.m[1]).toBeCloseTo(4 - 0.06, 6);
+  });
+
+  it("same_ends_opposite_halves_stay_apart", () => {
+    // both semicircles run [3,0] <-> [-3,0] on one circle, but over opposite halves
+    const A = { id: "A", shape: [[3, 0, { bulge: -1 }], [-3, 0], [-3, -4], [3, -4]] };
+    const B = { id: "B", shape: [[-3, 0, { bulge: -1 }], [3, 0], [3, 4], [-3, 4]] };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const arcs = (ctx.levels as any).get("L0").intervals.filter((iv: any) => iv.arc);
+    expect(arcs.map(roomsOf).sort()).toEqual([["A"], ["B"]]);
+  });
+
+  it("passport_arc_sides_use_interval_m", () => {
+    const A = { id: "A", circle: { c: [0, 0], r: 3 } };
+    const B = { id: "B", shape: [[0, 3, { bulge: -(Math.SQRT2 - 1) }], [3, 0], [5, 0], [5, 5], [0, 5]] };
+    const { report } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const a0 = (report.passport.edges as any[]).find((e) => e.id === "A#0");
+    expect(a0.sides).toEqual([{ room: "B", m: [0, 4.712] }]);
+    expect(Object.keys(a0.arc).sort()).toEqual(["c", "r"]);
+  });
+
+  it("near_parallel_edges_share_over_their_overlap", () => {
+    // B's edge drifts 0.02..0.18 m from A's line, but only 0.02..0.06 m over the shared part
+    const A = { id: "A", shape: [[0, 0], [10, 0], [10, -4], [0, -4]] };
+    const B = { id: "B", shape: [[5, 0.02], [5, 4], [25, 4], [25, 0.18]] };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const ivs = (ctx.levels as any).get("L0").intervals as any[];
+    expect(ivs.some((iv) => iv.sides.length === 2)).toBe(true);
+  });
+
+  it("arc_side_m_uses_own_radius", () => {
+    const A = { id: "A", circle: { c: [0, 0], r: 3 } };
+    const k = Math.SQRT2 - 1;
+    const B = { id: "B", shape: [[0, 3.05, { bulge: -k }], [3.05, 0], [5, 0], [5, 5], [0, 5]] };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const shared = (ctx.levels as any).get("L0").intervals.find((iv: any) => iv.arc && iv.sides.length === 2);
+    const b = shared.sides.find((x: any) => x.room === "B");
+    expect(b.m[0]).toBeCloseTo(0, 3);
+    expect(b.m[1]).toBeCloseTo((Math.PI / 2) * 3.05, 3);
+  });
+
+  it("vertices_exactly_snap_eps_apart_do_not_merge", () => {
+    const { report, ctx } = runCheck(sceneWith([rect("A", 0, 0, 4, 4), rect("B", 4.1, 0, 8, 4)]), { until: "plan" });
+    expect((ctx.levels as any).get("L0").snaps).toEqual([]);
+    expect(report.warnings.map((w) => w.code)).toContain("EDGES_DRIFT");
+  });
+
+  it("t_junction_adjoining_walls_follow_projection", () => {
+    // B's bottom joins A's top wall at z = 0; its side walls must end there too
+    const A = { id: "A", shape: [[0, 0], [6, 0], [6, -4], [0, -4]], walls: { material: "m", thickness: 0.02 } };
+    const B = { id: "B", shape: [[2, 0.05], [2, 4], [4, 4], [4, 0.05]], walls: { material: "m", thickness: 0.02 } };
+    const { ctx } = runCheck(sceneWith([A, B]), { until: "plan" });
+    const plan = (ctx.levels as any).get("L0");
+    const side = plan.intervals.find((iv: any) => iv.sides.some((s: any) => s.room === "B" && s.edge === 0));
+    expect(Math.min(side.from[1], side.to[1])).toBeCloseTo(0, 6);
+    // and the body is closed at the junction
+    const inside = (plan.body as any[]).some((path) => Clipper.pointInPolygon({ x: 2000, y: 25 }, path) !== PointInPolygonResult.IsOutside);
+    expect(inside).toBe(true);
+  });
+});
+

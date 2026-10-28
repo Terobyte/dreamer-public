@@ -338,6 +338,9 @@ function deepClone<T>(x: T): T {
   return JSON.parse(JSON.stringify(x));
 }
 
+/** gaps whose height is a default: the openings stage re-derives it from the resolved interval */
+export const autoGapHeight = new WeakSet<object>();
+
 export function applyDefaults(raw: any): Scene {
   const s = deepClone(raw);
   s.openings ??= [];
@@ -368,6 +371,8 @@ export function applyDefaults(raw: any): Scene {
   };
   const roomCeil = new Map<string, number>();
   for (const r of s.rooms as any[]) if (typeof r?.id === "string" && typeof r?.height === "number") roomCeil.set(r.id, r.height);
+  const roomLvl = new Map<string, unknown>();
+  for (const r of s.rooms as any[]) if (typeof r?.id === "string") roomLvl.set(r.id, r.level);
   const SNAP = 0.1;
   const ptSegDist = (p: number[], a: number[], b: number[]): number => {
     const dx = b[0] - a[0];
@@ -544,7 +549,7 @@ export function applyDefaults(raw: any): Scene {
     if (!seg || bulge === 0) return undefined;
     const g = arcOf(seg[0], seg[1], bulge, roomSign.get(room) ?? 1);
     const rel = wrap(Math.PI / 2 - rad - g.a0);
-    const frac = (g.sweep >= 0 ? rel : rel - 2 * Math.PI) / g.sweep;
+    const frac = g.sweep >= 0 ? rel / g.sweep : rel < 1e-9 ? 0 : (rel - 2 * Math.PI) / g.sweep;
     return frac >= -1e-9 && frac <= 1 + 1e-9 ? Math.min(1, Math.max(0, frac)) : undefined;
   };
   const parallel = (u: number[], v: number[]): boolean => {
@@ -559,7 +564,7 @@ export function applyDefaults(raw: any): Scene {
     const here = edgeAt(riding, ridingEdge, typeof frac === "number" ? frac : 0.5);
     if (!here) return sides;
     for (const [id, osegs] of roomEdges) {
-      if (id === riding) continue;
+      if (id === riding || roomLvl.get(id) !== roomLvl.get(riding)) continue;
       const sign = roomSign.get(id) ?? 1;
       for (let i = 0; i < osegs.length; i++) {
         const [a, b] = osegs[i];
@@ -576,7 +581,7 @@ export function applyDefaults(raw: any): Scene {
       }
     }
     for (const [id, circ] of roomCircles) {
-      if (id === riding) continue;
+      if (id === riding || roomLvl.get(id) !== roomLvl.get(riding)) continue;
       const dx = here.p[0] - circ.c[0];
       const dz = here.p[1] - circ.c[1];
       if (Math.abs(Math.hypot(dx, dz) - circ.r) > SNAP + 1e-9) continue;
@@ -600,10 +605,15 @@ export function applyDefaults(raw: any): Scene {
         }
         for (const id of gapSides(o.on.room, typeof o.on.edge === "number" ? o.on.edge : undefined, frac)) rooms.add(id);
       } else if (Array.isArray(o.at)) {
-        for (const id of adjacentRooms(o.at)) rooms.add(id);
+        // on a tie the openings stage takes the level whose first room comes first
+        const adj = adjacentRooms(o.at);
+        const lvlIdx = (id: string): number => (s.rooms as any[]).findIndex((r) => r?.level === roomLvl.get(id));
+        const lvl = Math.min(...adj.map(lvlIdx));
+        for (const id of adj) if (lvlIdx(id) === lvl) rooms.add(id);
       }
       const hs = [...rooms].map((id) => roomCeil.get(id)).filter((h): h is number => typeof h === "number");
       o.height = hs.length > 0 ? Math.min(...hs) : d.height;
+      autoGapHeight.add(o);
     } else o.height ??= d.height;
     o.sill ??= d.sill;
     if (o.leaf) o.leaf.open ??= true;
@@ -612,9 +622,11 @@ export function applyDefaults(raw: any): Scene {
     p.mount ??= "floor";
     p.solid ??= true;
     if (p.mount === "wall") p.y ??= 1.0;
+    if (p.around && typeof p.around === "object") p.around.start ??= 0;
   }
   for (const d of s.decals as any[]) {
     d.y ??= 1.6;
+    if (d.on && typeof d.on.room === "string") d.room ??= d.on.room;
   }
   for (const l of s.lights as any[]) {
     l.color ??= "#ffffff";

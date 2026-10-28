@@ -215,7 +215,7 @@
           "yaw": { "type": "number" },
           "around": {
             "type": "object",
-            "required": ["center"],
+            "required": ["center", "n", "r"],
             "additionalProperties": false,
             "properties": {
               "center": { "type": "string" },

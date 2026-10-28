@@ -67,6 +67,7 @@ export function msg(code: Code, params: Record<string, string>): string {
     case "ID_DUPLICATE":
       return `дублирующийся id "${params.v}"`;
     case "REF_UNKNOWN":
+      if (params.cycle) return `${params.path}: цикл top_of: ${params.cycle}; убери одну из опор`;
       return `${params.path}: ${params.kind} "${params.v}" не найден; есть: ${params.have}`;
     case "REF_KIND":
       return `${params.path}: ассет "${params.v}" имеет kind ${params.got}, нужен ${params.want}`;

@@ -10,6 +10,7 @@ import { resolveOpenings } from "./resolve.js";
 import type { OpeningGeo } from "./resolve.js";
 import { applySwing } from "./swing.js";
 import { roomGraph } from "./graph.js";
+import { wallBody } from "../plan/body.js";
 
 const STAGE: Stage = "openings";
 
@@ -50,11 +51,16 @@ export function cutPath(g: OpeningGeo): Path64 {
   const hd = g.thickness / 2 + EPS;
   const px = -uz;
   const pz = ux;
+  // on an arc the axis bulges off the chord by the sagitta (the centre lies on
+  // the axis): stretch the band that way, or a sliver of wall stays across
+  const sag = chord > EPS ? (g.center[0] - mx) * px + (g.center[1] - mz) * pz : 0;
+  const lo = Math.min(0, sag) - hd;
+  const hi = Math.max(0, sag) + hd;
   const corner = (a: number, b: number): { x: number; y: number } => ({
     x: Math.round((mx + ux * a + px * b) * 1000),
     y: Math.round((mz + uz * a + pz * b) * 1000),
   });
-  return [corner(hl, hd), corner(-hl, hd), corner(-hl, -hd), corner(hl, -hd)];
+  return [corner(hl, hi), corner(-hl, hi), corner(-hl, lo), corner(hl, lo)];
 }
 
 function chordEnds(g: OpeningGeo): [V2, V2] {
@@ -68,6 +74,7 @@ export function openingsStage(ctx: Ctx): Issue[] {
 
   const geos = resolveOpenings(ctx);
   (ctx as any).openings = geos as never;
+
 
   for (const g of geos) {
     if (g.error) issues.push(g.error);
@@ -164,7 +171,10 @@ export function openingsStage(ctx: Ctx): Issue[] {
 
   // edges passport: list openings per edge
   for (const e of ctx.passport.edges as Array<{ id: string; openings?: string[] }>) {
-    const ids = geos.filter((g) => !g.error && g.edge === e.id).map((g) => g.id);
+    // an opening cuts every side of its interval, so it is listed on each author edge there
+    const ids = geos
+      .filter((g) => !g.error && (g.edge === e.id || g.interval.sides.some((s) => `${s.room}#${s.edge}` === e.id)))
+      .map((g) => g.id);
     if (ids.length > 0) e.openings = ids;
   }
 
@@ -180,14 +190,22 @@ export function openingsStage(ctx: Ctx): Issue[] {
     }
     for (const [lvl, plan] of levels) {
       let body = plan.body;
+      // the uncut body and each cut with its height span (from the level floor):
+      // below a sill and above a lintel the wall is still there
+      const cuts: Array<{ id: string; paths: Path64[]; y: [number, number] }> = [];
       for (const g of byLevel.get(lvl) ?? []) {
+        const paths: Path64[] = [cutPath(g)];
         // flatten first (arc body between the chord ends), then cut by the chord
         if (g.flatten) {
+          // only the opening's own wall: the band may reach a neighbour wall nearby
           const band = g.flatten.map((p) => ({ x: Math.round(p[0] * 1000), y: Math.round(p[1] * 1000) }));
-          body = Clipper.difference(body, [band], FillRule.NonZero);
+          paths.push(...Clipper.intersect([band], wallBody([g.interval]), FillRule.NonZero));
         }
-        body = Clipper.difference(body, [cutPath(g)], FillRule.NonZero);
+        body = Clipper.difference(body, paths, FillRule.NonZero);
+        cuts.push({ id: g.id, paths, y: [g.sill, g.sill + g.height] });
       }
+      (plan as any).bodyFull = plan.body;
+      (plan as any).cuts = cuts;
       plan.body = body;
     }
   }

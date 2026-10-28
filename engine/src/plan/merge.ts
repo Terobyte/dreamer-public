@@ -60,7 +60,8 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
     const prev = seen.get(pk);
     if (prev) return prev;
     for (const c of canon) {
-      if (dist(p, c) <= SNAP_EPS + 1e-9) {
+      // strictly closer than snap_eps (a gap of exactly 0.10 is drift, not a snap)
+      if (dist(p, c) < SNAP_EPS - 1e-9) {
         if (dist(p, c) > EPS) snaps.push({ from: [p[0], p[1]], to: [c[0], c[1]] });
         seen.set(pk, c);
         return c;
@@ -87,6 +88,9 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
     to: snapOne(e.to),
     arc: e.arc,
     len: e.len,
+    // authored ends: side `m` is measured from shape[i], not from its snap
+    ofrom: e.from,
+    oto: e.to,
   }));
 
   const thickByRoom = new Map<string, number>();
@@ -102,7 +106,7 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
     for (const g of arcGroups) {
       const a0 = g[0].arc!;
       const a1 = e.arc!;
-      if (dist(a0.c, a1.c) <= SNAP_EPS + 1e-9 && Math.abs(a0.r - a1.r) <= SNAP_EPS + 1e-9) {
+      if (dist(a0.c, a1.c) < SNAP_EPS - 1e-9 && Math.abs(a0.r - a1.r) < SNAP_EPS - 1e-9) {
         g.push(e);
         placed = true;
         break;
@@ -116,15 +120,26 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
     let merged = false;
     if (g.length === 2) {
       const [a, b] = g;
+      // same ends are not enough: two semicircles share both ends over opposite halves
+      const midOf = (e: typeof a): V2 => {
+        const c = e.arc!.c;
+        const t = Math.atan2(e.from[0] - c[0], e.from[1] - c[1]) + (e.arc!.sweep ?? 0) / 2;
+        return [c[0] + e.arc!.r * Math.sin(t), c[1] + e.arc!.r * Math.cos(t)];
+      };
       const same =
-        (dist(a.from, b.from) <= SNAP_EPS + 1e-9 && dist(a.to, b.to) <= SNAP_EPS + 1e-9) ||
-        (dist(a.from, b.to) <= SNAP_EPS + 1e-9 && dist(a.to, b.from) <= SNAP_EPS + 1e-9);
+        ((dist(a.from, b.from) <= SNAP_EPS + 1e-9 && dist(a.to, b.to) <= SNAP_EPS + 1e-9) ||
+          (dist(a.from, b.to) <= SNAP_EPS + 1e-9 && dist(a.to, b.from) <= SNAP_EPS + 1e-9)) &&
+        dist(midOf(a), midOf(b)) <= SNAP_EPS + 1e-9;
       if (same) {
         const sides: Side[] = g.map((e) => ({ room: e.room, edge: e.i, m: [0, e.len] as [number, number] }));
         const th = Math.max(...g.map((e) => thickByRoom.get(e.room) ?? 0.12));
         intervals.push({ from: [a.from[0], a.from[1]], to: [a.to[0], a.to[1]], arc: { c: [...a.arc!.c] as V2, r: a.arc!.r, sweep: a.arc!.sweep }, sides, thickness: th });
         merged = true;
       }
+    }
+    if (!merged && g.length > 1) {
+      intervals.push(...splitArcs(g, rooms, thickByRoom));
+      merged = true;
     }
     if (!merged) {
       for (const e of g) {
@@ -147,13 +162,15 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
     to: V2;
     dir: V2;
     len: number;
+    ofrom: V2;
+    oto: V2;
   }
   const straights: SEdge[] = snapped
     .filter((e) => !e.arc)
     .map((e) => {
       const d: V2 = [e.to[0] - e.from[0], e.to[1] - e.from[1]];
       const l = Math.hypot(d[0], d[1]) || 1;
-      return { room: e.room, i: e.i, from: e.from, to: e.to, dir: [d[0] / l, d[1] / l] as V2, len: Math.hypot(d[0], d[1]) };
+      return { room: e.room, i: e.i, from: e.from, to: e.to, dir: [d[0] / l, d[1] / l] as V2, len: Math.hypot(d[0], d[1]), ofrom: e.ofrom, oto: e.oto };
     })
     .filter((e) => e.len > EPS);
 
@@ -166,16 +183,50 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
       const ang = Math.asin(Math.min(1, cross)) * (180 / Math.PI);
       const effAng = Math.min(ang, 180 - ang);
       if (effAng >= 2 - 1e-9) continue;
-      // distance from e endpoints to ref line
-      const d0 = Math.abs((e.from[0] - ref.from[0]) * ref.dir[1] - (e.from[1] - ref.from[1]) * ref.dir[0]);
-      const d1 = Math.abs((e.to[0] - ref.from[0]) * ref.dir[1] - (e.to[1] - ref.from[1]) * ref.dir[0]);
-      if (Math.max(d0, d1) < SNAP_EPS - 1e-9) {
+      // gap between the lines where the two edges overlap (it is linear along
+      // the line, so its ends bound it); edges that do not overlap compare
+      // their whole length
+      const off = (p: V2): number => (p[0] - ref.from[0]) * ref.dir[1] - (p[1] - ref.from[1]) * ref.dir[0];
+      const along = (p: V2): number => (p[0] - ref.from[0]) * ref.dir[0] + (p[1] - ref.from[1]) * ref.dir[1];
+      const sa = along(e.from);
+      const sb = along(e.to);
+      const lo = Math.max(Math.min(sa, sb), Math.min(along(ref.from), along(ref.to)));
+      const hi = Math.min(Math.max(sa, sb), Math.max(along(ref.from), along(ref.to)));
+      const gapAt = (x: number): number =>
+        Math.abs(off(e.from) + ((off(e.to) - off(e.from)) * (x - sa)) / (sb - sa || 1));
+      const gap = hi - lo > EPS ? Math.max(gapAt(lo), gapAt(hi)) : Math.max(Math.abs(off(e.from)), Math.abs(off(e.to)));
+      if (gap < SNAP_EPS - 1e-9) {
         g.push(e);
         placed = true;
         break;
       }
     }
     if (!placed) groups.push([e]);
+  }
+
+  // a shared group lays its members onto the first one's line: a vertex moved
+  // that way (a T-junction) moves for the walls that meet it as well, or a
+  // gap opens at the junction
+  const moved = new Map<V2, V2>();
+  for (const g of groups) {
+    if (g.length < 2) continue;
+    const ref = g[0];
+    for (const e of g.slice(1)) {
+      for (const p of [e.from, e.to]) {
+        const off = (p[0] - ref.from[0]) * ref.dir[1] - (p[1] - ref.from[1]) * ref.dir[0];
+        if (Math.abs(off) > EPS && !moved.has(p)) moved.set(p, [p[0] - off * ref.dir[1], p[1] + off * ref.dir[0]]);
+      }
+    }
+  }
+  for (let k = 0; k < groups.length; k++) {
+    const g = groups[k];
+    if (g.length !== 1) continue;
+    const e = g[0];
+    const from = moved.get(e.from) ?? e.from;
+    const to = moved.get(e.to) ?? e.to;
+    if (from === e.from && to === e.to) continue;
+    const l = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1;
+    groups[k] = [{ ...e, from, to, dir: [(to[0] - from[0]) / l, (to[1] - from[1]) / l], len: l }];
   }
 
   for (const g of groups) {
@@ -207,12 +258,14 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
         seen.add(e.room);
           const p0: V2 = [ref.from[0] + ref.dir[0] * s0, ref.from[1] + ref.dir[1] * s0];
           const p1: V2 = [ref.from[0] + ref.dir[0] * s1, ref.from[1] + ref.dir[1] * s1];
-          // m along edge e own axis
-        const elen = e.len || 1;
-        const ex = (e.to[0] - e.from[0]) / elen;
-        const ez = (e.to[1] - e.from[1]) / elen;
-        const m0 = (p0[0] - e.from[0]) * ex + (p0[1] - e.from[1]) * ez;
-        const m1 = (p1[0] - e.from[0]) * ex + (p1[1] - e.from[1]) * ez;
+        // m along the authored edge from its shape[i], within its length
+        const olen = Math.hypot(e.oto[0] - e.ofrom[0], e.oto[1] - e.ofrom[1]) || 1;
+        const ex = (e.oto[0] - e.ofrom[0]) / olen;
+        const ez = (e.oto[1] - e.ofrom[1]) / olen;
+        const mOf = (p: V2): number =>
+          Math.min(olen, Math.max(0, (p[0] - e.ofrom[0]) * ex + (p[1] - e.ofrom[1]) * ez));
+        const m0 = mOf(p0);
+        const m1 = mOf(p1);
         sides.push({ room: e.room, edge: e.i, m: [Math.min(m0, m1), Math.max(m0, m1)] });
       }
       // keep at most 2 sides (shared wall); if more, keep first two in rooms order
@@ -232,3 +285,73 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
 
   return { intervals, snaps, body: wallBody(intervals) };
 }
+
+interface ArcEdge {
+  room: string;
+  i: number;
+  from: V2;
+  to: V2;
+  arc: { c: V2; r: number; sweep?: number } | null;
+  len: number;
+}
+
+/** arcs on one circle, split like collinear walls: boundaries at every arc end,
+ *  one interval per covered cell with the
+ *  rooms whose edges cover it; `m` stays in each author edge's own coordinates */
+function splitArcs(g: ArcEdge[], rooms: Record<string, any>[], thickByRoom: Map<string, number>): Interval[] {
+  const TAU = 2 * Math.PI;
+  const wrap = (x: number): number => ((x % TAU) + TAU) % TAU;
+  const c = g[0].arc!.c;
+  const r = g[0].arc!.r;
+  const ang = (p: V2): number => Math.atan2(p[0] - c[0], p[1] - c[1]);
+  const pt = (a: number): V2 => [c[0] + r * Math.sin(a), c[1] + r * Math.cos(a)];
+  // coverage as a start angle and a positive span; a closed edge starts at 0
+  const cov = g.map((e) => {
+    if (dist(e.from, e.to) < EPS) return { e, a: 0, span: TAU, closed: true, sw: TAU };
+    const sw = e.arc!.sweep ?? 0;
+    const a0 = ang(e.from);
+    return sw >= 0 ? { e, a: wrap(a0), span: sw, closed: false, sw } : { e, a: wrap(a0 + sw), span: -sw, closed: false, sw };
+  });
+  // a closed edge adds no boundary: a shared wall may run across its seam, and
+  // its side `m` then runs past `len` (a part is [a, b] with b ≤ a + len)
+  const raw = cov.flatMap((k) => (k.closed ? [] : [k.a, wrap(k.a + k.span)]));
+  if (raw.length === 0) raw.push(0);
+  raw.sort((x, y) => x - y);
+  const bounds: number[] = [];
+  for (const b of raw) if (bounds.length === 0 || b - bounds[bounds.length - 1] > 1e-9) bounds.push(b);
+  if (bounds.length > 1 && bounds[0] + TAU - bounds[bounds.length - 1] <= 1e-9) bounds.pop();
+  const order = (room: string): number => rooms.findIndex((x) => String(x.id) === room);
+  const out: Interval[] = [];
+  for (let k = 0; k < bounds.length; k++) {
+    const lo = bounds[k];
+    const hi = k + 1 < bounds.length ? bounds[k + 1] : bounds[0] + TAU;
+    const mid = (lo + hi) / 2;
+    const covering = cov.filter((x) => wrap(mid - x.a) < x.span).sort((x, y) => order(x.e.room) - order(y.e.room));
+    const seen = new Set<string>();
+    const sides: Side[] = [];
+    for (const x of covering) {
+      if (seen.has(x.e.room)) continue;
+      seen.add(x.e.room);
+      // m from the author start along the author direction, on its own radius
+      const rr = x.e.arc!.r;
+      const relLo = wrap(lo - x.a);
+      const m0 = x.sw >= 0 ? relLo * rr : (x.span - relLo) * rr;
+      const m1 = x.sw >= 0 ? m0 + (hi - lo) * rr : m0 - (hi - lo) * rr;
+      sides.push({ room: x.e.room, edge: x.e.i, m: [Math.min(m0, m1), Math.max(m0, m1)] });
+      if (sides.length === 2) break;
+    }
+    if (sides.length === 0) continue;
+    const first = covering[0];
+    const full = bounds.length === 1;
+    const pos = first.sw >= 0;
+    out.push({
+      from: pt(pos ? lo : hi),
+      to: full ? pt(lo) : pt(pos ? hi : lo),
+      arc: { c: [c[0], c[1]], r, sweep: pos ? hi - lo : -(hi - lo) },
+      sides,
+      thickness: Math.max(...sides.map((s) => thickByRoom.get(s.room) ?? 0.12)),
+    });
+  }
+  return out;
+}
+

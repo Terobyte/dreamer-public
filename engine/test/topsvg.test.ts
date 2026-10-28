@@ -53,7 +53,7 @@ describe("top.svg", () => {
 
   test("test_all_geometry_has_data_id", () => {
     // every rendered geometry element must carry a data-id, including wall bodies
-    for (const m of svg.matchAll(/<(polygon|line|circle)\b[^>]*\/>/g)) {
+    for (const m of svg.matchAll(/<(polygon|line|circle|path)\b[^>]*\/>/g)) {
       expect(m[0], m[0]).toMatch(/data-id="/);
     }
   });
@@ -67,5 +67,18 @@ describe("top.svg", () => {
     });
     expect(existsSync(join(dir, "demo-flat.top.svg"))).toBe(true);
     void writeFileSync;
+  });
+});
+
+describe("terra re-review", () => {
+  test("test_body_is_one_compound_path", () => {
+    // outer contour and holes must be filled together, or the hole covers the floor
+    const out = runCheck(demoFlat());
+    const s = topSvg(out.ctx);
+    expect(s).not.toMatch(/<polygon class="body"/);
+    const m = s.match(/<path class="body" data-id="L0\.wall" fill-rule="nonzero" d="([^"]+)"\/>/);
+    expect(m).not.toBeNull();
+    const body = (out.ctx as any).levels.get("L0").body as unknown[];
+    expect((m![1].match(/M/g) ?? []).length).toBe(body.length);
   });
 });

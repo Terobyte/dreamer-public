@@ -87,12 +87,15 @@ function obstaclesOf(ctx: Ctx, level: string, base: number): Obstacles {
   const rawById = new Map<string, any>((((ctx.scene as any).rooms ?? []) as any[]).map((r) => [String(r.id), r]));
   const openings = ((ctx.openings ?? []) as OpeningGeo[]).filter((g) => !g.error && g.intervalLevel === level);
 
-  // the openings stage cut the body for every opening; patch back the ones a
-  // capsule cannot pass through, including closed door leaves
-  let body: Path64[] = ctx.levels?.get(level)?.body ?? [];
-  for (const g of openings) {
-    if (isWalkThrough(g)) continue;
-    body = Clipper.union(body, [cutPath(g)], FillRule.NonZero);
+  // walls for the capsule: the uncut body minus only the openings it can pass
+  // (not windows, sill steps or closed leaves). Patching cut openings back with
+  // their chord rectangle would add a false obstacle on arcs
+  const plan = ctx.levels?.get(level) as any;
+  let body: Path64[] = plan?.body ?? [];
+  if (plan?.bodyFull) {
+    const walk = new Set(openings.filter(isWalkThrough).map((g) => g.id));
+    const cuts = ((plan.cuts ?? []) as Array<{ id: string; paths: Path64[] }>).filter((c) => walk.has(c.id));
+    body = cuts.length === 0 ? plan.bodyFull : Clipper.difference(plan.bodyFull, cuts.flatMap((c) => c.paths), FillRule.NonZero);
   }
 
   const polys: V2[][] = body.map(toPoly);

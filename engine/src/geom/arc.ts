@@ -76,3 +76,15 @@ export function azToPoint(c: V2, r: number, azDeg: number): V2 {
 export function pointToAz(c: V2, p: V2): number {
   return ((Math.atan2(p[0] - c[0], p[1] - c[1]) * 180) / Math.PI % 360 + 360) % 360;
 }
+
+/** fraction along an arc of the angle `rel` past its start (`rel` in [0, 2π),
+ *  measured like the arc's angles); outside the sweep it snaps to the nearer
+ *  end, so the start seam (rel = 0 or ≈ 2π) maps to 0 for either sign of sweep */
+export function arcFrac(rel: number, sweep: number): number {
+  const TAU = 2 * Math.PI;
+  const s = Math.abs(sweep);
+  if (s < EPS) return 0;
+  const r = sweep >= 0 ? rel : (TAU - rel) % TAU;
+  if (r <= s) return r / s;
+  return r - s < TAU - r ? 1 : 0;
+}

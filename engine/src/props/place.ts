@@ -2,7 +2,9 @@ import type { Ctx } from "../ctx.js";
 import type { PropGeo } from "../types.js";
 import type { V2 } from "../geom/vec.js";
 import { EPS, degFromVec } from "../geom/vec.js";
+import { arcFrac } from "../geom/arc.js";
 import type { OBB } from "../geom/obb.js";
+import type { Interval } from "../plan/merge.js";
 import { obbAabb, obbCorners, obbPolyIntersects } from "../geom/obb.js";
 
 const TAU = Math.PI * 2;
@@ -64,7 +66,10 @@ export function edgeNormal(e: AuthorEdge, p: V2): V2 {
   let n: V2 = [p[0] - c[0], p[1] - c[1]];
   const l = Math.hypot(n[0], n[1]) || 1;
   n = [n[0] / l, n[1] / l];
-  if (n[0] * e.normalIn[0] + n[1] * e.normalIn[1] < 0) n = [-n[0], -n[1]];
+  // orientation from the arc midpoint, where the radial is parallel to
+  // `normalIn`; at the ends of a semicircle the radial is perpendicular to it
+  const pm = edgePoint(e, 0.5);
+  if ((pm[0] - c[0]) * e.normalIn[0] + (pm[1] - c[1]) * e.normalIn[1] < 0) n = [-n[0], -n[1]];
   return n;
 }
 
@@ -84,11 +89,8 @@ export function closestOnEdge(p: V2, e: AuthorEdge): { d: number; q: V2 } {
   if (!isClosed(e)) {
     const a0 = specAng(e.from, c);
     const sweep = e.arc.sweep ?? 0;
-    const rel = wrapTau(ang - a0);
-    // rel == 0 and rel == TAU are the same angle (the arc start); the
-    // raw formula maps 0 to the far end for negative sweeps
-    const f = sweep >= 0 ? rel / sweep : rel < EPS ? 0 : (rel - TAU) / sweep;
-    angAt = a0 + sweep * Math.min(1, Math.max(0, f));
+    // outside the sweep the nearer end wins, not the clamped far one
+    angAt = a0 + sweep * arcFrac(wrapTau(ang - a0), sweep);
   }
   const q: V2 = [c[0] + r * Math.sin(angAt), c[1] + r * Math.cos(angAt)];
   return { d: Math.hypot(p[0] - q[0], p[1] - q[1]), q };
@@ -103,9 +105,7 @@ export function fracOf(e: AuthorEdge, on: any): number {
     if (isClosed(e)) return wrapTau(rad) / TAU;
     const sweep = e.arc?.sweep ?? 0;
     if (Math.abs(sweep) < EPS) return 0;
-    const rel = wrapTau(rad - specAng(e.from, e.arc!.c));
-    const f = sweep >= 0 ? rel / sweep : rel < EPS ? 0 : (rel - TAU) / sweep;
-    return Math.min(1, Math.max(0, f));
+    return arcFrac(wrapTau(rad - specAng(e.from, e.arc!.c)), sweep);
   }
   return 0;
 }
@@ -136,16 +136,63 @@ export function beamPolys(raw: any): Array<{ poly: V2[]; h: number }> {
   return out;
 }
 
-/** nearest edge of the room; `toFace` measures to the inner face, not the axis */
-export function nearestEdge(p: V2, room: RoomRec, thickness: number, toFace: boolean):
-  { e: AuthorEdge; q: V2; n: V2; d: number } | null {
-  let best: { e: AuthorEdge; q: V2; n: V2; d: number } | null = null;
+/** `m` of point `q` (on or near the axis) along author edge `e` */
+export function mOnEdge(e: AuthorEdge, q: V2): number {
+  if (!e.arc) return Math.hypot(q[0] - e.from[0], q[1] - e.from[1]);
+  if (isClosed(e)) return (wrapTau(specAng(q, e.arc.c)) / TAU) * e.len;
+  return arcFrac(wrapTau(specAng(q, e.arc.c) - specAng(e.from, e.arc.c)), e.arc.sweep ?? 0) * e.len;
+}
+
+/** merged plan intervals that carry point `q` of author edge `e`; a closed
+ *  edge's `m` 0 and `len` are the same point (the seam) */
+function intervalsAt(ctx: Ctx, room: RoomRec, e: AuthorEdge, q: V2): Interval[] {
+  const plan = ctx.levels?.get(room.level);
+  const m = mOnEdge(e, q);
+  const inside = (s: { m: [number, number] }): boolean =>
+    (m >= s.m[0] - EPS && m <= s.m[1] + EPS) || (isClosed(e) && m + e.len <= s.m[1] + EPS);
+  return ((plan?.intervals ?? []) as Interval[]).filter((iv) =>
+    iv.sides.some((s) => s.room === e.room && s.edge === e.i && inside(s)));
+}
+
+/** a shared wall is as thick as its thickest side: read the merged interval
+ *  under the point `q` of edge `e`, fall back to the room's own thickness */
+export function wallThicknessAt(ctx: Ctx, room: RoomRec, e: AuthorEdge, q: V2, own: number): number {
+  let best = -1;
+  for (const iv of intervalsAt(ctx, room, e, q)) best = Math.max(best, iv.thickness);
+  return best > 0 ? best : own;
+}
+
+/** `q` moved onto the merged wall axis (snapped corners may shift an author
+ *  edge off it): the interval's line, or its circle on arcs */
+export function onWallAxis(ctx: Ctx, room: RoomRec, e: AuthorEdge, q: V2): V2 {
+  const iv = intervalsAt(ctx, room, e, q)[0];
+  if (!iv) return q;
+  if (iv.arc) {
+    const c = iv.arc.c;
+    const l = Math.hypot(q[0] - c[0], q[1] - c[1]) || 1;
+    return [c[0] + ((q[0] - c[0]) * iv.arc.r) / l, c[1] + ((q[1] - c[1]) * iv.arc.r) / l];
+  }
+  const dx = iv.to[0] - iv.from[0];
+  const dz = iv.to[1] - iv.from[1];
+  const l2 = dx * dx + dz * dz || 1;
+  const k = ((q[0] - iv.from[0]) * dx + (q[1] - iv.from[1]) * dz) / l2;
+  return [iv.from[0] + dx * k, iv.from[1] + dz * k];
+}
+
+/** nearest edge of the room; `toFace` measures to the inner face, not the axis.
+ *  `thickness` may vary per edge point (merged shared walls); `axis`, when
+ *  given, moves the author point onto the merged wall axis (snapped corners) */
+export function nearestEdge(p: V2, room: RoomRec, thickness: number | ((e: AuthorEdge, q: V2) => number),
+  toFace: boolean, axis?: (e: AuthorEdge, q: V2) => V2): { e: AuthorEdge; q: V2; n: V2; d: number; t: number } | null {
+  let best: { e: AuthorEdge; q: V2; n: V2; d: number; t: number } | null = null;
   for (const e of room.edges) {
-    const { q } = closestOnEdge(p, e);
+    const q0 = closestOnEdge(p, e).q;
+    const q = axis ? axis(e, q0) : q0;
     const n = edgeNormal(e, q);
-    const ref: V2 = toFace ? [q[0] + n[0] * (thickness / 2), q[1] + n[1] * (thickness / 2)] : q;
+    const t = typeof thickness === "number" ? thickness : thickness(e, q);
+    const ref: V2 = toFace ? [q[0] + n[0] * (t / 2), q[1] + n[1] * (t / 2)] : q;
     const d = Math.hypot(p[0] - ref[0], p[1] - ref[1]);
-    if (!best || d < best.d - 1e-12) best = { e, q, n, d };
+    if (!best || d < best.d - 1e-12) best = { e, q, n, d, t };
   }
   return best;
 }
@@ -167,30 +214,26 @@ export function placeProps(ctx: Ctx): PropGeo[] {
     return typeof t === "number" ? t : DEFAULT_THICKNESS;
   };
 
-  /** a shared wall is as thick as its thickest side: read the merged interval
-   *  under the mount point, fall back to the room's own thickness */
-  const wallThicknessAt = (room: RoomRec, e: AuthorEdge, q: V2): number => {
-    const plan = ctx.levels?.get(room.level);
-    const m = e.arc ? null : Math.hypot(q[0] - e.from[0], q[1] - e.from[1]);
-    let best = -1;
-    for (const iv of plan?.intervals ?? []) {
-      for (const s of iv.sides) {
-        if (s.room !== e.room || s.edge !== e.i) continue;
-        if (m !== null && (m < s.m[0] - EPS || m > s.m[1] + EPS)) continue;
-        best = Math.max(best, iv.thickness);
-      }
-    }
-    return best > 0 ? best : thicknessOf(room.id);
-  };
+  /** props whose `face` target resolved onto their own position: no direction */
+  const faceCoincident = new Set<number>();
+  (ctx as any).propFaceCoincident = faceCoincident;
+  // wall props whose back cannot lie on the concave face: no chord that wide
+  const noChord = new Map<number, { edge: string; d: number }>();
+  (ctx as any).propNoChord = noChord;
 
   const levelYOf = (room: RoomRec): number => {
     const lvl = (scene.levels ?? []).find((l: any) => String(l?.id) === room.level);
     return typeof lvl?.y === "number" ? lvl.y : 0;
   };
 
+  const rawProp = new Map<string, any>(list.map((p: any) => [String(p?.id), p]));
   const targetOf = (name: string): V2 | null => {
     const p = byId.get(name);
     if (p) return [p.obb.c[0], p.obb.c[1]];
+    // an authored `at` off the wall is the final position: no need to wait for
+    // the target's own facing (two props may face each other)
+    const r = rawProp.get(name);
+    if (r && !r.around && r.mount !== "wall" && Array.isArray(r.at)) return [r.at[0], r.at[1]];
     const o = openings.find((g) => g.id === name && !g.error);
     if (o && o.center) return [o.center[0], o.center[1]];
     return null;
@@ -295,16 +338,26 @@ export function placeProps(ctx: Ctx): PropGeo[] {
       if (typeof raw.yaw === "number") return raw.yaw;
       const face = raw.face;
       if (face === "room") {
-        const near = nearestEdge(at, room, thickness, true);
+        const near = nearestEdge(at, room, (e, q) => wallThicknessAt(ctx, room, e, q, thickness), true,
+          (e, q) => onWallAxis(ctx, room, e, q));
         if (!near) return null;
         return degFromVec(near.n[0], near.n[1]);
       }
       if (typeof face === "string" && face !== "room") {
         const t = targetOf(face);
         if (!t) return null;
+        // the target may land on `at` only once resolved (a wall mount, a support)
+        if (Math.hypot(t[0] - at[0], t[1] - at[1]) < EPS) {
+          faceCoincident.add(idx);
+          return null;
+        }
         return degFromVec(t[0] - at[0], t[1] - at[1]);
       }
       if (Array.isArray(face)) {
+        if (Math.hypot(face[0] - at[0], face[1] - at[1]) < EPS) {
+          faceCoincident.add(idx);
+          return null;
+        }
         return degFromVec(face[0] - at[0], face[1] - at[1]);
       }
       if (mount === "ceiling") return 0;
@@ -349,12 +402,14 @@ export function placeProps(ctx: Ctx): PropGeo[] {
         const q = edgePoint(e, fracOf(e, raw.on));
         hit = { e, q, n: edgeNormal(e, q) };
       } else {
-        const near = nearestEdge([raw.at[0], raw.at[1]], room, thickness, false);
-        if (!near || near.d >= WALL_SEARCH - EPS) return 0;
+        // distance to the merged wall axis: a snapped corner may move the wall
+        const near = nearestEdge([raw.at[0], raw.at[1]], room, thickness, false, (e, q) => onWallAxis(ctx, room, e, q));
+        if (!near || near.d >= WALL_SEARCH) return 0;
         hit = { e: near.e, q: near.q, n: near.n };
       }
-      const { e, q, n } = hit;
-      const wallT = wallThicknessAt(room, e, q);
+      const { e, n } = hit;
+      const q = onWallAxis(ctx, room, e, hit.q);
+      const wallT = wallThicknessAt(ctx, room, e, q, thickness);
       const y0 = levelYOf(room) + (typeof raw.y === "number" ? raw.y : 1.0);
       const yaw = degFromVec(n[0], n[1]);
       if (!e.arc) {
@@ -386,7 +441,11 @@ export function placeProps(ctx: Ctx): PropGeo[] {
         mid = [Cc[0] + mR * d[0], Cc[1] + mR * d[1]];
       } else {
         const eR = faceR - WALL_GAP;
-        const halfAng = Math.asin(Math.min(1, half[0] / eR));
+        if (!(eR > half[0])) {
+          noChord.set(idx, { edge: e.id, d: half[0] - Math.max(eR, 0) });
+          return 0;
+        }
+        const halfAng = Math.asin(half[0] / eR);
         const da = dir(axisAng - halfAng);
         const db = dir(axisAng + halfAng);
         const A: V2 = [Cc[0] + eR * da[0], Cc[1] + eR * da[1]];

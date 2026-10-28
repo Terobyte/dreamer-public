@@ -126,14 +126,19 @@ export function wallBody(intervals: Interval[]): Path64[] {
     chainThickness.push(th);
   };
 
+  // open chains start at every break vertex (a junction, an end, a thickness
+  // change), so no chain is cut at an ordinary corner and loses its miter;
+  // what is left are closed loops, where any start gives the same ring
   for (const [k, list] of adj) {
-    if (list.length === 1 && !used.has(list[0])) walk(k, list[0]);
+    const brk = list.length !== 2 || segs[list[0]].thickness !== segs[list[1]].thickness;
+    if (!brk) continue;
+    for (const idx of list) if (!used.has(idx)) walk(k, idx);
   }
   for (let i = 0; i < segs.length; i++) {
     if (!used.has(i)) walk(key(segs[i].from), i);
   }
 
-  let acc: Path64[] = [];
+  const pieces: Path64[] = [];
   chains.forEach((chain, ci) => {
     if (chain.length < 2) return;
     const closed = chain.length > 2 && key(chain[chain.length - 1]) === key(chain[0]);
@@ -141,8 +146,9 @@ export function wallBody(intervals: Interval[]): Path64[] {
     const th = chainThickness[ci];
     const delta = Math.round((th / 2) * 1000);
     const endType = closed ? EndType.Joined : EndType.Square;
-    const out = Clipper.inflatePaths([toPath(pts)], delta, JoinType.Miter, endType, 2);
-    acc = acc.length === 0 ? out : Clipper.union(acc, out, FillRule.NonZero);
+    // the offset's winding follows the path direction: normalise each piece
+    // first, or a negative piece cancels the ones under it in the union below
+    pieces.push(...Clipper.union(Clipper.inflatePaths([toPath(pts)], delta, JoinType.Miter, endType, 2), FillRule.NonZero));
   });
-  return acc;
+  return pieces.length === 0 ? [] : Clipper.union(pieces, FillRule.NonZero);
 }

@@ -1,10 +1,13 @@
+import { Clipper, FillRule } from "clipper2-ts";
+import type { Path64 } from "clipper2-ts";
 import type { Ctx } from "../ctx.js";
 import type { Issue, PropGeo } from "../types.js";
 import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
 import type { OBB } from "../geom/obb.js";
 import { obbCorners, obbIntersects, obbPolyIntersects, rotLocal } from "../geom/obb.js";
-import { beamPolys, nearestEdge } from "./place.js";
+import type { AuthorEdge } from "./place.js";
+import { beamPolys, closestOnEdge, edgeNormal, edgePoint, nearestEdge, onWallAxis, wallThicknessAt } from "./place.js";
 import { CATS } from "./cats.js";
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
@@ -57,6 +60,32 @@ function obbDepth(a: OBB, b: OBB): number {
   return best === Infinity ? 0 : best;
 }
 
+/** how far the points reach past the inner face of edge `e` (thickness `t`):
+ *  along its normal on a straight wall, radially at each point on an arc */
+function depthPast(pts: V2[], w: { e: AuthorEdge; q: V2; n: V2; t: number }): number {
+  let d = 0;
+  for (const p of pts) {
+    const q = w.e.arc ? closestOnEdge(p, w.e).q : w.q;
+    const n = w.e.arc ? edgeNormal(w.e, q) : w.n;
+    d = Math.max(d, -((p[0] - q[0] - n[0] * (w.t / 2)) * n[0] + (p[1] - q[1] - n[1] * (w.t / 2)) * n[1]));
+  }
+  return d;
+}
+
+/** wall band of an author edge: its axis ± t/2 (sampled on arcs) */
+function edgeBand(e: AuthorEdge, t: number): V2[] {
+  const k = e.arc ? 16 : 1;
+  const inner: V2[] = [];
+  const outer: V2[] = [];
+  for (let i = 0; i <= k; i++) {
+    const p = edgePoint(e, i / k);
+    const n = edgeNormal(e, p);
+    inner.push([p[0] + n[0] * (t / 2), p[1] + n[1] * (t / 2)]);
+    outer.push([p[0] - n[0] * (t / 2), p[1] - n[1] * (t / 2)]);
+  }
+  return [...inner, ...outer.reverse()];
+}
+
 /** strict overlap of two vertical spans */
 function yHits(a: [number, number], b: [number, number]): boolean {
   return a[0] < b[1] - EPS && b[0] < a[1] - EPS;
@@ -82,13 +111,25 @@ export function lintProps(ctx: Ctx): Issue[] {
     const lvl = (scene.levels ?? []).find((l: any) => String(l?.id) === room.level);
     return typeof lvl?.y === "number" ? lvl.y : 0;
   };
-  const wallPolysOf = (room: any): V2[][] =>
-    (ctx.levels?.get(room.level)?.body ?? []).map((path: any) =>
-      (path as Array<{ x: number; y: number }>).map((pt) => [pt.x / 1000, pt.y / 1000] as V2),
-    );
+  /** wall body met by a prop spanning `y` (absolute): an opening clears the
+   *  wall only if it covers that whole span; below a sill the wall stays */
+  const wallPolysOf = (room: any, y: [number, number]): V2[][] => {
+    const plan = ctx.levels?.get(room.level) as any;
+    let body = plan?.body ?? [];
+    const cuts = (plan?.cuts ?? []) as Array<{ paths: Path64[]; y: [number, number] }>;
+    const base = levelYOf(room);
+    const clear = cuts.filter((c) => base + c.y[0] <= y[0] + EPS && y[1] <= base + c.y[1] + EPS);
+    if (plan?.bodyFull && clear.length < cuts.length) {
+      body = clear.length === 0
+        ? plan.bodyFull
+        : Clipper.difference(plan.bodyFull, clear.flatMap((c) => c.paths), FillRule.NonZero);
+    }
+    return (body as Path64[]).map((path) => path.map((pt) => [pt.x / 1000, pt.y / 1000] as V2));
+  };
   const beamsOf = (room: any): Array<{ poly: V2[]; h: number }> => beamPolys(rawById.get(room.id));
 
   const at = (raw: any): V2 | null => (Array.isArray(raw.at) ? [raw.at[0], raw.at[1]] : null);
+  const faceCoincident = (ctx as any).propFaceCoincident as Set<number> | undefined;
 
   // --- props that never got placed: one defect, one record, no further checks
   list.forEach((raw, i) => {
@@ -97,8 +138,8 @@ export function lintProps(ctx: Ctx): Issue[] {
     if (!room) return; // reported by the schema stage as REF_UNKNOWN
     const p = at(raw);
     if (raw.mount === "wall" && !raw.on && p) {
-      const near = nearestEdge(p, room, thicknessOf(room.id), false);
-      if (!near || near.d >= WALL_SEARCH - EPS) {
+      const near = nearestEdge(p, room, thicknessOf(room.id), false, (e, q) => onWallAxis(ctx, room, e, q));
+      if (!near || near.d >= WALL_SEARCH) {
         issues.push({
           code: "PROP_WALL_NOT_FOUND",
           stage: "props",
@@ -114,6 +155,25 @@ export function lintProps(ctx: Ctx): Issue[] {
       }
     }
     if (raw.around) return;
+    const chord = ((ctx as any).propNoChord as Map<number, { edge: string; d: number }> | undefined)?.get(i);
+    if (chord) {
+      issues.push({
+        code: "PROP_HITS_WALL",
+        stage: "props",
+        path: `/props/${i}/${raw.on ? "on" : "at"}`,
+        msg: msg("PROP_HITS_WALL", { id: String(raw.id), edge: chord.edge, d: String(round3(chord.d)) }),
+      });
+      return;
+    }
+    if (faceCoincident?.has(i)) {
+      issues.push({
+        code: "POS_INVALID",
+        stage: "props",
+        path: `/props/${i}/face`,
+        msg: msg("POS_INVALID", { path: `/props/${i}/face` }),
+      });
+      return;
+    }
     if (typeof raw.yaw !== "number" && raw.face === undefined && raw.mount !== "ceiling") {
       issues.push({
         code: "PROP_NO_FACING",
@@ -172,8 +232,9 @@ export function lintProps(ctx: Ctx): Issue[] {
       }
     }
     if (g.y[1] > top + EPS) {
+      // both heights from the level floor, like the ceiling `h`
       add("PROP_ABOVE_CEILING", {
-        y1: String(round3(g.y[1])),
+        y1: String(round3(g.y[1] - (ceilY - room.height))),
         room: room.id,
         h: String(round3(topWhat)),
         d: String(round3(g.y[1] - top)),
@@ -216,26 +277,53 @@ export function lintProps(ctx: Ctx): Issue[] {
 
     if (g.solid) {
       // 5. inside the wall body or a beam footprint
-      const near = nearestEdge(c, room, thickness, true);
-      const hitWall = obbPolyIntersects(g.obb, wallPolysOf(room));
+      const hitWall = obbPolyIntersects(g.obb, wallPolysOf(room, g.y));
+      // the struck wall is the edge whose band the box enters deepest, not the
+      // one nearest its centre (a long box reaches a far wall)
+      let near: { e: AuthorEdge; q: V2; n: V2; t: number } | null = null;
+      if (hitWall) {
+        let bestD = -Infinity;
+        for (const e of room.edges as AuthorEdge[]) {
+          const q0 = closestOnEdge(c, e).q;
+          const t = wallThicknessAt(ctx, room, e, q0, thickness);
+          if (!obbPolyIntersects(g.obb, [edgeBand(e, t)])) continue;
+          let d = 0;
+          for (const p of obbCorners(g.obb)) {
+            const q = closestOnEdge(p, e).q;
+            const n = edgeNormal(e, q);
+            d = Math.max(d, -((p[0] - q[0] - n[0] * (t / 2)) * n[0] + (p[1] - q[1] - n[1] * (t / 2)) * n[1]));
+          }
+          if (d > bestD + 1e-12) {
+            bestD = d;
+            near = { e, q: q0, n: edgeNormal(e, q0), t };
+          }
+        }
+      }
+      near ??= nearestEdge(c, room, (e, q) => wallThicknessAt(ctx, room, e, q, thickness), true);
       const hitBeam = beamsOf(room).find(
         (b) => obbPolyIntersects(g.obb, [b.poly]) && yHits(g.y, [ceilY - b.h, ceilY]),
       );
       if (hitWall || hitBeam) {
         // depth past the inner face along its normal; a beam is reported at the
         // same address, measured by how far the prop reaches into it
-        let depth = 0;
-        if (near) {
-          const face: V2 = [near.q[0] + near.n[0] * (thickness / 2), near.q[1] + near.n[1] * (thickness / 2)];
-          for (const p of obbCorners(g.obb)) {
-            depth = Math.max(depth, -((p[0] - face[0]) * near.n[0] + (p[1] - face[1]) * near.n[1]));
-          }
-        }
+        const corners = obbCorners(g.obb);
+        const nr = near;
+        let depth = nr ? depthPast(corners, nr) : 0;
         if (depth <= EPS && hitBeam) depth = Math.min(g.y[1], ceilY) - (ceilY - hitBeam.h);
         const p0 = at(raw);
+        // the shift along the normal that clears every corner: on an arc the
+        // corners meet the curve at other normals, so one step of `depth` is short
+        let shift = depth;
+        if (nr) {
+          for (let k = 0; k < 20; k++) {
+            const more = depthPast(corners.map((c) => [c[0] + nr.n[0] * shift, c[1] + nr.n[1] * shift] as V2), nr);
+            if (more <= EPS) break;
+            shift += more;
+          }
+        }
         const fix =
           near && p0
-            ? { at: [round3(p0[0] + near.n[0] * (depth + 0.01)), round3(p0[1] + near.n[1] * (depth + 0.01))] }
+            ? { at: [round3(p0[0] + near.n[0] * (shift + 0.01)), round3(p0[1] + near.n[1] * (shift + 0.01))] }
             : undefined;
         add(
           "PROP_HITS_WALL",
@@ -277,7 +365,13 @@ export function lintProps(ctx: Ctx): Issue[] {
         add("PROP_IN_DOORWAY", { opening: String(inDoor.id) });
         continue;
       }
-      const inSwing = openings.find((o) => o && !o.error && o.sector && obbPolyIntersects(g.obb, [o.sector]));
+      // the leaf sweeps only its own height band
+      const inSwing = openings.find(
+        (o) =>
+          o && !o.error && o.sector &&
+          obbPolyIntersects(g.obb, [o.sector]) &&
+          yHits(g.y, [levelY + o.sill, levelY + o.sill + o.height]),
+      );
       if (inSwing) {
         add("PROP_IN_SWING", { opening: String(inSwing.id) });
         continue;
@@ -286,8 +380,11 @@ export function lintProps(ctx: Ctx): Issue[] {
 
     // warnings: `face: "room"` taken from too far away
     if (g.copy === undefined && raw.face === "room") {
-      const p0 = at(raw);
-      const near = p0 ? nearestEdge(p0, room, thickness, true) : null;
+      // `top_of` without `at` stands where it was resolved
+      const p0 = at(raw) ?? ([g.obb.c[0], g.obb.c[1]] as V2);
+      const near = p0
+        ? nearestEdge(p0, room, (e, q) => wallThicknessAt(ctx, room, e, q, thickness), true, (e, q) => onWallAxis(ctx, room, e, q))
+        : null;
       if (near && near.d > FACE_ROOM_MAX + EPS) {
         issues.push({
           code: "FACE_ROOM_FAR",
@@ -307,7 +404,8 @@ export function lintProps(ctx: Ctx): Issue[] {
   // warnings: implausible size for the declared `cat`, once per source prop
   list.forEach((raw, i) => {
     const cat = CATS[String(raw.cat)];
-    if (!cat || !raw.size) return;
+    // an unplaced prop already has its one record (PROP_NO_FACING, ...)
+    if (!cat || !raw.size || !placed.has(i)) return;
     const bad: string[] = [];
     const check = (k: "w" | "d" | "h", lo: number, hi: number): void => {
       const v = raw.size[k];

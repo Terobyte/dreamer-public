@@ -206,25 +206,33 @@ export function checkRefs(raw: any): Issue[] {
     }
     if (p.mount && typeof p.mount === "object" && typeof p.mount.top_of === "string") {
       if (!propById.has(p.mount.top_of)) ref(`/props/${i}/mount/top_of`, "prop", p.mount.top_of, new Set(propIds));
+      // one cycle, one record: on its first member in scene order; a prop that
+      // only stands on a cycle is not itself a defect
       let cur: string | undefined = p.mount.top_of;
-      const chain = new Set<string>([p.id]);
+      const chain: string[] = [p.id];
       while (typeof cur === "string" && propById.has(cur)) {
-        if (chain.has(cur)) {
-          out.push({
-            code: "REF_UNKNOWN",
-            stage: "schema",
-            path: `/props/${i}/mount/top_of`,
-            msg: msg("REF_UNKNOWN", { path: `/props/${i}/mount/top_of`, kind: "prop", v: p.mount.top_of, have: haveList(new Set(propIds)) }),
-          });
+        if (cur === p.id) {
+          if (chain.every((id) => propById.get(id)! >= i)) {
+            const path = `/props/${i}/mount/top_of`;
+            out.push({
+              code: "REF_UNKNOWN",
+              stage: "schema",
+              path,
+              msg: msg("REF_UNKNOWN", { path, cycle: [...chain, p.id].join(" → ") }),
+            });
+          }
           break;
         }
-        chain.add(cur);
+        if (chain.includes(cur)) break;
+        chain.push(cur);
         const nxt = (raw.props as any[])[propById.get(cur)!]?.mount;
         cur = nxt && typeof nxt === "object" ? nxt.top_of : undefined;
       }
     }
-    if (typeof p.face === "string" && p.face !== "room" && !propById.has(p.face) && !roomIds.has(p.face)) {
-      ref(`/props/${i}/face`, "target", p.face, new Set([...propIds, ...roomIds]));
+    // a face target may be a prop, a room or an opening (placement resolves all three)
+    const openIds: string[] = (raw.openings ?? []).map((o: any) => o?.id).filter((x: any) => typeof x === "string");
+    if (typeof p.face === "string" && p.face !== "room" && !propById.has(p.face) && !roomIds.has(p.face) && !openIds.includes(p.face)) {
+      ref(`/props/${i}/face`, "target", p.face, new Set([...propIds, ...roomIds, ...openIds]));
     }
     if (p.around && typeof p.around.center === "string" && !propById.has(p.around.center)) {
       ref(`/props/${i}/around/center`, "prop", p.around.center, new Set(propIds));
@@ -343,19 +351,34 @@ export function checkRefs(raw: any): Issue[] {
   (raw.props ?? []).forEach((p: any, i: number) => p?.on && checkAz(p.on, `/props/${i}/on`));
   (raw.decals ?? []).forEach((d: any, i: number) => d?.on && checkAz(d.on, `/decals/${i}/on`));
 
+  // plan position of a prop: its own `at`, else (top_of) its support's centre
+  const posOf = (p: any, depth = 0): number[] | undefined => {
+    if (!p || typeof p !== "object" || depth > (raw.props as any[]).length) return undefined;
+    // a wall mount moves off its authored `at` onto the wall: only placement knows where
+    if (p.mount === "wall") return undefined;
+    if (Array.isArray(p.at)) return p.at as number[];
+    const sup = p.mount && typeof p.mount === "object" ? p.mount.top_of : undefined;
+    if (typeof sup === "string" && propById.has(sup)) return posOf((raw.props as any[])[propById.get(sup)!], depth + 1);
+    return undefined;
+  };
+  // an opening's authored `at` is its plan point (an `on` opening has none here)
+  const openAt = new Map<string, number[]>();
+  for (const o of (raw.openings ?? []) as any[]) {
+    if (o && typeof o.id === "string" && Array.isArray(o.at)) openAt.set(o.id, o.at);
+  }
   (raw.props ?? []).forEach((p: any, i: number) => {
-    if (!p || typeof p !== "object" || !Array.isArray(p.at)) return;
-    const at = p.at as number[];
+    const at = p && typeof p === "object" && !p.around ? posOf(p) : undefined;
+    if (!at) return;
     if (Array.isArray(p.face) && p.face.length === 2) {
       const dx = (p.face as number[])[0] - at[0];
       const dz = (p.face as number[])[1] - at[1];
       if (Math.hypot(dx, dz) <= EPS) out.push({ code: "POS_INVALID", stage: "schema", path: `/props/${i}/face`, msg: msg("POS_INVALID", { path: `/props/${i}/face` }) });
     }
-    if (typeof p.face === "string" && p.face !== "room" && propById.has(p.face)) {
-      const t = (raw.props as any[])[propById.get(p.face)!];
-      if (t && Array.isArray(t.at)) {
-        const dx = t.at[0] - at[0];
-        const dz = t.at[1] - at[1];
+    if (typeof p.face === "string" && p.face !== "room" && (propById.has(p.face) || openAt.has(p.face))) {
+      const t = propById.has(p.face) ? posOf((raw.props as any[])[propById.get(p.face)!]) : openAt.get(p.face);
+      if (t) {
+        const dx = t[0] - at[0];
+        const dz = t[1] - at[1];
         if (Math.hypot(dx, dz) <= EPS) out.push({ code: "POS_INVALID", stage: "schema", path: `/props/${i}/face`, msg: msg("POS_INVALID", { path: `/props/${i}/face` }) });
       }
     }
