@@ -984,6 +984,8 @@ def main():
     ap.add_argument("--serve", action="store_true", help="live comic viewer (spec 11)")
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--scene", default="start", help="opening scene: scenes/<name>.json")
+    ap.add_argument("--text", action="store_true",
+                    help="dialogue only: no Fish voice, no Muse images (scene bank runs)")
     args = ap.parse_args()
     use_scene(args.scene)
     if args.max_transitions is None:
@@ -997,7 +999,7 @@ def main():
         # media failures fall back per module, never stop the dream.
         from voice import Voice
         from images import Images
-        media = {"voice": Voice(), "images": Images()}
+        media = {} if args.text else {"voice": Voice(), "images": Images()}
     outdir, logpath = run(profile=args.profile, fake=args.fake, speed=args.speed,
                            max_transitions=args.max_transitions, media=media,
                            max_dollars=args.max_dollars, dialogue=dialogue,

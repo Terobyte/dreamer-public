@@ -110,6 +110,8 @@ HERO_IMPULSES = (
 )
 REPEAT_JACCARD = 0.45
 OWN_KEEP = 4
+BIT_LINES = 2
+BIT_SHOW = 4
 
 
 def soul_text(profile):
@@ -153,6 +155,27 @@ def repeats(text, earlier):
     return False
 
 
+def _phrases(text):
+    """Spoken word 3-grams with at least one real word ("that's one lost")."""
+    words = re.findall(r"[a-z']+", _REMARK.sub(" ", _VOICE_TAG.sub(" ", (text or "").lower())))
+    return {" ".join(words[i:i + 3]) for i in range(len(words) - 2)
+            if any(len(w) > 3 for w in words[i:i + 3])}
+
+
+def running_bits(own):
+    """Phrases one speaker said in BIT_LINES or more of their own lines: a running
+    bit. Line overlap misses it, since the rest of each line is new."""
+    seen = {}
+    for line in own:
+        for ph in _phrases(line):
+            seen[ph] = seen.get(ph, 0) + 1
+    return sorted(ph for ph, n in seen.items() if n >= BIT_LINES)
+
+
+def uses_bit(text, own):
+    return bool(_phrases(text) & set(running_bits(own)))
+
+
 def _own_lines(transcript, who):
     return [t for w, t in transcript if w == who][-OWN_KEEP:]
 
@@ -161,8 +184,13 @@ def _no_repeat_block(transcript, who):
     own = _own_lines(transcript, who)
     if not own:
         return ""
-    return ("\n\nYou already said (do not say any of this again, not even in other "
-            "words):\n" + "\n".join("- " + t for t in own))
+    block = ("\n\nYou already said (do not say any of this again, not even in other "
+             "words):\n" + "\n".join("- " + t for t in own))
+    bits = running_bits(own)
+    if bits:
+        block += ("\n\nThat running bit is used up, drop it completely, not even a "
+                  "variation: " + "; ".join('"%s"' % b for b in bits[:BIT_SHOW]) + ".")
+    return block
 
 
 MEMORY_RULES = (
@@ -368,7 +396,8 @@ class Dialogue:
             # no leading [direction] = the model stepped out of the character (on a
             # roof edge it slips into a counsellor voice); that line is never voiced
             in_role = text.startswith("[")
-            if text and in_role and not repeats(text, recent):
+            if text and in_role and not repeats(text, recent) and not uses_bit(
+                    text, _own_lines(transcript, self.hero)):
                 break
             user += ("\n(Say or do something new.)" if in_role else
                      "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
@@ -417,7 +446,8 @@ class Dialogue:
             if m and not state.get("stalled"):
                 look = _match(m.group(1), world.get("objects")) or m.group(1).strip()
             text = _clean_spoken(clean, "actor", actor)
-            if text and repeats(text, recent) and attempt == 0:
+            if text and attempt == 0 and (repeats(text, recent) or uses_bit(
+                    text, _own_lines(transcript, actor))):
                 user += "\n(That repeats the scene. Say or do something new.)"
                 continue
             leaks = bool(re.search(r"\bbridges?\b", text, re.I)) and not (

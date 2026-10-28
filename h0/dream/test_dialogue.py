@@ -207,6 +207,22 @@ class VoiceDirectionTest(unittest.TestCase):
         self.assertEqual(voice.MODEL, "drama-3")
 
 
+class RunningBitTest(unittest.TestCase):
+    """Roof run: Dan said "that's one... lost it" ~8 times, each line otherwise new,
+    so line overlap never fired. A phrase in two own lines is now a used-up bit."""
+
+    def test_bit_is_named_up_front_and_a_reuse_is_caught(self):
+        import dialogue as dl
+        own = ["[x] Okay, that's one... lost it. Wait.",
+               "[y] Look, the dish! That's one, lost it again."]
+        self.assertIn("that's one lost", dl.running_bits(own))
+        self.assertTrue(dl.uses_bit("[a] fine fine, that's one lost it", own))
+        self.assertFalse(dl.uses_bit("[a] tell me about Friday", own))
+        block = dl._no_repeat_block([("Dan", t) for t in own], "Dan")
+        self.assertIn("running bit is used up", block)
+        self.assertEqual(dl.running_bits(["[a] one line only, that's one lost"]), [])
+
+
 class MemoryCompactTest(unittest.TestCase):
     REPLY = ("SO FAR: Dan ran up to the roof and begged me to step away from the edge.\n"
              "KNOW: Dan is scared; Dan hides why he came\n"
