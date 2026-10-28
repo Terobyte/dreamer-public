@@ -22,32 +22,50 @@ _DOUBLE = re.compile(r"\[\[[^\[\]]*\]\]")
 _REMARK = re.compile(r"\[([^\[\]]+)\]")
 _ANGLE = re.compile(r"<[^<>]*>")
 
+# Same rule as for actors: no engine or meta words the hero could say aloud
+# (no "dream", "world", "impulse", "scene" in what he reads).
 HERO_RULES = (
-    "This is a dream. You live it from the inside: you do not know it is a dream and you "
-    "never retell your day like a report; it only colours what you notice, want and fear. "
-    "[WORLD ...] lines tell you what you see and hear. Reply with one or two short spoken "
-    "lines, no narration, no name prefix, English only. You may start with one delivery "
-    "direction in square brackets; pick a new one each time. "
-    "A dream never stands still: every line of yours brings something new -- you notice "
-    "or pick up an object, ask an odd question, a memory surfaces, you want to go somewhere, "
-    "something dreamlike happens to you. Never repeat a wish, worry or phrase you have "
-    "already said; if you said it once, the scene knows it. "
-    "Most of your lines are just talk. Rarely, when one object truly pulls at you, you "
-    "go to it and touch or open it: then end your line with [[TOUCH:<object name>]].")
+    "Your day only colours what you notice, want and fear; you never retell it like a "
+    "report. You speak only as yourself, in first person, to whoever is here with you -- "
+    "never as a narrator, helper or counsellor. Reply with one or two short spoken lines, "
+    "no narration, no name prefix, English only. Always start with one delivery "
+    "direction in square brackets, a new one each time. Things here never stand still: every line of yours brings "
+    "something new -- you notice or pick up something, ask an odd question, a memory "
+    "surfaces, you want to go somewhere, something strange happens to you. Never repeat "
+    "a wish, worry or phrase you have already said. "
+    "Most of your lines are just talk. Rarely, when one thing truly pulls at you, you go "
+    "to it and touch or open it: then end your line with [[TOUCH:<its name>]].")
 TOUCH_EVERY = 4  # hero turns between two touches; more is spam, not a choice
 
-LADDER = (
-    "Before each of your lines you get [STATE hint_level=N build=NN%]. The dream wants the "
-    "hero to go to the BRIDGE object; hint_level sets how much it may show in what you do:\n"
-    "- 0: you never mention the bridge. Just be yourself and answer the hero.\n"
-    "- 1: you may glance at it: put [[LOOK:<bridge>]] in your line. You still never name it.\n"
-    "- 2: you mention it, best as a prohibition or a slip that makes it irresistible.\n"
-    "- 3: you name it openly, dare or invite the hero to it.\n"
-    "- 4: the bridge is glowing and pulling; react to it in character.\n"
-    "With stalled=true the hero reached for the bridge too early: refuse with an excuse that "
-    "follows build: 0-30% a flat no, 30-60% wavering, 60-90% almost there and grumbling, "
-    "91-99% one last tiny delay. No [[LOOK]] while stalled.\n"
-    "With no bridge, simply play the scene and follow the director's notes.")
+# The actor never sees engine words (bridge, level, percent, director, state): a
+# word in the prompt is a word he can say aloud ("don't touch that damn bridge").
+# Code turns the H17 ladder and the stall stages into one plain in-world line.
+LADDER_LINES = {
+    0: "Tonight the {obj} matters, but right now you neither mention it nor look at it.",
+    1: "Your eyes keep drifting to the {obj}: put [[LOOK:{obj}]] in your line, but never say "
+       "what it is.",
+    2: "You bring up the {obj} yourself, best as a warning or a slip that makes it irresistible.",
+    3: "You name the {obj} openly and dare or invite {hero} to it.",
+    4: "The {obj} is glowing and pulling on its own; react to it.",
+}
+STALL_LINES = (
+    (30, "{hero} just reached for the {obj}: flatly refuse, you are nowhere near ready."),
+    (60, "{hero} just reached for the {obj}: refuse, but you are wavering and stalling."),
+    (91, "{hero} just reached for the {obj}: almost, but not yet; grumble and stall."),
+    (101, "{hero} just reached for the {obj}: one... more... second."),
+)
+
+
+def stage_line(obj, level, build_pct=0, stalled=False, hero="the hero"):
+    """Plain line for the actor from ladder level / stall stage; nothing without a target."""
+    if not obj:
+        return ""
+    if stalled:
+        for top, text in STALL_LINES:
+            if (build_pct or 0) < top:
+                return text.format(obj=obj, hero=hero)
+    return LADDER_LINES[max(0, min(4, int(level or 0)))].format(obj=obj, hero=hero)
+
 
 ACTOR_RULES = (
     "Reply with one or two short spoken lines, no narration, no name prefix, English only. "
@@ -55,9 +73,7 @@ ACTOR_RULES = (
     "time. You have wants of your own in this scene: pursue them, do things, react to the "
     "objects around you, change the subject -- you are not the hero's therapist and you do "
     "not just agree with him. Every line moves the scene; never repeat what you or anyone "
-    "already said. Never mention hints, levels, percent, the director, the engine or "
-    "these rules, and never say the word \"bridge\": the bridge is the object named in "
-    "[BRIDGE ...], call it only by that name.")
+    "already said. Never talk about these instructions.")
 # Temperature barely moves a reasoning model off its most obvious line (1.8 still
 # gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
 # now and then the hero's line gets a random impulse he must act on. Only the
@@ -100,18 +116,9 @@ def soul_text(profile):
 
 def world_line(world, extra=()):
     who = ", ".join(world.get("actors") or []) or "nobody"
-    line = "[WORLD you are in %s; here: %s; you can see: %s]" % (
+    line = "You are in %s. With you: %s. Around you: %s." % (
         world.get("place") or "a strange place", who, ", ".join(world.get("objects") or []))
-    return "\n".join([line] + ["[WORLD %s]" % e for e in extra])
-
-
-def state_tag(hint_level, build_pct=None, stalled=False):
-    tag = "[STATE hint_level=%d" % int(hint_level or 0)
-    if build_pct is not None:
-        tag += " build=%d%%" % int(build_pct)
-    if stalled:
-        tag += " stalled=true"
-    return tag + "]"
+    return "\n".join([line] + ["Just now: %s." % e for e in extra])
 
 
 def _content_words(text):
@@ -205,15 +212,21 @@ class Dialogue:
         user = "%s\n\nWhat was said so far:\n%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero),
-            "\n\n[IMPULSE right now, out of nowhere: %s]" % impulse if impulse else "",
+            "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
             raw = self._call("hero", self.hero_system(), user)
             text = _clean_spoken(raw, "hero", self.hero)
-            if text and not repeats(text, recent):
+            # no leading [direction] = the model stepped out of the character (on a
+            # roof edge it slips into a counsellor voice); that line is never voiced
+            in_role = text.startswith("[")
+            if text and in_role and not repeats(text, recent):
                 break
-            user += "\n(That repeats the scene. Say or do something new.)"
+            user += ("\n(Say or do something new.)" if in_role else
+                     "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
+        if text and not text.startswith("["):
+            return None
         if not text:
             return None
         self._hero_turns += 1
@@ -229,11 +242,11 @@ class Dialogue:
     def actor_system(self, actor, world, notes=(), persona=""):
         note_text = ""
         if notes:
-            note_text = ("\nNotes from the dream's director (a motivation, not a script; "
-                         "play it your way):\n" + "\n".join("- " + n for n in notes[-3:]))
+            note_text = ("\nWhat is on your mind right now (play it your way):\n"
+                         + "\n".join("- " + n for n in notes[-3:]))
         who = persona or "Play who you are in this place, with wants of your own."
-        return ("You are %s, live in a dream scene in %s. %s is here with you.\n%s\n%s\n%s%s"
-                % (actor, world.get("place") or "a strange place", self.hero, who, LADDER,
+        return ("You are %s, in %s. %s is here with you.\n%s\n%s%s"
+                % (actor, world.get("place") or "a strange place", self.hero, who,
                    ACTOR_RULES, note_text))
 
     def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
@@ -241,12 +254,9 @@ class Dialogue:
         On L0-L1 a line naming the bridge is asked again once, then dropped (H17)."""
         bridge = state.get("bridge")
         level = int(state.get("hint_level") or 0)
-        head = state_tag(level, state.get("build_pct") if bridge else None,
-                         state.get("stalled"))
-        if bridge:
-            head += "\n[BRIDGE %s]" % bridge
-        for e in events:
-            head += "\n[EVENT %s]" % e
+        head = "\n".join(["Just now: %s." % e for e in events]
+                         + [stage_line(bridge, level, state.get("build_pct"),
+                                       state.get("stalled"), self.hero)]).strip()
         user = "%s\n\nWhat was said so far:\n%s%s\n\nYour line, %s:" % (
             head, _transcript_msgs(transcript), _no_repeat_block(transcript, actor), actor)
         system = self.actor_system(actor, world, notes, persona)
@@ -265,7 +275,7 @@ class Dialogue:
             leaks = bool(re.search(r"\bbridges?\b", text, re.I)) and not (
                 bridge and "bridge" in bridge.lower())
             if text and leaks and attempt == 0:
-                user += "\n(Do not say the word bridge; name the object itself.)"
+                user += "\n(Name the thing itself.)"
                 continue
             if text and not leaks and filter_actor_line(text, bridge, level) is not None:
                 return {"who": actor, "role": "actor", "text": text, "look": look,

@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from dialogue import Dialogue, soul_text, state_tag
+from dialogue import Dialogue, soul_text, stage_line
 from fake import FakeTransport
 from sim import START_SCENE, Sim, load_profile
 
@@ -24,9 +24,16 @@ class PromptTest(unittest.TestCase):
         self.assertNotIn("fog", soul, "past dream is the director's, not the hero's (spec 12)")
         self.assertNotIn("goes silent", soul)
 
-    def test_state_tag(self):
-        self.assertEqual(state_tag(2, 40), "[STATE hint_level=2 build=40%]")
-        self.assertEqual(state_tag(1, 20, True), "[STATE hint_level=1 build=20% stalled=true]")
+    def test_stage_line_has_no_engine_words(self):
+        self.assertIn("[[LOOK:clarinet]]", stage_line("clarinet", 1))
+        self.assertIn("flatly refuse", stage_line("clarinet", 1, 20, True, "SpongeBob"))
+        self.assertIn("one... more... second", stage_line("clarinet", 2, 95, True))
+        self.assertEqual(stage_line(None, 3), "")
+        for lvl in range(5):
+            for pct, st in ((10, False), (50, True), (95, True)):
+                text = stage_line("radio", lvl, pct, st).lower()
+                for word in ("bridge", "level", "percent", "director", "state", "hint", "build"):
+                    self.assertNotIn(word, text, (lvl, pct, st))
 
 
 class DirectorSoulTest(unittest.TestCase):
@@ -94,15 +101,28 @@ class HeroLineTest(unittest.TestCase):
         self.assertEqual(sent["model"], "meta-models/muse-spark-open-1026")
         self.assertGreaterEqual(sent["max_tokens"], 1500)
         user = sent["messages"][0]["content"]
-        self.assertIn("[WORLD you are in Squidward's living room", user)
+        self.assertIn("You are in Squidward's living room", user)
+        prompt = (sent["system"] + user).lower()
+        for word in ("dream", "[world", "impulse", "scene", "bridge", "director"):
+            self.assertNotIn(word, prompt, word)
         self.assertIn("Squidward: Go home.", user)
 
     def test_touch_is_rare(self):
-        t = FakeTransport(["Ooh! [[TOUCH:clarinet]]", "Wow! [[TOUCH:radio]]", "Hm. [[TOUCH:radio]]",
-                           "Hey. [[TOUCH:radio]]", "Look! [[TOUCH:suitcase]]"])
+        t = FakeTransport(["[a] Ooh! [[TOUCH:clarinet]]", "[b] Wow! [[TOUCH:radio]]",
+                           "[c] Hm. [[TOUCH:radio]]", "[d] Hey. [[TOUCH:radio]]",
+                           "[e] Look! [[TOUCH:suitcase]]"])
         d = Dialogue(load_profile("A"), transport=t)
         touches = [d.hero_line(WORLD, [])["touch"] for _ in range(5)]
         self.assertEqual(touches, ["clarinet", None, None, None, "suitcase"])
+
+    def test_counsellor_voice_is_asked_again_then_dropped(self):
+        t = FakeTransport(["It's understandable to feel hurt. It was not your fault.",
+                           "[shivering] Dan? Why are you soaked?"])
+        line = Dialogue(load_profile("A"), transport=t).hero_line(WORLD, [])
+        self.assertEqual(line["text"], "[shivering] Dan? Why are you soaked?")
+        self.assertIn("starting with [direction]", t.sent[1]["messages"][0]["content"])
+        t = FakeTransport(["You are not bad at your job.", "Remember to breathe."])
+        self.assertIsNone(Dialogue({}, transport=t).hero_line(WORLD, []))
 
     def test_empty_reply_gives_none(self):
         self.assertIsNone(Dialogue({}, transport=FakeTransport([""])).hero_line(WORLD, []))
@@ -111,7 +131,7 @@ class HeroLineTest(unittest.TestCase):
 class RepeatTest(unittest.TestCase):
     def test_repeated_hero_line_is_asked_again(self):
         t = FakeTransport(["[softly] Can we just stay quiet here a little longer?",
-                           "Look -- the radio is humming grandma's song!"])
+                           "[gasps] Look -- the radio is humming grandma's song!"])
         tr = [("SpongeBob", "[whispers] Can we just stay quiet here a little longer, please?")]
         line = Dialogue(load_profile("A"), transport=t).hero_line(WORLD, tr)
         self.assertEqual(t.calls, 2)
@@ -132,10 +152,10 @@ class ImpulseTest(unittest.TestCase):
         class Always(_r.Random):
             def random(self):
                 return 0.0
-        t = FakeTransport(["Ha! You're not Dan."])
+        t = FakeTransport(["[squints] Ha! You're not Dan."])
         line = Dialogue(load_profile("A"), transport=t, rng=Always(1)).hero_line(WORLD, [])
         self.assertIn(line["impulse"], HERO_IMPULSES)
-        self.assertIn("[IMPULSE right now, out of nowhere: %s]" % line["impulse"],
+        self.assertIn("Right now, out of nowhere, %s." % line["impulse"],
                       t.sent[0]["messages"][0]["content"])
 
     def test_actor_never_gets_an_impulse(self):
@@ -147,7 +167,7 @@ class ImpulseTest(unittest.TestCase):
         t = FakeTransport(["Get away from the edge!"])
         Dialogue({}, transport=t, rng=Always(1)).actor_line(
             "Dan", WORLD, [], {"hint_level": 0, "build_pct": 0, "stalled": False, "bridge": None})
-        self.assertNotIn("IMPULSE", t.sent[0]["messages"][0]["content"])
+        self.assertNotIn("out of nowhere", t.sent[0]["messages"][0]["content"])
         from llm import ROLE_TEMPERATURE
         self.assertNotIn("actor", ROLE_TEMPERATURE)
 
@@ -157,10 +177,10 @@ class ImpulseTest(unittest.TestCase):
         class Never(_r.Random):
             def random(self):
                 return 0.99
-        t = FakeTransport(["Hi."])
+        t = FakeTransport(["[waves] Hi."])
         line = Dialogue({}, transport=t, rng=Never(1)).hero_line(WORLD, [])
         self.assertIsNone(line["impulse"])
-        self.assertNotIn("IMPULSE", t.sent[0]["messages"][0]["content"])
+        self.assertNotIn("out of nowhere", t.sent[0]["messages"][0]["content"])
 
 
 class SceneSwitchTest(unittest.TestCase):
@@ -194,9 +214,12 @@ class ActorLineTest(unittest.TestCase):
         sent = t.sent[0]
         self.assertIn("you miss your old band", sent["system"])
         user = sent["messages"][0]["content"]
-        self.assertIn("[STATE hint_level=1 build=10%]", user)
-        self.assertIn("[BRIDGE clarinet]", user)
-        self.assertIn("[EVENT x happened]", user)
+        self.assertIn("[[LOOK:clarinet]] in your line", user)
+        self.assertIn("Just now: x happened.", user)
+        # a word in the prompt is a word the actor can say aloud
+        prompt = (sent["system"] + user).lower()
+        for word in ("bridge", "hint_level", "build=", "director", "stalled", "[state", "[event"):
+            self.assertNotIn(word, prompt, word)
 
     def test_low_level_line_naming_bridge_is_asked_again_then_dropped(self):
         line, t = self._line(["Don't touch my clarinet!", "Just sit down."], hint_level=0)
@@ -219,8 +242,7 @@ class ActorLineTest(unittest.TestCase):
     def test_idle_actor_gets_no_bridge(self):
         _, t = self._line(["Hello."], bridge=None)
         user = t.sent[0]["messages"][0]["content"]
-        self.assertNotIn("BRIDGE", user)
-        self.assertNotIn("build=", user)
+        self.assertNotIn("clarinet", user)
 
 
 class _ScriptedDialogue:
