@@ -73,6 +73,28 @@ ROLE_TABLE = {
 # the director stay at the provider default. Sent to Baseten (Spark Open) only.
 ROLE_TEMPERATURE = {"hero": 1.2}
 
+# Bench knob (design doc 2026-10-28, section 7a): who speaks for the talk roles.
+# Default stays Spark Open (free); "wonder" is the paid strong model for comparison.
+TALK_ROLES = ("hero", "actor", "compress")
+TALK_MODELS = {"spark-open": (SPARK_OPEN_MODEL, "minimal"),
+               "spark": (SPARK_MODEL, "minimal"),
+               "wonder": (WONDER_MODEL, "low")}
+_cap = {0: None}
+
+
+def set_talk_model(name):
+    """Route hero/actor/compress to one of TALK_MODELS. Raises on an unknown name."""
+    if name not in TALK_MODELS:
+        raise ValueError("unknown talk model %r, want one of %s" % (name, sorted(TALK_MODELS)))
+    for role in TALK_ROLES:
+        ROLE_TABLE[role] = TALK_MODELS[name]
+
+
+def set_cap(dollars):
+    """Hard stop for paid calls: once spent >= cap, call() answers empty instead of
+    paying. Free calls keep going. None removes the cap (the default)."""
+    _cap[0] = None if dollars is None else float(dollars)
+
 _spent = {0: 0.0}
 _spent_lock = threading.Lock()
 
@@ -292,6 +314,10 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
     diagnostics, attempts = [], []
     if fake and _transport is None:
         raise RuntimeError("fake=True needs a transport")
+    if _cap[0] is not None and _price(model, 1, 1) > 0 and get_spent() >= _cap[0] - 1e-9:
+        return LlmResult("", {"prompt_tokens": 0, "completion_tokens": 0}, 0.0, 0.0,
+                         [{"type": "cap", "component": "llm", "role": role, "model": model,
+                           "error": "cap $%.2f reached, paid call skipped" % _cap[0]}], [])
     transport = _transport or RealTransport(event_sink)
     for limit in (max_tokens, max_tokens * 2 + 100):
         extra = {}

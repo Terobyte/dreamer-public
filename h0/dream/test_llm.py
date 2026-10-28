@@ -35,6 +35,33 @@ class LlmRulesTest(unittest.TestCase):
         self.assertEqual(tr.sent[0]["max_tokens"], 1500)
         self.assertEqual(llm._min_tokens(llm.SPARK_MODEL), 300)
 
+    def test_talk_model_knob(self):
+        try:
+            llm.set_talk_model("wonder")
+            for role in llm.TALK_ROLES:
+                self.assertEqual(llm.resolve(role), (llm.WONDER_MODEL, "low"))
+            self.assertEqual(llm.resolve("director"), (llm.WONDER_MODEL, "low"))
+            with self.assertRaises(ValueError):
+                llm.set_talk_model("gpt")
+        finally:
+            llm.set_talk_model("spark-open")
+        self.assertEqual(llm.resolve("hero"), (llm.SPARK_OPEN_MODEL, "minimal"))
+
+    def test_cap_stops_paid_calls_only(self):
+        llm.reset_spent()
+        try:
+            llm.set_cap(0.0)
+            paid = FakeTransport(script=["a"])
+            r = llm.call("director", "sys", _msgs(), max_tokens=300, fake=True, _transport=paid)
+            self.assertEqual(r.text, "")
+            self.assertEqual(paid.sent, [])
+            self.assertEqual([d["type"] for d in r.diagnostics], ["cap"])
+            free = FakeTransport(script=["b"])
+            r = llm.call("hero", "sys", _msgs(), max_tokens=300, fake=True, _transport=free)
+            self.assertEqual(r.text, "b")
+        finally:
+            llm.set_cap(None)
+
     def test_spark_never_low(self):
         for role in ("hero", "actor", "compress", "judge"):
             model, effort = llm.resolve(role)

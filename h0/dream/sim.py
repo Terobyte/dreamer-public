@@ -21,9 +21,9 @@ from inputs import resolve_touch, sanitize
 from memory import Memory
 from fake import FakeTransport
 try:
-    from llm import get_spent, IMAGE_PER_PIC
+    from llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap
 except ImportError:
-    from .llm import get_spent, IMAGE_PER_PIC
+    from .llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap
 try:
     from images import background_prompt, portrait_prompt
 except ImportError:
@@ -999,8 +999,12 @@ def main():
     ap.add_argument("--scene", default="start", help="opening scene: scenes/<name>.json")
     ap.add_argument("--text", action="store_true",
                     help="dialogue only: no Fish voice, no Muse images (scene bank runs)")
+    ap.add_argument("--talk", default="spark-open",
+                    help="model for hero/actors/compress: spark-open (free) | spark | wonder")
     args = ap.parse_args()
     use_scene(args.scene)
+    set_talk_model(args.talk)
+    set_cap(args.max_dollars)
     if args.max_transitions is None:
         args.max_transitions = 10 ** 6 if args.serve else 2
     media = None
