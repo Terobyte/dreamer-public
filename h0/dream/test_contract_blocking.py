@@ -5,6 +5,7 @@ usage: cd h0/dream && python3 -m unittest test_contract_blocking -q
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import llm
 from fake import FakeTransport
@@ -83,11 +84,13 @@ class BlockingTest(unittest.TestCase):
         for eid in ("a", "b", "c"):
             self.assertTrue(os.path.exists(os.path.join(m.raw_dir, eid + ".txt")))
 
-    def test_merge_without_transport_is_not_fake_summary(self):
+    def test_failed_real_merge_preserves_raw_episodes(self):
         m = make_mem()
         m.save_episode_raw("a", "A raw")
         m.save_episode_raw("b", "B raw")
-        m.merge_from_raw()
+        with mock.patch.object(llm, "call", side_effect=OSError("provider unavailable")):
+            with self.assertLogs("memory", level="WARNING"):
+                m.merge_from_raw()
         self.assertEqual(len(m.episodes), 2)
 
     def test_facts_background_selection_then_prompt_no_llm(self):

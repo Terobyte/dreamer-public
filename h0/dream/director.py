@@ -9,6 +9,7 @@ import threading
 from clock import Clock
 from fsm import LOCKED_STATES, check_messages, check_target
 from inputs import sanitize
+from diagnostics import report
 
 
 def validate_decision(decision, objects, actors, pool):
@@ -69,6 +70,16 @@ class Director:
         self.errors = []
         self._thread = None
         self._cur = 0
+        self._events_lock = threading.Lock()
+
+    def _publish(self, events):
+        with self._events_lock:
+            self.completed_events.extend(events)
+
+    def drain_events(self):
+        with self._events_lock:
+            events, self.completed_events = self.completed_events, []
+            return events
 
     def actor_prompt(self, line, hint_level, bridge, build_pct=None, stalled=False):
         """Actor-side prompt text; human injections are stripped first."""
@@ -157,7 +168,7 @@ class Director:
                 prompt = mem_text + "\n" + prompt
             except Exception as e:  # the consult still goes out, but the log must say it ran blind
                 self.errors.append(e)
-                self.completed_events.append({"type": "memory_fail", "t": now, "error": repr(e)})
+                self._publish([dict(report("director", "memory_fail", e), t=now)])
         self.prompts.append(prompt)
         path = self._write_prompt(prompt)
         decision = self._next_decision(ticket)
@@ -185,15 +196,35 @@ class Director:
                     e["prompt_path"] = prompt_path
                     if mem_sizes is not None:
                         e["mem_sizes"] = mem_sizes
-            self.completed_events.extend(ev)
+            if self.memory is not None:
+                self._remember(ev, decision, now)
+            self._publish(ev)
         except Exception as e:
             self.errors.append(e)
+            self._publish([dict(report("director", "director_fail", e), t=self.clock.now())])
             # finish_consult may have raised before resetting fsm.in_flight
             # (e.g. a fake that raises outright); without this the FSM would
             # refuse every later begin_consult() (F31).
             self.fsm.in_flight = False
         finally:
             self.in_flight = False
+
+    def _remember(self, events, decision, now):
+        """Only accepted replies may change persistent facts and decisions."""
+        verdicts = [e.get("verdict") for e in events if e["type"] == "consult"]
+        if not isinstance(decision, dict) or not verdicts or verdicts[-1] in ("invalid", "stale"):
+            return
+        try:
+            if decision.get("facts_update"):
+                self.memory.apply_facts(decision["facts_update"])
+            if verdicts[-1] == "build":
+                self.memory.record_decision(decision)
+                self.memory.set_bridge(decision.get("bridge"))
+            self.memory.merge_background()
+            self.memory.select_facts_background()
+        except Exception as error:
+            self.errors.append(error)
+            self._publish([dict(report("director", "memory_fail", error), t=now)])
 
     def wait(self, timeout=5.0):
         t = self._thread

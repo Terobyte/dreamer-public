@@ -2,7 +2,10 @@
 usage: cd h0/dream && python3 -m unittest -q
 """
 
+import json
+import os
 import unittest
+from unittest import mock
 
 import llm
 from fake import FakeTransport
@@ -61,6 +64,62 @@ class LlmRulesTest(unittest.TestCase):
         self.assertGreater(img, 0)
         self.assertAlmostEqual(llm.get_spent(),
                                r1.dollars + fish + img)
+
+
+class FallbackDiagnosticsTest(unittest.TestCase):
+    """B3/B6: a paid fallback must retain and report the provider failure."""
+
+    def setUp(self):
+        self.previous_spent = llm.get_spent()
+        self.addCleanup(llm._spent.__setitem__, 0, self.previous_spent)
+        llm.reset_spent()
+        self.post = self.enterContext(mock.patch.object(llm, "_post", side_effect=self._post))
+        self.enterContext(mock.patch.object(llm, "_baseten_key", return_value="test-key"))
+        self.enterContext(mock.patch.dict(os.environ, {"META_MODEL_API_KEY": "test-key"}))
+        # Even an accidental bypass of _post cannot reach the network.
+        self.enterContext(mock.patch.object(llm.urllib.request, "urlopen",
+                                           side_effect=AssertionError("network forbidden")))
+
+    def _post(self, url, *args):
+        if url == llm.BASETEN_API:
+            raise OSError("baseten unavailable: 503")
+        self.assertEqual(url, llm.META_API)
+        return {"content": "fallback reply",
+                "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
+
+    def test_b3_result_retains_fallback_reason(self):
+        result = llm.call("hero", "system", _msgs())
+        self.assertEqual(result.text, "fallback reply")
+        self.assertEqual(self.post.call_count, 2)
+        self.assertGreater(result.dollars, 0)
+        # No prescribed metadata field name: the reason must survive in the result.
+        self.assertIn("baseten unavailable: 503", json.dumps(vars(result)))
+
+    def test_b6_baseten_failure_is_logged(self):
+        with self.assertLogs(level="WARNING") as captured:
+            result = llm.call("hero", "system", _msgs())
+        self.assertEqual(result.text, "fallback reply")
+        self.assertIn("baseten unavailable: 503", "\n".join(captured.output))
+
+    def test_fallback_attempt_identifies_billed_model_and_reaches_event_sink(self):
+        events = []
+        with self.assertLogs("llm", level="WARNING"):
+            result = llm.call("compress", "system", _msgs(), event_sink=events.append)
+        self.assertEqual(events, result.diagnostics)
+        self.assertEqual(events[0]["from_model"], llm.SPARK_OPEN_MODEL)
+        self.assertEqual(events[0]["to_model"], llm.SPARK_MODEL)
+        self.assertEqual(result.attempts[0]["model"], llm.SPARK_MODEL)
+        self.assertAlmostEqual(result.attempts[0]["dollars"], result.dollars)
+
+    def test_fallback_reason_survives_when_both_providers_fail(self):
+        events = []
+        self.post.side_effect = OSError("both providers unavailable")
+        with self.assertLogs("llm", level="WARNING"):
+            with self.assertRaisesRegex(OSError, "both providers unavailable"):
+                llm.call("compress", "system", _msgs(), event_sink=events.append)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["type"], "llm_fallback")
+        self.assertEqual(llm.get_spent(), 0)
 
 
 if __name__ == "__main__":

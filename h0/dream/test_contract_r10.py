@@ -37,6 +37,7 @@ class LockedConsultKeepsScriptTest(unittest.TestCase):
 class HumanLineIsNextTest(unittest.TestCase):
     def test_human_line_plays_after_active_one(self):
         s = Sim(profile="A", fake=True, speed=20)
+        self.addCleanup(s.close)
         s.npc_start("active")
         s.npc_start("prepared NPC")
         s.human_say("human")
@@ -47,6 +48,7 @@ class HumanLineIsNextTest(unittest.TestCase):
 
     def test_human_line_starts_when_nothing_plays(self):
         s = Sim(profile="A", fake=True, speed=20)
+        self.addCleanup(s.close)
         s.human_say("hello")
         s._cycle_line()
         self.assertEqual(s.active_line, {"owner": "human", "text": "hello"})

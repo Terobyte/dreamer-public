@@ -7,7 +7,13 @@ import json
 import math
 import os
 import time
+import threading
 import urllib.request
+
+if __package__:
+    from .diagnostics import report
+else:
+    from diagnostics import report
 
 SPARK_MODEL = "muse-spark-1.3"
 SPARK_OPEN_MODEL = "meta-models/muse-spark-open-1026"
@@ -64,14 +70,22 @@ ROLE_TABLE = {
 }
 
 _spent = {0: 0.0}
+_spent_lock = threading.Lock()
 
 
 def reset_spent():
-    _spent[0] = 0.0
+    with _spent_lock:
+        _spent[0] = 0.0
 
 
 def get_spent():
-    return _spent[0]
+    with _spent_lock:
+        return _spent[0]
+
+
+def _charge(dollars):
+    with _spent_lock:
+        _spent[0] += dollars
 
 
 def _as_utc(when):
@@ -107,14 +121,14 @@ def charge_fish(text_or_bytes, model="s2-pro", when=None):
     else:
         rate = FISH_S2PRO_PER_1M_BYTES
     dollars = n_bytes / 1000000.0 * rate
-    _spent[0] += dollars
+    _charge(dollars)
     return dollars
 
 
 def charge_image(n=1):
     """Charge Muse Image pictures into the shared run counter (spec section 13)."""
     dollars = max(0, n) * IMAGE_PER_PIC
-    _spent[0] += dollars
+    _charge(dollars)
     return dollars
 
 
@@ -143,11 +157,13 @@ def _price(model, prompt_tok, completion_tok):
 
 
 class LlmResult:
-    def __init__(self, text, usage, seconds, dollars):
+    def __init__(self, text, usage, seconds, dollars, diagnostics=(), attempts=()):
         self.text = text
         self.usage = usage
         self.seconds = seconds
         self.dollars = dollars
+        self.diagnostics = list(diagnostics)
+        self.attempts = list(attempts)
 
 
 def _prompt_text(system, messages):
@@ -173,24 +189,41 @@ def _baseten_key():
     return ""
 
 
+class RealTransport:
+    """Provider routing with observable fallback, shared by every LLM role."""
+
+    def __init__(self, event_sink=None):
+        self.event_sink = event_sink
+
+    def complete(self, model, effort, system, messages, max_tokens):
+        diagnostics = []
+        if model == SPARK_OPEN_MODEL:
+            key = _baseten_key()
+            try:
+                if not key:
+                    raise RuntimeError("BASETEN_API_KEY is not set")
+                out = _post(BASETEN_API, "Api-Key " + key, model, effort,
+                            system, messages, max_tokens)
+                out["model"] = model
+                return out
+            except Exception as error:
+                diagnostics.append(report(
+                    "llm", "llm_fallback", error, self.event_sink,
+                    from_model=model, to_model=SPARK_MODEL))
+            model, max_tokens = SPARK_MODEL, max(SPARK_MIN_TOKENS, max_tokens)
+        key = os.environ.get("META_MODEL_API_KEY")
+        if not key:
+            raise RuntimeError("META_MODEL_API_KEY is not set")
+        out = _post(META_API, "Bearer " + key, model, effort, system, messages, max_tokens)
+        out["model"] = model
+        out["diagnostics"] = diagnostics
+        return out
+
+
 def _real_complete(model, effort, system, messages, max_tokens):
     """Real Muse call (gate_test.py pattern, lazy key, stdlib only).
     Spark Open goes to Baseten; if that fails, the call is made once on Spark 1.3 (Meta)."""
-    if model == SPARK_OPEN_MODEL:
-        key = _baseten_key()
-        if key:
-            try:
-                return _post(BASETEN_API, "Api-Key " + key, model, effort,
-                             system, messages, max_tokens)
-            except Exception:
-                pass
-        model, max_tokens = SPARK_MODEL, max(SPARK_MIN_TOKENS, max_tokens)
-    key = os.environ.get("META_MODEL_API_KEY")
-    if not key:
-        raise RuntimeError("META_MODEL_API_KEY is not set")
-    out = _post(META_API, "Bearer " + key, model, effort, system, messages, max_tokens)
-    out["model"] = model
-    return out
+    return RealTransport().complete(model, effort, system, messages, max_tokens)
 
 
 def _post(url, auth, model, effort, system, messages, max_tokens):
@@ -241,7 +274,8 @@ def _piece_parts(piece, prompt_tok):
             int(usage.get("completion_tokens", _tokens(text))))
 
 
-def call(role, system, messages, max_tokens=300, fake=False, _transport=None):
+def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
+         event_sink=None):
     """Call the model for role; empty reply is retried once with a bigger limit."""
     model, effort = resolve(role)
     max_tokens = max(max_tokens, _min_tokens(model))
@@ -249,18 +283,13 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None):
     text, dollars = "", 0.0
     tot_p = tot_c = 0
     start = time.monotonic()
+    diagnostics, attempts = [], []
+    if fake and _transport is None:
+        raise RuntimeError("fake=True needs a transport")
+    transport = _transport or RealTransport(event_sink)
     for limit in (max_tokens, max_tokens * 2 + 100):
-        if fake:
-            if _transport is None:
-                raise RuntimeError("fake=True needs a transport")
-            piece = _transport.complete(model=model, effort=effort,
-                                        system=system, messages=messages,
-                                        max_tokens=limit)
-        else:
-            transport = _transport
-            fn = (transport.complete if transport is not None else _real_complete)
-            piece = fn(model=model, effort=effort, system=system,
-                       messages=messages, max_tokens=limit)
+        piece = transport.complete(model=model, effort=effort, system=system,
+                                   messages=messages, max_tokens=limit)
         chunk, p_tok, c_tok = _piece_parts(piece, est_prompt)
         tot_p += p_tok
         tot_c += c_tok
@@ -268,10 +297,15 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None):
         used = piece.get("model", model) if isinstance(piece, dict) else model
         step = _price(used, p_tok, c_tok)
         dollars += step
-        _spent[0] += step
+        _charge(step)
+        if isinstance(piece, dict):
+            diagnostics.extend(piece.get("diagnostics", []))
+        attempts.append({"model": used, "max_tokens": limit,
+                         "prompt_tokens": p_tok, "completion_tokens": c_tok,
+                         "dollars": step})
         text = chunk
         if chunk and chunk.strip():
             break
     return LlmResult(text, {"prompt_tokens": tot_p,
                             "completion_tokens": tot_c},
-                     time.monotonic() - start, dollars)
+                     time.monotonic() - start, dollars, diagnostics, attempts)
