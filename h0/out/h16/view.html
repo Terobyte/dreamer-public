@@ -1,0 +1,69 @@
+<!doctype html><html><head><meta charset="utf-8"><title>H16 room box</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/app/node_modules/three/build/three.module.js"}}</script></head><body>
+<script type="module">
+// ?room=room_flat&w=4&d=5&h=2.7&x=0&z=0&yaw=0&pitch=0 — the panorama projected onto a w×d×h box from the
+// capture point (room centre, eye 1.6 m); the camera stands at (x, 1.6, z). Wire edges show the box itself.
+import * as THREE from 'three';
+const q = new URLSearchParams(location.search), n = (k, v) => +(q.get(k) ?? v);
+const [W, D, H, EYE] = [n('w', 4), n('d', 5), n('h', 2.7), 1.6];
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 100);
+cam.position.set(n('x', 0), EYE, n('z', 0));
+cam.rotation.order = 'YXZ'; cam.rotation.y = -n('yaw', 0) * Math.PI / 180; cam.rotation.x = n('pitch', 0) * Math.PI / 180;
+const tex = await new Promise((ok) => new THREE.TextureLoader().load((q.get('room') || 'room_flat') + '.png', ok));
+tex.colorSpace = THREE.SRGBColorSpace;
+// no mipmaps: the u wrap is a jump in texture coords, mip selection there draws a seam line
+tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.wrapS = THREE.RepeatWrapping;
+const mat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: {pano: {value: tex}, cap: {value: new THREE.Vector3(0, EYE, 0)}},
+  vertexShader: `varying vec3 wp; void main(){ vec4 p = modelMatrix * vec4(position, 1.0); wp = p.xyz;
+    gl_Position = projectionMatrix * viewMatrix * p; }`,
+  fragmentShader: `uniform sampler2D pano; uniform vec3 cap; varying vec3 wp;
+    void main(){ vec3 r = normalize(wp - cap);
+      vec2 uv = vec2(atan(r.x, -r.z) / 6.2831853 + 0.5, asin(clamp(r.y, -1.0, 1.0)) / 3.1415927 + 0.5);
+      gl_FragColor = texture2D(pano, uv);
+#include <colorspace_fragment>
+    }`,
+});
+const box = new THREE.Mesh(new THREE.BoxGeometry(W, H, D), mat);
+box.position.set(n('cx', 0), H / 2, n('cz', 0));  scene.add(box);  // the painted room is rarely centred on the camera
+// ?floor=floor_squid&tile=2: a real floor plane with a tiled texture (tile = metres per image) over the painted floor,
+// which is not a true plane in a drawn panorama and slides under your feet when you step
+if (q.get('floor')) {
+  const ft = await new Promise((ok) => new THREE.TextureLoader().load(q.get('floor') + '.png', ok));
+  ft.colorSpace = THREE.SRGBColorSpace; ft.wrapS = ft.wrapT = THREE.RepeatWrapping; ft.anisotropy = 8;
+  ft.repeat.set(W / n('tile', 2), D / n('tile', 2));
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshBasicMaterial({map: ft}));
+  fl.rotation.x = -Math.PI / 2; fl.position.set(box.position.x, 0.002, box.position.z); scene.add(fl);
+}
+if (q.get('wire') !== '0') {
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), new THREE.LineBasicMaterial({color: 0xff3366}));
+  edges.position.copy(box.position); scene.add(edges);
+}
+renderer.render(scene, cam);
+document.title = 'ready';
+// ?walk=1: drag to look, WASD to step, R back to the capture point — to feel the parallax yourself
+if (q.get('walk')) {
+  const keys = {}; let drag = null;
+  addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyR') cam.position.set(0, EYE, 0); });
+  addEventListener('keyup', (e) => { keys[e.code] = false; });
+  addEventListener('pointerdown', (e) => { drag = [e.clientX, e.clientY]; });
+  addEventListener('pointerup', () => { drag = null; });
+  addEventListener('pointermove', (e) => { if (!drag) return;
+    cam.rotation.y += (e.clientX - drag[0]) * 0.004; cam.rotation.x = Math.max(-1.5, Math.min(1.5, cam.rotation.x + (e.clientY - drag[1]) * 0.004));
+    drag = [e.clientX, e.clientY]; });
+  const f = new THREE.Vector3(), r = new THREE.Vector3();
+  renderer.setAnimationLoop(() => {
+    cam.getWorldDirection(f); f.y = 0; f.normalize(); r.crossVectors(f, cam.up);
+    const v = 0.02;
+    if (keys.KeyW) cam.position.addScaledVector(f, v); if (keys.KeyS) cam.position.addScaledVector(f, -v);
+    if (keys.KeyD) cam.position.addScaledVector(r, v); if (keys.KeyA) cam.position.addScaledVector(r, -v);
+    renderer.render(scene, cam);
+  });
+}
+</script></body></html>

@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset="utf-8"><title>H16 kit room</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"/app/node_modules/three/build/three.module.js","three/addons/":"/app/node_modules/three/examples/jsm/"}}</script></head><body>
+<script type="module">
+// The room is real geometry; Muse Image only paints tileable materials and flat decals, so nothing slides when you
+// walk. ?x=&z=&yaw=&pitch= camera pose for screenshots, ?walk=1 drag to look, WASD to step, R back to the centre.
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search), n = (k, v) => +(q.get(k) ?? v);
+const [W, D, H, EYE] = [4, 4, 2.6, 1.6];
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(90, innerWidth / innerHeight, 0.05, 100);
+cam.position.set(n('x', 0), EYE, n('z', 0));
+cam.rotation.order = 'YXZ'; cam.rotation.y = -n('yaw', 0) * Math.PI / 180; cam.rotation.x = n('pitch', 0) * Math.PI / 180;
+const load = (f) => new Promise((ok) => new THREE.TextureLoader().load(f, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; ok(t); }));
+const [wall, ceil, floor, port, tiki] = await Promise.all(['kit_wall', 'kit_ceiling', 'floor_squid', 'kit_porthole', 'kit_tiki'].map((f) => load(f + '.png')));
+// tiled material sized in metres: one texture image covers `m` metres of surface
+const tiled = (t, w, h, m) => { t = t.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / m, h / m); t.needsUpdate = true;
+  return new THREE.MeshLambertMaterial({map: t}); };
+const plane = (w, h, mat, pos, rx, ry) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  p.position.set(...pos); p.rotation.set(rx, ry, 0); scene.add(p); return p; };
+plane(W, D, tiled(floor, W, D, 2), [0, 0, 0], -Math.PI / 2, 0);
+plane(W, D, tiled(ceil, W, D, 2), [0, H, 0], Math.PI / 2, 0);
+for (const [pos, ry] of [[[0, H / 2, -D / 2], 0], [[0, H / 2, D / 2], Math.PI], [[-W / 2, H / 2, 0], Math.PI / 2], [[W / 2, H / 2, 0], -Math.PI / 2]])
+  plane(W, H, tiled(wall, W, H, 1.6), pos, 0, ry);
+const decal = (t, w, h, pos, ry) => plane(w, h, new THREE.MeshLambertMaterial({map: t, transparent: true, alphaTest: 0.5}), pos, 0, ry);
+decal(port, 1.1, 1.1, [0.3, 1.55, -D / 2 + 0.01], 0);                     // porthole on the front wall
+decal(tiki, 0.6, 1.2 * 2240 / 1120 * 0.95, [-W / 2 + 0.01, 1.15, -0.9], Math.PI / 2); // totem on the left wall
+// soft fill + a lamp under the ceiling: walls darken toward the corners, which reads as depth
+scene.add(new THREE.HemisphereLight(0xcffaff, 0x335555, 1.6));
+const lamp = new THREE.PointLight(0xfff2d0, 6, 0, 1.2); lamp.position.set(0, H - 0.3, 0); scene.add(lamp);
+// floor objects (SAM3D GLBs): code owns the space, so each one gets a real height in metres, a spot and a yaw;
+// it is scaled to that height, centred on (x, z) and stood on the floor. ?up=z if a GLB comes in Z-up.
+const PROPS = [
+  {file: 'armchair', height: 1.05, x: -1.25, z: -1.2, yaw: 40},
+  {file: 'side_table', height: 0.75, x: -1.6, z: -0.25, yaw: 0},
+  {file: 'clarinet', height: 1.0, x: -0.45, z: -1.55, yaw: 15},
+  {file: 'bookshelf', height: 1.9, x: 1.7, z: -0.8, yaw: -60},
+];
+if (q.get('props') !== '0') {
+  const gltf = new GLTFLoader();
+  await Promise.all(PROPS.map(async (p) => {
+    const g = (await gltf.loadAsync('props/' + p.file + '.glb').catch(() => null))?.scene;
+    if (!g) return;
+    if (q.get('up') === 'z') g.rotation.x = -Math.PI / 2;
+    const holder = new THREE.Group(); holder.add(g);
+    let b = new THREE.Box3().setFromObject(holder), size = b.getSize(new THREE.Vector3());
+    holder.scale.setScalar(p.height / size.y);
+    b = new THREE.Box3().setFromObject(holder); const c = b.getCenter(new THREE.Vector3());
+    g.position.sub(new THREE.Vector3(c.x, b.min.y, c.z).divideScalar(holder.scale.x));
+    holder.position.set(p.x, 0, p.z); holder.rotation.y = p.yaw * Math.PI / 180 + n('yaw0', 0) * Math.PI / 180;
+    scene.add(holder);
+  }));
+}
+renderer.render(scene, cam);
+document.title = 'ready';
+if (q.get('walk')) {
+  const keys = {}; let drag = null;
+  addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyR') cam.position.set(0, EYE, 0); });
+  addEventListener('keyup', (e) => { keys[e.code] = false; });
+  addEventListener('pointerdown', (e) => { drag = [e.clientX, e.clientY]; });
+  addEventListener('pointerup', () => { drag = null; });
+  addEventListener('pointermove', (e) => { if (!drag) return;
+    cam.rotation.y += (e.clientX - drag[0]) * 0.004; cam.rotation.x = Math.max(-1.5, Math.min(1.5, cam.rotation.x + (e.clientY - drag[1]) * 0.004));
+    drag = [e.clientX, e.clientY]; });
+  const f = new THREE.Vector3(), r = new THREE.Vector3();
+  renderer.setAnimationLoop(() => {
+    cam.getWorldDirection(f); f.y = 0; f.normalize(); r.crossVectors(f, cam.up);
+    const v = 0.02;
+    if (keys.KeyW) cam.position.addScaledVector(f, v); if (keys.KeyS) cam.position.addScaledVector(f, -v);
+    if (keys.KeyD) cam.position.addScaledVector(r, v); if (keys.KeyA) cam.position.addScaledVector(r, -v);
+    cam.position.x = Math.max(-W / 2 + 0.2, Math.min(W / 2 - 0.2, cam.position.x));
+    cam.position.z = Math.max(-D / 2 + 0.2, Math.min(D / 2 - 0.2, cam.position.z));
+    renderer.render(scene, cam);
+  });
+}
+</script></body></html>

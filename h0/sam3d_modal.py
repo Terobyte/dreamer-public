@@ -68,7 +68,7 @@ def white_bg_mask(rgb):
 
 
 @app.cls(gpu="H100", volumes={CKPT: ckpt_vol}, secrets=[modal.Secret.from_name("huggingface")],
-         timeout=1800, scaledown_window=120, max_containers=1)
+         timeout=1800, scaledown_window=120)  # no container cap: N objects fan out to N GPUs
 class Sam3D:
     @modal.enter()
     def load(self):
