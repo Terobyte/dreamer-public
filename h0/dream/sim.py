@@ -48,6 +48,7 @@ START_VOICES = {a["name"]: a.get("voice") for a in START["actors"]}
 # Muse Image refuses known character names (content_policy_violation): portraits
 # are drawn from a look description, the name stays only in the log and the comic
 START_LOOKS = {a["name"]: a["look"] for a in START["actors"] if a.get("look")}
+START_PERSONAS = {a["name"]: a["persona"] for a in START["actors"] if a.get("persona")}
 HOOK_INDEX = {"A": 0, "B": 3, "C": 5}
 START_PLACE = START["place"]
 
@@ -146,6 +147,7 @@ class Sim:
         self.hero = prof.get("hero") or "the hero"
         self.hero_voice = prof.get("hero_voice") or "child"
         self._looks = dict(START_LOOKS)
+        self._personas = dict(START_PERSONAS)
         if prof.get("hero_look"):
             self._looks[self.hero] = prof["hero_look"]
         self.budget_wake = False
@@ -521,6 +523,8 @@ class Sim:
             self.actors = [a["name"] for a in ns["actors"] if isinstance(a, dict)]
             self._actor_voices = {a["name"]: a.get("voice") for a in ns["actors"]
                                   if isinstance(a, dict)}
+            self._personas = {a["name"]: str(a.get("persona") or "")[:400] for a in ns["actors"]
+                              if isinstance(a, dict)}
             self.director.actors = self.actors
             self.memory.set_scene(self.fsm.destination or "scene %d" % self.n_transitions,
                                   self.scene["objects"])
@@ -625,7 +629,8 @@ class Sim:
             state = {"hint_level": self.fsm.hint_level(now), "build_pct": self.fsm.build_pct(now),
                      "stalled": self._stalled, "bridge": self.fsm.bridge if locked else None}
             events, self._actor_events = self._actor_events, []
-            args = (who, world, transcript, state, list(self._notes.get(who, [])), events)
+            args = (who, world, transcript, state, list(self._notes.get(who, [])), events,
+                    self._personas.get(who, ""))
             fn = self.dialogue.actor_line
         scene_no, epoch = self.n_transitions, self._human_epoch
 

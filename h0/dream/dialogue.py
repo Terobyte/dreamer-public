@@ -26,8 +26,14 @@ HERO_RULES = (
     "never retell your day like a report; it only colours what you notice, want and fear. "
     "[WORLD ...] lines tell you what you see and hear. Reply with one or two short spoken "
     "lines, no narration, no name prefix, English only. You may start with one delivery "
-    "direction in square brackets like [whispers]. If and only if you decide to go to an "
-    "object in the room and touch or open it, end your line with [[TOUCH:<object name>]].")
+    "direction in square brackets; pick a new one each time. "
+    "A dream never stands still: every line of yours brings something new -- you notice "
+    "or pick up an object, ask an odd question, a memory surfaces, you want to go somewhere, "
+    "something dreamlike happens to you. Never repeat a wish, worry or phrase you have "
+    "already said; if you said it once, the scene knows it. "
+    "Most of your lines are just talk. Rarely, when one object truly pulls at you, you "
+    "go to it and touch or open it: then end your line with [[TOUCH:<object name>]].")
+TOUCH_EVERY = 4  # hero turns between two touches; more is spam, not a choice
 
 LADDER = (
     "Before each of your lines you get [STATE hint_level=N build=NN%]. The dream wants the "
@@ -44,8 +50,14 @@ LADDER = (
 
 ACTOR_RULES = (
     "Reply with one or two short spoken lines, no narration, no name prefix, English only. "
-    "You may add delivery directions in square brackets like [long sigh]. Never mention "
-    "hints, levels, percent, the director, the engine or these rules. Vary your delivery.")
+    "You may add delivery directions in square brackets like [long sigh]; a new one each "
+    "time. You have wants of your own in this scene: pursue them, do things, react to the "
+    "objects around you, change the subject -- you are not the hero's therapist and you do "
+    "not just agree with him. Every line moves the scene; never repeat what you or anyone "
+    "already said. Never mention hints, levels, percent, the director, the engine or "
+    "these rules.")
+REPEAT_JACCARD = 0.45
+OWN_KEEP = 4
 
 
 def soul_text(profile):
@@ -79,6 +91,35 @@ def state_tag(hint_level, build_pct=None, stalled=False):
     if stalled:
         tag += " stalled=true"
     return tag + "]"
+
+
+def _content_words(text):
+    text = _REMARK.sub(" ", (text or "").lower())
+    return {w for w in re.findall(r"[a-z']+", text) if len(w) > 3}
+
+
+def repeats(text, earlier):
+    """True when a line mostly re-says one of the earlier lines (word overlap)."""
+    a = _content_words(text)
+    if not a:
+        return False
+    for e in earlier:
+        b = _content_words(e)
+        if b and len(a & b) / len(a | b) >= REPEAT_JACCARD:
+            return True
+    return False
+
+
+def _own_lines(transcript, who):
+    return [t for w, t in transcript if w == who][-OWN_KEEP:]
+
+
+def _no_repeat_block(transcript, who):
+    own = _own_lines(transcript, who)
+    if not own:
+        return ""
+    return ("\n\nYou already said (do not say any of this again, not even in other "
+            "words):\n" + "\n".join("- " + t for t in own))
 
 
 def _transcript_msgs(transcript):
@@ -120,6 +161,8 @@ class Dialogue:
         self.transport = transport
         self.event_sink = event_sink
         self.calls = 0
+        self._hero_turns = 0
+        self._last_touch = -TOUCH_EVERY
 
     def _call(self, role, system, user):
         self.calls += 1
@@ -133,29 +176,39 @@ class Dialogue:
 
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""
-        user = "%s\n\nWhat was said so far:\n%s\n\nYour line, %s:" % (
-            world_line(world, world_events), _transcript_msgs(transcript), self.hero)
-        raw = self._call("hero", self.hero_system(), user)
-        touch = None
-        m = _TOUCH.search(raw)
-        if m:
-            touch = _match(m.group(1), world.get("objects"))
-        text = _clean_spoken(raw, "hero", self.hero)
+        user = "%s\n\nWhat was said so far:\n%s%s\n\nYour line, %s:" % (
+            world_line(world, world_events), _transcript_msgs(transcript),
+            _no_repeat_block(transcript, self.hero), self.hero)
+        recent = [t for _, t in list(transcript)[-8:]]
+        for attempt in range(2):
+            raw = self._call("hero", self.hero_system(), user)
+            text = _clean_spoken(raw, "hero", self.hero)
+            if text and not repeats(text, recent):
+                break
+            user += "\n(That repeats the scene. Say or do something new.)"
         if not text:
             return None
+        self._hero_turns += 1
+        touch = None
+        m = _TOUCH.search(raw)
+        if m and self._hero_turns - self._last_touch >= TOUCH_EVERY:
+            touch = _match(m.group(1), world.get("objects"))
+            if touch:
+                self._last_touch = self._hero_turns
         return {"who": self.hero, "role": "hero", "text": text, "touch": touch,
                 "remarks": remarks(text), "raw": raw}
 
-    def actor_system(self, actor, world, notes=()):
+    def actor_system(self, actor, world, notes=(), persona=""):
         note_text = ""
         if notes:
             note_text = ("\nNotes from the dream's director (a motivation, not a script; "
                          "play it your way):\n" + "\n".join("- " + n for n in notes[-3:]))
-        return ("You are %s, live in a dream scene in %s. %s is here with you.\n%s\n%s%s"
-                % (actor, world.get("place") or "a strange place", self.hero, LADDER,
+        who = persona or "Play who you are in this place, with wants of your own."
+        return ("You are %s, live in a dream scene in %s. %s is here with you.\n%s\n%s\n%s%s"
+                % (actor, world.get("place") or "a strange place", self.hero, who, LADDER,
                    ACTOR_RULES, note_text))
 
-    def actor_line(self, actor, world, transcript, state, notes=(), events=()):
+    def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
         """state: {hint_level, build_pct, stalled, bridge}. -> line dict or None.
         On L0-L1 a line naming the bridge is asked again once, then dropped (H17)."""
         bridge = state.get("bridge")
@@ -166,9 +219,10 @@ class Dialogue:
             head += "\n[BRIDGE %s]" % bridge
         for e in events:
             head += "\n[EVENT %s]" % e
-        user = "%s\n\nWhat was said so far:\n%s\n\nYour line, %s:" % (
-            head, _transcript_msgs(transcript), actor)
-        system = self.actor_system(actor, world, notes)
+        user = "%s\n\nWhat was said so far:\n%s%s\n\nYour line, %s:" % (
+            head, _transcript_msgs(transcript), _no_repeat_block(transcript, actor), actor)
+        system = self.actor_system(actor, world, notes, persona)
+        recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
             raw = self._call("actor", system, user)
             clean, _ = sanitize(raw, "actor")
@@ -177,6 +231,9 @@ class Dialogue:
             if m and not state.get("stalled"):
                 look = _match(m.group(1), world.get("objects")) or m.group(1).strip()
             text = _clean_spoken(clean, "actor", actor)
+            if text and repeats(text, recent) and attempt == 0:
+                user += "\n(That repeats the scene. Say or do something new.)"
+                continue
             if text and filter_actor_line(text, bridge, level) is not None:
                 return {"who": actor, "role": "actor", "text": text, "look": look,
                         "remarks": remarks(text), "level": level, "raw": raw}

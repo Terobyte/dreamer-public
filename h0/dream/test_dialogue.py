@@ -91,8 +91,31 @@ class HeroLineTest(unittest.TestCase):
         self.assertIn("[WORLD you are in Squidward's living room", user)
         self.assertIn("Squidward: Go home.", user)
 
+    def test_touch_is_rare(self):
+        t = FakeTransport(["Ooh! [[TOUCH:clarinet]]", "Wow! [[TOUCH:radio]]", "Hm. [[TOUCH:radio]]",
+                           "Hey. [[TOUCH:radio]]", "Look! [[TOUCH:suitcase]]"])
+        d = Dialogue(load_profile("A"), transport=t)
+        touches = [d.hero_line(WORLD, [])["touch"] for _ in range(5)]
+        self.assertEqual(touches, ["clarinet", None, None, None, "suitcase"])
+
     def test_empty_reply_gives_none(self):
         self.assertIsNone(Dialogue({}, transport=FakeTransport([""])).hero_line(WORLD, []))
+
+
+class RepeatTest(unittest.TestCase):
+    def test_repeated_hero_line_is_asked_again(self):
+        t = FakeTransport(["[softly] Can we just stay quiet here a little longer?",
+                           "Look -- the radio is humming grandma's song!"])
+        tr = [("SpongeBob", "[whispers] Can we just stay quiet here a little longer, please?")]
+        line = Dialogue(load_profile("A"), transport=t).hero_line(WORLD, tr)
+        self.assertEqual(t.calls, 2)
+        self.assertIn("radio", line["text"])
+        self.assertIn("You already said", t.sent[0]["messages"][0]["content"])
+
+    def test_director_schema_forbids_quiet_notes(self):
+        from director import DIRECTOR_SCHEMA, LOCKED_SCHEMA
+        for schema in (DIRECTOR_SCHEMA, LOCKED_SCHEMA):
+            self.assertIn("Never ask an actor to calm", schema)
 
 
 class ActorLineTest(unittest.TestCase):
@@ -147,8 +170,8 @@ class _ScriptedDialogue:
         return {"who": "SpongeBob", "role": "hero", "text": "Hi Squidward!",
                 "touch": self.hero_touch, "remarks": []}
 
-    def actor_line(self, actor, world, transcript, state, notes=(), events=()):
-        self.turns.append((actor, dict(state), list(notes), list(events)))
+    def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
+        self.turns.append((actor, dict(state), list(notes), list(events), persona))
         return {"who": actor, "role": "actor", "text": "[sigh] Go home.", "look": None,
                 "remarks": ["sigh"], "level": state["hint_level"]}
 
@@ -178,6 +201,8 @@ class SimDialogueTest(unittest.TestCase):
         self.assertEqual(lines[0]["remarks"], ["sigh"])
         self.assertEqual(lines[0]["role"], "actor")
         self.assertNotIn("npc line", json.dumps(lines))
+        squid = [t for t in sim.dialogue.turns if t[0] == "Squidward"]
+        self.assertIn("clarinet player", squid[0][4], "the actor plays his own persona")
 
     def test_hero_touch_goes_through_fsm(self):
         def build(sim):

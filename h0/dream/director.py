@@ -17,19 +17,27 @@ try:
 except ImportError:
     from .llm import call as llm_call
 
+NOTE_RULE = (
+    "A note gives the actor something new to DO or want -- play a tune, show or hide an "
+    "object, tell a story, pick a fight, invite the hero somewhere -- that keeps the scene "
+    "moving. Never ask an actor to calm, comfort, soothe or keep things quiet, never mirror "
+    "the hero's mood back at him, and never repeat an earlier note.")
+
 DIRECTOR_SCHEMA = (
     "Reply with JSON only: {\"bridge\": an object name from the scene or null, "
     "\"destination\": a short place name or null, "
     "\"why\": one sentence naming the diary fact or memory that decided it, "
     "\"next_scene\": {\"objects\": 5 to 8 object names of the destination, "
     "\"actors\": 1 or 2 [{\"name\": who waits there, \"voice\": one of "
-    "old_woman|old_man|woman|man|child|creature}]}, "
+    "old_woman|old_man|woman|man|child|creature, \"persona\": who they are and what "
+    "they want or are busy doing there, a want of their own}]}, "
     "\"hero_next\": {\"changes\": false} or {\"changes\": true, "
     "\"description\": the hero's new look, \"voice\": one of "
     "old_woman|old_man|woman|man|child|creature}, "
-    "\"messages\": [], \"facts_update\": [], \"abort_build\": null, "
+    "\"messages\": [{\"to\": an actor on stage, \"note\": a motivation}] (0 to 2), "
+    "\"facts_update\": [], \"abort_build\": null, "
     "\"wake_up\": null}. A bridge without next_scene is rejected: send both "
-    "or neither (bridge null means wait). English.")
+    "or neither (bridge null means wait). " + NOTE_RULE + " English.")
 
 
 LOCKED_SCHEMA = (
@@ -38,7 +46,7 @@ LOCKED_SCHEMA = (
     "\"note\": a motivation for that actor, not a script}] (0 to 2 notes), "
     "\"facts_update\": [], \"abort_build\": null or {\"reason\": why}, "
     "\"wake_up\": null}. Notes help the actor lead the hero toward the locked "
-    "bridge in character. English.")
+    "bridge in character. " + NOTE_RULE + " English.")
 
 
 def validate_decision(decision, objects, actors, pool):

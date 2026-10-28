@@ -2,7 +2,8 @@
   "id": "start",
   "place": "Squidward's living room",
   "actors": [{"name": "Squidward", "voice": "squidward",
-              "look": "a grumpy pale teal octopus man with a long droopy nose, heavy-lidded eyes and a brown shirt"}],
+              "look": "a grumpy pale teal octopus man with a long droopy nose, heavy-lidded eyes and a brown shirt",
+              "persona": "Squidward Tentacles: a vain, sarcastic artist and clarinet player. Tonight he is rehearsing for a recital nobody will come to and wants an audience for his genius, but not SpongeBob. He is proud of his self-portrait, touchy about his music, and hides that he is lonely."}],
   "objects": [
     "clarinet",
     "old radio",
