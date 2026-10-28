@@ -404,7 +404,8 @@ class Dialogue:
         hush = len(own) >= QUESTION_RUN and all("?" in t for t in own[-QUESTION_RUN:])
         if hush and impulse and impulse.startswith("you ask"):
             impulse = None
-        user = "%s%s\n\nJust said:\n%s%s%s%s\n\nYour line, %s:" % (
+        pull = world.get("pull")
+        user = "%s%s\n\nJust said:\n%s%s%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
             _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero)
@@ -412,6 +413,8 @@ class Dialogue:
             "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
             "\n\nYour last lines were all questions: this time ask nothing -- answer, react, "
             "claim or want something." if hush else "",
+            "\n\nThe %s is open for you now and pulling at you. If you give in and go to it, "
+            "end your line with [[TOUCH:%s]]." % (pull, pull) if pull else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
@@ -433,8 +436,11 @@ class Dialogue:
         self._hero_turns += 1
         touch = None
         m = _TOUCH.search(raw)
-        if m and self._hero_turns - self._last_touch >= TOUCH_EVERY:
+        if m:
             touch = _match(m.group(1), world.get("objects"))
+            # the open bridge is the one touch that is never spam
+            if touch != pull and self._hero_turns - self._last_touch < TOUCH_EVERY:
+                touch = None
             if touch:
                 self._last_touch = self._hero_turns
         return {"who": self.hero, "role": "hero", "text": text, "touch": touch,

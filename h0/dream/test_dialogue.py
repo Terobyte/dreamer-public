@@ -259,6 +259,32 @@ class QuestionRunTest(unittest.TestCase):
         self.assertEqual(t.calls, 1)
 
 
+class OpenBridgeTest(unittest.TestCase):
+    """Bank r4: no hero ever touched anything, every crossing was auto_touch. A
+    ready bridge is offered by name and its touch skips the TOUCH_EVERY gate."""
+
+    def test_ready_bridge_is_offered_and_its_touch_counts_at_once(self):
+        obj = WORLD["objects"][0]
+        world = dict(WORLD, pull=obj)
+        t = FakeTransport(["[x] Fine, I'm going. [[TOUCH:%s]]" % obj] * 2)
+        d = Dialogue({"hero": "Max"}, transport=t, rng=QuestionRunTest()._never())
+        d._last_touch = d._hero_turns  # a touch just happened: the gate is shut
+        line = d.hero_line(world, [])
+        self.assertIn("[[TOUCH:%s]]" % obj, t.sent[0]["messages"][0]["content"])
+        self.assertEqual(line["touch"], obj)
+
+    def test_other_objects_keep_the_gate(self):
+        obj = WORLD["objects"][1]
+        t = FakeTransport(["[x] Let me see. [[TOUCH:%s]]" % obj])
+        d = Dialogue({"hero": "Max"}, transport=t, rng=QuestionRunTest()._never())
+        d._last_touch = d._hero_turns
+        line = d.hero_line(dict(WORLD, pull=WORLD["objects"][0]), [])
+        self.assertIsNone(line["touch"])
+        t2 = FakeTransport(["[x] Hi."])
+        Dialogue({"hero": "Max"}, transport=t2).hero_line(WORLD, [])
+        self.assertNotIn("open for you", t2.sent[0]["messages"][0]["content"])
+
+
 class DirectorReserveTest(unittest.TestCase):
     """Bank runs ended $0.01-0.03 over --max-dollars: a live director consult in
     flight lands after the budget check, so the check keeps room for one."""

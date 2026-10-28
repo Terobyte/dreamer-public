@@ -662,6 +662,9 @@ class Sim:
         now = self.clock.now()
         world = {"place": self.place, "objects": list(self.scene["objects"]),
                  "actors": list(self.actors)}
+        if self.fsm.state == "ready" and self.fsm.bridge:
+            # bank r4: 0 hero touches in 8 scenes, every crossing was auto_touch
+            world["pull"] = self.fsm.bridge
         transcript = list(self.transcript)
         if role == "hero":
             world_events, self._hero_world = self._hero_world, []
