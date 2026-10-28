@@ -58,6 +58,7 @@ def use_scene(name="start"):
 
 use_scene("start")
 HOOK_INDEX = {"A": 0, "B": 3, "C": 5}
+DIRECTOR_PER_CALL = 0.02  # one Wonder consult, measured: bank r2, 6 consults ~ $0.12
 
 
 SOUL_KEYS = ("diary", "wants", "fears", "past_dream", "facts")
@@ -290,8 +291,10 @@ class Sim:
         ends inside the budget instead of finishing paid work beyond it."""
         with self._reserve_lock:
             committed = get_spent() + self._reserved
-        # room for at least one more paid unit, counting images still in flight
-        if committed + IMAGE_PER_PIC <= self.max_dollars + 1e-9:
+        # room for one more paid unit plus a director consult that may be in flight
+        # (it lands after this check: bank runs ended $0.01-0.03 over the cap)
+        director = 0.0 if getattr(self.director, "fake", True) else DIRECTOR_PER_CALL
+        if committed + IMAGE_PER_PIC + director <= self.max_dollars + 1e-9:
             return True
         if not self.budget_wake:
             self.budget_wake = True

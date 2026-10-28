@@ -229,6 +229,26 @@ class RunningBitTest(unittest.TestCase):
         self.assertEqual(dl._clean_spoken("[whisper] come here", "actor"), "[whisper] come here")
 
 
+class DirectorReserveTest(unittest.TestCase):
+    """Bank runs ended $0.01-0.03 over --max-dollars: a live director consult in
+    flight lands after the budget check, so the check keeps room for one."""
+
+    def test_live_director_keeps_room_for_one_consult(self):
+        import llm
+        from sim import Sim
+        s = Sim(profile="A", fake=True, speed=1000.0)
+        llm.reset_spent()
+        try:
+            s.max_dollars = 0.025
+            self.assertTrue(s._budget_ok())
+            s.director.fake = False
+            s.budget_wake = True  # no wake-up event in this unit check
+            self.assertFalse(s._budget_ok())
+        finally:
+            llm.reset_spent()
+            s.close()
+
+
 class MemoryCompactTest(unittest.TestCase):
     REPLY = ("SO FAR: Dan ran up to the roof and begged me to step away from the edge.\n"
              "KNOW: Dan is scared; Dan hides why he came\n"
