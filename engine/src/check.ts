@@ -2,6 +2,7 @@ import { validate } from "./schema/validate.js";
 import { emptyPassport, makeReport, roundReport, STAGES } from "./report/report.js";
 import { planStage } from "./plan/lint.js";
 import { openingsStage } from "./openings/stage.js";
+import { placeProps } from "./props/place.js";
 import type { Ctx } from "./ctx.js";
 import type { Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
@@ -37,6 +38,11 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
   if (!planFailed && want.includes("openings")) {
     push(openingsStage(ctx));
   }
+  const openingsFailed = errors.some((e) => e.stage === "openings");
+  if (!planFailed && !openingsFailed && want.includes("props")) {
+    ctx.props = placeProps(ctx);
+  }
+
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
   const stages = STAGES.map((s, i) => {
     if (s === "stairs") return { stage: s, status: "skipped" as const };

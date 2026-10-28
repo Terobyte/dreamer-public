@@ -1,3 +1,5 @@
+import type { OBB } from "./geom/obb.js";
+
 export type Stage =
   | "schema"
   | "plan"
@@ -86,6 +88,16 @@ export type Scene = Record<string, any>;
 export type RoomGeo = Record<string, any>;
 export type LevelPlan = Record<string, any>;
 export type OpeningGeo = Record<string, any>;
-export type PropGeo = Record<string, any>;
+export interface PropGeo {
+  id: string;
+  src: number;
+  copy?: number;
+  room: string;
+  obb: OBB;
+  y: [number, number];
+  wall: string | null;
+  solid: boolean;
+  size: { w: number; d: number; h: number };
+}
 export type DecalGeo = Record<string, any>;
 export type NavJson = Record<string, any>;
