@@ -1,0 +1,13 @@
+{
+  "id": "C",
+  "hero": "SpongeBob",
+  "hero_voice": "spongebob",
+  "diary": "Tomorrow I fly to see the coral festival! I packed and repacked the suitcase four times. The plane looked so small on the ticket picture.",
+  "wants": ["the trip to go perfectly", "to see the festival lights"],
+  "fears": ["the plane falling", "missing the flight"],
+  "past_dream": "Once I dreamed the floor of a bus fell away and I was floating, laughing and scared at the same time.",
+  "facts": [
+    {"text": "His first flight is tomorrow morning.", "hidden_from_hero": false},
+    {"text": "Past dream: floating when a bus floor fell away, laughing and scared.", "hidden_from_hero": true}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "B",
+  "hero": "SpongeBob",
+  "hero_voice": "spongebob",
+  "diary": "Patrick's rock is empty since he moved to the other side of the ocean. I set two plates for dinner by habit. I watched our old jellyfishing video and did not laugh.",
+  "wants": ["to see his friend again", "to be someone's first call"],
+  "fears": ["that his friend forgets him", "eating alone forever"],
+  "past_dream": "A month ago I dreamed I was waving from a pier and the boat kept getting smaller but never left.",
+  "facts": [
+    {"text": "His best friend moved away three weeks ago.", "hidden_from_hero": false},
+    {"text": "Past dream: waving from a pier at a boat that never leaves.", "hidden_from_hero": true}
+  ]
+}

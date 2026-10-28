@@ -1,0 +1,14 @@
+{
+  "id": "A",
+  "hero": "SpongeBob",
+  "hero_voice": "spongebob",
+  "diary": "Mr. Krabs yelled at me in front of everyone because the fryer broke. I said nothing and kept flipping. On the bus home I hummed the lullaby grandma used to sing.",
+  "wants": ["quiet", "someone to say it was not my fault"],
+  "fears": ["being shouted at again tomorrow", "that I am bad at my job"],
+  "past_dream": "Last week I dreamed grandma's porch was full of fog and I could hear her singing but could not find the door.",
+  "facts": [
+    {"text": "His grandma sang him a lullaby when he could not sleep.", "hidden_from_hero": false},
+    {"text": "Last week's dream: fog on grandma's porch, her voice, no door.", "hidden_from_hero": true},
+    {"text": "He goes silent when someone raises their voice.", "hidden_from_hero": true}
+  ]
+}

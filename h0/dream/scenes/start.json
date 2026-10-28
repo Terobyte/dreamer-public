@@ -1,0 +1,22 @@
+{
+  "id": "start",
+  "place": "Squidward's living room",
+  "actors": [{"name": "Squidward", "voice": "squidward"}],
+  "objects": [
+    "clarinet",
+    "old radio",
+    "music stand",
+    "framed photo of a friend",
+    "photo album",
+    "suitcase",
+    "postcard with an airplane",
+    "armchair",
+    "tiki lamp",
+    "easel with a self-portrait"
+  ],
+  "hooks": {
+    "A": ["clarinet", "old radio", "music stand", "armchair"],
+    "B": ["framed photo of a friend", "photo album", "easel with a self-portrait"],
+    "C": ["suitcase", "postcard with an airplane"]
+  }
+}

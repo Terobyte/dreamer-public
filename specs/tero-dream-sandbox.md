@@ -51,19 +51,19 @@
 Спека §4 (все пункты «Переходы автомата» и «Если директор тянет с мостом»), §5 (лестница, каналы `[STATE]`), §5a.
 Файлы: `fsm.py` (чистый, без LLM и I/O), `inputs.py` (`sanitize`, `resolve_touch`), `clock.py`, `test_fsm.py`, `test_inputs.py`.
 
-- [ ] `test_touch_in_building`: TOUCH в `building` → `stall`, состояние то же, `hint_level` не растёт, повтор < 60 с → `touch_ignored`
-- [ ] `test_ready_l4_auto_touch`: `ready` → L4 на 20 с, `auto_touch` на 40 с → `transition`; TOUCH до этого → `transition` и таймеры отменены
-- [ ] `test_ready_level_max`: на `ready` уровень = max(замороженный, по часам)
-- [ ] `test_abort_cancels_timers`: `abort_build` в `building` и в `ready` → `idle`, `deadline_cancelled`, часы подсказки от `idle_since`; 3-й abort на сцене → `wake_up("abort_loop")`
-- [ ] `test_locked_target_block`: в `building`/`ready` любые `bridge/destination/next_scene/hero_next` → `invalid`
-- [ ] `test_epoch_stale`: решение с устаревшим `build_epoch` отбрасывается целиком; `wake_up` из него → `pending_wakeup`; `wake_up("budget")` гасит `pending_wakeup`
-- [ ] `test_nudge_force_events`: на 2:00 событие подсказки, на 5:00 требование; `min_interval` 20 с для подсказки, требование его не ждёт; метки `free/nudged/forced` + `nudged_before`
-- [ ] `test_director_fail_streak`: `fail` только после 5:00 (null, мост не из сцены, битый JSON, voice не из пула); 3 подряд → `wake_up("director_stuck")`; валидный мост обнуляет
-- [ ] `test_sanitize`: human — вырезаны все `[…]`, `[[…]]`, `<…>`; actor — служебные теги и скобки с `=` вырезаны, `[sigh]` остался; `input_rejected`
-- [ ] `test_resolve_touch`: на предметах `scenes/start.json` — точное, по слову, мн. число и артикли, `touch_ambiguous` с кандидатами, `touch_rejected`
-- [ ] `test_clock_speed`: `Clock(20)` делит все ожидания; окно `420/N ≤ t_ready − t_build_start ≤ 420/N + 2`
-- [ ] `scenes/start.json` (≥ 8 предметов с зацепками под A/B/C, спека §9) и `profiles/{A,B,C}.json` (§12: `hero_voice`, ≥ 1 факт `hidden_from_hero`)
-- [ ] реализовать
+- [x] `test_touch_in_building`: TOUCH в `building` → `stall`, состояние то же, `hint_level` не растёт, повтор < 60 с → `touch_ignored`
+- [x] `test_ready_l4_auto_touch`: `ready` → L4 на 20 с, `auto_touch` на 40 с → `transition`; TOUCH до этого → `transition` и таймеры отменены
+- [x] `test_ready_level_max`: на `ready` уровень = max(замороженный, по часам)
+- [x] `test_abort_cancels_timers`: `abort_build` в `building` и в `ready` → `idle`, `deadline_cancelled`, часы подсказки от `idle_since`; 3-й abort на сцене → `wake_up("abort_loop")`
+- [x] `test_locked_target_block`: в `building`/`ready` любые `bridge/destination/next_scene/hero_next` → `invalid`
+- [x] `test_epoch_stale`: решение с устаревшим `build_epoch` отбрасывается целиком; `wake_up` из него → `pending_wakeup`; `wake_up("budget")` гасит `pending_wakeup`
+- [x] `test_nudge_force_events`: на 2:00 событие подсказки, на 5:00 требование; `min_interval` 20 с для подсказки, требование его не ждёт; метки `free/nudged/forced` + `nudged_before`
+- [x] `test_director_fail_streak`: `fail` только после 5:00 (null, мост не из сцены, битый JSON, voice не из пула); 3 подряд → `wake_up("director_stuck")`; валидный мост обнуляет
+- [x] `test_sanitize`: human — вырезаны все `[…]`, `[[…]]`, `<…>`; actor — служебные теги и скобки с `=` вырезаны, `[sigh]` остался; `input_rejected`
+- [x] `test_resolve_touch`: на предметах `scenes/start.json` — точное, по слову, мн. число и артикли, `touch_ambiguous` с кандидатами, `touch_rejected`
+- [x] `test_clock_speed`: `Clock(20)` делит все ожидания; окно `420/N ≤ t_ready − t_build_start ≤ 420/N + 2`
+- [x] `scenes/start.json` (≥ 8 предметов с зацепками под A/B/C, спека §9) и `profiles/{A,B,C}.json` (§12: `hero_voice`, ≥ 1 факт `hidden_from_hero`)
+- [x] реализовать
 
 **Вне этой фазы:** вызовы директора и актёров, лог, sim.
 
