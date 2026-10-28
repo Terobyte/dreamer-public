@@ -60,15 +60,31 @@ use_scene("start")
 HOOK_INDEX = {"A": 0, "B": 3, "C": 5}
 
 
+SOUL_KEYS = ("diary", "wants", "fears", "past_dream", "facts")
+
+
 def load_profile(pid):
-    """Profile soul file (spec 2): hero name and hero voice for playback."""
+    """Profile soul file (spec 2): hero name and hero voice for playback. A scene
+    with a hero of its own (scenes/roof.json: just a man on a roof) replaces the
+    profile's hero, and its soul too -- a diary about the fryer has no place there."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles",
                         str(pid) + ".json")
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
+            prof = json.load(f)
     except (OSError, ValueError):
-        return {}
+        prof = {}
+    hero = START.get("hero")
+    if isinstance(hero, dict):
+        prof = dict(prof)
+        if hero.get("soul"):
+            for k in SOUL_KEYS:
+                prof.pop(k, None)
+            prof.update({k: v for k, v in hero["soul"].items() if k in SOUL_KEYS})
+        for src, dst in (("name", "hero"), ("voice", "hero_voice"), ("look", "hero_look")):
+            if hero.get(src):
+                prof[dst] = hero[src]
+    return prof
 
 
 def _gen_next_scene(n):

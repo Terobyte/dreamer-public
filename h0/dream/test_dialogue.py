@@ -197,6 +197,28 @@ class SceneSwitchTest(unittest.TestCase):
         finally:
             simmod.use_scene("start")
 
+    def test_roof_hero_is_a_plain_man_with_his_own_soul(self):
+        import sim as simmod
+        simmod.use_scene("roof")
+        try:
+            prof = load_profile("A")
+            self.assertEqual(prof["hero"], "Max")
+            self.assertEqual(prof["hero_voice"], "man")
+            self.assertIn("warehouse", prof["diary"])
+            soul = json.dumps(prof)
+            for word in ("SpongeBob", "Krabs", "fryer", "grandma", "spongebob"):
+                self.assertNotIn(word, soul)
+            self.assertIn("warehouse", soul_text(prof))
+            self.assertNotIn("endless stairs", soul_text(prof))
+            with Sim(profile="A", fake=True, speed=1000.0) as s:
+                self.assertEqual(s.hero, "Max")
+                self.assertIn("work shirt", s._looks["Max"])
+                self.assertNotIn("Krabs", json.dumps(s.memory.facts))
+            self.assertEqual(Dialogue(prof).hero, "Max")
+        finally:
+            simmod.use_scene("start")
+        self.assertEqual(load_profile("A")["hero"], "SpongeBob")
+
 
 class ActorLineTest(unittest.TestCase):
     def _line(self, replies, **state):
