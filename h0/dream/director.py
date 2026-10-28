@@ -2,6 +2,7 @@
 usage: cd h0/dream && python3 -m unittest -q
 """
 
+import json
 import os
 import re
 import threading
@@ -10,6 +11,25 @@ from clock import Clock
 from fsm import LOCKED_STATES, check_messages, check_target
 from inputs import sanitize
 from diagnostics import report
+
+try:
+    from llm import call as llm_call
+except ImportError:
+    from .llm import call as llm_call
+
+DIRECTOR_SCHEMA = (
+    "Reply with JSON only: {\"bridge\": an object name from the scene or null, "
+    "\"destination\": a short place name or null, "
+    "\"why\": one sentence naming the diary fact or memory that decided it, "
+    "\"next_scene\": {\"objects\": 5 to 8 object names of the destination, "
+    "\"actors\": 1 or 2 [{\"name\": who waits there, \"voice\": one of "
+    "old_woman|old_man|woman|man|child|creature}]}, "
+    "\"hero_next\": {\"changes\": false} or {\"changes\": true, "
+    "\"description\": the hero's new look, \"voice\": one of "
+    "old_woman|old_man|woman|man|child|creature}, "
+    "\"messages\": [], \"facts_update\": [], \"abort_build\": null, "
+    "\"wake_up\": null}. A bridge without next_scene is rejected: send both "
+    "or neither (bridge null means wait). English.")
 
 
 def validate_decision(decision, objects, actors, pool):
@@ -51,10 +71,11 @@ class Director:
     """Single-flight async director on fakes; events queue into next call."""
 
     def __init__(self, fsm, memory=None, actors=(), delay=0.0, speed=1.0,
-                 script=(), outdir=None, clock=None):
+                 script=(), outdir=None, clock=None, fake=True):
         self.fsm = fsm
         self.memory = memory
         self.actors = list(actors)
+        self.fake = fake
         self.delay = float(delay)
         self.speed = float(speed or 1.0)
         self.script = list(script)
@@ -117,16 +138,35 @@ class Director:
                 meta += "\n[PENDING_WAKEUP %s]" % ticket["pending_wakeup"]
         return "%s%s\nEVENTS\n%s" % (base, meta, tail)
 
-    def _next_decision(self, ticket):
-        """Next scripted reply. While the build is locked a director may only send notes
-        (spec 4), so the script's next bridge waits for the next idle consult."""
+    def _next_decision(self, ticket, prompt):
+        """Scripted reply offline; a real Wonder call live. While the build is
+        locked a director may only send notes (spec 4), so the next bridge
+        waits for the next idle consult either way."""
         if ticket["state"] in LOCKED_STATES:
             return {"messages": []}
+        if not self.fake:
+            return self._live_decision(prompt)
         if self._cur < len(self.script):
             d = self.script[self._cur]
             self._cur += 1
             return d
         return {"bridge": None, "messages": []}
+
+    def _live_decision(self, prompt):
+        """Real director consult (spec 15 step 2/4): a malformed or failed reply
+        falls back to a no-op so a bad response never stalls the dream."""
+        try:
+            res = llm_call("director", "You are the dream director.",
+                           [{"role": "user", "content": prompt + "\n" + DIRECTOR_SCHEMA}],
+                           max_tokens=800)
+            decision = json.loads((res.text or "").strip())
+            if not isinstance(decision, dict):
+                raise ValueError("director reply is not a JSON object")
+            return decision
+        except Exception as e:
+            self.errors.append(e)
+            self._publish([dict(report("director", "director_fail", e), t=self.clock.now())])
+            return {"messages": []}
 
     def _write_prompt(self, text):
         if not self.outdir:
@@ -171,23 +211,25 @@ class Director:
                 self._publish([dict(report("director", "memory_fail", e), t=now)])
         self.prompts.append(prompt)
         path = self._write_prompt(prompt)
-        decision = self._next_decision(ticket)
         self.in_flight = True
         self.max_in_flight = max(self.max_in_flight, 1)
-        t = threading.Thread(target=self._finish, args=(ticket, decision, path, mem_sizes),
+        t = threading.Thread(target=self._finish, args=(ticket, prompt, path, mem_sizes),
                              daemon=True)
         self._thread = t
         t.start()
         return ticket
 
-    def _finish(self, ticket, decision, prompt_path=None, mem_sizes=None):
+    def _finish(self, ticket, prompt, prompt_path=None, mem_sizes=None):
         # The FSM alone validates and reports bridge/next_scene/voice problems
         # (fields + reason on an "invalid" event); this call must not quietly
         # rewrite an out-of-scene bridge to None before the FSM ever sees it,
-        # or the failure is lost (F28).
+        # or the failure is lost (F28). The real director call also happens
+        # here, off the main loop thread, so a slow Wonder reply never blocks
+        # ticks, timers or playback (F15).
         try:
             if self.delay > 0:
                 self.clock.real_sleep(self.delay)
+            decision = self._next_decision(ticket, prompt)
             now = self.clock.now()
             ev = self.fsm.finish_consult(now, ticket, decision)
             for e in ev:
