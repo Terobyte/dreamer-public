@@ -235,17 +235,17 @@
 - `mRange` наклейки = `m ± w/2` (прямое), `m ± R·asin(w/2 / R_f)` (дуга, `R_f` — радиус внутренней грани). `DECAL_OFF_WALL`: `y ± h/2` вне `[0, room.height]` (`fix` `{y}` в пределах) или `mRange` вне интервала; `at` не нашёл стену своей комнаты в `SNAP_EPS`. `DECAL_ON_OPENING`: пересечение `mRange` и y с проёмом на том же интервале. `DECAL_OVERLAP`: две наклейки на одной стороне интервала пересекаются (запись у более поздней). `DECAL_HIDDEN` (warn): ближайшая точка твёрдого OBB < 0.15 м от внутренней грани, перекрывает наклейку по `m` и по y.
 - `CAMERA_OUTSIDE`: `pos` не внутри `outline` ни одной комнаты, или `y` вне `[level.y, level.y + height]`, или внутри тела стены, балки (след × её y) или твёрдого OBB по плану **и** по y.
 
-- [ ] `test_demo_flat_decal`: наклейка 0 → `edge` "living#2", `center` [3.92, 1.7, −1.6], `normal` [−1, 0]
-- [ ] `test_broken_decal_camera_codes` — ровно свой код:
+- [x] `test_demo_flat_decal`: наклейка 0 → `edge` "living#2", `center` [3.92, 1.7, −1.6], `normal` [−1, 0]
+- [x] `test_broken_decal_camera_codes` — ровно свой код:
   - `DECAL_OFF_WALL`: `[{"op":"replace","path":"/decals/0/y","value":3.3}]` → `fix` `{"y": 3.05}`
   - `DECAL_ON_OPENING`: `[{"op":"add","path":"/decals/-","value":{"asset":"d_portrait","room":"living","on":{"room":"living","edge":1,"t":0.5},"y":1.5,"size":{"w":0.6,"h":0.6}}}]`
   - `DECAL_OVERLAP`: `[{"op":"add","path":"/decals/-","value":{"asset":"d_portrait","room":"living","on":{"room":"living","edge":2,"t":0.32},"y":1.7,"size":{"w":0.6,"h":0.7}}}]`
   - `CAMERA_OUTSIDE`: `[{"op":"replace","path":"/cameras/0/pos","value":[0,0.5,0]}]` (в столе)
   - камера `pos` [0, 1.6, 20] → тоже `CAMERA_OUTSIDE`; [0, 3.2, 0] (в балке) → тоже; [0, 1.6, 0] над столом → нет
-- [ ] `test_decal_hidden`: `warn/DECAL_HIDDEN`: `[{"op":"add","path":"/props/-","value":{"id":"cab","asset":"p_table","room":"living","at":[3.7,-1.6],"size":{"w":1.0,"d":0.4,"h":2.0},"yaw":270}}]` → 0 ошибок, ровно `DECAL_HIDDEN`
-- [ ] `test_top_svg`: SVG demo-flat — тексты `living`, `hall`, `living#1`, `front`, `sea`, `chairs.0`; по одному `polygon[data-id]` на каждый предмет (в demo-flat — 8); у `polygon[data-id="sofa"]` точки = углы OBB × 40 в координатах `viewBox` (±0.5 px); два прогона дают одинаковую строку
-- [ ] `test_cli_writes_svg`: CLI с `--report <tmp>/x.json` пишет `<tmp>/demo-flat.top.svg`
-- [ ] реализовать
+- [x] `test_decal_hidden`: `warn/DECAL_HIDDEN`: `[{"op":"add","path":"/props/-","value":{"id":"cab","asset":"p_table","room":"living","at":[3.7,-1.6],"size":{"w":1.0,"d":0.4,"h":2.0},"yaw":270}}]` → 0 ошибок, ровно `DECAL_HIDDEN`
+- [x] `test_top_svg`: SVG demo-flat — тексты `living`, `hall`, `living#1`, `front`, `sea`, `chairs.0`; по одному `polygon[data-id]` на каждый предмет (в demo-flat — 8); у `polygon[data-id="sofa"]` точки = углы OBB × 40 в координатах `viewBox` (±0.5 px); два прогона дают одинаковую строку
+- [x] `test_cli_writes_svg`: CLI с `--report <tmp>/x.json` пишет `<tmp>/demo-flat.top.svg`
+- [x] реализовать
 
 **Вне этой фазы:** `top.png`, лист с ref-кадрами, маршруты.
 

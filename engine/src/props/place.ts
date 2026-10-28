@@ -29,7 +29,7 @@ export interface RoomRec {
   edges: AuthorEdge[];
 }
 
-function specAng(p: V2, c: V2): number {
+export function specAng(p: V2, c: V2): number {
   return Math.atan2(p[0] - c[0], p[1] - c[1]);
 }
 
@@ -37,11 +37,11 @@ function wrapTau(x: number): number {
   return ((x % TAU) + TAU) % TAU;
 }
 
-function isClosed(e: AuthorEdge): boolean {
+export function isClosed(e: AuthorEdge): boolean {
   return !!e.arc && Math.hypot(e.from[0] - e.to[0], e.from[1] - e.to[1]) < EPS;
 }
 
-function edgePoint(e: AuthorEdge, frac: number): V2 {
+export function edgePoint(e: AuthorEdge, frac: number): V2 {
   if (!e.arc) {
     return [e.from[0] + (e.to[0] - e.from[0]) * frac, e.from[1] + (e.to[1] - e.from[1]) * frac];
   }
@@ -53,7 +53,7 @@ function edgePoint(e: AuthorEdge, frac: number): V2 {
 }
 
 /** inward normal of the edge at a point on its axis (radial on arcs) */
-function edgeNormal(e: AuthorEdge, p: V2): V2 {
+export function edgeNormal(e: AuthorEdge, p: V2): V2 {
   if (!e.arc) return [e.normalIn[0], e.normalIn[1]];
   const c = e.arc.c;
   if (isClosed(e)) {
@@ -68,7 +68,7 @@ function edgeNormal(e: AuthorEdge, p: V2): V2 {
   return n;
 }
 
-function closestOnEdge(p: V2, e: AuthorEdge): { d: number; q: V2 } {
+export function closestOnEdge(p: V2, e: AuthorEdge): { d: number; q: V2 } {
   if (!e.arc) {
     const dx = e.to[0] - e.from[0];
     const dz = e.to[1] - e.from[1];
@@ -94,7 +94,7 @@ function closestOnEdge(p: V2, e: AuthorEdge): { d: number; q: V2 } {
   return { d: Math.hypot(p[0] - q[0], p[1] - q[1]), q };
 }
 
-function fracOf(e: AuthorEdge, on: any): number {
+export function fracOf(e: AuthorEdge, on: any): number {
   const L = e.len || 1;
   if (typeof on?.t === "number") return on.t;
   if (typeof on?.m === "number") return isClosed(e) ? (((on.m % L) + L) % L) / L : on.m / L;

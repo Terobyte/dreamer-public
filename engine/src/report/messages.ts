@@ -118,6 +118,28 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.id}: от at до внутренней грани ${params.edge} ${params.d} м (> ${params.max}); задай yaw или точку`;
     case "ROOM_UNREACHABLE":
       return `${params.room}: комната недостижима из spawn`;
+    case "DECAL_OFF_WALL":
+      if (params.kind === "y") {
+        return `decal.${params.i} на ${params.edge}: y [${params.y0}, ${params.y1}] вне [0, ${params.h}]`;
+      }
+      if (params.kind === "m") {
+        return `decal.${params.i}: m [${params.m0}, ${params.m1}] вне интервала ${params.edge} [${params.a}, ${params.b}]`;
+      }
+      return `decal.${params.i}: ближайшая стена ${params.edge} в ${params.d} м (нужно < 0.10)`;
+    case "DECAL_ON_OPENING":
+      return `decal.${params.i} на ${params.edge}: попадает на проём ${params.opening}`;
+    case "DECAL_OVERLAP":
+      return `decal.${params.i} на ${params.edge}: пересекает decal.${params.other}`;
+    case "DECAL_HIDDEN":
+      return `decal.${params.i} на ${params.edge}: закрыта предметом ${params.id} в ${params.d} м от грани (нужно ≥ 0.15)`;
+    case "CAMERA_OUTSIDE":
+      if (params.kind === "y") {
+        return `камера ${params.id}: y ${params.y} вне [${params.a}, ${params.b}] комнаты ${params.room}`;
+      }
+      if (params.kind === "in") {
+        return `камера ${params.id}: pos (${params.x}, ${params.y}, ${params.z}) внутри ${params.what}`;
+      }
+      return `камера ${params.id}: pos (${params.x}, ${params.y}, ${params.z}) вне всех комнат`;
     default:
       return `${params.path ?? ""}: ${code}`;
   }
