@@ -1,0 +1,23 @@
+{
+  "name": "dreamer-engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "check": "node --import tsx bin/dreamer.ts check"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "clipper2-ts": "2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

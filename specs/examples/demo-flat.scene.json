@@ -1,0 +1,376 @@
+{
+ "version": 0,
+ "name": "demo-flat",
+ "spawn": {
+  "room": "hall",
+  "at": [
+   -1,
+   10
+  ],
+  "yaw": 180
+ },
+ "style": {
+  "ambient": 1.0,
+  "exterior": "#8a8a80"
+ },
+ "materials": {
+  "olive": {
+   "tile": "t_wall",
+   "repeat_m": 2.0
+  },
+  "parquet": {
+   "tile": "t_floor",
+   "repeat_m": 1.2
+  },
+  "plaster": {
+   "color": "#c8c27a"
+  },
+  "wood": {
+   "color": "#7a5230"
+  },
+  "white": {
+   "color": "#eeeae0"
+  }
+ },
+ "levels": [
+  {
+   "id": "L0",
+   "y": 0
+  }
+ ],
+ "rooms": [
+  {
+   "id": "living",
+   "level": "L0",
+   "height": 3.4,
+   "shape": [
+    [
+     -4,
+     4
+    ],
+    [
+     -4,
+     -4,
+     {
+      "bulge": 0.4
+     }
+    ],
+    [
+     4,
+     -4
+    ],
+    [
+     4,
+     4
+    ]
+   ],
+   "floor": "parquet",
+   "ceiling": "plaster",
+   "walls": {
+    "material": "olive",
+    "bands": [
+     {
+      "to": 0.12,
+      "material": "wood"
+     }
+    ]
+   },
+   "beams": [
+    {
+     "from": [
+      -4,
+      0
+     ],
+     "to": [
+      4,
+      0
+     ],
+     "material": "wood",
+     "w": 0.25,
+     "h": 0.3
+    }
+   ]
+  },
+  {
+   "id": "hall",
+   "level": "L0",
+   "height": 3.0,
+   "shape": [
+    [
+     -2,
+     4
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     2,
+     12
+    ],
+    [
+     -2,
+     12
+    ]
+   ],
+   "floor": "parquet",
+   "ceiling": "white",
+   "walls": {
+    "material": "white",
+    "bands": [
+     {
+      "to": 0.12,
+      "material": "wood"
+     }
+    ]
+   }
+  }
+ ],
+ "openings": [
+  {
+   "id": "front",
+   "kind": "door",
+   "at": [
+    0,
+    4
+   ],
+   "width": 0.9,
+   "height": 2.1,
+   "sill": 0,
+   "leaf": {
+    "decal": "d_door",
+    "open": true
+   }
+  },
+  {
+   "id": "sea",
+   "kind": "window",
+   "on": {
+    "room": "living",
+    "edge": 1,
+    "t": 0.5
+   },
+   "width": 1.6,
+   "height": 1.0,
+   "sill": 1.0,
+   "outside": {
+    "backdrop": "d_sea"
+   }
+  }
+ ],
+ "props": [
+  {
+   "id": "table",
+   "asset": "p_table",
+   "cat": "table",
+   "room": "living",
+   "at": [
+    0,
+    0
+   ],
+   "size": {
+    "w": 1.1,
+    "d": 1.1,
+    "h": 0.75
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "chairs",
+   "asset": "p_chair",
+   "cat": "chair",
+   "room": "living",
+   "around": {
+    "center": "table",
+    "n": 4,
+    "r": 0.9,
+    "start": 0
+   },
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 1.3
+   },
+   "mount": "floor",
+   "solid": true
+  },
+  {
+   "id": "sofa",
+   "asset": "p_sofa",
+   "cat": "sofa",
+   "room": "living",
+   "at": [
+    -3.45,
+    1.5
+   ],
+   "size": {
+    "w": 2.0,
+    "d": 0.9,
+    "h": 0.85
+   },
+   "mount": "floor",
+   "face": "room",
+   "solid": true
+  },
+  {
+   "id": "vase",
+   "asset": "p_vase",
+   "cat": "vase",
+   "room": "living",
+   "size": {
+    "w": 0.25,
+    "d": 0.25,
+    "h": 0.4
+   },
+   "mount": {
+    "top_of": "table"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "lamp",
+   "asset": "p_lamp",
+   "cat": "lamp",
+   "room": "living",
+   "at": [
+    0,
+    -1.5
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.6
+   },
+   "mount": "ceiling",
+   "solid": false
+  }
+ ],
+ "decals": [
+  {
+   "asset": "d_portrait",
+   "room": "living",
+   "on": {
+    "room": "living",
+    "edge": 2,
+    "t": 0.3
+   },
+   "y": 1.7,
+   "size": {
+    "w": 0.6,
+    "h": 0.7
+   }
+  }
+ ],
+ "lights": [
+  {
+   "kind": "hemi",
+   "pos": [
+    0,
+    3,
+    0
+   ],
+   "color": "#fff4e0",
+   "power": 0.8
+  },
+  {
+   "kind": "point",
+   "pos": [
+    0,
+    2.6,
+    -1.5
+   ],
+   "color": "#ffd8b0",
+   "power": 1.0
+  },
+  {
+   "kind": "point",
+   "pos": [
+    0,
+    2.4,
+    8
+   ],
+   "color": "#fff4e0",
+   "power": 0.7
+  }
+ ],
+ "assets": {
+  "t_wall": {
+   "kind": "tile",
+   "prompt": "dark olive green mottled sponge-like painted stone"
+  },
+  "t_floor": {
+   "kind": "tile",
+   "prompt": "pink-mauve wooden parquet, square blocks of parallel planks in basket weave"
+  },
+  "d_door": {
+   "kind": "decal",
+   "prompt": "a tall narrow door of vertical yellow bamboo poles",
+   "aspect": "1:2"
+  },
+  "d_portrait": {
+   "kind": "decal",
+   "prompt": "a framed portrait painting in a dark green square frame",
+   "aspect": "1:1"
+  },
+  "d_sea": {
+   "kind": "decal",
+   "prompt": "blue ocean water seen from underwater, distant",
+   "aspect": "2:1"
+  },
+  "p_table": {
+   "kind": "object",
+   "prompt": "a round dining table with a pale lavender top and a thick yellow bamboo pedestal"
+  },
+  "p_chair": {
+   "kind": "object",
+   "prompt": "a dining chair with a very tall narrow back, yellow bamboo frame, blue upholstery"
+  },
+  "p_sofa": {
+   "kind": "object",
+   "prompt": "a long sofa with a yellow bamboo frame and blue striped upholstery"
+  },
+  "p_vase": {
+   "kind": "object",
+   "prompt": "a tall round-bellied blue ceramic vase"
+  },
+  "p_lamp": {
+   "kind": "object",
+   "prompt": "a hanging ceiling lamp shaped like a pink scallop shell"
+  }
+ },
+ "cameras": [
+  {
+   "id": "door",
+   "pos": [
+    0,
+    1.6,
+    4.6
+   ],
+   "look": [
+    0,
+    1.2,
+    -2
+   ],
+   "fov": 70
+  }
+ ],
+ "routes": [
+  {
+   "id": "in",
+   "path": [
+    "spawn",
+    "front",
+    {
+     "room": "living",
+     "at": [
+      2.5,
+      -2
+     ]
+    }
+   ]
+  }
+ ]
+}
