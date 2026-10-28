@@ -336,3 +336,19 @@ class PendingWakeupTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherObjectTouchTest(unittest.TestCase):
+    def test_touching_a_non_bridge_object_neither_stalls_nor_transitions(self):
+        f = BuildFSM(["clarinet", "photo album"], speed=1.0, now=0)
+        f.start_build(0, "clarinet", "porch")
+        ev = f.touch(30, "photo album")
+        self.assertEqual([e["type"] for e in ev], ["input"])
+        self.assertIsNone(f.frozen_level, "the ladder keeps climbing")
+        self.assertEqual(f.hint_level(130), 1)
+        f.tick(420)
+        self.assertEqual(f.state, "ready")
+        self.assertEqual([e["type"] for e in f.touch(421, "photo album")], ["input"])
+        self.assertEqual(f.state, "ready")
+        self.assertEqual([e["type"] for e in f.touch(422, "clarinet")], ["transition"])
+

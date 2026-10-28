@@ -170,6 +170,11 @@ class BuildFSM:
 
     # --- hero input ------------------------------------------------------
     def touch(self, now, obj):
+        # only the bridge is the build's business: another object touched during a
+        # build is plain input for the director -- it neither freezes the ladder
+        # (stall) nor carries the hero through the bridge (ready)
+        if self.state in ("building", "ready") and self.bridge and obj != self.bridge:
+            return [self._e(now, "input", source="touch", value=obj)]
         if self.state == "building":
             if self.last_stall is not None and now - self.last_stall <= self.p["cooldown"]:
                 return [self._e(now, "touch_ignored", object=obj)]
