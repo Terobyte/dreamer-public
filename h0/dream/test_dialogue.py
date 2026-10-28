@@ -207,6 +207,86 @@ class VoiceDirectionTest(unittest.TestCase):
         self.assertEqual(voice.MODEL, "drama-3")
 
 
+class MemoryCompactTest(unittest.TestCase):
+    REPLY = ("SO FAR: Dan ran up to the roof and begged me to step away from the edge.\n"
+             "KNOW: Dan is scared; Dan hides why he came\n"
+             "PROMISED: I said I would not leave\n"
+             "TRIED: counting planes; asking about the door")
+
+    def _fill(self, d, n):
+        for i in range(n):
+            d.heard("Dan" if i % 2 else "Max", "line number %d about the roof" % i)
+
+    def test_lines_leaving_the_window_fold_into_memory(self):
+        import dialogue as dl
+        t = FakeTransport([self.REPLY])
+        d = Dialogue({"hero": "Max"}, transport=t)
+        d.background = False
+        self.assertEqual(d.compact(["Max"]), [])  # newcomer: nothing heard yet
+        self._fill(d, dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY - 1)
+        self.assertEqual(d.compact(["Max"]), [])  # not enough fell out yet
+        d.heard("Dan", "one more")
+        self.assertEqual(d.compact(["Max"]), ["Max"])
+        m = d.minds["Max"]
+        self.assertEqual(m.cursor, dl.COMPACT_EVERY)
+        self.assertIn("edge", m.so_far)
+        self.assertEqual(m.promised, ["I said I would not leave"])
+        self.assertEqual(len(m.tried), 2)
+        sent = t.sent[0]["messages"][0]["content"]
+        self.assertIn("line number 0", sent)
+        self.assertNotIn("one more", sent)  # still in the window, not folded
+
+    def test_memory_reaches_the_prompt_and_says_try_else(self):
+        import dialogue as dl
+        d = Dialogue({"hero": "Max"}, transport=FakeTransport([self.REPLY, "[quiet] Okay."]))
+        d.background = False
+        d.mind("Dan")  # Dan was there from the start
+        self._fill(d, dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY)
+        d.compact(["Dan"])
+        t = d.transport
+        d.actor_line("Dan", WORLD, list(d.log), {"hint_level": 0})
+        prompt = t.sent[-1]["messages"][0]["content"]
+        self.assertIn("What you remember from earlier tonight", prompt)
+        self.assertIn("try something else now", prompt)
+
+    def test_failed_fold_keeps_the_lines_and_old_memory(self):
+        import dialogue as dl
+        got = []
+        d = Dialogue({"hero": "Max"}, transport=FakeTransport(["no idea", self.REPLY]))
+        d.background = False
+        d.on_memory = lambda *a: got.append(a)
+        d.mind("Max")
+        self._fill(d, dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY)
+        d.compact(["Max"])
+        self.assertEqual(d.minds["Max"].cursor, 0)
+        self.assertIsNone(got[-1][1])
+        d.compact(["Max"])
+        self.assertEqual(d.minds["Max"].cursor, dl.COMPACT_EVERY)
+
+    def test_a_newcomer_does_not_remember_before_it_came(self):
+        import dialogue as dl
+        d = Dialogue({"hero": "Max"}, transport=FakeTransport([self.REPLY]))
+        self._fill(d, 30)
+        self.assertEqual(d.mind("Grandma").cursor, 30 - dl.TRANSCRIPT_KEEP)
+        self.assertEqual(d.mind("Patrick", seen=2).cursor, 28)  # just after a transition
+
+    def test_sim_feeds_lines_and_logs_the_fold(self):
+        import dialogue as dl
+        replies = ["[calm] Line %d here." % i for i in range(40)]
+        d = Dialogue(load_profile("A"), transport=FakeTransport(replies))
+        d.background = False
+        with tempfile.TemporaryDirectory() as tmp:
+            with Sim(profile="A", fake=True, speed=1000.0, outdir=tmp, dialogue=d) as s:
+                for i in range(dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY):
+                    s._start_line({"owner": "npc", "role": "actor", "who": "Squidward",
+                                   "actor": "Squidward", "text": "[flat] line %d" % i})
+                self.assertEqual(len(d.log), dl.TRANSCRIPT_KEEP + dl.COMPACT_EVERY)
+            with open(os.path.join(tmp, "log.jsonl")) as f:
+                rows = [json.loads(l) for l in f]
+        kinds = {r["type"] for r in rows}
+        self.assertTrue(kinds & {"memory_compact", "memory_compact_fail"})
+
+
 class SceneSwitchTest(unittest.TestCase):
     def test_roof_scene_is_the_opening_scene(self):
         import sim as simmod

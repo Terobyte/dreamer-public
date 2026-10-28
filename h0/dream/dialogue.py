@@ -4,6 +4,7 @@ usage: d = Dialogue(profile); d.hero_line(world, transcript); d.actor_line("Squi
 
 import random
 import re
+import threading
 
 from director import filter_actor_line
 from inputs import sanitize
@@ -13,7 +14,12 @@ try:
 except ImportError:
     from .llm import call as llm_call
 
-TRANSCRIPT_KEEP = 12
+# Memory per character (Letta-style block + recursive summary, Oct 28): the last
+# TRANSCRIPT_KEEP lines go verbatim, older ones are folded every COMPACT_EVERY lines
+# into what this character remembers. A 12-line window with nothing behind it made
+# actors forget the sister after a minute and loop on the window's own mood.
+TRANSCRIPT_KEEP = 8
+COMPACT_EVERY = 4
 MAX_TOKENS = 1500
 
 _TOUCH = re.compile(r"\[\[\s*TOUCH\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
@@ -159,6 +165,72 @@ def _no_repeat_block(transcript, who):
             "words):\n" + "\n".join("- " + t for t in own))
 
 
+MEMORY_RULES = (
+    "You keep {name}'s memory of tonight, from {name}'s side only: what {name} heard and "
+    "said. Rewrite the whole memory: fold the new lines in, keep what still matters, drop "
+    "what no longer does, fix anything the new lines changed. First person, {name}'s own "
+    "plain words. Reply with exactly four lines:\n"
+    "SO FAR: what has happened tonight, at most 4 short sentences\n"
+    "KNOW: what I learned about the others, separated by ;\n"
+    "PROMISED: what I promised or was promised, separated by ; or none\n"
+    "TRIED: what I already tried, asked or brought up, as short ideas separated by ;")
+_MEM_KEYS = (("SO FAR", "so_far"), ("KNOW", "knows"), ("PROMISED", "promised"),
+             ("TRIED", "tried"))
+
+
+def _words(text, n):
+    w = (text or "").split()
+    return " ".join(w[:n])
+
+
+class Mind:
+    """What one character remembers beyond the window. cursor: the first line of
+    Dialogue.log not folded in yet (a character remembers only what it heard)."""
+
+    def __init__(self, cursor=0):
+        self.so_far, self.knows, self.promised, self.tried = "", [], [], []
+        self.cursor = cursor
+        self.busy = False
+
+    def text(self):
+        """Block for the character's prompt; empty until the first compaction."""
+        parts = []
+        if self.so_far:
+            parts.append("What you remember from earlier tonight: " + self.so_far)
+        if self.knows:
+            parts.append("You know: " + "; ".join(self.knows) + ".")
+        if self.promised:
+            parts.append("Promises: " + "; ".join(self.promised) + ".")
+        if self.tried:
+            parts.append("You already tried (try something else now): "
+                         + "; ".join(self.tried) + ".")
+        return "\n".join(parts)
+
+    def as_dict(self):
+        return {"so_far": self.so_far, "knows": list(self.knows),
+                "promised": list(self.promised), "tried": list(self.tried)}
+
+    def update(self, reply):
+        """Parse the four MEMORY_RULES lines; False (memory kept) if SO FAR is missing."""
+        got = {}
+        for raw in (reply or "").splitlines():
+            line = raw.strip().lstrip("-*# ").strip()
+            for label, key in _MEM_KEYS:
+                if line.upper().startswith(label + ":"):
+                    got[key] = line[len(label) + 1:].strip()
+        if not got.get("so_far"):
+            return False
+        self.so_far = _words(got["so_far"], 90)
+        for key in ("knows", "promised", "tried"):
+            items = [_words(x.strip(" ."), 25) for x in (got.get(key) or "").split(";")]
+            setattr(self, key, [x for x in items if x and x.lower() not in ("none", "nothing")][:6])
+        return True
+
+
+def _memory_block(text):
+    return "\n\n" + text if text else ""
+
+
 def _transcript_msgs(transcript):
     lines = ["%s: %s" % (who, text) for who, text in list(transcript)[-TRANSCRIPT_KEEP:]]
     return "\n".join(lines) if lines else "(the scene just began)"
@@ -201,6 +273,71 @@ class Dialogue:
         self.rng = rng or random.Random()
         self._hero_turns = 0
         self._last_touch = -TOUCH_EVERY
+        # memory (see Mind): every spoken line, and who remembers what of it
+        self.log = []
+        self.minds = {}
+        self.background = True
+        self.on_memory = None
+        self._mind_lock = threading.Lock()
+        self._mind_threads = []
+
+    # --- memory and compaction -------------------------------------------
+    def heard(self, who, text):
+        """Sim calls this for every spoken line, in order."""
+        with self._mind_lock:
+            self.log.append((who, text))
+
+    def mind(self, name, seen=TRANSCRIPT_KEEP):
+        """seen: lines the newcomer was shown (after a transition the sim keeps 2);
+        it remembers only from those on, never the scene before it came."""
+        with self._mind_lock:
+            if name not in self.minds:
+                shown = max(0, min(TRANSCRIPT_KEEP, seen))
+                self.minds[name] = Mind(cursor=max(0, len(self.log) - shown))
+            return self.minds[name]
+
+    def memory_text(self, name):
+        return self.mind(name).text()
+
+    def compact(self, cast, seen=TRANSCRIPT_KEEP):
+        """Fold lines that left the window into each present character's memory,
+        once COMPACT_EVERY of them piled up; in the background, never on a line's path."""
+        started = []
+        for name in cast:
+            m = self.mind(name, seen)
+            with self._mind_lock:
+                end = len(self.log) - TRANSCRIPT_KEEP
+                if m.busy or end - m.cursor < COMPACT_EVERY:
+                    continue
+                m.busy = True
+                lines = list(self.log[m.cursor:end])
+            started.append(name)
+            if self.background:
+                t = threading.Thread(target=self._fold, args=(name, m, lines, end), daemon=True)
+                self._mind_threads.append(t)
+                t.start()
+            else:
+                self._fold(name, m, lines, end)
+        return started
+
+    def _fold(self, name, m, lines, end):
+        try:
+            user = "My memory until now:\n%s\n\nNew lines:\n%s\n\nThe whole memory:" % (
+                m.text() or "(nothing yet)", "\n".join("%s: %s" % l for l in lines))
+            reply = self._call("compress", MEMORY_RULES.format(name=name), user)
+            ok = m.update(reply)
+        except Exception as e:
+            ok, reply = False, "%s: %s" % (type(e).__name__, e)
+        with self._mind_lock:
+            if ok:
+                m.cursor = end  # a failed fold keeps the lines for the next try
+            m.busy = False
+        if self.on_memory:
+            self.on_memory(name, m.as_dict() if ok else None, len(lines), None if ok else reply)
+
+    def wait(self, timeout=None):
+        for t in list(self._mind_threads):
+            t.join(timeout)
 
     def _impulse(self, deck, p):
         return self.rng.choice(deck) if self.rng.random() < p else None
@@ -218,8 +355,9 @@ class Dialogue:
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""
         impulse = self._impulse(HERO_IMPULSES, HERO_IMPULSE_P)
-        user = "%s\n\nWhat was said so far:\n%s%s%s\n\nYour line, %s:" % (
-            world_line(world, world_events), _transcript_msgs(transcript),
+        user = "%s%s\n\nJust said:\n%s%s%s\n\nYour line, %s:" % (
+            world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
+            _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero),
             "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
             self.hero)
@@ -266,8 +404,9 @@ class Dialogue:
         head = "\n".join(["Just now: %s." % e for e in events]
                          + [stage_line(bridge, level, state.get("build_pct"),
                                        state.get("stalled"), self.hero)]).strip()
-        user = "%s\n\nWhat was said so far:\n%s%s\n\nYour line, %s:" % (
-            head, _transcript_msgs(transcript), _no_repeat_block(transcript, actor), actor)
+        user = "%s%s\n\nJust said:\n%s%s\n\nYour line, %s:" % (
+            head, _memory_block(self.memory_text(actor)), _transcript_msgs(transcript),
+            _no_repeat_block(transcript, actor), actor)
         system = self.actor_system(actor, world, notes, persona)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):

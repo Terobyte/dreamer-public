@@ -177,6 +177,8 @@ class Sim:
         # live dialogue (spec 6): hero and actors speak through Dialogue; without
         # it (tests, --fake) the loop keeps its numbered placeholder lines
         self.dialogue = dialogue
+        if dialogue is not None and hasattr(dialogue, "heard"):
+            dialogue.on_memory = self._on_memory
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
@@ -267,6 +269,8 @@ class Sim:
         if self._gen_thread is not None:
             self._gen_thread.join()
         self.memory.wait()
+        if self.dialogue is not None and hasattr(self.dialogue, "wait"):
+            self.dialogue.wait()
         self.wait_images()
         self._drain_director()
         if self._storage is not None:
@@ -294,6 +298,15 @@ class Sim:
             for e in self.fsm.budget_wakeup(self.clock.now()):
                 self._emit(e)
         return False
+
+    def _on_memory(self, who, mind, n_lines, error):
+        """Dialogue folded n_lines into who's memory (background thread; the
+        logger has its own lock). A failed fold keeps the lines for the next one."""
+        if mind is None:
+            self._diagnostic({"type": "memory_compact_fail", "who": who,
+                              "lines": n_lines, "error": str(error)[:300]})
+        else:
+            self._diagnostic({"type": "memory_compact", "who": who, "lines": n_lines, **mind})
 
     def _diagnostic(self, event):
         if self.logger:
@@ -367,6 +380,9 @@ class Sim:
             self.memory.add_line(line.get("who") or "npc", line["text"])
         if self.dialogue is not None:
             self.transcript.append((event.get("who") or "?", line["text"]))
+            if hasattr(self.dialogue, "heard"):
+                self.dialogue.heard(event.get("who") or "?", line["text"])
+                self.dialogue.compact([self.hero] + list(self.actors), seen=len(self.transcript))
             if event.get("role") == "actor":
                 self._stalled = False
         self._count_line()
