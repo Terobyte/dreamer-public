@@ -14,12 +14,50 @@ ALLOWED = ("messages", "facts_update", "abort_build", "wake_up")
 LOCKED_STATES = ("building", "ready", "transition")
 
 
+def _names(xs):
+    return isinstance(xs, list) and all(isinstance(x, str) and x for x in xs)
+
+
+def check_target(d, objects, voices):
+    """Spec 8 checks on the target block -> (field, reason), or None when it is valid."""
+    if d.get("bridge") not in objects:
+        return "bridge", "bridge_not_in_scene"
+    ns = d.get("next_scene")
+    if not isinstance(ns, dict):
+        return "next_scene", "missing"
+    actors, objects = ns.get("actors"), ns.get("objects")
+    if not isinstance(actors, list) or not all(isinstance(a, dict) for a in actors) \
+            or not _names(objects):
+        return "next_scene", "bad_type"
+    if not 1 <= len(actors) <= 2 or not 5 <= len(objects) <= 8:
+        return "next_scene", "bad_size"
+    voices_used = [a.get("voice") for a in actors]
+    hero = d.get("hero_next")
+    if isinstance(hero, dict) and hero.get("changes"):
+        voices_used.append(hero.get("voice"))
+    if any(v not in voices for v in voices_used):
+        return "voice", "voice_not_in_pool"
+    return None
+
+
+def check_messages(d, actors):
+    """Notes go only to actors of the current scene (spec 8) -> (field, reason) or None."""
+    msgs = d.get("messages") or []
+    if not isinstance(msgs, list):
+        return "messages", "bad_type"
+    for m in msgs:
+        if not isinstance(m, dict) or m.get("to") not in actors:
+            return "messages", "unknown_recipient"
+    return None
+
+
 class BuildFSM:
-    def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None):
+    def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None, actors=()):
         p = dict(DEFAULTS, **(params or {}))
         self.p = {k: (tuple(x / speed for x in v) if isinstance(v, tuple) else v / speed)
                   for k, v in p.items()}
         self.voices = set(voices)
+        self.actors = list(actors)
         self.build_epoch = 0
         self.fail_streak = 0
         self.awake = False
@@ -29,8 +67,10 @@ class BuildFSM:
         self.new_scene(now, objects)
 
     # --- scene and build -------------------------------------------------
-    def new_scene(self, now, objects):
+    def new_scene(self, now, objects, actors=None):
         self.objects = list(objects)
+        if actors is not None:
+            self.actors = list(actors)
         self.aborts = 0
         self._to_idle(now)
         return [self._e(now, "scene", objects=self.objects)]
@@ -38,7 +78,7 @@ class BuildFSM:
     def _to_idle(self, now):
         self.state = "idle"
         self.idle_since = now
-        self.bridge = self.destination = None
+        self.bridge = self.destination = self.next_scene = self.hero_next = None
         self.build_start = self.ready_at = self.ready_deadline = self.l4_at = None
         self.l4_fired = False
         self.frozen_level = None
@@ -47,10 +87,12 @@ class BuildFSM:
         self.force_fired = self.force_active = self.force_pending = False
         self.consult_requested = False
 
-    def start_build(self, now, bridge, destination):
+    def start_build(self, now, bridge, destination, next_scene=None, hero_next=None):
         self.state = "building"
         self.build_epoch += 1
         self.bridge, self.destination = bridge, destination
+        self.next_scene = next_scene
+        self.hero_next = hero_next
         self.build_start = now
         self.nudge_pending = self.force_active = self.force_pending = False
         return [self._e(now, "build", phase="start", bridge=bridge,
@@ -190,11 +232,16 @@ class BuildFSM:
                 self.pending_wakeup = {"reason": wake, "epoch": ticket["epoch"]}
                 ev.append(self._e(now, "pending_wakeup", **self.pending_wakeup))
             return ev + [self._consult(now, ticket, "stale")]
-        if self.pending_wakeup is not None:
-            ev.append(self._e(now, "pending_wakeup", **self.pending_wakeup))
-            self.pending_wakeup = None
         if not isinstance(decision, dict):
             return self._bad(now, ticket, ["json"], "bad_json")
+        bad_msg = check_messages(decision, self.actors) if self.actors else None
+        if bad_msg:
+            return self._bad(now, ticket, [bad_msg[0]], bad_msg[1])
+        pending = self.pending_wakeup
+        if pending is not None:
+            ev.append(self._e(now, "pending_wakeup", **pending))
+            self.pending_wakeup = None
+        ev += self._deliver_messages(now, decision)
         abort = decision.get("abort_build")
         if self.state in LOCKED_STATES:
             locked = sorted(k for k in decision if k not in ALLOWED)
@@ -216,31 +263,26 @@ class BuildFSM:
         bridge = decision.get("bridge")
         if bridge is None:
             if ticket["label"] == "forced":
+                self.pending_wakeup = pending  # invalid reply: the next ticket carries it again
                 return ev + self._bad(now, ticket, ["bridge"], "null_bridge")
             return ev + [self._consult(now, ticket, "ok")]
-        err = self._check_target(decision)
+        err = check_target(decision, self.objects, self.voices)
         if err:
+            self.pending_wakeup = pending
             return ev + self._bad(now, ticket, [err[0]], err[1])
         self.fail_streak = 0
-        ev += self.start_build(now, bridge, decision.get("destination"))
+        ev += self.start_build(now, bridge, decision.get("destination"),
+                               decision.get("next_scene"), decision.get("hero_next"))
         return ev + [self._consult(now, ticket, "build")]
 
-    def _check_target(self, d):
-        if d["bridge"] not in self.objects:
-            return "bridge", "bridge_not_in_scene"
-        ns = d.get("next_scene")
-        if not isinstance(ns, dict):
-            return "next_scene", "missing"
-        actors, objects = ns.get("actors") or [], ns.get("objects") or []
-        if not 1 <= len(actors) <= 2 or not 5 <= len(objects) <= 8:
-            return "next_scene", "bad_size"
-        voices = [a.get("voice") for a in actors if isinstance(a, dict)]
-        hero = d.get("hero_next")
-        if isinstance(hero, dict) and hero.get("changes"):
-            voices.append(hero.get("voice"))
-        if len(voices) < len(actors) or any(v not in self.voices for v in voices):
-            return "voice", "voice_not_in_pool"
-        return None
+    def _deliver_messages(self, now, decision):
+        """One message event per note (F26); recipients were checked by check_messages.
+        Without a known cast (self.actors empty, as in most FSM-only fixtures) nothing is
+        checked or delivered."""
+        if not self.actors:
+            return []
+        return [self._e(now, "message", to=m["to"], note=m.get("note"))
+                for m in decision.get("messages") or []]
 
     def _bad(self, now, ticket, fields, reason):
         ev = [self._e(now, "invalid", fields=fields, reason=reason)]
@@ -253,6 +295,7 @@ class BuildFSM:
 
     def budget_wakeup(self, now):
         """Code-side wake_up("budget"): applied at once, clears any pending_wakeup."""
+        self.fail_streak = 0
         return self._wake(now, "budget")
 
     def _wake(self, now, reason):

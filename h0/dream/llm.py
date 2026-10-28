@@ -10,6 +10,7 @@ import time
 import urllib.request
 
 SPARK_MODEL = "muse-spark-1.3"
+SPARK_OPEN_MODEL = "meta-models/muse-spark-open-1026"
 WONDER_MODEL = "muse-wonder-1.0"
 
 # Prices checked 2026-10-27, one verifiable source per service:
@@ -19,6 +20,8 @@ WONDER_MODEL = "muse-wonder-1.0"
 # - Fish Audio s2-pro ($15 per 1M UTF-8 bytes) and drama-3 ($10 per 1M
 #   UTF-8 bytes promotional until 2026-11-12 17:00 UTC, $50 list after):
 #   https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits
+# - Muse Spark Open on Baseten: free on the hackathon key (owner, 2026-10-27),
+#   https://inference.baseten.co/v1 -- price 0, the counter still counts it.
 # Reconcile with usage.prompt_tokens on step 2 before any paid run.
 SPARK_IN_PER_M = 1.25
 SPARK_OUT_PER_M = 4.25
@@ -39,16 +42,23 @@ PRICE_SOURCES = {
     "fish-s2-pro": "2026-10-27 https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits",
     "fish-drama-3": "2026-10-27 https://docs.fish.audio/developer-guide/models-pricing/pricing-and-rate-limits",
     "muse-image": "2026-10-27 https://dev.meta.ai/docs/pricing-rate-limits",
+    SPARK_OPEN_MODEL: "2026-10-27 https://inference.baseten.co/v1 (hackathon key, free)",
 }
 META_API = "https://api.meta.ai/v1/chat/completions"
+BASETEN_API = "https://inference.baseten.co/v1/chat/completions"
 SPARK_MIN_TOKENS = 300
+# Spark Open spends reasoning inside max_tokens: 300 once came back empty
+# (297 reasoning tokens, finish_reason=length), 1500 never did in 131 calls.
+SPARK_OPEN_MIN_TOKENS = 1500
+ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".env")
 
-# Role -> (model, effort). Spark 1.3 is never low (5/11 empties in probes).
+# Role -> (model, effort). Spark roles run on Spark Open (Baseten, free); a
+# failed Baseten call falls back to Spark 1.3 on Meta. Spark 1.3 is never low.
 ROLE_TABLE = {
-    "hero": (SPARK_MODEL, "minimal"),
-    "actor": (SPARK_MODEL, "minimal"),
-    "compress": (SPARK_MODEL, "minimal"),
-    "judge": (SPARK_MODEL, "medium"),
+    "hero": (SPARK_OPEN_MODEL, "minimal"),
+    "actor": (SPARK_OPEN_MODEL, "minimal"),
+    "compress": (SPARK_OPEN_MODEL, "minimal"),
+    "judge": (SPARK_OPEN_MODEL, "medium"),
     "director": (WONDER_MODEL, "low"),
     "shadow": (WONDER_MODEL, "low"),
 }
@@ -116,7 +126,15 @@ def _tokens(text):
     return math.ceil(len(text) / 3.5)
 
 
+def _min_tokens(model):
+    if model == SPARK_OPEN_MODEL:
+        return SPARK_OPEN_MIN_TOKENS
+    return SPARK_MIN_TOKENS if model.startswith("muse-spark") else 0
+
+
 def _price(model, prompt_tok, completion_tok):
+    if model == SPARK_OPEN_MODEL:
+        return 0.0
     if model.startswith("muse-spark"):
         rate = (SPARK_IN_PER_M, SPARK_OUT_PER_M)
     else:
@@ -139,18 +157,50 @@ def _prompt_text(system, messages):
     return "\n".join(parts)
 
 
+def _baseten_key():
+    """BASETEN_API_KEY from the environment, else from the gitignored meta/.env."""
+    key = os.environ.get("BASETEN_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        with open(ENV_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("BASETEN_API_KEY="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
 def _real_complete(model, effort, system, messages, max_tokens):
-    """Real Meta Muse API call (gate_test.py pattern, lazy key, stdlib only)."""
+    """Real Muse call (gate_test.py pattern, lazy key, stdlib only).
+    Spark Open goes to Baseten; if that fails, the call is made once on Spark 1.3 (Meta)."""
+    if model == SPARK_OPEN_MODEL:
+        key = _baseten_key()
+        if key:
+            try:
+                return _post(BASETEN_API, "Api-Key " + key, model, effort,
+                             system, messages, max_tokens)
+            except Exception:
+                pass
+        model, max_tokens = SPARK_MODEL, max(SPARK_MIN_TOKENS, max_tokens)
     key = os.environ.get("META_MODEL_API_KEY")
     if not key:
         raise RuntimeError("META_MODEL_API_KEY is not set")
+    out = _post(META_API, "Bearer " + key, model, effort, system, messages, max_tokens)
+    out["model"] = model
+    return out
+
+
+def _post(url, auth, model, effort, system, messages, max_tokens):
     body = {"model": model, "reasoning_effort": effort,
             "max_tokens": max_tokens, "stream": False,
             "messages": [{"role": "system", "content": system or ""},
                          *(messages or [])]}
     req = urllib.request.Request(
-        META_API, json.dumps(body).encode(),
-        {"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+        url, json.dumps(body).encode(),
+        {"Authorization": auth, "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as r:
         raw = r.read().decode()
     # Support both a plain JSON body and an SSE stream body.
@@ -194,8 +244,7 @@ def _piece_parts(piece, prompt_tok):
 def call(role, system, messages, max_tokens=300, fake=False, _transport=None):
     """Call the model for role; empty reply is retried once with a bigger limit."""
     model, effort = resolve(role)
-    if model.startswith("muse-spark") and max_tokens < SPARK_MIN_TOKENS:
-        max_tokens = SPARK_MIN_TOKENS
+    max_tokens = max(max_tokens, _min_tokens(model))
     est_prompt = _tokens(_prompt_text(system, messages))
     text, dollars = "", 0.0
     tot_p = tot_c = 0
@@ -215,7 +264,9 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None):
         chunk, p_tok, c_tok = _piece_parts(piece, est_prompt)
         tot_p += p_tok
         tot_c += c_tok
-        step = _price(model, p_tok, c_tok)
+        # a Baseten failure is billed as the Meta model that answered
+        used = piece.get("model", model) if isinstance(piece, dict) else model
+        step = _price(used, p_tok, c_tok)
         dollars += step
         _spent[0] += step
         text = chunk

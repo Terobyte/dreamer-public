@@ -290,8 +290,6 @@ class Memory:
                 "scene_epoch": self._scene_epoch}
 
     def apply_facts(self, updates):
-        add_only = bool(updates) and all(
-            (u.get("op") if isinstance(u, dict) else None) == "ADD" for u in updates)
         added = []
         for u in updates or []:
             op = u.get("op")
@@ -311,10 +309,14 @@ class Memory:
         with open(self.facts_path, "w", encoding="utf-8") as f:
             for fact in self.facts:
                 f.write(json.dumps(fact, ensure_ascii=False) + "\n")
-        if add_only and self._sel_cache and self._sel_cache[0] == self._scene_epoch:
-            self._sel_cache[1].extend(added)
+        if self._sel_cache and self._sel_cache[0] == self._scene_epoch:
+            # keep this scene's pick: drop removed facts, add new ones
+            live = {id(x) for x in self.facts}
+            kept = [x for x in self._sel_cache[1] if id(x) in live]
+            self._sel_cache = (self._scene_epoch, kept + added)
         else:
             self._sel_cache = None
+            self._sel_done_epoch = None
 
     def _fact_layer_text(self, facts):
         """The serialized FACTS layer exactly as it goes into the prompt."""

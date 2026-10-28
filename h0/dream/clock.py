@@ -20,3 +20,8 @@ class Clock:
 
     def sleep(self, seconds):
         time.sleep(max(0.0, seconds) / self.speed)
+
+    def real_sleep(self, seconds):
+        """Unscaled wall-clock wait: real latency (e.g. a director call) that
+        world speed does not compress."""
+        time.sleep(max(0.0, seconds))

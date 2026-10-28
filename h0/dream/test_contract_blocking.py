@@ -21,7 +21,7 @@ def make_mem(**kw):
 
 class BlockingTest(unittest.TestCase):
     def test_model_ids_and_prices(self):
-        self.assertEqual(llm.resolve("hero")[0], "muse-spark-1.3")
+        self.assertEqual(llm.resolve("hero")[0], "meta-models/muse-spark-open-1026")  # owner 2026-10-27: Baseten primary
         self.assertEqual(llm.resolve("director")[0], "muse-wonder-1.0")
         self.assertEqual((llm.SPARK_IN_PER_M, llm.SPARK_OUT_PER_M), (1.25, 4.25))
         self.assertEqual((llm.WONDER_IN_PER_M, llm.WONDER_OUT_PER_M), (4.0, 20.0))
@@ -71,7 +71,7 @@ class BlockingTest(unittest.TestCase):
         m.save_episode_raw("c", "C raw")
         m.merge_from_raw()
         self.assertEqual(fake.calls, 1)
-        self.assertEqual(fake.sent[0]["model"], "muse-spark-1.3")
+        self.assertEqual(fake.sent[0]["model"], "meta-models/muse-spark-open-1026")
         self.assertEqual(len(m.episodes), 2)
         m.merge_from_raw()
         self.assertEqual(len(m.episodes), 1)

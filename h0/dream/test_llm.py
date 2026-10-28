@@ -27,12 +27,15 @@ class LlmRulesTest(unittest.TestCase):
         llm.reset_spent()
         llm.call("hero", "sys", _msgs(), max_tokens=120,
                  fake=True, _transport=tr)
-        self.assertEqual(tr.sent[0]["max_tokens"], 300)
+        # hero is Spark Open now: its floor is higher, Spark 1.3 keeps 300
+        self.assertGreaterEqual(tr.sent[0]["max_tokens"], 1500)
+        self.assertEqual(tr.sent[0]["max_tokens"], 1500)
+        self.assertEqual(llm._min_tokens(llm.SPARK_MODEL), 300)
 
     def test_spark_never_low(self):
         for role in ("hero", "actor", "compress", "judge"):
             model, effort = llm.resolve(role)
-            self.assertTrue(model.startswith("muse-spark"))
+            self.assertEqual(model, "meta-models/muse-spark-open-1026")
             self.assertNotEqual(effort, "low")
 
     def test_money_sums(self):
@@ -43,7 +46,7 @@ class LlmRulesTest(unittest.TestCase):
         t2 = FakeTransport(script=["a" * 100, "b" * 100])
         r2 = llm.call("director", "sys", _msgs(), max_tokens=500,
                       fake=True, _transport=t2)
-        self.assertGreater(r1.dollars, 0)
+        self.assertEqual(r1.dollars, 0)  # Spark Open on Baseten is free
         self.assertGreater(r2.dollars, 0)
         self.assertAlmostEqual(llm.get_spent(), r1.dollars + r2.dollars)
 
