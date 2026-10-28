@@ -148,21 +148,21 @@
 - `mRange` = `m ± width/2` (прямое), `m ± R·asin(width/2 / R)` (дуга). `OPENING_OFF_EDGE`: `mRange` выходит за интервал (кроме замкнутого `circle`). `OPENING_OVERLAP`: на одном интервале `mRange` пересекаются (запись — у более позднего). `OPENING_TOO_HIGH`: `sill + height` > потолка любой стороны. `OPENING_NO_OUTSIDE`: одна сторона и нет `outside`. `ROOM_UNREACHABLE`: BFS от комнаты `spawn` по комнатам уровня `spawn`, только если других ошибок этапа нет.
 - `swing`, петля и сектор — формулы спеки, только у `door` с `leaf` (сектор — при `open: true`). Сектор = 17 точек: петля + 16 точек дуги радиусом `width` от направления на второй косяк до `normalIn` `swing`-комнаты.
 
-- [ ] `test_demo_flat_front`: паспорт `front` — `edge` "living#3", `m` 4.0, `rooms` ["living", "hall"], `swing` "living", `hinge` "left" (дверь по центру ребра = ничья → left), `hinge_at` [0.45, 3.94]
-- [ ] `test_hinge_not_tie`: `[{"op":"replace","path":"/openings/0/at","value":[1.5,4]}]` → `hinge` "left", `hinge_at` [1.95, 3.94] (косяк к углу (4,4))
-- [ ] `test_demo_flat_window_arc`: `sea` на `living#1`, `center` (0, −5.6), `rooms` ["living"], `swing`/`hinge` null, без ошибок
-- [ ] `test_corridor_height`: коридор окна sill 1.0, height 1.0 → по высоте [1.0, 2.0]
-- [ ] `test_body_after_cut`: площадь тела demo-flat после вырезов меньше; вклад `front` — ровно 0.9 × 0.12 = 0.108 ± 1e-3
-- [ ] `test_circle_window_seam`: `circle` c [0,0] r 3, окно `on` `t` 0, width 1.0, с `outside` → без ошибок, `center` (0, 3)
-- [ ] `test_door_at_corner`: `broken/OPENING_OFF_EDGE`: `[{"op":"add","path":"/openings/-","value":{"id":"w2","kind":"window","at":[3.8,4],"width":0.9,"outside":{"backdrop":"d_sea"}}}]` → ровно `OPENING_OFF_EDGE`, не перенос на `living#2`
-- [ ] `test_broken_opening_codes` — ровно свой код:
+- [x] `test_demo_flat_front`: паспорт `front` — `edge` "living#3", `m` 4.0, `rooms` ["living", "hall"], `swing` "living", `hinge` "left" (дверь по центру ребра = ничья → left), `hinge_at` [0.45, 3.94]
+- [x] `test_hinge_not_tie`: `[{"op":"replace","path":"/openings/0/at","value":[1.5,4]}]` → `hinge` "left", `hinge_at` [1.95, 3.94] (косяк к углу (4,4))
+- [x] `test_demo_flat_window_arc`: `sea` на `living#1`, `center` (0, −5.6), `rooms` ["living"], `swing`/`hinge` null, без ошибок
+- [x] `test_corridor_height`: коридор окна sill 1.0, height 1.0 → по высоте [1.0, 2.0]
+- [x] `test_body_after_cut`: площадь тела demo-flat после вырезов меньше; вклад `front` — ровно 0.9 × 0.12 = 0.108 ± 1e-3
+- [x] `test_circle_window_seam`: `circle` c [0,0] r 3, окно `on` `t` 0, width 1.0, с `outside` → без ошибок, `center` (0, 3)
+- [x] `test_door_at_corner`: `broken/OPENING_OFF_EDGE`: `[{"op":"add","path":"/openings/-","value":{"id":"w2","kind":"window","at":[3.8,4],"width":0.9,"outside":{"backdrop":"d_sea"}}}]` → ровно `OPENING_OFF_EDGE`, не перенос на `living#2`
+- [x] `test_broken_opening_codes` — ровно свой код:
   - `OPENING_NO_WALL`: `[{"op":"add","path":"/openings/-","value":{"id":"w2","kind":"window","at":[4.5,0],"width":0.9,"outside":{"backdrop":"d_sea"}}}]`; `fix` = `{"at": [4, 0]}`
   - `OPENING_OVERLAP`: `[{"op":"add","path":"/openings/-","value":{"id":"w2","kind":"window","on":{"room":"living","edge":1,"t":0.55},"width":1.6,"outside":{"backdrop":"d_sea"}}}]`
   - `OPENING_TOO_HIGH`: `[{"op":"replace","path":"/openings/0/height","value":3.2}]`
   - `OPENING_NO_OUTSIDE`: `[{"op":"remove","path":"/openings/1/outside"}]`
   - `ROOM_UNREACHABLE`: `[{"op":"add","path":"/rooms/-","value":{"id":"closet","level":"L0","height":3.0,"shape":[[4,0],[6,0],[6,4],[4,4]],"floor":"parquet","ceiling":"white","walls":{"material":"white","bands":[{"to":0.12,"material":"wood"}]}}}]`
-- [ ] `test_closed_door_in_graph`: `[{"op":"replace","path":"/openings/0/leaf/open","value":false}]` → у этапа `openings` нет `ROOM_UNREACHABLE`
-- [ ] реализовать
+- [x] `test_closed_door_in_graph`: `[{"op":"replace","path":"/openings/0/leaf/open","value":false}]` → у этапа `openings` нет `ROOM_UNREACHABLE`
+- [x] реализовать
 
 **Вне этой фазы:** предметы в проёмах, навигация.
 

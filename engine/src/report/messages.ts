@@ -80,6 +80,18 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.a} и ${params.b} разошлись на ${params.d} м`;
     case "ROOM_SELF_INTERSECT":
       return `${params.path}: контур комнаты "${params.room ?? "?"}" самопересекается (рёбра ${params.edges ?? "?"})`;
+    case "OPENING_NO_WALL":
+      return `${params.id}: ближайшая стена ${params.at} в ${params.d} м (нужно < 0.10)`;
+    case "OPENING_OFF_EDGE":
+      return `${params.id}: [${params.m0}, ${params.m1}] вне интервала ${params.edge} [${params.a}, ${params.b}]`;
+    case "OPENING_OVERLAP":
+      return `${params.id}: пересекает ${params.other} на ${params.edge}`;
+    case "OPENING_TOO_HIGH":
+      return `${params.id}: sill + height ${params.v} > потолок ${params.room} ${params.h}`;
+    case "OPENING_NO_OUTSIDE":
+      return `${params.id}: за проёмом нет комнаты (${params.edge}), нужен outside`;
+    case "ROOM_UNREACHABLE":
+      return `${params.room}: комната недостижима из spawn`;
     default:
       return `${params.path ?? ""}: ${code}`;
   }

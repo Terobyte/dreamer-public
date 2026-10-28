@@ -1,0 +1,1 @@
+[{"op":"add","path":"/rooms/-","value":{"id":"closet","level":"L0","height":3.0,"shape":[[4,0],[6,0],[6,4],[4,4]],"floor":"parquet","ceiling":"white","walls":{"material":"white","bands":[{"to":0.12,"material":"wood"}]}}}]

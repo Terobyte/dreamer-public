@@ -1,0 +1,85 @@
+import type { V2 } from "../geom/vec.js";
+import { EPS } from "../geom/vec.js";
+import type { OpeningGeo } from "./resolve.js";
+
+export interface SwingInput {
+  center: V2;
+  axis: V2;
+  normalRide: V2;
+  width: number;
+  thickness: number;
+  rideRoom: string;
+  swingRoom: string;
+  swingEdgeFrom: V2;
+  swingEdgeTo: V2;
+}
+
+export function jambsFor(center: V2, axis: V2, nSwing: V2, width: number): { left: V2; right: V2; L: V2 } {
+  const f: V2 = [-nSwing[0], -nSwing[1]];
+  const L: V2 = [f[1], -f[0]];
+  const hw = width / 2;
+  return { left: [center[0] + L[0] * hw, center[1] + L[1] * hw], right: [center[0] - L[0] * hw, center[1] - L[1] * hw], L };
+}
+
+export function pickHinge(center: V2, axis: V2, nSwing: V2, width: number, from: V2, to: V2): {
+  hinge: "left" | "right";
+  hingeAt: V2;
+} {
+  const { left, right } = jambsFor(center, axis, nSwing, width);
+  const dL = Math.min(Math.hypot(left[0] - from[0], left[1] - from[1]), Math.hypot(left[0] - to[0], left[1] - to[1]));
+  const dR = Math.min(Math.hypot(right[0] - from[0], right[1] - from[1]), Math.hypot(right[0] - to[0], right[1] - to[1]));
+  const hinge = Math.abs(dL - dR) < 1e-3 ? "left" : dL < dR ? "left" : "right";
+  const j = hinge === "left" ? left : right;
+  return { hinge, hingeAt: [j[0] + nSwing[0] * 0, j[1] + nSwing[1] * 0] };
+}
+
+export function hingeAtInner(jamb: V2, nSwing: V2, thickness: number): V2 {
+  return [jamb[0] + nSwing[0] * (thickness / 2), jamb[1] + nSwing[1] * (thickness / 2)];
+}
+
+export function sectorFor(hingeAt: V2, otherJamb: V2, nSwing: V2, width: number): V2[] {
+  const a0 = Math.atan2(otherJamb[0] - hingeAt[0], otherJamb[1] - hingeAt[1]);
+  const a1 = Math.atan2(nSwing[0], nSwing[1]);
+  let sweep = a1 - a0;
+  while (sweep > Math.PI) sweep -= 2 * Math.PI;
+  while (sweep < -Math.PI) sweep += 2 * Math.PI;
+  const pts: V2[] = [[hingeAt[0], hingeAt[1]]];
+  for (let k = 0; k <= 15; k++) {
+    const a = a0 + (sweep * k) / 15;
+    pts.push([hingeAt[0] + width * Math.sin(a), hingeAt[1] + width * Math.cos(a)]);
+  }
+  return pts;
+}
+
+export function applySwing(
+  g: OpeningGeo,
+  opts: { swingRoom: string; hinge?: "left" | "right" | null; nSwing: V2; swingFrom: V2; swingTo: V2; leafOpen: boolean; kind: string },
+): void {
+  g.swing = opts.swingRoom;
+  const { left, right } = jambsFor(g.center, g.axis, opts.nSwing, g.width);
+  let hinge = opts.hinge ?? null;
+  if (!hinge) {
+    const dL = Math.min(
+      Math.hypot(left[0] - opts.swingFrom[0], left[1] - opts.swingFrom[1]),
+      Math.hypot(left[0] - opts.swingTo[0], left[1] - opts.swingTo[1]),
+    );
+    const dR = Math.min(
+      Math.hypot(right[0] - opts.swingFrom[0], right[1] - opts.swingFrom[1]),
+      Math.hypot(right[0] - opts.swingTo[0], right[1] - opts.swingTo[1]),
+    );
+    hinge = Math.abs(dL - dR) < 1e-3 ? "left" : dL < dR ? "left" : "right";
+  }
+  g.hinge = hinge;
+  const j = hinge === "left" ? left : right;
+  const other = hinge === "left" ? right : left;
+  void other;
+  g.hingeAt = [j[0] + opts.nSwing[0] * (g.thickness / 2), j[1] + opts.nSwing[1] * (g.thickness / 2)];
+  if (g.kind === "door" && opts.leafOpen) {
+    // sector starts from the far jamb shifted to the same inner face as the hinge
+    const otherInner: V2 = [other[0] + opts.nSwing[0] * (g.thickness / 2), other[1] + opts.nSwing[1] * (g.thickness / 2)];
+    g.sector = sectorFor(g.hingeAt as V2, otherInner, opts.nSwing, g.width);
+  } else {
+    g.sector = null;
+  }
+  void EPS;
+}
