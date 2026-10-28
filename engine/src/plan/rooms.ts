@@ -12,7 +12,7 @@ export interface AuthorEdge {
   i: number;
   from: V2;
   to: V2;
-  arc: { c: V2; r: number } | null;
+  arc: { c: V2; r: number; sweep?: number } | null;
   len: number;
   normalIn: V2;
 }
@@ -66,7 +66,7 @@ export function compileRooms(scene: any): { rooms: RoomGeo[]; issues: Issue[] } 
           i: 0,
           from,
           to: [from[0], from[1]],
-          arc: { c, r: rad },
+          arc: { c, r: rad, sweep: 2 * Math.PI },
           len: 2 * Math.PI * rad,
           normalIn: [0, 1],
         },
@@ -136,7 +136,7 @@ export function compileRooms(scene: any): { rooms: RoomGeo[]; issues: Issue[] } 
           i,
           from: [p0[0], p0[1]],
           to: [p1[0], p1[1]],
-          arc: { c: arc.c, r: arc.r },
+          arc: { c: arc.c, r: arc.r, sweep: arc.sweep },
           len: arc.len,
           normalIn: clean([radial[0] / rl, radial[1] / rl]),
         });
