@@ -91,11 +91,11 @@
 Спека §6 (голоса, Fish), §9 (картинки и запасные пути), §13, §15 шаг 2 и 4. Файлы: `images.py`, `voice.py`, `voices.json`,
 `director_live_check.py`, `test_media.py`. Платные вызовы — только в скриптах ниже, unittest остаётся офлайн.
 
-- [ ] `test_media.py` (офлайн): длина wav из заголовка (`wave`); Fish таймаут/429×3 → реплика без звука, пауза по тексту без тегов, `tts_fail`; Image 400×3 → запасной фон/силуэт, сон не стоит; не больше 2 картинок одновременно
-- [ ] `voices.json`: 6 меток спеки §6 → `reference_id` из библиотеки Fish; сэмплы `h0/out/dream/checks/voices/<метка>.wav`
-- [ ] `python3 h0/dream/director_live_check.py --max-dollars 1` → `h0/out/dream/checks/director.json`: 3 профиля — JSON валиден, мост из сцены, `why` ссылается на душу; «иголка» (факт из начала, нужный на 3-м переходе) использована; ловушка «тот же мост второй раз» не сработала; `ceil(chars/3.5)` сверен с `usage.prompt_tokens` (коэффициент в отчёте)
-- [ ] `python3 h0/dream/sim.py --profile A --speed 4 --max-transitions 1 --max-dollars 2` → exit 0; все файлы из лога на диске; `dur` реплики = длина wav ± 0.05 с; `cost` ≤ $2
-- [ ] реализовать
+- [x] `test_media.py` (офлайн): длина wav из заголовка (`wave`); Fish таймаут/429×3 → реплика без звука, пауза по тексту без тегов, `tts_fail`; Image 400×3 → запасной фон/силуэт, сон не стоит; не больше 2 картинок одновременно
+- [x] `voices.json`: 6 меток спеки §6 → `reference_id` из библиотеки Fish; сэмплы `h0/out/dream/checks/voices/<метка>.wav`
+- [x] `python3 h0/dream/director_live_check.py --max-dollars 1` → `h0/out/dream/checks/director.json`: 3 профиля — JSON валиден, мост из сцены, `why` ссылается на душу; «иголка» (факт из начала, нужный на 3-м переходе) использована; ловушка «тот же мост второй раз» не сработала; `ceil(chars/3.5)` сверен с `usage.prompt_tokens` (коэффициент в отчёте)
+- [x] `python3 h0/dream/sim.py --profile A --speed 4 --max-transitions 1 --max-dollars 2` → exit 0; все файлы из лога на диске; `dur` реплики = длина wav ± 0.05 с; `cost` ≤ $2
+- [x] реализовать
 
 **Вне этой фазы:** сервер, браузер.
 
