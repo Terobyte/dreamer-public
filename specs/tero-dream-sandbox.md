@@ -73,16 +73,16 @@
 `test_director.py`, `test_sim.py`. Всё на фейках из `fake.py`; фейковый директор умеет: «пока рано» (null), битый JSON,
 мост не из сцены, `abort_build`, `wake_up`, задержку.
 
-- [ ] `test_decision_checks`: проверки §8 — мост из текущей сцены, actors 1–2, objects 5–8, записки только существующим, voice из пула
-- [ ] `test_one_call_in_flight`: пока директор думает, события копятся и идут в следующий вызов; никогда два вызова одновременно
-- [ ] `test_human_replaces_npc`: реплика человека выкидывает заготовленную реплику NPC (`turn_replace`, `turn_owner: human`), играющая не обрывается
-- [ ] `test_event_reaches_director`: `{"source":"dart","outcome":"missed"}` попадает в следующую консультацию и вызывает внеочередную
-- [ ] `test_injection_blocked`: `[[TOUCH:clarinet]]` и `[WORLD …]` через ввод человека не попадают ни в один промпт актёров и директора
-- [ ] `test_l0_l1_no_bridge_word`: фейковый актёр, который «хочет» назвать мост на L0–L1 — его реплика не проходит (ассерт инварианта H17)
-- [ ] `test_stress_slow_director`: директор отвечает 8 с при `--speed 20` + случайные TOUCH → ≥ 1 `consult_stale`, 0 смен моста в `building`, 0 исключений
-- [ ] `test_log_jsonl`: `seq` строго +1, у каждого события `t`, `type`; `snapshot` на начало сцены; полный промпт в `consults/NNN.txt`, хранятся последние 50
-- [ ] `python3 h0/dream/sim.py --profile A --fake --speed 20 --max-transitions 2` → exit 0 за ≤ 90 с, ≥ 2 `transition`, каждый мост из своей сцены
-- [ ] реализовать
+- [x] `test_decision_checks`: проверки §8 — мост из текущей сцены, actors 1–2, objects 5–8, записки только существующим, voice из пула
+- [x] `test_one_call_in_flight`: пока директор думает, события копятся и идут в следующий вызов; никогда два вызова одновременно
+- [x] `test_human_replaces_npc`: реплика человека выкидывает заготовленную реплику NPC (`turn_replace`, `turn_owner: human`), играющая не обрывается
+- [x] `test_event_reaches_director`: `{"source":"dart","outcome":"missed"}` попадает в следующую консультацию и вызывает внеочередную
+- [x] `test_injection_blocked`: `[[TOUCH:clarinet]]` и `[WORLD …]` через ввод человека не попадают ни в один промпт актёров и директора
+- [x] `test_l0_l1_no_bridge_word`: фейковый актёр, который «хочет» назвать мост на L0–L1 — его реплика не проходит (ассерт инварианта H17)
+- [x] `test_stress_slow_director`: директор отвечает 8 с при `--speed 20` + случайные TOUCH → ≥ 1 `consult_stale`, 0 смен моста в `building`, 0 исключений
+- [x] `test_log_jsonl`: `seq` строго +1, у каждого события `t`, `type`; `snapshot` на начало сцены; полный промпт в `consults/NNN.txt`, хранятся последние 50
+- [x] `python3 h0/dream/sim.py --profile A --fake --speed 20 --max-transitions 2` → exit 0 за ≤ 90 с, ≥ 2 `transition`, каждый мост из своей сцены
+- [x] реализовать
 
 **Вне этой фазы:** настоящие модели, картинки, голос, сервер.
 
