@@ -1,0 +1,67 @@
+{
+ "id": "elevator",
+ "place": "an office elevator stuck between floors",
+ "hero": {
+  "name": "Aisha",
+  "voice": "woman",
+  "look": "a young woman in a business suit with a lanyard",
+  "soul": {
+   "diary": "Presented to the board today and froze on slide four. My boss covered for me. Now I owe him.",
+   "wants": [
+    "to never freeze again",
+    "to be liked without trying"
+   ],
+   "fears": [
+    "looking weak",
+    "her boss telling people"
+   ],
+   "past_dream": "I dreamed I was giving a speech in a language I did not know.",
+   "facts": [
+    {
+     "text": "She practices speeches to the bathroom mirror.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The language dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "She almost quit last month.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up on the floor of a stuck elevator; the lights flicker; a man in a suit is pressing every button and talking to you like you work for him",
+ "actors": [
+  {
+   "name": "Mr Hale",
+   "voice": "man",
+   "look": "a man in a sharp grey suit with loosened tie, sweating",
+   "persona": "Mr Hale: acts like Aisha's boss, treats the stuck elevator like a meeting, demands an agenda and a plan to get out. Pompous, funny, panicky under it. He is hiding that he is claustrophobic and that he froze once too, years ago."
+  }
+ ],
+ "objects": [
+  "button panel",
+  "emergency phone",
+  "ceiling hatch",
+  "mirror",
+  "briefcase",
+  "flickering light",
+  "floor indicator",
+  "door gap",
+  "handrail",
+  "laptop"
+ ],
+ "hooks": {
+  "A": [
+   "emergency phone"
+  ],
+  "B": [
+   "mirror"
+  ],
+  "C": [
+   "ceiling hatch"
+  ]
+ }
+}

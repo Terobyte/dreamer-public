@@ -833,8 +833,15 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
     random.seed(seed)
     base = os.path.join(os.path.dirname(__file__), "..", "out", "dream", profile)
     os.makedirs(base, exist_ok=True)
-    outdir = os.path.join(base, "run_%d_%d" % (seed, int(time.time() * 1000) % 1000000))
-    os.makedirs(outdir, exist_ok=True)
+    # bank.py starts several sims in the same millisecond: take the next free name
+    stamp = int(time.time() * 1000) % 1000000
+    while True:
+        outdir = os.path.join(base, "run_%d_%d" % (seed, stamp))
+        try:
+            os.makedirs(outdir)
+            break
+        except FileExistsError:
+            stamp += 1
     if serve is not None:
         max_seconds = float("inf")
     elif max_seconds == 90.0 and max_transitions > 0:

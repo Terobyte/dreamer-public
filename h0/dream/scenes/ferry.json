@@ -1,0 +1,73 @@
+{
+ "id": "ferry",
+ "place": "a small ferry crossing a black lake",
+ "hero": {
+  "name": "Lena",
+  "voice": "woman",
+  "look": "a woman in her thirties in a big coat, hair in a messy knot",
+  "soul": {
+   "diary": "Broke up with Tom today. It was my idea. It still feels like I got left.",
+   "wants": [
+    "to know she did the right thing",
+    "to sleep through one night"
+   ],
+   "fears": [
+    "being alone at forty",
+    "that she ruins good things"
+   ],
+   "past_dream": "I dreamed the house was floating away and I was waving from it.",
+   "facts": [
+    {
+     "text": "She and Tom met on a ferry.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The floating house dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "She kept his sweater.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up on the deck of a small ferry in the middle of a dark lake; no shore in sight; a ferryman and a woman are arguing over who gets to steer",
+ "actors": [
+  {
+   "name": "Ferryman",
+   "voice": "old_man",
+   "look": "a wiry old ferryman in an oilskin coat with a lantern",
+   "persona": "The Ferryman: says the ferry only goes back, never forward, and Lena should stop looking ahead. Dry, stubborn, loves rules. Argues with Gale. Hiding that he has been crossing this lake alone for years after leaving someone."
+  },
+  {
+   "name": "Gale",
+   "voice": "woman",
+   "look": "a woman in a yellow raincoat with a map case, impatient",
+   "persona": "Gale: says the ferry goes wherever you steer, and Lena should grab the wheel. Loud, restless, mocks the Ferryman. Hiding that she is scared of the water."
+  }
+ ],
+ "objects": [
+  "ship's wheel",
+  "lantern",
+  "life ring",
+  "rope",
+  "bell",
+  "map case",
+  "bench",
+  "sweater",
+  "fog horn",
+  "rail"
+ ],
+ "hooks": {
+  "A": [
+   "lantern"
+  ],
+  "B": [
+   "bell"
+  ],
+  "C": [
+   "map case"
+  ]
+ }
+}

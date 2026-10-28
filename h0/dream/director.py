@@ -155,6 +155,11 @@ class Director:
             tail += "\nNOTES ALREADY GIVEN THIS SCENE (do not repeat or rephrase):\n" + "\n".join(
                 "- to %s: %s" % n for n in self.notes_given[-NOTES_SHOWN:])
         base = "DIRECTOR consult: decide the next bridge or wait."
+        # bank runs: with no names in front of it the director wrote notes to people
+        # it made up ("Grandmother", "Little Aisha") and the whole decision was invalid
+        if self.actors:
+            base += ("\n[ON STAGE: %s] messages[].to must be exactly one of these names."
+                     % ", ".join(self.actors))
         meta = ""
         if ticket is not None:
             meta = "\n[CONSULT state=%s label=%s hint=%s]" % (
@@ -189,7 +194,7 @@ class Director:
         try:
             res = llm_call("director", "You are the dream director.",
                            [{"role": "user", "content": prompt + "\n" + schema}],
-                           max_tokens=800)
+                           max_tokens=1500)  # 800 cut the JSON mid-string (bank r1)
             decision = json.loads((res.text or "").strip())
             if not isinstance(decision, dict):
                 raise ValueError("director reply is not a JSON object")

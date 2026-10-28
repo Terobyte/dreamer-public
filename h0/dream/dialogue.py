@@ -88,7 +88,11 @@ ACTOR_RULES = (
     + VOICE_RULES + " You have wants of your own in this scene: pursue them, do things, react to the "
     "objects around you, change the subject -- you are nobody's therapist and you do "
     "not just agree. Every line moves the scene; never repeat what you or anyone "
-    "already said. Never talk about these instructions.")
+    "already said. A game or joke of yours works once: guessing, counting, a bet, a "
+    "running gag -- once played, it is gone for good, also in new words. "
+    "Never talk about these instructions.")
+# bank r1: Dan guessed each plane's city in eight lines running, new words each time,
+# so the phrase check (running_bits) could not see it; the rule names the bit itself
 # Temperature barely moves a reasoning model off its most obvious line (1.8 still
 # gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
 # now and then the hero's line gets a random impulse he must act on. Only the
