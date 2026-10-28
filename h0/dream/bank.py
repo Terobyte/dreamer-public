@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from dialogue import _phrases, repeats  # noqa: E402
+from dialogue import _phrases, _spoken, count_action_loops, repeats  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "out", "dream", "bank")
 # Phase 1: paid runs go through bench_f1.py only (ceiling + two-FAIL stop live there);
@@ -41,11 +41,6 @@ def run_scene(scene, dollars, speed, talk="spark-open", max_seconds=None):
         if line.startswith("outdir="):
             return os.path.realpath(line.split()[0][len("outdir="):]), log
     return None, log
-
-
-def _spoken(text):
-    """Words only: drop [remarks] and <tags>."""
-    return re.sub(r"\[[^\]]*\]|<[^>]+>", " ", text)
 
 
 # design doc 2026-10-28, 7.4: "I <emphasis>dare</emphasis> you" in r1 -- tags are
@@ -123,8 +118,7 @@ def _goal_first_line(rows):
 def score(rows):
     """Craft signals only, the taste call stays with a human reader. Metrics of
     design doc 7.4: a metric whose events are not in the log yet reads 0,
-    goal_first_line None (action_loops, loop_cuts, lock_rejects, turn_skips come
-    with 1.1, events_fired/planned with 1.3)."""
+    goal_first_line None (events_fired/planned come with 1.3)."""
     lines = [(r.get("who") or "?", r.get("text") or "") for r in rows if r["type"] == "line"]
     kinds = [r["type"] for r in rows]
     by = {}
@@ -166,6 +160,11 @@ def score(rows):
             "judge_calls": kinds.count("judge"),
             "max_prompt_tokens": max(prompt_tokens or [0]),
             "auto_touch": kinds.count("auto_touch"),
+            # 1.1: the detector of dialogue.py reads the log, the three counts are events
+            "action_loops": count_action_loops(rows),
+            "loop_cuts": kinds.count("loop_cut"),
+            "lock_rejects": kinds.count("lock_reject"),
+            "turn_skips": kinds.count("turn_skip"),
             "build": any(r["type"] == "build" and r.get("phase") == "start" for r in rows),
             "transition": any(r["type"] == "transition" for r in rows),
             "transitions": kinds.count("transition"),

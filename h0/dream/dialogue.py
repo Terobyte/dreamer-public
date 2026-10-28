@@ -43,14 +43,14 @@ VOICE_RULES = (
     "breaking]; when the feeling turns mid-line, put a new one right before those words. "
     "Sounds and pauses go in brackets where they happen: [long sigh] [gasp] [scoff] [pause]. "
     "Wrap a single word to change only it: <whisper>...</whisper> <emphasis>...</emphasis> "
-    "<forceful>...</forceful>. Only what is heard -- never what your hands or eyes do.")
+    "<forceful>...</forceful>. Only what is heard -- never what your hands or eyes do. "
+    "Hard limit: no more than %d spoken words and three brackets in a line; a longer "
+    "line is thrown away unheard, so say one thing and stop." % 15)
 HERO_RULES = (
     "Your day only colours what you notice, want and fear; you never retell it like a "
     "report. You speak only as yourself, in first person, to whoever is here with you -- "
     "never as a narrator, helper or counsellor. Reply with one or two short spoken lines, "
-    "no narration, no name prefix, English only. " + VOICE_RULES + " Things here never stand still: every line of yours brings "
-    "something new -- you notice or pick up something, ask an odd question, a memory "
-    "surfaces, you want to go somewhere, something strange happens to you. Never repeat "
+    "no narration, no name prefix, English only. " + VOICE_RULES + " Never repeat "
     "a wish, worry or phrase you have already said. Most of your lines are not questions: "
     "you answer, react, claim, want or refuse. "
     "Most of your lines are just talk. Rarely, when one thing truly pulls at you, you go "
@@ -273,6 +273,193 @@ def remarks(text):
     return [m.strip() for m in _REMARK.findall(text or "")]
 
 
+# --- the lock on a line and the action-loop detector (design doc 2026-10-28, 7.2
+# row 1.1). Code decides before a line reaches the scene; bank.score imports the
+# same functions, so the bench and the sim read one definition. ----------------
+LOCK_MAX_WORDS = 25
+LOCK_KEEP_REMARKS = 3   # more than this: the first three stay
+LOCK_MAX_REMARKS = 5    # more than this: the line is refused
+LOOP_WINDOW = 4         # last lines of one speaker, the current one included
+LOOP_HITS = 3           # an item in this many lines of the window = a loop
+LOOP_BAN_TURNS = 4      # the item leaves the speaker's objects for this many of his turns
+LOCK_HINTS = {"len": "\n(Thrown away unheard: %d words. Under 12 words this time, one bracket.)",
+              "remarks": "\n(Too many brackets: a few sounds at most.)",
+              "objects": "\n(One thing at a time: name at most one object.)",
+              "name": "\n(No new names: only people you actually know.)"}
+_WORD = re.compile(r"[A-Za-z][A-Za-z']*")
+_NAME_STOP = {"i", "i'm", "i'll", "i've", "i'd", "ok", "god", "mom", "dad",
+              "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+              "january", "february", "march", "april", "may", "june", "july", "august",
+              "september", "october", "november", "december"}
+# words that never count as a loop in a remark: every example of VOICE_RULES plus
+# the sounds of the voice itself
+_LOOP_STOP = {w for r in _REMARK.findall(VOICE_RULES) for w in re.findall(r"[a-z]+", r.lower())}
+_LOOP_STOP |= set("pause gasp scoff sigh laugh laughing voice breath breathing inhale "
+                  "exhale whisper quiet soft flat muttering".split())
+
+
+def _spoken(text):
+    """Words only: drop [remarks] and <tags> (bank.score uses the same)."""
+    return re.sub(r"\[[^\]]*\]|<[^>]+>", " ", text or "")
+
+
+def _object_pattern(obj):
+    return re.compile(r"\b" + r"\s+".join(re.escape(w) for w in obj.split()) + r"\b", re.I)
+
+
+def find_objects(text, objects):
+    """Objects of the scene named in `text` as whole phrases, case-insensitive, on
+    word borders, the long phrase before the short ("roof door" is one object, not
+    two). -> (set of object names, text with the matches blanked)."""
+    found = set()
+    for obj in sorted(objects or [], key=len, reverse=True):
+        pat = _object_pattern(obj)
+        if pat.search(text):
+            found.add(obj)
+            text = pat.sub(" ", text)
+    return found, text
+
+
+def _aliases(objects):
+    """Last word of a phrase -> the phrase, only where that word is unique."""
+    last = {}
+    for obj in objects or []:
+        w = obj.split()[-1].lower() if obj.split() else ""
+        last.setdefault(w, []).append(obj)
+    return {w: objs[0] for w, objs in last.items() if w and len(objs) == 1 and objs[0].lower() != w}
+
+
+def _name_words(sources):
+    words = set()
+    for s in sources or ():
+        for w in _WORD.findall(str(s or "")):
+            words.add(w.lower())
+    return words
+
+
+def _known(word, allowed):
+    w = word.lower()
+    if w in _NAME_STOP or w in allowed:
+        return True
+    for stem in (w[:-2] if w.endswith("'s") else None, w[:-1] if w.endswith("s") else None):
+        if stem and (stem in _NAME_STOP or stem in allowed):
+            return True
+    return False
+
+
+def _proper_nouns(text):
+    """Capitalised words that are not at a sentence start and not right after `]`
+    (the first word after a voice direction); words inside [..] or <..> are skipped."""
+    spoken_mask = re.sub(r"\[[^\]]*\]|<[^>]+>", lambda m: " " * len(m.group(0)), text)
+    out = []
+    for m in _WORD.finditer(spoken_mask):
+        w = m.group(0)
+        if not w[0].isupper():
+            continue
+        before = spoken_mask[:m.start()].rstrip()
+        if not before or before[-1] in '.?!"':
+            continue
+        if text[:m.start()].rstrip().endswith("]"):
+            continue
+        out.append(w)
+    return out
+
+
+def lock_hint(why, text):
+    """The retry line for a refused candidate; `len` quotes the count the model
+    overshot by (Spark Open ignores "shorter", it follows a number)."""
+    hint = LOCK_HINTS[why]
+    return hint % len(_spoken(text).split()) if why == "len" else hint
+
+
+def lock_line(text, objects, names):
+    """-> (text after trimming remarks, None) or (None, reason) with reason in
+    len | remarks | objects | name. `names`: texts whose words are allowed as
+    proper nouns (hero, actors, objects, soul facts, transcript, events, personas,
+    director notes)."""
+    text = text or ""
+    if len(_spoken(text).split()) > LOCK_MAX_WORDS:
+        return None, "len"
+    n_rem = len(_REMARK.findall(text))
+    if n_rem > LOCK_MAX_REMARKS:
+        return None, "remarks"
+    if n_rem > LOCK_KEEP_REMARKS:
+        seen = [0]
+
+        def keep(m):
+            seen[0] += 1
+            return m.group(0) if seen[0] <= LOCK_KEEP_REMARKS else " "
+        text = " ".join(_REMARK.sub(keep, text).split())
+    found, _ = find_objects(_spoken(text), objects)
+    if len(found) > 1:
+        return None, "objects"
+    allowed = _name_words(list(names or ()) + list(objects or ()))
+    for w in _proper_nouns(text):
+        if not _known(w, allowed):
+            return None, "name"
+    return text, None
+
+
+def loop_items(text, objects):
+    """The set X of a line (7.2 row 1.1): objects named as whole phrases in the
+    spoken text or in any remark; in the remarks after the first (the first is
+    voice direction) an alias = the unique last word of an object, and any other
+    word of 4+ letters not in the stop list."""
+    objects = list(objects or [])
+    items, _ = find_objects(_spoken(text), objects)
+    rems = _REMARK.findall(text or "")
+    for i, r in enumerate(rems):
+        found, rest = find_objects(r, objects)
+        items |= found
+        if i == 0:
+            continue
+        alias = _aliases(objects)
+        for w in re.findall(r"[a-z']+", rest.lower()):
+            if w in alias:
+                items.add(alias[w])
+            elif len(w) >= 4 and w not in _LOOP_STOP:
+                items.add(w)
+    return items
+
+
+def loops_in(own_sets):
+    """Items looping over one speaker's last LOOP_WINDOW line-sets (the current one
+    last): present in >= LOOP_HITS of them."""
+    window = list(own_sets)[-LOOP_WINDOW:]
+    if not window:
+        return set()
+    return {x for x in window[-1] if sum(1 for s in window if x in s) >= LOOP_HITS}
+
+
+def count_action_loops(rows):
+    """Metric `action_loops` (7.4): `line` rows with a loop and no loop_cut {who,
+    item} before the next `line` of anyone. Objects come from snapshot/transition
+    rows of the log."""
+    objects = []
+    own = {}
+    total = 0
+    pending = None  # (who, looping items) of the last line, until the next line
+    for r in rows:
+        kind = r.get("type")
+        if kind in ("snapshot", "transition") and r.get("scene"):
+            objects = list(r["scene"])
+        if kind == "loop_cut" and pending and r.get("who") == pending[0]:
+            pending[1].discard(r.get("item"))
+            continue
+        if kind != "line":
+            continue
+        if pending and pending[1]:
+            total += 1
+        who = r.get("who") or "?"
+        sets = own.setdefault(who, [])
+        sets.append(loop_items(r.get("text") or "", objects))
+        del sets[:-LOOP_WINDOW]
+        pending = (who, loops_in(sets))
+    if pending and pending[1]:
+        total += 1
+    return total
+
+
 def _match(value, objects):
     from inputs import resolve_touch
     obj, _ = resolve_touch(value, objects or [])
@@ -299,6 +486,59 @@ class Dialogue:
         self.on_memory = None
         self._mind_lock = threading.Lock()
         self._mind_threads = []
+        # the lock (7.2 row 1.1): every name a prompt has carried is a known name;
+        # loop cuts per speaker: item -> the speaker's turn when it was cut
+        self._names = set()
+        self._turns = {}
+        self._cuts = {}
+
+    def _learn_names(self, *sources):
+        self._names |= _name_words(sources)
+
+    def _allowed_names(self, world, transcript):
+        return (list(self._names) + [self.hero, soul_text(self.profile)]
+                + list(world.get("actors") or []) + [t for _, t in transcript])
+
+    def _reject(self, who, reason, text):
+        if self.event_sink is not None:
+            self.event_sink({"type": "lock_reject", "who": who, "reason": reason, "text": text})
+
+    def _banned(self, who, turn=None):
+        turn = self._turns.get(who, 0) if turn is None else turn
+        return {x for x, at in self._cuts.get(who, {}).items() if turn - at < LOOP_BAN_TURNS}
+
+    def _cut_block(self, who):
+        return "".join("\n%s is finished, leave it." % x for x in sorted(self._banned(who)))
+
+    def _prompt_world(self, world, who):
+        """The world as the speaker is told it: a cut object is not named to him for
+        LOOP_BAN_TURNS. The lock still gets the whole scene -- a banned object is an
+        object of the place, it only leaves the prompt (F2)."""
+        banned = self._banned(who)
+        if not banned:
+            return world
+        out = dict(world)
+        out["objects"] = [o for o in world.get("objects") or [] if o not in banned]
+        return out
+
+    def _plan_cuts(self, who, text, transcript, objects):
+        """Loops over the speaker's last LOOP_WINDOW lines (this candidate included),
+        minus what is already cut. Pure: nothing is remembered until accept() -- the
+        sim may still throw the line away (F1). -> items to cut."""
+        own = _own_lines(transcript, who)[-(LOOP_WINDOW - 1):] + [text]
+        banned = self._banned(who, self._turns.get(who, 0) + 1)
+        return [x for x in sorted(loops_in([loop_items(t, objects) for t in own]))
+                if x not in banned]
+
+    def accept(self, line):
+        """The sim calls this for a generated line it is about to speak: only now the
+        speaker's turn is counted and his cuts start their LOOP_BAN_TURNS."""
+        who = line.get("who")
+        if not who:
+            return
+        self._turns[who] = self._turns.get(who, 0) + 1
+        for x in line.get("cuts") or []:
+            self._cuts.setdefault(who, {})[x] = self._turns[who]
 
     # --- memory and compaction -------------------------------------------
     def heard(self, who, text):
@@ -380,7 +620,7 @@ class Dialogue:
         if hush and impulse and impulse.startswith("you ask"):
             impulse = None
         user = "%s%s\n\nJust said:\n%s%s%s%s\n\nYour line, %s:" % (
-            world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
+            world_line(self._prompt_world(world, self.hero), world_events), _memory_block(self.memory_text(self.hero)),
             _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero)
             + _memory_block(self.mind(self.hero).tried_text()),
@@ -389,22 +629,32 @@ class Dialogue:
             "claim or want something." if hush else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
+        self._learn_names(*world_events)
+        user += self._cut_block(self.hero)
+        names = self._allowed_names(world, transcript)
+        objects = list(world.get("objects") or [])
+        text = None
         for attempt in range(2):
             raw = self._call("hero", self.hero_system(), user)
-            text = _clean_spoken(raw, "hero", self.hero)
+            cand = _clean_spoken(raw, "hero", self.hero)
             # no leading [direction] = the model stepped out of the character (on a
             # roof edge it slips into a counsellor voice); that line is never voiced
-            in_role = text.startswith("[")
-            if text and in_role and not repeats(text, recent) and not uses_bit(
+            in_role = cand.startswith("[")
+            # the lock shares the one retry with the repeat check (<= 2 calls a turn)
+            text, why = lock_line(cand, objects, names) if cand and in_role else (None, None)
+            if text and not repeats(text, recent) and not uses_bit(
                     text, own) and not (hush and "?" in text):
                 break
-            user += ("\n(No question this time.)" if in_role and hush and "?" in text else
+            if why:
+                self._reject(self.hero, why, cand)
+                user += lock_hint(why, cand)
+                continue
+            user += ("\n(No question this time.)" if in_role and hush and "?" in cand else
                      "\n(Say or do something new.)" if in_role else
                      "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
-        if text and not text.startswith("["):
-            return None
         if not text:
             return None
+        cuts = self._plan_cuts(self.hero, text, transcript, objects)
         self._hero_turns += 1
         touch = None
         m = _TOUCH.search(raw)
@@ -416,7 +666,7 @@ class Dialogue:
             if touch:
                 self._last_touch = self._hero_turns
         return {"who": self.hero, "role": "hero", "text": text, "touch": touch,
-                "remarks": remarks(text), "impulse": impulse, "raw": raw}
+                "remarks": remarks(text), "impulse": impulse, "raw": raw, "cuts": cuts}
 
     def actor_system(self, actor, world, notes=(), persona=""):
         note_text = ""
@@ -440,7 +690,12 @@ class Dialogue:
             head, _memory_block(self.memory_text(actor)), _transcript_msgs(transcript),
             _no_repeat_block(transcript, actor) + _memory_block(self.mind(actor).tried_text()),
             actor)
-        system = self.actor_system(actor, world, notes, persona)
+        user += self._cut_block(actor)
+        self._learn_names(persona, *notes)
+        self._learn_names(*(sanitize(e, "human")[0] for e in events))
+        names = self._allowed_names(world, transcript)
+        objects = list(world.get("objects") or [])
+        system = self.actor_system(actor, self._prompt_world(world, actor), notes, persona)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
             raw = self._call("actor", system, user)
@@ -449,7 +704,13 @@ class Dialogue:
             m = _LOOK.search(clean)
             if m:
                 look = _match(m.group(1), world.get("objects")) or m.group(1).strip()
-            text = _clean_spoken(clean, "actor", actor)
+            cand = _clean_spoken(clean, "actor", actor)
+            # the lock shares the one retry with the repeat check (<= 2 calls a turn)
+            text, why = lock_line(cand, objects, names)
+            if why:
+                self._reject(actor, why, cand)
+                user += lock_hint(why, cand)
+                continue
             if text and attempt == 0 and (repeats(text, recent) or uses_bit(
                     text, _own_lines(transcript, actor))):
                 user += "\n(That repeats the scene. Say or do something new.)"
@@ -460,6 +721,7 @@ class Dialogue:
                 user += "\n(Name the thing itself.)"
                 continue
             if text and not leaks:
+                cuts = self._plan_cuts(actor, text, transcript, objects)
                 return {"who": actor, "role": "actor", "text": text, "look": look,
-                        "remarks": remarks(text), "raw": raw}
+                        "remarks": remarks(text), "raw": raw, "cuts": cuts}
         return None

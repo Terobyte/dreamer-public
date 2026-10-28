@@ -180,6 +180,12 @@ class Sim:
         self.dialogue = dialogue
         if dialogue is not None and hasattr(dialogue, "heard"):
             dialogue.on_memory = self._on_memory
+        if dialogue is not None and getattr(dialogue, "event_sink", None) is None:
+            dialogue.event_sink = self._diagnostic  # lock_reject lands in the log (1.1)
+        # 1.1: both attempts refused by the lock -> turn_skip, no generation before
+        # clock.scale(4), the speaker is passed over once by _next_speaker
+        self._gen_not_before = -1e9
+        self._skip_once = None
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
@@ -379,6 +385,14 @@ class Sim:
         if res is not None and not res["ok"]:
             self._diagnostic({"type": "tts_fail", "error": res["error"]["error"]})
         self._emit(event)
+        # 1.1: the line is really spoken, so now it counts for the speaker's loop
+        # state; a generated line dropped on the way (old scene, a human line in
+        # between, a reserved turn) leaves no turn, no cut and no loop_cut (F1)
+        if line["owner"] == "npc" and hasattr(self.dialogue, "accept"):
+            self.dialogue.accept(dict(line, who=event.get("who")))
+        # a loop cut is logged after the line it was found on, before the next
+        for item in line.get("cuts") or []:
+            self._diagnostic({"type": "loop_cut", "who": event.get("who"), "item": item})
         # Speech input is remembered on arrival, including while it is queued.
         if line["owner"] == "npc":
             self.memory.add_line(line.get("who") or "npc", line["text"])
@@ -638,8 +652,16 @@ class Sim:
             # rotate between actors, least recently heard first
             pick = min(self.actors, key=lambda a: max(
                 [i for i, w in enumerate(spoken) if w == a] or [-1]))
-            return pick, "actor"
-        return self.hero, "hero"
+            who, role = pick, "actor"
+        else:
+            who, role = self.hero, "hero"
+        if who == self._skip_once:
+            # 1.1: a skipped speaker is passed over once (until 1.2b: the other side)
+            self._skip_once = None
+            if role == "hero":
+                return self.actors[0], "actor"
+            return self.hero, "hero"
+        return who, role
 
     def _dialogue_turn(self):
         """Pick up a finished line, or start the next one while the current one
@@ -648,16 +670,22 @@ class Sim:
         with self._gen_lock:
             res, self._gen_result = self._gen_result, None
         if res is not None:
-            line, scene_no, epoch = res
+            line, scene_no, epoch, who = res
             if line is not None and scene_no == self.n_transitions and epoch == self._human_epoch:
                 self.npc_start(line)
+            elif line is None:
+                self._diagnostic({"type": "turn_skip", "who": who})
+                self._gen_not_before = self.clock.now() + self.clock.scale(4)
+                self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
         if busy or self.prepared_npc is not None or self.next_line is not None:
             return
         if self.fsm.awake or self.stopped or not self._budget_ok():
             return
-        who, role = self._next_speaker()
         now = self.clock.now()
+        if now < self._gen_not_before:
+            return
+        who, role = self._next_speaker()
         world = {"place": self.place, "objects": list(self.scene["objects"]),
                  "actors": list(self.actors)}
         transcript = list(self.transcript)
@@ -683,7 +711,7 @@ class Sim:
                 self._diagnostic({"type": "line_fail", "who": who,
                                   "error": "%s: %s" % (type(e).__name__, e)})
             with self._gen_lock:
-                self._gen_result = (line, scene_no, epoch)
+                self._gen_result = (line, scene_no, epoch, who)
 
         self._gen_thread = threading.Thread(target=work, daemon=True)
         self._gen_thread.start()

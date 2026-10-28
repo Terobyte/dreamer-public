@@ -147,7 +147,8 @@ class ImpulseTest(unittest.TestCase):
         class Always(_r.Random):
             def random(self):
                 return 0.0
-        t = FakeTransport(["[squints] Ha! You're not Dan."])
+        # 1.1: the lock refuses a name the hero does not know; Squidward is in WORLD
+        t = FakeTransport(["[squints] Ha! You're not Squidward."])
         line = Dialogue(load_profile("A"), transport=t, rng=Always(1)).hero_line(WORLD, [])
         self.assertIn(line["impulse"], HERO_IMPULSES)
         self.assertIn("Right now, out of nowhere, %s." % line["impulse"],
