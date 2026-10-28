@@ -278,9 +278,63 @@ export function checkRefs(raw: any): Issue[] {
     const v = room.shape?.[edge];
     return Array.isArray(v) && v.length === 3 && typeof v[2]?.bulge === "number" && Math.abs(v[2].bulge) > 0;
   };
+  const arcAzSpan = (roomId: string, edge: number): [number, number] | null => {
+    const room = roomById.get(roomId);
+    if (!room) return null;
+    if (room.circle && Array.isArray(room.circle?.c) && typeof room.circle?.r === "number") {
+      return [0, 360];
+    }
+    const v = room.shape?.[edge];
+    if (!Array.isArray(v)) return null;
+    const p0: [number, number] = [v[0], v[1]];
+    const nxt = room.shape?.[(edge + 1) % room.shape.length];
+    if (!Array.isArray(nxt)) return null;
+    const p1: [number, number] = [nxt[0], nxt[1]];
+    const b = v.length === 3 && v[2] && typeof v[2].bulge === "number" ? v[2].bulge : 0;
+    if (!(Math.abs(b) > 0)) return null;
+    const chord: Array<[number, number]> = room.shape.map((u: any) => [u[0], u[1]]);
+    let s = 0;
+    for (let i = 0; i < chord.length; i++) {
+      const a = chord[i];
+      const c = chord[(i + 1) % chord.length];
+      s += a[0] * c[1] - c[0] * a[1];
+    }
+    const nIn: [number, number] = (() => {
+      const d: [number, number] = [p1[0] - p0[0], p1[1] - p0[1]];
+      const l = Math.hypot(d[0], d[1]) || 1;
+      const left: [number, number] = [-d[1] / l, d[0] / l];
+      return s > 0 ? left : [-left[0], -left[1]];
+    })();
+    const d = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+    const a = d / 2;
+    const sg = Math.abs(b) * a;
+    const R = (a * a + sg * sg) / (2 * sg);
+    const dir: [number, number] = b > 0 ? [-nIn[0], -nIn[1]] : [nIn[0], nIn[1]];
+    const m: [number, number] = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
+    const c: [number, number] = [m[0] + dir[0] * (sg - R), m[1] + dir[1] * (sg - R)];
+    const toAz = (p: [number, number]): number => ((Math.atan2(p[0] - c[0], p[1] - c[1]) * 180) / Math.PI % 360 + 360) % 360;
+    const start = toAz(p0);
+    const end = toAz(p1);
+    const apex: [number, number] = [m[0] + dir[0] * sg, m[1] + dir[1] * sg];
+    const midAz = toAz(apex);
+    const fwd = (x: number): number => ((x % 360) + 360) % 360;
+    const span = fwd(end - start);
+    return fwd(midAz - start) <= span + 1e-9 ? [start, span] : [end, 360 - span];
+  };
   const checkAz = (on: any, base: string) => {
     if (on && typeof on === "object" && "az" in on && typeof on.room === "string" && typeof on.edge === "number") {
-      if (roomIds.has(on.room) && edgeValid(on.room, on.edge) && !edgeHasBulge(on.room, on.edge)) {
+      if (!roomIds.has(on.room) || !edgeValid(on.room, on.edge)) return;
+      const span = arcAzSpan(on.room, on.edge);
+      if (!span) {
+        out.push({ code: "POS_INVALID", stage: "schema", path: base, msg: msg("POS_INVALID", { path: base }) });
+        return;
+      }
+      const az = Number(on.az);
+      if (!Number.isFinite(az)) return;
+      const norm = ((az % 360) + 360) % 360;
+      const [start, len] = span;
+      const rel = ((norm - start) % 360 + 360) % 360;
+      if (rel > len + 1e-9 && Math.abs(rel - 360) > 1e-9) {
         out.push({ code: "POS_INVALID", stage: "schema", path: base, msg: msg("POS_INVALID", { path: base }) });
       }
     }

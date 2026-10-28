@@ -74,6 +74,10 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.path}: room "${params.a}" != on.room "${params.b}"`;
     case "POS_INVALID":
       return `${params.path}: неверная позиция`;
+    case "ROOMS_OVERLAP":
+      return `${params.a} и ${params.b} пересекаются на ${params.S} м²`;
+    case "ROOM_SELF_INTERSECT":
+      return `${params.path}: контур комнаты "${params.room ?? "?"}" самопересекается (рёбра ${params.edges ?? "?"})`;
     default:
       return `${params.path ?? ""}: ${code}`;
   }

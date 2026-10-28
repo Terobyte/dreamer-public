@@ -95,14 +95,14 @@
 - Порядок в `compileRooms`: сначала нулевые рёбра (`|p1 − p0| < EPS`) → `ROOM_SELF_INTERSECT` (path `/rooms/<r>/shape/<i>`), дуги строятся только для комнат без такой ошибки.
 - `ROOMS_OVERLAP`: clipper-пересечение `outline` двух комнат уровня > 0.01 м²; комнаты с `ROOM_SELF_INTERSECT` не участвуют. `ROOM_SELF_INTERSECT`: несмежные сегменты `outline` пересекаются; одна запись на комнату.
 
-- [ ] `test_demo_flat_edges`: `living#1` — `arc.c` = [0, 0.2], `arc.r` = 5.8, `len` = 8.828 (round3); `living#3` — `from` [4,4], `to` [−4,4], `normal_in` = [0, −1]
-- [ ] `test_two_arcs_geometry`: A `[[3,0,{"bulge":1}],[-3,0],[-3,-4],[3,-4]]`, B `[[-3,0,{"bulge":-1}],[3,0],[3,6],[-3,6]]`, дверь `on {"room":"A","edge":0,"t":0.5}` width 0.9 → обе дуги c [0,0] r 3, apex (0, 3); `ROOMS_OVERLAP` нет
-- [ ] `test_broken_plan_codes`: `ROOMS_OVERLAP`: `[{"op":"replace","path":"/rooms/1/shape","value":[[-2,3],[2,3],[2,12],[-2,12]]}]`; `ROOM_SELF_INTERSECT`: `[{"op":"replace","path":"/rooms/1/shape","value":[[-2,4],[2,12],[2,4],[-2,12]]}]` → ровно свой код
-- [ ] `test_circle_room`: `circle` c [0,0] r 3 → одно ребро `room#0`, `arc.r` = 3, `len` = 18.85 (round3), `from` = [0, 3]
-- [ ] `test_pos_invalid_arc`: `[{"op":"replace","path":"/decals/0/on","value":{"room":"living","edge":1,"az":90}}]` → этап `schema`: `POS_INVALID` (дуга `living#1` занимает az [136.4°, 223.6°]); то же с `az` 160 → этап `schema` без issues
-- [ ] `test_degenerate_edge`: `[[0,0],[4,0],[4,0],[4,4],[0,4]]` → `ROOM_SELF_INTERSECT` с path `/rooms/0/shape/1`, не исключение; то же, если у повторной вершины есть `bulge`
-- [ ] `test_winding_invariant`: квадрат x[0,4] z[0,4] по и против часовой → у ребра на z = 0 одинаковый `normal_in` [0, 1]; рёбра пронумерованы по авторскому порядку
-- [ ] реализовать
+- [x] `test_demo_flat_edges`: `living#1` — `arc.c` = [0, 0.2], `arc.r` = 5.8, `len` = 8.828 (round3); `living#3` — `from` [4,4], `to` [−4,4], `normal_in` = [0, −1]
+- [x] `test_two_arcs_geometry`: A `[[3,0,{"bulge":1}],[-3,0],[-3,-4],[3,-4]]`, B `[[-3,0,{"bulge":-1}],[3,0],[3,6],[-3,6]]`, дверь `on {"room":"A","edge":0,"t":0.5}` width 0.9 → обе дуги c [0,0] r 3, apex (0, 3); `ROOMS_OVERLAP` нет
+- [x] `test_broken_plan_codes`: `ROOMS_OVERLAP`: `[{"op":"replace","path":"/rooms/1/shape","value":[[-2,3],[2,3],[2,12],[-2,12]]}]`; `ROOM_SELF_INTERSECT`: `[{"op":"replace","path":"/rooms/1/shape","value":[[-2,4],[2,12],[2,4],[-2,12]]}]` → ровно свой код
+- [x] `test_circle_room`: `circle` c [0,0] r 3 → одно ребро `room#0`, `arc.r` = 3, `len` = 18.85 (round3), `from` = [0, 3]
+- [x] `test_pos_invalid_arc`: `[{"op":"replace","path":"/decals/0/on","value":{"room":"living","edge":1,"az":90}}]` → этап `schema`: `POS_INVALID` (дуга `living#1` занимает az [136.4°, 223.6°]); то же с `az` 160 → этап `schema` без issues
+- [x] `test_degenerate_edge`: `[[0,0],[4,0],[4,0],[4,4],[0,4]]` → `ROOM_SELF_INTERSECT` с path `/rooms/0/shape/1`, не исключение; то же, если у повторной вершины есть `bulge`
+- [x] `test_winding_invariant`: квадрат x[0,4] z[0,4] по и против часовой → у ребра на z = 0 одинаковый `normal_in` [0, 1]; рёбра пронумерованы по авторскому порядку
+- [x] реализовать
 
 **Вне этой фазы:** слияние рёбер, тело стены, `sides`, проёмы.
 
