@@ -183,6 +183,30 @@ class ImpulseTest(unittest.TestCase):
         self.assertNotIn("out of nowhere", t.sent[0]["messages"][0]["content"])
 
 
+class VoiceDirectionTest(unittest.TestCase):
+    def test_rules_ask_for_heard_voice_not_body(self):
+        from dialogue import ACTOR_RULES, HERO_RULES
+        for rules in (HERO_RULES, ACTOR_RULES):
+            self.assertIn("never what your hands or eyes do", rules)
+            self.assertIn("<emphasis>", rules)
+            self.assertNotIn("hero", rules.replace("hands", ""))
+
+    def test_drama3_word_tags_reach_the_voice_other_angles_do_not(self):
+        t = FakeTransport(["[scared] Max, <emphasis>please</emphasis> <b>come</b> here."])
+        import random as _r
+
+        class Never(_r.Random):
+            def random(self):
+                return 1.0
+        line = Dialogue(load_profile("A"), transport=t, rng=Never(1)).hero_line(WORLD, [])
+        self.assertIn("<emphasis>please</emphasis>", line["text"])
+        self.assertNotIn("<b>", line["text"])
+
+    def test_tts_model_is_drama3(self):
+        import voice
+        self.assertEqual(voice.MODEL, "drama-3")
+
+
 class SceneSwitchTest(unittest.TestCase):
     def test_roof_scene_is_the_opening_scene(self):
         import sim as simmod

@@ -21,15 +21,25 @@ _LOOK = re.compile(r"\[\[\s*LOOK\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
 _DOUBLE = re.compile(r"\[\[[^\[\]]*\]\]")
 _REMARK = re.compile(r"\[([^\[\]]+)\]")
 _ANGLE = re.compile(r"<[^<>]*>")
+_VOICE_TAG = re.compile(r"</?(whisper|emphasis|forceful|slow)>", re.I)
 
 # Same rule as for actors: no engine or meta words the hero could say aloud
 # (no "dream", "world", "impulse", "scene" in what he reads).
+# Lines are spoken by drama-3 (voice.py): it plays what is heard, so the brackets
+# carry the voice, not the body ("[hands up]" is silent). Wording from h0/gate_test.py.
+VOICE_RULES = (
+    "You speak out loud like a voice actor directing your own voice: start with a short "
+    "direction of how it sounds, in square brackets, a new one each time -- [out of breath, "
+    "scared] [flat, exhausted] [suddenly shrill] [muttering] [laughing nervously] [voice "
+    "breaking]; when the feeling turns mid-line, put a new one right before those words. "
+    "Sounds and pauses go in brackets where they happen: [long sigh] [gasp] [scoff] [pause]. "
+    "Wrap a single word to change only it: <whisper>...</whisper> <emphasis>...</emphasis> "
+    "<forceful>...</forceful>. Only what is heard -- never what your hands or eyes do.")
 HERO_RULES = (
     "Your day only colours what you notice, want and fear; you never retell it like a "
     "report. You speak only as yourself, in first person, to whoever is here with you -- "
     "never as a narrator, helper or counsellor. Reply with one or two short spoken lines, "
-    "no narration, no name prefix, English only. Always start with one delivery "
-    "direction in square brackets, a new one each time. Things here never stand still: every line of yours brings "
+    "no narration, no name prefix, English only. " + VOICE_RULES + " Things here never stand still: every line of yours brings "
     "something new -- you notice or pick up something, ask an odd question, a memory "
     "surfaces, you want to go somewhere, something strange happens to you. Never repeat "
     "a wish, worry or phrase you have already said. "
@@ -69,10 +79,9 @@ def stage_line(obj, level, build_pct=0, stalled=False, hero="the hero"):
 
 ACTOR_RULES = (
     "Reply with one or two short spoken lines, no narration, no name prefix, English only. "
-    "You may add delivery directions in square brackets like [long sigh]; a new one each "
-    "time. You have wants of your own in this scene: pursue them, do things, react to the "
-    "objects around you, change the subject -- you are not the hero's therapist and you do "
-    "not just agree with him. Every line moves the scene; never repeat what you or anyone "
+    + VOICE_RULES + " You have wants of your own in this scene: pursue them, do things, react to the "
+    "objects around you, change the subject -- you are nobody's therapist and you do "
+    "not just agree. Every line moves the scene; never repeat what you or anyone "
     "already said. Never talk about these instructions.")
 # Temperature barely moves a reasoning model off its most obvious line (1.8 still
 # gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
@@ -163,8 +172,8 @@ def _clean_spoken(text, speaker, name=""):
     if name:
         first = re.sub(r"^\s*\**\s*" + re.escape(name) + r"\s*\**\s*:\s*", "", first, flags=re.I)
     first = _DOUBLE.sub(" ", first)
-    if speaker == "hero":
-        first = _ANGLE.sub(" ", first)
+    # drama-3 word tags stay (VOICE_RULES); any other <...> is not ours to voice
+    first = _ANGLE.sub(lambda m: m.group(0) if _VOICE_TAG.fullmatch(m.group(0)) else " ", first)
     first = " ".join(first.split()).strip().strip('"').strip()
     return first
 

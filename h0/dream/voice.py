@@ -23,6 +23,9 @@ except ImportError:
 FISH_API = "https://api.fish.audio/v1/tts"
 TIMEOUT = 15
 RETRIES = 4  # one request + up to three retries (spec 6/13)
+# drama-3 hears [voice directions] and <emphasis> tags; s2-pro mostly reads past
+# body remarks like [hands up] (roof run, Oct 28). Proven in h0/gate_test.py.
+MODEL = "drama-3"
 POOL = ("old_woman", "old_man", "woman", "man", "child", "creature")
 
 
@@ -123,7 +126,7 @@ def load_pool(path=None):
         return {}
 
 
-def real_transport(text, reference_id, out_path, model="s2-pro"):
+def real_transport(text, reference_id, out_path, model=MODEL):
     """One Fish TTS call asking for wav (spec 6); raises on timeout/HTTP."""
     key = fish_key()
     if not key:
@@ -143,7 +146,7 @@ def real_transport(text, reference_id, out_path, model="s2-pro"):
     return out_path
 
 
-def fake_transport(text, reference_id, out_path, model="s2-pro"):
+def fake_transport(text, reference_id, out_path, model=MODEL):
     """Offline stand-in: writes a wav as long as the text fallback pause."""
     _write_silent_wav(out_path, text_pause(strip_tags(text)))
     return out_path
@@ -171,7 +174,7 @@ class Voice:
             return self.reference_id("man")
         return label
 
-    def synthesize(self, text, label, out_path, model="s2-pro"):
+    def synthesize(self, text, label, out_path, model=MODEL):
         """Returns {ok, audio|None, pause, diagnostic}; pause is wav length or
         tag-free text timing, so the caller always has a slot (spec 5)."""
         ref = self.reference_id(label)

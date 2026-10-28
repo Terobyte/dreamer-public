@@ -285,7 +285,7 @@ function addLine(r) {
   const text = r.text || "";
   const remarks = r.remarks || [...text.matchAll(/\[([^\[\]]+)\]/g)].map((m) => m[1]);
   if (remarks.length) b.appendChild(el("div", "remark", remarks.map((x) => "[" + x + "]").join(" ")));
-  const body = el("div", "", text.replace(/\[[^\[\]]*\]/g, " ").replace(/\s+/g, " ").trim());
+  const body = el("div", "", text.replace(/\[[^\[\]]*\]/g, " ").replace(/<[^<>]*>/g, "").replace(/\s+/g, " ").trim());
   if (r.look) body.appendChild(el("span", "tag", "👀 " + r.look));
   if (r.touch) body.appendChild(el("span", "tag", "✋ " + r.touch));
   b.appendChild(body);
