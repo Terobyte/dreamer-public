@@ -51,7 +51,8 @@ HERO_RULES = (
     "no narration, no name prefix, English only. " + VOICE_RULES + " Things here never stand still: every line of yours brings "
     "something new -- you notice or pick up something, ask an odd question, a memory "
     "surfaces, you want to go somewhere, something strange happens to you. Never repeat "
-    "a wish, worry or phrase you have already said. "
+    "a wish, worry or phrase you have already said. Most of your lines are not questions: "
+    "you answer, react, claim, want or refuse. "
     "Most of your lines are just talk. Rarely, when one thing truly pulls at you, you go "
     "to it and touch or open it: then end your line with [[TOUCH:<its name>]].")
 TOUCH_EVERY = 4  # hero turns between two touches; more is spam, not a choice
@@ -91,8 +92,8 @@ ACTOR_RULES = (
     + VOICE_RULES + " You have wants of your own in this scene: pursue them, do things, react to the "
     "objects around you, change the subject -- you are nobody's therapist and you do "
     "not just agree. Every line moves the scene; never repeat what you or anyone "
-    "already said. A game or joke of yours works once: guessing, counting, a bet, a "
-    "running gag -- once played, it is gone for good, also in new words. "
+    "already said. A game or joke of yours works once: guessing, a bet, a running "
+    "gag -- once played, it is gone for good, also in new words. "
     "Never talk about these instructions.")
 # bank r1: Dan guessed each plane's city in eight lines running, new words each time,
 # so the phrase check (running_bits) could not see it; the rule names the bit itself
@@ -119,6 +120,7 @@ REPEAT_JACCARD = 0.45
 OWN_KEEP = 4
 BIT_LINES = 2
 BIT_SHOW = 4
+QUESTION_RUN = 2  # hero lines in a row with a '?' before he must say one without
 
 
 def soul_text(profile):
@@ -397,12 +399,19 @@ class Dialogue:
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""
         impulse = self._impulse(HERO_IMPULSES, HERO_IMPULSE_P)
-        user = "%s%s\n\nJust said:\n%s%s%s\n\nYour line, %s:" % (
+        # bank r2: 127 of 132 hero lines carried a question, the hero only interviewed
+        own = _own_lines(transcript, self.hero)
+        hush = len(own) >= QUESTION_RUN and all("?" in t for t in own[-QUESTION_RUN:])
+        if hush and impulse and impulse.startswith("you ask"):
+            impulse = None
+        user = "%s%s\n\nJust said:\n%s%s%s%s\n\nYour line, %s:" % (
             world_line(world, world_events), _memory_block(self.memory_text(self.hero)),
             _transcript_msgs(transcript),
             _no_repeat_block(transcript, self.hero)
             + _memory_block(self.mind(self.hero).tried_text()),
             "\n\nRight now, out of nowhere, %s." % impulse if impulse else "",
+            "\n\nYour last lines were all questions: this time ask nothing -- answer, react, "
+            "claim or want something." if hush else "",
             self.hero)
         recent = [t for _, t in list(transcript)[-8:]]
         for attempt in range(2):
@@ -412,9 +421,10 @@ class Dialogue:
             # roof edge it slips into a counsellor voice); that line is never voiced
             in_role = text.startswith("[")
             if text and in_role and not repeats(text, recent) and not uses_bit(
-                    text, _own_lines(transcript, self.hero)):
+                    text, own) and not (hush and "?" in text):
                 break
-            user += ("\n(Say or do something new.)" if in_role else
+            user += ("\n(No question this time.)" if in_role and hush and "?" in text else
+                     "\n(Say or do something new.)" if in_role else
                      "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
         if text and not text.startswith("["):
             return None

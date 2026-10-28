@@ -46,8 +46,10 @@ def score(rows):
         if top:
             bits[who] = ["%s x%d" % (ph, n) for n, ph in top[-3:]]
     rep = sum(1 for i, (_, t) in enumerate(lines) if repeats(t, [x for _, x in lines[max(0, i - 8):i]]))
+    hero = [r.get("text") or "" for r in rows if r["type"] == "line" and r.get("role") == "hero"]
     spent = max([r.get("dollars") or 0 for r in rows if r["type"] == "cost"] or [0])
     return {"lines": len(lines), "repeats": rep, "bits": bits,
+            "hero_q": "%d/%d" % (sum("?" in t for t in hero), len(hero)),
             "build": any(r["type"] == "build" and r.get("phase") == "start" for r in rows),
             "transition": any(r["type"] == "transition" for r in rows),
             "director_fail": sum(1 for r in rows if r["type"] == "director_fail"),

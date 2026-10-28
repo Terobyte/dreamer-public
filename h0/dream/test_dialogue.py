@@ -229,6 +229,36 @@ class RunningBitTest(unittest.TestCase):
         self.assertEqual(dl._clean_spoken("[whisper] come here", "actor"), "[whisper] come here")
 
 
+class QuestionRunTest(unittest.TestCase):
+    """Bank r2: 127 of 132 hero lines held a question. Two in a row -> the next
+    prompt asks for none, and a line that still asks is asked again once."""
+
+    def _never(self):
+        import random as _r
+
+        class Never(_r.Random):
+            def random(self):
+                return 0.99
+        return Never(1)
+
+    def test_two_questions_in_a_row_ask_for_a_line_without(self):
+        tr = [("Max", "[x] What is that light?"), ("Vik", "[y] Nothing."),
+              ("Max", "[x] Why is the clock backwards?"), ("Vik", "[y] Sleep.")]
+        t = FakeTransport(["[tired] Why won't you look at me?", "[flat] I'm not sleeping."])
+        line = Dialogue({"hero": "Max"}, transport=t, rng=self._never()).hero_line(WORLD, tr)
+        self.assertIn("this time ask nothing", t.sent[0]["messages"][0]["content"])
+        self.assertEqual(t.calls, 2)
+        self.assertEqual(line["text"], "[flat] I'm not sleeping.")
+
+    def test_one_question_leaves_the_prompt_alone(self):
+        tr = [("Max", "[x] I hate this place."), ("Vik", "[y] Nothing."),
+              ("Max", "[x] Why is the clock backwards?")]
+        t = FakeTransport(["[tired] Why?"])
+        Dialogue({"hero": "Max"}, transport=t, rng=self._never()).hero_line(WORLD, tr)
+        self.assertNotIn("ask nothing", t.sent[0]["messages"][0]["content"])
+        self.assertEqual(t.calls, 1)
+
+
 class DirectorReserveTest(unittest.TestCase):
     """Bank runs ended $0.01-0.03 over --max-dollars: a live director consult in
     flight lands after the budget check, so the check keeps room for one."""
