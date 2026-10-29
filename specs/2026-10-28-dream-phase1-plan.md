@@ -54,12 +54,12 @@
 `loop_items(text, objects) -> set[str]` (множество X);
 `count_action_loops(rows) -> int`.
 
-- [ ] Тест `test_lock_rejects_all_two_calls`: замок отвергает всё. Значит ≤ 2 вызова транспорта на ход, в логе `turn_skip {who}`, следующая генерация не раньше `clock.scale(4)`.
-- [ ] Тесты `lock_line`: > 25 слов → `len`; 4 ремарки → обрезка до 3; 6 → `remarks`; два предмета → `objects`; неизвестное имя → `name`. Review Focus 3: `"[sighs] Well, Maya, stop."` при `Maya` в фактах проходит. Стоп-лист имён и отрезание `'s`/`s` (`Maya's`, `Fridays`) тоже проходят.
-- [ ] Тесты `loop_items`: «roof door» — один предмет, а не два; первая ремарка не даёт псевдонимов; псевдоним `dish` → `satellite dish`. Review Focus 2: при `objects = ["roof door", "car door"]` у `door` псевдонима нет.
-- [ ] Тест `test_action_loops_synthetic`: один предмет в трёх строках Дэна подряд без `loop_cut` → `count_action_loops ≥ 1`; с `loop_cut` → 0. Тест `test_action_loops_r1`: логи r1 дают 0/0/≥10/0 для 978509/978510/978511/978512 (`skipTest`, если логов нет).
-- [ ] Реализация: замок внутри существующего `for attempt in range(2)` (`dialogue.py:420, 473`), `loop_cut` в промпт и снятие предмета на 4 хода. Факт «his sister is Maya» добавляется в `roof.json`. `HERO_RULES` переписывается по 7.2. В `bank.score` добавляются `action_loops`, `loop_cuts`, `lock_rejects`, `turn_skips`.
-- [ ] Все тесты зелёные. Затем бенч `--step 1.1 --runs 1` и строка в DEVLOG.
+- [x] Тест `test_lock_rejects_all_two_calls`: замок отвергает всё. Значит ≤ 2 вызова транспорта на ход, в логе `turn_skip {who}`, следующая генерация не раньше `clock.scale(4)`.
+- [x] Тесты `lock_line`: > 25 слов → `len`; 4 ремарки → обрезка до 3; 6 → `remarks`; два предмета → `objects`; неизвестное имя → `name`. Review Focus 3: `"[sighs] Well, Maya, stop."` при `Maya` в фактах проходит. Стоп-лист имён и отрезание `'s`/`s` (`Maya's`, `Fridays`) тоже проходят.
+- [x] Тесты `loop_items`: «roof door» — один предмет, а не два; первая ремарка не даёт псевдонимов; псевдоним `dish` → `satellite dish`. Review Focus 2: при `objects = ["roof door", "car door"]` у `door` псевдонима нет.
+- [x] Тест `test_action_loops_synthetic`: один предмет в трёх строках Дэна подряд без `loop_cut` → `count_action_loops ≥ 1`; с `loop_cut` → 0. Тест `test_action_loops_r1`: логи r1 дают 0/0/≥10/0 для 978509/978510/978511/978512 (`skipTest`, если логов нет).
+- [x] Реализация: замок внутри существующего `for attempt in range(2)` (`dialogue.py:420, 473`), `loop_cut` в промпт и снятие предмета на 4 хода. Факт «his sister is Maya» добавляется в `roof.json`. `HERO_RULES` переписывается по 7.2. В `bank.score` добавляются `action_loops`, `loop_cuts`, `lock_rejects`, `turn_skips`.
+- [x] Все тесты зелёные. Затем бенч `--step 1.1 --runs 1` и строка в DEVLOG.
 
 ## 1.2a такт
 
@@ -75,42 +75,42 @@
 
 Строка 1.2b таблицы 7.2. Долг: Д2 (исключить `roof3.json` из `bank.main`). Имя: `Sim._pressure(name) -> dict` с полями события `pressure` из 7.4.
 
-- [ ] Тест `test_pressure_formula`: на заглушке Dialogue `p = 3·addressed + 2·event_hit + 1·goal_open + 0.5·min(ticks_silent, 6) − 2·spoke_last`. Проверить затухание `addressed` через 2 свободных такта и что такты тишины не меняют `spoke_last`.
-- [ ] Тест `test_two_actor_lines_block_actors`: после двух строк актёров подряд актёр не выбирается, а `pressure` пишется. Герой добирает порог тишиной: `max_actor_streak ≤ 2` на 40 ходах.
-- [ ] Тест `test_roof3_rotation`: сцена `roof3`, 40 ходов. Названный по имени отвечает следующим в ≥ 80% случаев, у каждого из 3 актёров ≥ 5 строк. В последовательности актёрских строк без строк героя есть «A, B, A» и «A, B, C».
-- [ ] Тест `test_no_silence_while_in_flight`: задержка > `scale(TICK)×6`, `silence` нет.
-- [ ] Тест `test_human_counts_as_hero`: `human_say` сбрасывает серию актёров, а герой-NPC получает `spoke_last`.
-- [ ] Реализация: выбор по давлению вместо `_next_speaker`, `THRESHOLD = 2.0`, лог `silence`/`pressure`. Добавить `scenes/roof3.json` (Max; Dan, Maya, neighbor) и исключить его в `bank.main`. Метрики `silence_turns`, `silences_per_line`, `max_actor_streak`, если 1.0 их не досчитал.
-- [ ] Все тесты зелёные. Затем бенч `--step 1.2b --runs 2` и строка в DEVLOG.
+- [x] Тест `test_pressure_formula`: на заглушке Dialogue `p = 3·addressed + 2·event_hit + 1·goal_open + 0.5·min(ticks_silent, 6) − 2·spoke_last`. Проверить затухание `addressed` через 2 свободных такта и что такты тишины не меняют `spoke_last`.
+- [x] Тест `test_two_actor_lines_block_actors`: после двух строк актёров подряд актёр не выбирается, а `pressure` пишется. Герой добирает порог тишиной: `max_actor_streak ≤ 2` на 40 ходах.
+- [x] Тест `test_roof3_rotation`: сцена `roof3`, 40 ходов. Названный по имени отвечает следующим в ≥ 80% случаев, у каждого из 3 актёров ≥ 5 строк. В последовательности актёрских строк без строк героя есть «A, B, A» и «A, B, C».
+- [x] Тест `test_no_silence_while_in_flight`: задержка > `scale(TICK)×6`, `silence` нет.
+- [x] Тест `test_human_counts_as_hero`: `human_say` сбрасывает серию актёров, а герой-NPC получает `spoke_last`.
+- [x] Реализация: выбор по давлению вместо `_next_speaker`, `THRESHOLD = 2.0`, лог `silence`/`pressure`. Добавить `scenes/roof3.json` (Max; Dan, Maya, neighbor) и исключить его в `bank.main`. Метрики `silence_turns`, `silences_per_line`, `max_actor_streak`, если 1.0 их не досчитал.
+- [x] Все тесты зелёные. Затем бенч `--step 1.2b --runs 2` и строка в DEVLOG.
 
 ## 1.2c короткий контекст
 
 Строка 1.2c таблицы 7.2.
 
-- [ ] Тест `test_transcript_keep_4`: промпт актёра содержит не больше 4 последних строк транскрипта. `COMPACT_EVERY` и окно `mind`/`compact` сверены под 4.
-- [ ] `TRANSCRIPT_KEEP` 8 → 4.
-- [ ] Все тесты зелёные. Затем бенч `--step 1.2c --runs 1` (сравнение с медианой 1.2b из ledger) и строка в DEVLOG.
+- [x] Тест `test_transcript_keep_4`: промпт актёра содержит не больше 4 последних строк транскрипта. `COMPACT_EVERY` и окно `mind`/`compact` сверены под 4.
+- [x] `TRANSCRIPT_KEEP` 8 → 4.
+- [x] Все тесты зелёные. Затем бенч `--step 1.2c --runs 1` (сравнение с медианой 1.2b из ledger) и строка в DEVLOG.
 
 ## 1.3 расписание событий
 
 Строка 1.3 таблицы 7.2. Долг: Д1, Д3.
 
-- [ ] Тест `test_events_fire_in_silence`: события `roof.json` срабатывают при полной тишине в срок `t_sim = (now − scene_start)·speed`, лог `schedule` при старте и `event` в срок.
-- [ ] Тест `test_old_scene_events_dead`: после `transition` событие прежней сцены не срабатывает.
-- [ ] Тест `test_pending_dropped_for_absent_actor` (Review Focus 5): запись «Just now» для актёра, которого нет в новой сцене, не доставляется никому.
-- [ ] Тест `test_situation_hero_as_event_any_scene` (Д1): у сцены `bus` `situation_hero` приходит герою событием `t=0`, а не из начального `_hero_world`.
-- [ ] Реализация по 7.2: `events` в сцене, `self.scene_start`, проверка на каждом шаге `_tick`, `self._pending` по получателю вместо `_actor_events`, рост `_turn_epoch` по событию, `event_hit` в давлении. Стартовые события крыши лежат в `roof.json` (§9 и событие Дэна `t=0`), импульсы героя разделены. В `bank.score` добавить `events_fired`/`events_planned`.
-- [ ] Все тесты зелёные. Затем бенч `--step 1.3 --runs 1` и строка в DEVLOG.
+- [x] Тест `test_events_fire_in_silence`: события `roof.json` срабатывают при полной тишине в срок `t_sim = (now − scene_start)·speed`, лог `schedule` при старте и `event` в срок.
+- [x] Тест `test_old_scene_events_dead`: после `transition` событие прежней сцены не срабатывает.
+- [x] Тест `test_pending_dropped_for_absent_actor` (Review Focus 5): запись «Just now» для актёра, которого нет в новой сцене, не доставляется никому.
+- [x] Тест `test_situation_hero_as_event_any_scene` (Д1): у сцены `bus` `situation_hero` приходит герою событием `t=0`, а не из начального `_hero_world`.
+- [x] Реализация по 7.2: `events` в сцене, `self.scene_start`, проверка на каждом шаге `_tick`, `self._pending` по получателю вместо `_actor_events`, рост `_turn_epoch` по событию, `event_hit` в давлении. Стартовые события крыши лежат в `roof.json` (§9 и событие Дэна `t=0`), импульсы героя разделены. В `bank.score` добавить `events_fired`/`events_planned`.
+- [x] Все тесты зелёные. Затем бенч `--step 1.3 --runs 1` и строка в DEVLOG.
 
 ## 1.4 цель актёра
 
 Строка 1.4 таблицы 7.2. Имена: `Dialogue.judge(goal, last4) -> "YES" | "NO"`, `Sim._judge_yes`, `Sim._judge_last_line`.
 
-- [ ] Тест `test_goal_done_by_code`: строка Max со словом «fired» без вопроса Дэна о работе в предыдущей строке даёт `goal {status: done, by: code}`, и открывается следующая цель. С вопросом Дэна цель не закрывается (`not_after`).
-- [ ] Тест `test_judge_two_yes`: для цели с `judge: true` после двух `YES` подряд пишется `done, by: judge`. `NO` сбрасывает счёт. Вызовов не больше одного на 4 строки, свободный такт они не блокируют.
-- [ ] Тест `test_goal_open_in_pressure`: при открытой цели у актёра `goal_open = 1`.
-- [ ] Реализация: `goals` в `roof.json` (2–3 цели), логи `goal`/`judge`, метрики `goals_done`, `goal_first_line`, `judge_calls`.
-- [ ] Все тесты зелёные. Затем бенч `--step 1.4 --runs 1` и строка в DEVLOG.
+- [x] Тест `test_goal_done_by_code`: строка Max со словом «fired» без вопроса Дэна о работе в предыдущей строке даёт `goal {status: done, by: code}`, и открывается следующая цель. С вопросом Дэна цель не закрывается (`not_after`).
+- [x] Тест `test_judge_two_yes`: для цели с `judge: true` после двух `YES` подряд пишется `done, by: judge`. `NO` сбрасывает счёт. Вызовов не больше одного на 4 строки, свободный такт они не блокируют.
+- [x] Тест `test_goal_open_in_pressure`: при открытой цели у актёра `goal_open = 1`.
+- [x] Реализация: `goals` в `roof.json` (2–3 цели), логи `goal`/`judge`, метрики `goals_done`, `goal_first_line`, `judge_calls`.
+- [x] Все тесты зелёные. Затем бенч `--step 1.4 --runs 1` и строка в DEVLOG.
 
 ## 1.4b поля директора
 
@@ -134,8 +134,8 @@
 
 Строка Ф1 таблицы 7.2. Код не меняется.
 
-- [ ] Бенч `python3 h0/dream/bench_f1.py --step Ф1 --runs 2`. Гейт Ф1 считается по правилу медианы, бенч-гейты 1.2b–1.4 — на этих же прогонах.
-- [ ] Итог фазы в DEVLOG и PROGRESS.md: таблица всех шагов (метрики, $, PASS/FAIL), сумма ledger, пункты Долга §13 (закрыт или открыт). Отдельной строкой: «чтение человеком ≥ 3 (7б) — за хозяином».
+- [x] Бенч `python3 h0/dream/bench_f1.py --step Ф1 --runs 2`. Гейт Ф1 считается по правилу медианы, бенч-гейты 1.2b–1.4 — на этих же прогонах.
+- [x] Итог фазы в DEVLOG и PROGRESS.md: таблица всех шагов (метрики, $, PASS/FAIL), сумма ledger, пункты Долга §13 (закрыт или открыт). Отдельной строкой: «чтение человеком ≥ 3 (7б) — за хозяином».
 
 ## 2.1 POV
 
@@ -165,14 +165,14 @@
 - Актёры после двух своих строк подряд ждут игрока, как ждали героя (серия ≤ 2).
 - Без актёров `_pick_speaker` при `human` никого не выбирает.
 
-- [ ] Тест `test_pov_human_silences_npc_hero`: после `set_pov("human")` 30 × `pump` на `Dialogue` + `FakeTransport` → ни одной `line` героя с `turn_owner: npc`; в `pressure` нет записи героя; в логе ровно одна `pov {t, hero_owner: human}`.
-- [ ] Тест `test_pov_back_to_npc_resumes`: `human` → `npc` → за 30 × `pump` появляется `line` героя с `turn_owner: npc`; `sim.dialogue.mind(hero)` — тот же объект, что до `human`.
-- [ ] Тест `test_pov_discards_hero_in_flight`: генерация героя в полёте (`_gen_who` = герой, гейт закрыт) → `set_pov("human")` → `_turn_epoch` вырос на 1; после `gate.set()` и одного `pump` → `line_discarded {who: hero, reason: human}`, нет `transition`.
-- [ ] Тест `test_pov_keeps_actor_in_flight`: в полёте строка актёра → после `set_pov("human")`, `gate.set()` и `pump` строка актёра выходит (`line` актёра есть, `line_discarded` нет).
-- [ ] Тест `test_pov_drops_prepared_hero`: `prepared_npc` готов и `_prepared_meta["who"]` = герой → после `set_pov("human")` его нет, в логе `line_discarded {who: hero, reason: human}`.
-- [ ] Тест `test_server_pov`: `POST /pov {"hero_owner": "human"}` → 200 и после `_drain_inbox` `sim.hero_owner == "human"`; `{"hero_owner": "x"}` → 400; чужой `Origin` → 403 (как у `/say`); без живого сна → 409; `GET /api/hero` → 200 с `facts` (только не скрытые) и `diary`.
-- [ ] `comic.html` содержит `fetch('/pov'` с `Content-Type: application/json` и `fetch('/api/hero'` (§9). Лог `pov` идёт через `_emit`.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_pov_human_silences_npc_hero`: после `set_pov("human")` 30 × `pump` на `Dialogue` + `FakeTransport` → ни одной `line` героя с `turn_owner: npc`; в `pressure` нет записи героя; в логе ровно одна `pov {t, hero_owner: human}`.
+- [x] Тест `test_pov_back_to_npc_resumes`: `human` → `npc` → за 30 × `pump` появляется `line` героя с `turn_owner: npc`; `sim.dialogue.mind(hero)` — тот же объект, что до `human`.
+- [x] Тест `test_pov_discards_hero_in_flight`: генерация героя в полёте (`_gen_who` = герой, гейт закрыт) → `set_pov("human")` → `_turn_epoch` вырос на 1; после `gate.set()` и одного `pump` → `line_discarded {who: hero, reason: human}`, нет `transition`.
+- [x] Тест `test_pov_keeps_actor_in_flight`: в полёте строка актёра → после `set_pov("human")`, `gate.set()` и `pump` строка актёра выходит (`line` актёра есть, `line_discarded` нет).
+- [x] Тест `test_pov_drops_prepared_hero`: `prepared_npc` готов и `_prepared_meta["who"]` = герой → после `set_pov("human")` его нет, в логе `line_discarded {who: hero, reason: human}`.
+- [x] Тест `test_server_pov`: `POST /pov {"hero_owner": "human"}` → 200 и после `_drain_inbox` `sim.hero_owner == "human"`; `{"hero_owner": "x"}` → 400; чужой `Origin` → 403 (как у `/say`); без живого сна → 409; `GET /api/hero` → 200 с `facts` (только не скрытые) и `diary`.
+- [x] `comic.html` содержит `fetch('/pov'` с `Content-Type: application/json` и `fetch('/api/hero'` (§9). Лог `pov` идёт через `_emit`.
+- [x] Все тесты зелёные.
 
 ## 2.2 предохранитель
 
@@ -242,14 +242,14 @@
 - Лог `prompt {t, who, tokens}` пишет `Dialogue._call(role, system, user, who=None)` через `event_sink` для ролей hero и actor (`hero_line`/`actor_line` передают имя). `tokens = llm._tokens(llm._prompt_text(system, messages))`, второй формулы нет.
 - `use_scene(x)`: `x` — имя в `scenes/`, путь (относительно `dirname(sim.__file__)`) или dict сцены. Фикстуры лежат в `h0/dream/testdata/`, не в `scenes/`: `scenes/` берёт `bank.main`.
 
-- [ ] Тест `test_check_scene_actor_count`: при валидных `bridge` и `objects` 1 и 5 актёров → `None`; 0 и 6 → `("next_scene", "bad_size")`.
-- [ ] Тест `test_compact_every_by_cast`: `compact_every(2) == 4`, `compact_every(3) == 8`, `compact_every(5) == 8`; `COMPACT_EVERY == 4`.
-- [ ] Тест `test_shared_mind_plus_tried`: roof3, `Dialogue` + `FakeTransport` → на одну свёртку ровно 1 вызов роли compress; у Dan и Maya `memory_text` одинаковый, `tried_text` разный; `mind("Max")` — не `scene_mind`.
-- [ ] Тест `test_prompt_log_five_actors`: `use_scene("testdata/five.json")` (5 актёров), `Sim(fake=True, outdir=tmp, dialogue=Dialogue(load_profile("A"), transport=FakeTransport(reply=…)))` (без `dialogue` строки — заглушки и `prompt` не пишется), `manual_clock(self, sim)`, затем 40 × `pump`. Ожидается:
+- [x] Тест `test_check_scene_actor_count`: при валидных `bridge` и `objects` 1 и 5 актёров → `None`; 0 и 6 → `("next_scene", "bad_size")`.
+- [x] Тест `test_compact_every_by_cast`: `compact_every(2) == 4`, `compact_every(3) == 8`, `compact_every(5) == 8`; `COMPACT_EVERY == 4`.
+- [x] Тест `test_shared_mind_plus_tried`: roof3, `Dialogue` + `FakeTransport` → на одну свёртку ровно 1 вызов роли compress; у Dan и Maya `memory_text` одинаковый, `tried_text` разный; `mind("Max")` — не `scene_mind`.
+- [x] Тест `test_prompt_log_five_actors`: `use_scene("testdata/five.json")` (5 актёров), `Sim(fake=True, outdir=tmp, dialogue=Dialogue(load_profile("A"), transport=FakeTransport(reply=…)))` (без `dialogue` строки — заглушки и `prompt` не пишется), `manual_clock(self, sim)`, затем 40 × `pump`. Ожидается:
   - `prompt` есть у каждого говорившего;
   - `max(tokens) ≤ 5800`;
   - `bank.score([json.loads(l) for l in open(tmp / "log.jsonl")])["max_prompt_tokens"]` равен тому же максимуму.
-- [ ] Все тесты зелёные.
+- [x] Все тесты зелёные.
 
 ## 3.1b шёпот и записки
 
