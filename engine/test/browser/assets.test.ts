@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser, Page } from "playwright";
-import { launch, serve, type Served } from "./serve.js";
+import { launch, serve, type Served, closeBrowser } from "./serve.js";
 import { demoFlat } from "../helpers/scene.js";
 import { runCheck } from "../../src/check.js";
 import { sceneAssets } from "../../src/assets/run.js";
@@ -56,7 +56,7 @@ describe("page with assets", () => {
     // the browser must close before we wait on the server: a page that is
     // still mid-request against a gated path would otherwise keep the
     // server's open connection alive and hang server.close() forever
-    await browser?.close();
+    await closeBrowser(browser);
     await site?.close();
   });
 

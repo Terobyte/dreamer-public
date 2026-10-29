@@ -9,7 +9,12 @@ import { cutPath } from "../openings/stage.js";
 import { fixtureGeos, fixtureFootprint } from "../build/fixtures.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import { msg } from "../report/messages.js";
-import { CAPSULE_H, CAPSULE_R, CELL, STEP_MAX, levelY, pointInPoly } from "./floor.js";
+import { CAPSULE_H, CAPSULE_R, CELL, STEP_MAX, levelY, pointInPoly, rampExit } from "./floor.js";
+import type { NavRamp } from "./floor.js";
+import { placeStairs, type StairGeo } from "../stairs/place.js";
+import { RAIL_BAR } from "../build/stairs.js";
+
+const EPS = 1e-6;
 
 const STAGE: Stage = "nav";
 
@@ -77,8 +82,73 @@ function inSpans(spans: Array<[number, number]>, x: number): boolean {
   return false;
 }
 
+/** A laid-out flight with the two levels it joins and its nav strip. */
+interface StairNav {
+  geo: StairGeo;
+  ramp: NavRamp;
+  fromLevel: string;
+  toLevel: string;
+}
+
+/** A rectangle in flight-axis coordinates: `s0`..`s1` along, `t0`..`t1` across. */
+function axisQuad(geo: StairGeo, s0: number, s1: number, t0: number, t1: number): V2[] {
+  const px: V2 = [-geo.dir[1], geo.dir[0]];
+  const at = (s: number, t: number): V2 => [
+    geo.from[0] + geo.dir[0] * s + px[0] * t,
+    geo.from[1] + geo.dir[1] * s + px[1] * t,
+  ];
+  return [at(s0, t1), at(s1, t1), at(s1, t0), at(s0, t0)];
+}
+
+/** Flight-axis parameter of a plan point. */
+function axisS(geo: StairGeo, p: V2): number {
+  return (p[0] - geo.from[0]) * geo.dir[0] + (p[1] - geo.from[1]) * geo.dir[1];
+}
+
+/**
+ * Every flight that was laid out, with the levels it joins. A flight whose
+ * ends sit on one level links nothing: `stairsStage` already reports that.
+ */
+export function stairNavs(ctx: Ctx): StairNav[] {
+  const raw: any[] = ((ctx.scene as any).stairs ?? []) as any[];
+  const rooms = (ctx.rooms ?? []) as RoomRec[];
+  const levelOf = (id: string): string => rooms.find((r) => r.id === id)?.level ?? "";
+  const out: StairNav[] = [];
+  for (const geo of placeStairs(ctx)) {
+    if (geo.bad !== null) continue;
+    const src = raw[geo.i] ?? {};
+    const fromLevel = levelOf(String(src?.from?.room));
+    const toLevel = levelOf(String(src?.to?.room));
+    if (!fromLevel || !toLevel || fromLevel === toLevel) continue;
+    out.push({
+      geo,
+      fromLevel,
+      toLevel,
+      ramp: {
+        stair: geo.id,
+        y0: geo.y0,
+        y1: geo.y0 + geo.dy,
+        axis: { from: geo.from, dir: Number(src?.from?.dir ?? 0), len: geo.len },
+        poly: axisQuad(geo, 0, geo.len, -geo.width / 2, geo.width / 2),
+      },
+    });
+  }
+  return out;
+}
+
+/** How close to a flight's foot the flood has to get to take it (spec "Навигация"). */
+const LINK_R = 0.3;
+
 interface Obstacles {
   polys: V2[][];
+  /**
+   * Obstacles whose inflated shape has to be cut back to `keep`. A flight's
+   * treads and rails are solid, but the capsule radius must not spill behind
+   * the foot: the round end cap of the offset would wall off the only
+   * approach to the stairs. The entry edge is left uneroded, exactly as the
+   * exit edge of the cut above is (spec "Навигация").
+   */
+  clipped: Array<{ polys: V2[][]; keep: V2[] }>;
   solidProps: PropGeo[];
   body: V2[][];
 }
@@ -127,7 +197,40 @@ function obstaclesOf(ctx: Ctx, level: string, base: number): Obstacles {
     }
   }
 
-  return { polys, solidProps, body: body.map(toPoly) };
+  // A flight is solid in the level it rises from from the first tread the
+  // capsule cannot step onto (top above `step_max`); the one below it is a
+  // step, not a wall. Rails along the sides are solid over the whole run --
+  // and where there is no rail there is a wall that close instead.
+  const clipped: Array<{ polys: V2[][]; keep: V2[] }> = [];
+  for (const sn of stairNavs(ctx)) {
+    const g = sn.geo;
+    const hw = g.width / 2;
+    if (sn.fromLevel === level) {
+      const flight: V2[][] = [];
+      const k = Math.max(1, Math.ceil((STEP_MAX + EPS) / g.rise));
+      const s0 = Math.min(g.len, (k - 1) * g.going);
+      if (s0 < g.len - EPS) flight.push(asPositive(axisQuad(g, s0, g.len, -hw, hw)));
+      if (hw > RAIL_BAR + EPS) {
+        flight.push(asPositive(axisQuad(g, 0, g.len, hw - RAIL_BAR, hw)));
+        flight.push(asPositive(axisQuad(g, 0, g.len, -hw, -hw + RAIL_BAR)));
+      }
+      const far = g.len + hw + CAPSULE_R + 1;
+      if (flight.length > 0) {
+        clipped.push({ polys: flight, keep: asPositive(axisQuad(g, 0, far, -far, far)) });
+      }
+    }
+    // the hole the flight cut in the slab above is not floor on that level.
+    // Its exit edge is left uneroded: the capsule has to be able to stand on
+    // the top tread, which is flush with that edge (spec "Навигация")
+    if (sn.toLevel === level && g.cut) {
+      const ss = g.cut.map((p) => axisS(g, p));
+      const a = Math.min(...ss);
+      const b = Math.max(...ss) - CAPSULE_R;
+      if (b > a + EPS) polys.push(asPositive(axisQuad(g, a, b, -hw, hw)));
+    }
+  }
+
+  return { polys, clipped, solidProps, body: body.map(toPoly) };
 }
 
 /**
@@ -143,12 +246,24 @@ function asPositive(poly: V2[]): V2[] {
   return Clipper.isPositive(toPath(poly)) ? poly : [...poly].reverse();
 }
 
-function inflate(polys: V2[][]): V2[][] {
+function inflatePaths(polys: V2[][]): Path64[] {
   if (polys.length === 0) return [];
   const united = Clipper.union(polys.map(toPath), [], FillRule.NonZero);
   if (united.length === 0) return [];
-  const grown = Clipper.inflatePaths(united, Math.round(CAPSULE_R * 1000), JoinType.Round, EndType.Polygon, 2);
-  return grown.map(toPoly);
+  return Clipper.inflatePaths(united, Math.round(CAPSULE_R * 1000), JoinType.Round, EndType.Polygon, 2);
+}
+
+/**
+ * The region the capsule centre may not enter: every obstacle grown by the
+ * capsule radius, with each clipped group cut back to its own `keep` window.
+ */
+function blockedRegion(obs: Obstacles): V2[][] {
+  let out = inflatePaths(obs.polys);
+  for (const c of obs.clipped) {
+    const grown = Clipper.intersect(inflatePaths(c.polys), [toPath(c.keep)], FillRule.NonZero);
+    if (grown.length > 0) out = Clipper.union(out, grown, FillRule.NonZero);
+  }
+  return out.map(toPoly);
 }
 
 function snapDown(v: number): number {
@@ -192,7 +307,7 @@ function buildLayer(ctx: Ctx, level: string): Layer | null {
   const w = Math.round((snapUp(maxX + CELL) - x0) / CELL);
   const h = Math.round((snapUp(maxZ + CELL) - z0) / CELL);
 
-  const blocked = inflate(obstaclesOf(ctx, level, base).polys);
+  const blocked = blockedRegion(obstaclesOf(ctx, level, base));
   const walk = new Uint8Array(w * h);
   const roomOf = new Int16Array(w * h).fill(-1);
   for (let j = 0; j < h; j++) {
@@ -230,26 +345,73 @@ function spawnLevel(ctx: Ctx): string {
   return rooms.find((r) => r.id === spawnRoom)?.level ?? rooms[0]?.level ?? "L0";
 }
 
+/**
+ * One layer per level that has rooms, by ascending `y` with the spawn level
+ * first: the page spawns in `layers[0]`, and so does every one-level scene.
+ */
+function buildLayers(ctx: Ctx): Layer[] {
+  const rooms = (ctx.rooms ?? []) as RoomRec[];
+  const levels = [...new Set(rooms.map((r) => r.level))];
+  levels.sort((a, b) => levelY(ctx, a) - levelY(ctx, b));
+  const spawn = spawnLevel(ctx);
+  // a stable sort keeps the rest ascending
+  levels.sort((a, b) => (a === spawn ? -1 : b === spawn ? 1 : 0));
+  return levels.map((l) => buildLayer(ctx, l)).filter((l): l is Layer => l !== null);
+}
+
 export function buildNav(ctx: Ctx): NavJson {
-  const layer = buildLayer(ctx, spawnLevel(ctx));
+  const navs = stairNavs(ctx);
   return {
     cell: CELL,
     capsule: { r: CAPSULE_R, h: CAPSULE_H, step_max: STEP_MAX },
-    layers: layer
-      ? [
-          {
-            level: layer.level,
-            y: layer.y,
-            origin: [layer.origin[0], layer.origin[1]],
-            w: layer.w,
-            h: layer.h,
-            bits: packBits(layer),
-          },
-        ]
-      : [],
-    ramps: [],
-    links: [],
+    layers: buildLayers(ctx).map((layer) => ({
+      level: layer.level,
+      y: layer.y,
+      origin: [layer.origin[0], layer.origin[1]],
+      w: layer.w,
+      h: layer.h,
+      bits: packBits(layer),
+    })),
+    ramps: navs.map((n) => n.ramp),
+    links: navs.map((n) => ({ from: n.fromLevel, to: n.toLevel, via: n.geo.id })),
   };
+}
+
+/**
+ * The cell the flood continues from on the level a flight climbs to: the top
+ * tread's exit, or the first cell past it that is walkable.
+ */
+function seedCell(L: Layer, sn: StairNav): number | null {
+  const steps = Math.ceil((CAPSULE_R + CELL) / CELL);
+  for (let k = 0; k <= steps; k++) {
+    const x = sn.geo.exit[0] + sn.geo.dir[0] * k * CELL;
+    const z = sn.geo.exit[1] + sn.geo.dir[1] * k * CELL;
+    const i = Math.floor((x - L.origin[0]) / CELL + 1e-9);
+    const j = Math.floor((z - L.origin[1]) / CELL + 1e-9);
+    if (i < 0 || j < 0 || i >= L.w || j >= L.h) continue;
+    const n = j * L.w + i;
+    if (L.walk[n] === 1) return n;
+  }
+  return null;
+}
+
+/**
+ * The cell the flood continues from on the level a flight descends to: the
+ * foot of the flight, or the first cell past it (away from the ramp) that is
+ * walkable. A flight is walked in both directions (spec "Навигация").
+ */
+function footSeedCell(L: Layer, sn: StairNav): number | null {
+  const steps = Math.ceil((CAPSULE_R + CELL) / CELL);
+  for (let k = 0; k <= steps; k++) {
+    const x = sn.ramp.axis.from[0] - sn.geo.dir[0] * k * CELL;
+    const z = sn.ramp.axis.from[1] - sn.geo.dir[1] * k * CELL;
+    const i = Math.floor((x - L.origin[0]) / CELL + 1e-9);
+    const j = Math.floor((z - L.origin[1]) / CELL + 1e-9);
+    if (i < 0 || j < 0 || i >= L.w || j >= L.h) continue;
+    const n = j * L.w + i;
+    if (L.walk[n] === 1) return n;
+  }
+  return null;
 }
 
 export function isWalkable(nav: NavJson, x: number, z: number, level = "L0"): boolean {
@@ -303,9 +465,10 @@ function blocker(ctx: Ctx, layer: Layer, p: V2, base: number): string {
 export function navStage(ctx: Ctx): Issue[] {
   const issues: Issue[] = [];
   const level = spawnLevel(ctx);
-  const layer = buildLayer(ctx, level);
+  const layers = buildLayers(ctx);
   const nav = buildNav(ctx);
   ctx.nav = nav;
+  const layer = layers.find((l) => l.level === level);
   if (!layer) return issues;
 
   const spawn = (ctx.scene as any).spawn;
@@ -326,41 +489,64 @@ export function navStage(ctx: Ctx): Issue[] {
     return issues;
   }
 
-  // 4-connected flood from the spawn cell
-  const seen = new Uint8Array(layer.w * layer.h);
-  const reached = new Set<number>();
+  // 4-connected flood from the spawn cell, crossing to another level by any
+  // flight whose foot it reaches: a loft is not cut off, it is upstairs
+  const navs = stairNavs(ctx);
+  const seen = layers.map((l) => new Uint8Array(l.w * l.h));
+  const reached = new Set<string>();
+  const li0 = layers.indexOf(layer);
   const start = j * layer.w + i;
-  seen[start] = 1;
-  const queue = [start];
+  seen[li0][start] = 1;
+  const queue: Array<[number, number]> = [[li0, start]];
+  const visit = (lj: number, m: number): void => {
+    if (seen[lj][m] || layers[lj].walk[m] !== 1) return;
+    seen[lj][m] = 1;
+    queue.push([lj, m]);
+  };
   for (let qi = 0; qi < queue.length; qi++) {
-    const n = queue[qi];
-    reached.add(layer.roomOf[n]);
-    const ci = n % layer.w;
-    const cj = (n - ci) / layer.w;
+    const [li, n] = queue[qi];
+    const L = layers[li];
+    reached.add(`${L.level}/${L.roomOf[n]}`);
+    const ci = n % L.w;
+    const cj = (n - ci) / L.w;
     const step = (ni: number, nj: number): void => {
-      if (ni < 0 || nj < 0 || ni >= layer.w || nj >= layer.h) return;
-      const m = nj * layer.w + ni;
-      if (seen[m] || layer.walk[m] !== 1) return;
-      seen[m] = 1;
-      queue.push(m);
+      if (ni < 0 || nj < 0 || ni >= L.w || nj >= L.h) return;
+      visit(li, nj * L.w + ni);
     };
     step(ci + 1, cj);
     step(ci - 1, cj);
     step(ci, cj + 1);
     step(ci, cj - 1);
+    const cx = L.origin[0] + (ci + 0.5) * CELL;
+    const cz = L.origin[1] + (cj + 0.5) * CELL;
+    for (const sn of navs) {
+      if (sn.fromLevel === L.level && Math.hypot(cx - sn.ramp.axis.from[0], cz - sn.ramp.axis.from[1]) <= LINK_R) {
+        const lj = layers.findIndex((x) => x.level === sn.toLevel);
+        const seed = lj < 0 ? null : seedCell(layers[lj], sn);
+        if (seed !== null) visit(lj, seed);
+      }
+      const exit = rampExit(sn.ramp);
+      if (sn.toLevel === L.level && Math.hypot(cx - exit[0], cz - exit[1]) <= LINK_R) {
+        const li2 = layers.findIndex((x) => x.level === sn.fromLevel);
+        const seed = li2 < 0 ? null : footSeedCell(layers[li2], sn);
+        if (seed !== null) visit(li2, seed);
+      }
+    }
   }
 
   const rawRooms: any[] = (ctx.scene as any).rooms ?? [];
-  layer.rooms.forEach((r, k) => {
-    if (reached.has(k)) return;
-    const idx = rawRooms.findIndex((x: any) => String(x?.id) === r.id);
-    const path = `/rooms/${idx < 0 ? 0 : idx}`;
-    issues.push({
-      code: "NAV_ROOM_CUT",
-      stage: STAGE,
-      path,
-      msg: msg("NAV_ROOM_CUT", { room: r.id, path, r: String(CAPSULE_R) }),
+  for (const L of layers) {
+    L.rooms.forEach((r, k) => {
+      if (reached.has(`${L.level}/${k}`)) return;
+      const idx = rawRooms.findIndex((x: any) => String(x?.id) === r.id);
+      const path = `/rooms/${idx < 0 ? 0 : idx}`;
+      issues.push({
+        code: "NAV_ROOM_CUT",
+        stage: STAGE,
+        path,
+        msg: msg("NAV_ROOM_CUT", { room: r.id, path, r: String(CAPSULE_R) }),
+      });
     });
-  });
+  }
   return issues;
 }

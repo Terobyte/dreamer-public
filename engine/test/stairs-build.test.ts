@@ -268,6 +268,9 @@ describe("stairs build", () => {
       sill: 0,
     });
     scene.stairs[0].from.at = [-1.25, 11.6];
+    // the flight now runs over the demo spawn point; move spawn clear of its
+    // footprint so this stays a test of rail clearance, not of stair nav
+    scene.spawn = { room: "hall", at: [1, 5], yaw: 180 };
     const { report, ctx } = runCheck(scene);
     expect(report.errors).toEqual([]);
     const built = buildGeometry(ctx);
@@ -354,6 +357,9 @@ describe("stairs build", () => {
     });
     scene.openings.push({ id: "west-door", kind: "door", at: [-2, 4.5], width: 0.6, height: 2.1, sill: 0 });
     scene.stairs[0].from.at = [-1.25, 11.6];
+    // the flight now runs over the demo spawn point; move spawn clear of its
+    // footprint so this stays a test of rail clearance, not of stair nav
+    scene.spawn = { room: "hall", at: [1, 5], yaw: 180 };
     const { report, ctx } = runCheck(scene);
     expect(report.errors).toEqual([]);
     const built = buildGeometry(ctx);

@@ -5,10 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser } from "playwright";
-import { launch, serve, type Served } from "./serve.js";
+import { launch, serve, type Served, closeBrowser } from "./serve.js";
 import { demoFlat, patched } from "../helpers/scene.js";
 import { fakePng } from "../../src/assets/providers/fake.js";
 import { runShots, SHOTS_DEFAULTS } from "../../src/build/shots.js";
+import { readMarks } from "../helpers/timing.js";
 
 const ENGINE = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -53,7 +54,7 @@ describe("dreamer shots", () => {
   }, 30000);
 
   afterAll(async () => {
-    await browser?.close();
+    await closeBrowser(browser);
   });
 
   async function shots(dist: string, opts = SHOTS_DEFAULTS): Promise<{ status: number; served: Served }> {
@@ -76,15 +77,25 @@ describe("dreamer shots", () => {
     const copy = join(mkdtempSync(join(tmpdir(), "dreamer-stub-")), "dist");
     cpSync(dist, copy, { recursive: true });
     writeFileSync(join(copy, "runtime.js"), "window.__stub = true;\n");
-    const t0 = Date.now();
+    // Timed from the moment the CLI starts waiting for `__ready` to the moment
+    // this process has the failure back (close, exit and teardown included):
+    // the deadline path itself. node+tsx startup and the chromium launch come
+    // before the wait and are not what `--ready-timeout` promises (debt Д8).
+    const timing = join(mkdtempSync(join(tmpdir(), "dreamer-timing-")), "marks.jsonl");
     const r = spawnSync("node", ["--import", "tsx", "bin/dreamer.ts", "shots", copy, "--ready-timeout", "2"], {
       cwd: ENGINE,
       encoding: "utf-8",
+      env: { ...process.env, DREAMER_TIMING_FILE: timing },
     });
-    const seconds = (Date.now() - t0) / 1000;
+    const done = Date.now();
     expect(r.status).toBe(2);
     expect(r.stderr).toContain("door");
-    expect(seconds).toBeLessThan(5);
+    const waits = readMarks(timing).filter((m) => m.mark === "ready-wait");
+    expect(waits.length).toBeGreaterThan(0);
+    const seconds = (done - waits[waits.length - 1]!.t) / 1000;
+    // 2 s ready deadline + 1 s close grace (CLOSE_GRACE_MS) + 1 s for exit:
+    // tighter than the old 5 s over the whole process
+    expect(seconds).toBeLessThan(4);
   });
 
   it("puts the ref next to the shot on the sheet", { timeout: 60000 }, async () => {

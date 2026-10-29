@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { chromium, type Browser } from "playwright";
+import { CLOSE_GRACE_MS, closeWithin } from "../../src/build/shots.js";
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -48,11 +49,26 @@ export async function serve(dir: string): Promise<Served> {
       };
     },
     close(): Promise<void> {
-      return new Promise<void>((ok) => server.close(() => ok()));
+      // without dropping open sockets, close() waits for a still-open
+      // browser's keep-alive connections to time out
+      return new Promise<void>((ok) => {
+        server.close(() => ok());
+        server.closeAllConnections();
+      });
     },
   };
 }
 
 export function launch(): Promise<Browser> {
   return chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
+}
+
+/**
+ * Test teardown's browser close, bounded the way `runShots` bounds its own:
+ * a loaded machine was seen taking over 10 s in `browser.close()`, past the
+ * `afterAll` hook limit, with every assertion already done. After the grace
+ * the close keeps going and the worker's exit kills what is left.
+ */
+export async function closeBrowser(browser: Browser | undefined): Promise<void> {
+  if (browser) await closeWithin(browser, CLOSE_GRACE_MS);
 }

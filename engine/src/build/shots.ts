@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { chromium, type Browser } from "playwright";
+import { mark } from "../report/timing.js";
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -55,7 +56,14 @@ export async function serveDist(dir: string): Promise<{ url: string; close: () =
   const port = (server.address() as { port: number }).port;
   return {
     url: `http://127.0.0.1:${port}/`,
-    close: () => new Promise<void>((ok) => server.close(() => ok())),
+    // `close()` alone waits for every keep-alive socket to idle out (5 s by
+    // default), and a chromium still shutting down after its close grace
+    // holds one: drop them, every file has been served by now
+    close: () =>
+      new Promise<void>((ok) => {
+        server.close(() => ok());
+        server.closeAllConnections();
+      }),
   };
 }
 
@@ -198,9 +206,9 @@ async function renderTopPng(dist: string, browser: Browser): Promise<void> {
  * wait for: after the grace the close keeps going in the background, and the
  * CLI's `process.exit` makes Playwright's exit handler kill the process.
  */
-const CLOSE_GRACE_MS = 1000;
+export const CLOSE_GRACE_MS = 1000;
 
-async function closeWithin(browser: Browser, ms: number): Promise<void> {
+export async function closeWithin(browser: Browser, ms: number): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const closing = browser.close().catch(() => undefined);
   await Promise.race([closing, new Promise<void>((ok) => (timer = setTimeout(ok, ms)))]);
@@ -247,6 +255,7 @@ export async function runShots(
     for (let i = 0; i < cameras.length; i++) {
       const cam = cameras[i]!;
       await page.goto(`${served.url}index.html?cam=${encodeURIComponent(cam.id)}`);
+      mark("ready-wait");
       try {
         await page.waitForFunction("window.__ready === true", undefined, { timeout: opts.readyTimeoutMs });
       } catch {

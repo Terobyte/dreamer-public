@@ -5,7 +5,7 @@ import { obbCorners } from "../geom/obb.js";
 import { closestOnEdge } from "../props/place.js";
 import { freeWalls, freeWallPoly } from "../plan/merge.js";
 import { fixtureGeos, fixtureFootprint } from "../build/fixtures.js";
-import { pointInPoly, CELL } from "../nav/floor.js";
+import { pointInPoly, CELL, type NavRamp } from "../nav/floor.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import { cellCenter, cellOf, gridOf, walkable, SNAP_R } from "./astar.js";
 
@@ -14,6 +14,8 @@ export const PROP_R = 0.6;
 
 export interface Waypoint {
   at: V2;
+  /** which nav layer the point lives on: a route may change levels by a flight */
+  level: string;
   /** how the target reads in `ROUTE_BLOCKED`: `{route}: ... по пути к {цель}` */
   label: string;
   /** snap radius for "is this point reachable at all" (spec "Маршруты"): 0.6 m for a prop, 0.3 m otherwise. */
@@ -82,35 +84,51 @@ function propApproach(nav: NavJson, level: string, g: PropGeo): V2 | null {
  * be reported as `REF_UNKNOWN`, not silently skipped.
  */
 export function waypoint(ctx: Ctx, nav: NavJson, level: string, point: unknown): WaypointResult {
+  const rooms = (ctx.rooms ?? []) as any[];
+  const levelOf = (room: string): string => rooms.find((r) => r.id === room)?.level ?? level;
   if (point === "spawn") {
     const at = (ctx.scene as any).spawn?.at;
-    return { ok: true, wp: { at: [Number(at[0]), Number(at[1])], label: "spawn", radius: SNAP_R } };
+    return { ok: true, wp: { at: [Number(at[0]), Number(at[1])], level, label: "spawn", radius: SNAP_R } };
   }
   if (typeof point === "string") {
     const op = ((ctx.openings ?? []) as OpeningGeo[]).find((g) => g.id === point && !g.error);
-    if (op) return { ok: true, wp: { at: [op.center[0], op.center[1]], label: op.id, radius: SNAP_R } };
+    if (op) {
+      const at: V2 = [op.center[0], op.center[1]];
+      return { ok: true, wp: { at, level: op.intervalLevel || level, label: op.id, radius: SNAP_R } };
+    }
+    // a flight is reached at its foot, on the level it rises from
+    const ramp = ((nav.ramps ?? []) as NavRamp[]).find((r) => r.stair === point);
+    const link = ((nav.links ?? []) as any[]).find((l) => String(l?.via) === point);
+    if (ramp && link) {
+      const at: V2 = [ramp.axis.from[0], ramp.axis.from[1]];
+      return { ok: true, wp: { at, level: String(link.from), label: point, radius: SNAP_R } };
+    }
     const prop = ((ctx.props ?? []) as PropGeo[]).find((g) => g.id === point);
     if (prop) {
-      const at = propApproach(nav, level, prop) ?? [prop.obb.c[0], prop.obb.c[1]];
-      return { ok: true, wp: { at: [at[0], at[1]], label: prop.id, radius: PROP_R } };
+      const pl = levelOf(prop.room);
+      const at = propApproach(nav, pl, prop) ?? [prop.obb.c[0], prop.obb.c[1]];
+      return { ok: true, wp: { at: [at[0], at[1]], level: pl, label: prop.id, radius: PROP_R } };
     }
     const have = [
       ...((ctx.openings ?? []) as OpeningGeo[]).filter((g) => !g.error).map((g) => g.id),
       ...((ctx.props ?? []) as PropGeo[]).map((g) => g.id),
+      ...((nav.ramps ?? []) as NavRamp[]).map((r) => r.stair),
     ].join(", ");
     return { ok: false, kind: "точка маршрута", v: point, have };
   }
   if (point !== null && typeof point === "object") {
     const o = point as Record<string, unknown>;
     const room = String(o.room);
-    const rooms = ((ctx.rooms ?? []) as any[]).filter((r) => r.level === level);
     if (!rooms.some((r) => r.id === room)) {
       return { ok: false, kind: "комната", v: room, have: rooms.map((r) => r.id).join(", ") };
     }
     const at = o.at as unknown;
     const x = Number(Array.isArray(at) ? at[0] : NaN);
     const z = Number(Array.isArray(at) ? at[1] : NaN);
-    return { ok: true, wp: { at: [x, z], label: `${room} (${round2(x)}, ${round2(z)})`, radius: SNAP_R } };
+    return {
+      ok: true,
+      wp: { at: [x, z], level: levelOf(room), label: `${room} (${round2(x)}, ${round2(z)})`, radius: SNAP_R },
+    };
   }
   return { ok: false, kind: "точка маршрута", v: String(point), have: "" };
 }

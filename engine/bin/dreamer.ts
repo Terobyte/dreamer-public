@@ -12,6 +12,7 @@ import { runAssets, missingAssets } from "../src/assets/run.js";
 import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
 import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
 import type { Issue, NavJson, Report } from "../src/types.js";
+import { mark } from "../src/report/timing.js";
 import type { PropFact } from "../src/props/fact.js";
 
 const USAGE =
@@ -82,6 +83,8 @@ function printAndDiff(rp: string, report: Report): void {
 }
 
 async function main(): Promise<number> {
+  // every import above is loaded by now: what follows is the command itself
+  mark("main");
   const args = process.argv.slice(2);
   if (args[0] === "build") return runBuild(args);
   if (args[0] === "shots") return runShotsCmd(args);
@@ -301,4 +304,6 @@ function defaultReportPath(scenePath: string, sceneName?: string): string {
   return join(dir, `${base}.check.json`);
 }
 
-process.exit(await main());
+const code = await main();
+mark("exit");
+process.exit(code);

@@ -2,7 +2,7 @@ import type { Ctx } from "../ctx.js";
 import type { Issue, NavJson, Stage } from "../types.js";
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
-import { findRoute, gridOf, nearestWalkable, nearestWalkableAny } from "./astar.js";
+import { findRouteLevels, gridOf, nearestWalkable, nearestWalkableAny } from "./astar.js";
 import { blockerBetween, waypoint } from "./waypoints.js";
 
 const STAGE: Stage = "routes";
@@ -19,7 +19,7 @@ export function routesStage(ctx: Ctx, nav: NavJson): Issue[] {
 
   routes.forEach((route, ri) => {
     const points = (route?.path ?? []) as unknown[];
-    let cur: [number, number] | null = null;
+    let cur: { level: string; at: [number, number] } | null = null;
     for (let pi = 0; pi < points.length; pi++) {
       const res = waypoint(ctx, nav, level, points[pi]);
       const path = `/routes/${ri}/path/${pi}`;
@@ -34,10 +34,10 @@ export function routesStage(ctx: Ctx, nav: NavJson): Issue[] {
       }
       const wp = res.wp;
       if (cur === null) {
-        const grid = gridOf(nav, level);
+        const grid = gridOf(nav, wp.level);
         if (!grid || nearestWalkable(grid, wp.at, wp.radius) === null) {
           const stuck = (grid && nearestWalkableAny(grid, wp.at)) || wp.at;
-          const what = blockerBetween(ctx, level, stuck, wp.at);
+          const what = blockerBetween(ctx, wp.level, stuck, wp.at);
           issues.push({
             code: "ROUTE_BLOCKED",
             stage: STAGE,
@@ -52,23 +52,23 @@ export function routesStage(ctx: Ctx, nav: NavJson): Issue[] {
           });
           return;
         }
-        cur = wp.at;
+        cur = { level: wp.level, at: wp.at };
         continue;
       }
-      const r = findRoute(nav, cur, wp.at, level);
+      const r = findRouteLevels(nav, cur, { level: wp.level, at: wp.at });
       if (r.ok) {
-        cur = wp.at;
+        cur = { level: wp.level, at: wp.at };
         continue;
       }
-      const what = blockerBetween(ctx, level, r.stuck, wp.at);
+      const what = blockerBetween(ctx, r.stuck.level, r.stuck.at, wp.at);
       issues.push({
         code: "ROUTE_BLOCKED",
         stage: STAGE,
         path,
         msg: msg("ROUTE_BLOCKED", {
           route: String(route?.id ?? ri),
-          x: String(round3(r.stuck[0])),
-          z: String(round3(r.stuck[1])),
+          x: String(round3(r.stuck.at[0])),
+          z: String(round3(r.stuck.at[1])),
           target: wp.label,
           what,
         }),

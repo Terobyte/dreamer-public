@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import type { Browser, Page } from "playwright";
-import { launch, serve, type Served } from "./serve.js";
+import { launch, serve, type Served, closeBrowser } from "./serve.js";
 import { demoFlat, patched } from "../helpers/scene.js";
 import { runCheck } from "../../src/check.js";
 import { sceneAssets } from "../../src/assets/run.js";
@@ -86,7 +86,7 @@ describe("page", () => {
   }, 30000);
 
   afterAll(async () => {
-    await browser?.close();
+    await closeBrowser(browser);
     await site?.close();
   });
 

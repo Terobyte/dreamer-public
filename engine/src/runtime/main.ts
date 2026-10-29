@@ -176,9 +176,13 @@ async function start(): Promise<void> {
     }
   }
 
-  const layer = (nav.layers ?? [])[0];
-  const bits = unbase64(String(layer?.bits ?? ""));
-  const walker: Walker = makeWalker(layer, bits, geo.floors ?? [], geo.spawn.at);
+  // layers[0] is the spawn level (`buildLayers`); the rest are reachable by a
+  // flight, so the walker needs all of them and the ramps that join them
+  const all = (nav.layers ?? []).map((l: any) => ({ layer: l, bits: unbase64(String(l?.bits ?? "")) }));
+  const walker: Walker = makeWalker(all[0].layer, all[0].bits, geo.floors ?? [], geo.spawn.at, {
+    layers: all.slice(1),
+    ramps: nav.ramps ?? [],
+  });
 
   const camera = setup.camera;
   const keys = controls(renderer.domElement, Number(geo.spawn.yaw ?? 0));

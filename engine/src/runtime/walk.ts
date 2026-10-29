@@ -1,4 +1,4 @@
-import { floorAtRooms, navBit, type NavLayer } from "../nav/floor.js";
+import { floorAtRooms, navBit, rampUnder, rampWalkable, type NavLayer, type NavRamp } from "../nav/floor.js";
 import type { V2 } from "../geom/vec.js";
 
 export const EYE = 1.6;
@@ -16,15 +16,46 @@ export interface Walker {
   teleport(x: number, z: number): [number, number, number];
 }
 
+/** The layers and flights a walk may use beyond the one it starts on. */
+export interface MoreNav {
+  layers: Array<{ layer: NavLayer; bits: Uint8Array }>;
+  ramps: NavRamp[];
+}
+
 /** Capsule walk over the nav bitmap: the cell under the capsule centre decides. */
-export function makeWalker(layer: NavLayer, bits: Uint8Array, floors: Floor[], start: V2): Walker {
+export function makeWalker(
+  layer: NavLayer,
+  bits: Uint8Array,
+  floors: Floor[],
+  start: V2,
+  more?: MoreNav,
+): Walker {
+  const layers = [{ layer, bits }, ...(more?.layers ?? [])];
+  const ramps = more?.ramps ?? [];
   let x = start[0];
   let z = start[1];
-  let fy = floorAtRooms(floors, x, z, layer.y) ?? layer.y;
+  let fy = floorAtRooms(floors, x, z, layer.y, ramps) ?? layer.y;
+
+  /**
+   * On a flight the grid says nothing -- a ramp cuts across the layers it
+   * joins -- so its own strip decides. Off it, the layer whose floor sits
+   * closest to the height the capsule is standing at owns the cell.
+   */
+  const open = (nx: number, nz: number): boolean => {
+    // the same flight `floorAtRooms` stands the capsule on, not just the
+    // first footprint hit: stacked flights share a plan
+    const on = rampUnder(ramps, nx, nz, fy);
+    if (on.inside) return on.ramp !== null && rampWalkable(on.ramp, nx, nz);
+    let best = layers[0];
+    for (const L of layers) {
+      if (Math.abs(L.layer.y - fy) < Math.abs(best.layer.y - fy)) best = L;
+    }
+    return navBit(best.layer, best.bits, nx, nz);
+  };
 
   const step = (nx: number, nz: number): boolean => {
-    if (!navBit(layer, bits, nx, nz)) return false;
-    const y = floorAtRooms(floors, nx, nz, fy);
+    if (!open(nx, nz)) return false;
+    const y = floorAtRooms(floors, nx, nz, fy, ramps);
     if (y === null) return false;
     x = nx;
     z = nz;
@@ -44,8 +75,8 @@ export function makeWalker(layer: NavLayer, bits: Uint8Array, floors: Floor[], s
       return here();
     },
     teleport(nx: number, nz: number): [number, number, number] {
-      if (!navBit(layer, bits, nx, nz)) throw new Error(`cell (${nx}, ${nz}) is not walkable`);
-      const y = floorAtRooms(floors, nx, nz, fy);
+      if (!open(nx, nz)) throw new Error(`cell (${nx}, ${nz}) is not walkable`);
+      const y = floorAtRooms(floors, nx, nz, fy, ramps);
       if (y === null) throw new Error(`no floor under (${nx}, ${nz})`);
       x = nx;
       z = nz;

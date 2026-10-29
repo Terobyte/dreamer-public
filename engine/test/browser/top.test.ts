@@ -6,9 +6,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 import type { Browser } from "playwright";
-import { launch, serve } from "./serve.js";
+import { launch, serve, closeBrowser } from "./serve.js";
 import { demoFlat } from "../helpers/scene.js";
 import { runShots, SHOTS_DEFAULTS } from "../../src/build/shots.js";
+import { readMarks } from "../helpers/timing.js";
 
 const ENGINE = fileURLToPath(new URL("../../", import.meta.url));
 const DEMO = "../specs/examples/demo-flat.scene.json";
@@ -74,7 +75,7 @@ describe("top.png", () => {
   }, 30000);
 
   afterAll(async () => {
-    await browser?.close();
+    await closeBrowser(browser);
   });
 
   it("test_top_png: shots renders the plan svg into dist/top.png", { timeout: 60000 }, async () => {
@@ -101,9 +102,19 @@ describe("top.png", () => {
 
   it("test_check_no_browser: check and build never make a top.png", { timeout: 30000 }, () => {
     const reportDir = mkdtempSync(join(tmpdir(), "dreamer-report-"));
-    const t0 = Date.now();
-    const r = cli(["check", DEMO, "--report", join(reportDir, "demo-flat.check.json")], NO_CHROMIUM_ENV);
-    const seconds = (Date.now() - t0) / 1000;
+    // Timed from the start of the `check` command (every module already
+    // loaded) to the moment this process has its result: a browser launch
+    // would land inside that window; node+tsx startup, which a loaded machine
+    // stretches past a second on its own, does not (debt Д8).
+    const timing = join(mkdtempSync(join(tmpdir(), "dreamer-timing-")), "marks.jsonl");
+    const r = cli(["check", DEMO, "--report", join(reportDir, "demo-flat.check.json")], {
+      ...NO_CHROMIUM_ENV,
+      DREAMER_TIMING_FILE: timing,
+    });
+    const done = Date.now();
+    const started = readMarks(timing).find((m) => m.mark === "main");
+    expect(started, "check wrote its main mark").toBeDefined();
+    const seconds = (done - started!.t) / 1000;
     expect(r.status).toBe(0);
     expect(existsSync(join(reportDir, "demo-flat.top.svg"))).toBe(true);
     expect(existsSync(join(reportDir, "demo-flat.top.png"))).toBe(false);
