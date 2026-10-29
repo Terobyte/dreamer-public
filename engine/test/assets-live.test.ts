@@ -321,7 +321,7 @@ describe("assets live", () => {
       console.error = err;
       if (prev === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prev;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -340,7 +340,7 @@ describe("assets live", () => {
     } finally {
       if (prev === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prev;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -442,7 +442,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -472,7 +472,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -502,7 +502,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -543,8 +543,8 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => permServer.close(() => r()));
-      await new Promise<void>((r) => tempServer.close(() => r()));
+      await new Promise<void>((r) => { permServer.closeAllConnections(); permServer.close(() => r()); });
+      await new Promise<void>((r) => { tempServer.closeAllConnections(); tempServer.close(() => r()); });
     }
   });
 
@@ -608,7 +608,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -630,7 +630,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 
@@ -650,7 +650,7 @@ describe("assets live", () => {
     } finally {
       if (prevKey === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prevKey;
-      await new Promise<void>((r) => server.close(() => r()));
+      await new Promise<void>((r) => { server.closeAllConnections(); server.close(() => r()); });
     }
   });
 

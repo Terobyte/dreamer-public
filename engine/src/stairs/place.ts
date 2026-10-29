@@ -107,7 +107,7 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
     const y1 = levelY.get(String(toGeo.level)) ?? 0;
     const dy = y1 - y0;
     // Δy ≤ 0: nothing to climb, so there is no N to divide by (review focus)
-    if (dy <= EPS) return base;
+    if (dy <= 0) return base;
 
     const n = Math.max(1, Math.round(dy / rise));
     const r = dy / n;

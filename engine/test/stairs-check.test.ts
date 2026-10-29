@@ -91,6 +91,14 @@ describe("stairs check", () => {
     expect(code).toBe(1);
   });
 
+  it("test_stair_tiny_rise_climbs", () => {
+    const raw = demo();
+    raw.levels[1].y = 5e-7;
+    raw.stairs[0].from.at = [1.4, 9.0];
+    const { report } = runCheck(raw);
+    expect(report.errors.find((i) => i.code === "STAIR_EXIT_OUTSIDE")).toBeUndefined();
+  });
+
   it("test_future_stairs_gone", () => {
     const { report } = runCheck(demo());
     expect(report.errors.filter((e) => e.code === "SCHEMA_FUTURE_FIELD")).toEqual([]);
