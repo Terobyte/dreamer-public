@@ -98,6 +98,7 @@ body.blind #strip { padding-bottom: 16px; }
   <span class="grow"></span>
   <span id="replayctl" hidden>
     <button id="play1">▶ ×1 со звуком</button>
+    <button id="pausebtn" disabled>⏸ пауза</button>
     <button id="playfast">⏩ мгновенно</button>
     <select id="scenesel" title="прыжок к сцене"></select>
   </span>
@@ -560,9 +561,12 @@ function startLive() {
 
 // --- replay ------------------------------------------------------------------------
 let replayIdx = 0, replayTimer = null;
+// pause holds the replay clock and the voice; play resumes from the same line
+let replayDue = 0, replayLeft = 0, replayHeld = false, replayRunning = false;
 function resetView() { strip.innerHTML = ""; S = fresh(); if (!live) { povSeq = -1; povHuman = false; } if (audioEl) audioEl.pause(); audioQ.length = 0; }
 function playFrom(i, fast) {
   clearTimeout(replayTimer);
+  replayHeld = false; replayRunning = !fast;
   resetView();
   instant = true;
   for (let k = 0; k <= i && k < rows.length; k++) apply(rows[k]);
@@ -572,15 +576,37 @@ function playFrom(i, fast) {
   render();
   if (S.scene) S.scene.scrollIntoView();
   if (!fast) step();
+  renderPause();
 }
 function step() {
-  if (replayIdx >= rows.length) return;
+  if (replayIdx >= rows.length) { replayRunning = false; renderPause(); return; }
   const r = rows[replayIdx++];
   apply(r);
   const nx = rows[replayIdx];
-  if (!nx) return;
-  const dt = Math.max(0, (nx.t || 0) - (r.t || 0));
-  replayTimer = setTimeout(step, Math.min(dt * 1000, 8000));
+  if (!nx) { replayRunning = false; renderPause(); return; }
+  const dt = Math.min(Math.max(0, (nx.t || 0) - (r.t || 0)) * 1000, 8000);
+  replayDue = performance.now() + dt;
+  replayTimer = setTimeout(step, dt);
+}
+function renderPause() {
+  const b = $("pausebtn");
+  b.disabled = !replayRunning;
+  b.textContent = replayHeld ? "▶ дальше" : "⏸ пауза";
+}
+function togglePause() {
+  if (!replayRunning) return;
+  if (!replayHeld) {
+    clearTimeout(replayTimer);
+    replayLeft = Math.max(0, replayDue - performance.now());
+    if (audioEl) audioEl.pause();
+    replayHeld = true;
+  } else {
+    replayHeld = false;
+    if (audioEl && !audioEl.ended && sound) audioEl.play().catch(() => {});
+    replayDue = performance.now() + replayLeft;
+    replayTimer = setTimeout(step, replayLeft);
+  }
+  renderPause();
 }
 async function startReplay() {
   $("mode").textContent = "повтор"; $("mode").className = "badge replay";
@@ -602,6 +628,7 @@ async function startReplay() {
     if (!sound) $("soundbtn").click();
     playFrom(+sel.value || 0, false);
   });
+  $("pausebtn").addEventListener("click", togglePause);
   $("playfast").addEventListener("click", () => { if (sound) $("soundbtn").click(); playFrom(0, true); });
   playFrom(0, true);
 }
