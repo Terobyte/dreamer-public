@@ -133,14 +133,14 @@
   - `blame_global(engine: Engine, work: Path, skeleton, partials, plan, issues) -> dict[str, list]`: `issues` — `blocking(report)` отчёта `check_full`. Находки с путём `/props/i`, `/decals/i`, `/lights/i`, `/cameras/i`, `/fixtures/i` — владельцу объекта; `/rooms/i/(walls|edges|floor|ceiling)…` → `rooms[i].id`; `/openings/j/(leaf|outside)…` → `plan["openings"][openings[j].id]["owner"]`; `PROP_HITS_PROP` — **только** владельцу пропа по `path` (движок записывает на более поздний, `engine/src/props/lint.ts:387`); `NAV_ROOM_CUT`, `NAV_SPAWN_BLOCKED`, `ROUTE_BLOCKED` — **бисекцией**: для каждой комнаты-подозреваемой (в порядке `skeleton["rooms"]`) `engine.check_full` сцены без её частичного JSON; виновник — комната, без которой находка с тем же `code` и `path` исчезает из `blocking`. Не нашёлся → `"skeleton"`. Прочие пути `/rooms…`, `/openings…`, `/stairs…`, `/levels…`, `/spawn…` и находки без пути → `"skeleton"`. Бисекция — только вызовы движка, без Spark; `check_full` подозреваемых идут параллельно (`ThreadPoolExecutor`; `check_full` не под семафором `Gated`), виновник — первый по порядку `skeleton["rooms"]`; число `check_full` на находку ≤ числа комнат.
 - Тест-стенд: синтетический каркас из 4 комнат (коридор + 3 комнаты с дверями из коридора), строится в тесте, проверяется настоящим `check`/`check_full`.
 
-- [ ] тест: `cosmetic` меняет материал стен и `leaf.decal` своей двери; чужой двери → `OWN_OPENING`; `shape` в `cosmetic` → `OWN_GEOMETRY`
-- [ ] тест: `fixtures` чужой комнаты → `OWN_ROOM`, своей — в сцене
-- [ ] тест `test_nav_cut_blames_culprit`: проп комнаты A перекрывает дверь из коридора в B → `blame_global` отдаёт `NAV_ROOM_CUT` владельцу A
-- [ ] тест: `PROP_HITS_PROP` через проём уходит одному владельцу по `path` — и в `blame_global`, и в `split_owners`; переписанные тесты `test_merge.py` зелёные
-- [ ] тест: `ROUTE_BLOCKED` из-за пропа комнаты A → A; маршрут, перекрытый геометрией каркаса → `"skeleton"`; число `check_full` на находку ≤ числа комнат (счётчик-обёртка над `Engine`)
-- [ ] тест: `blame_room` приписывает R находку nav в сцене «каркас + R»; `ROOMS_OVERLAP`, `ID_DUPLICATE` по id каркаса, `/openings/j/at`, `/stairs…`, `/levels…` → `"skeleton"`
-- [ ] тест: `REF_KIND` по `/materials/A_x/tile` → A (и в `blame_room`, и в `blame_global`); ключ без префикса комнаты → `"skeleton"`; находка без `path` → `"skeleton"`
-- [ ] тест: неизвестный материал (`REF_UNKNOWN`) в `cosmetic` комнаты A → находка у A, не у `"skeleton"` (и в `blame_room`, и в `blame_global`)
+- [x] тест: `cosmetic` меняет материал стен и `leaf.decal` своей двери; чужой двери → `OWN_OPENING`; `shape` в `cosmetic` → `OWN_GEOMETRY`
+- [x] тест: `fixtures` чужой комнаты → `OWN_ROOM`, своей — в сцене
+- [x] тест `test_nav_cut_blames_culprit`: проп комнаты A перекрывает дверь из коридора в B → `blame_global` отдаёт `NAV_ROOM_CUT` владельцу A
+- [x] тест: `PROP_HITS_PROP` через проём уходит одному владельцу по `path` — и в `blame_global`, и в `split_owners`; переписанные тесты `test_merge.py` зелёные
+- [x] тест: `ROUTE_BLOCKED` из-за пропа комнаты A → A; маршрут, перекрытый геометрией каркаса → `"skeleton"`; число `check_full` на находку ≤ числа комнат (счётчик-обёртка над `Engine`)
+- [x] тест: `blame_room` приписывает R находку nav в сцене «каркас + R»; `ROOMS_OVERLAP`, `ID_DUPLICATE` по id каркаса, `/openings/j/at`, `/stairs…`, `/levels…` → `"skeleton"`
+- [x] тест: `REF_KIND` по `/materials/A_x/tile` → A (и в `blame_room`, и в `blame_global`); ключ без префикса комнаты → `"skeleton"`; находка без `path` → `"skeleton"`
+- [x] тест: неизвестный материал (`REF_UNKNOWN`) в `cosmetic` комнаты A → находка у A, не у `"skeleton"` (и в `blame_room`, и в `blame_global`)
 
 ## Воркер ассетов
 

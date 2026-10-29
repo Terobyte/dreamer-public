@@ -326,16 +326,14 @@ class TestSplitOwners(unittest.TestCase):
             MINI_PLAN,
         )
 
-    def test_cross_room_pair_goes_to_both(self):
+    def test_cross_room_pair_goes_to_the_prop_in_the_path(self):
+        # the engine records the pair on the later prop; that room moves it
         issue = {"code": "PROP_HITS_PROP", "path": "/props/1", "other": "a_1"}
-        owners = split_owners(self.scene, [issue])
-        self.assertEqual(sorted(owners), ["a", "b"])
-        self.assertEqual(owners["a"], [issue])
-        self.assertEqual(owners["b"], [issue])
+        self.assertEqual({"b": [issue]}, split_owners(self.scene, [issue]))
 
-    def test_cross_room_pair_via_a_b(self):
+    def test_cross_room_pair_without_a_path_is_nobodys(self):
         issue = {"code": "PROP_HITS_PROP", "a": "/props/0", "b": "/props/1"}
-        self.assertEqual(sorted(split_owners(self.scene, [issue])), ["a", "b"])
+        self.assertEqual({"skeleton": [issue]}, split_owners(self.scene, [issue]))
 
     def test_same_room_pair_goes_once(self):
         issue = {"code": "PROP_HITS_PROP", "path": "/props/0", "other": "a_1"}
