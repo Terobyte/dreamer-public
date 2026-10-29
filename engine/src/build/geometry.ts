@@ -60,16 +60,20 @@ export interface Geometry {
   style: { ambient: number; exterior: string };
 }
 
+/** Asset ids that `--assets cache`/`live` resolved, each pointing at its `dist/assets/<id>.*` file. */
+export type AssetFiles = Record<string, string>;
+
 /** Scene materials, `$exterior` and the asset placeholders, keyed by mesh material id. */
-export function materialTable(scene: any): Record<string, MaterialDef> {
+export function materialTable(scene: any, assetFiles: AssetFiles = {}): Record<string, MaterialDef> {
   // a plain object trips on an id literally named "__proto__" (it would set
   // the prototype instead of an own property, F21); Object.create(null)
   // has no such accessor in its chain
   const out: Record<string, MaterialDef> = Object.create(null) as Record<string, MaterialDef>;
   for (const [id, m] of Object.entries((scene.materials ?? {}) as Record<string, any>)) {
     if (id === EXTERIOR) throw new Error(`material id "${EXTERIOR}" is reserved`);
-    if (typeof m?.tile === "string") out[id] = { color: grayOf(id), repeat_m: m.repeat_m ?? 1.0 };
-    else out[id] = { color: String(m?.color) };
+    if (typeof m?.tile === "string") {
+      out[id] = { color: grayOf(id), repeat_m: m.repeat_m ?? 1.0, ...(assetFiles[m.tile] ? { map: assetFiles[m.tile] } : {}) };
+    } else out[id] = { color: String(m?.color) };
   }
   for (const [id, a] of Object.entries((scene.assets ?? {}) as Record<string, any>)) {
     if (id === EXTERIOR) throw new Error(`asset id "${EXTERIOR}" is reserved`);
@@ -77,13 +81,16 @@ export function materialTable(scene: any): Record<string, MaterialDef> {
       throw new Error(`material and asset share the id "${id}"`);
     }
     if (a?.kind === "tile") continue;
-    out[id] = a?.kind === "decal" ? { color: grayOf(id), transparent: true } : { color: grayOf(id) };
+    out[id] =
+      a?.kind === "decal"
+        ? { color: grayOf(id), transparent: true, ...(assetFiles[id] ? { map: assetFiles[id] } : {}) }
+        : { color: grayOf(id) };
   }
   out[EXTERIOR] = { color: String(scene.style?.exterior ?? "#808080") };
   return out;
 }
 
-export function buildGeometry(ctx: Ctx): Geometry {
+export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}): Geometry {
   const scene: any = ctx.scene;
   const meshes: Mesh[] = [];
   const levelY = new Map<string, number>();
@@ -133,7 +140,7 @@ export function buildGeometry(ctx: Ctx): Geometry {
   }
 
   // things: props, decals, door leaves and backdrops
-  meshes.push(...propMeshes(ctx), ...decalMeshes(ctx), ...doorMeshes(ctx));
+  meshes.push(...propMeshes(ctx, assetFiles), ...decalMeshes(ctx), ...doorMeshes(ctx));
 
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
@@ -142,7 +149,7 @@ export function buildGeometry(ctx: Ctx): Geometry {
     version: 0,
     meshes,
     floors,
-    materials: materialTable(scene),
+    materials: materialTable(scene, assetFiles),
     lights: (scene.lights ?? []) as Light[],
     cameras: (scene.cameras ?? []) as Camera[],
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },

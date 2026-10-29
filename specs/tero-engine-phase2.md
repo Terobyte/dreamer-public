@@ -109,14 +109,14 @@
 - `sam3d.ts`: пишет `<tmp>/<key>.png`, запускает `modal run <repoRoot>/h0/sam3d_modal.py --out <tmp> --pngs <tmp>/<key>.png` с `repoRoot = resolve(engineDir, "..")` и `cwd = repoRoot`. Ждёт exit 0 (таймаут 600 с → kill), затем читает `<tmp>/<key>.glb`. Нет файла → ошибка `SAM3D returned no GLB for <id>`, ассет идёт в `missing`. Код `h0/` не меняется.
 - В тестах живые провайдеры не создаются: `fake.ts` даёт PNG 4×4 одного цвета (белые углы для decal) и минимальный валидный GLB: один треугольник (1, 2, −0.5), (3, 2, 0.5), (2, 4, 0), `POSITION.min/max` = [1, 2, −0.5] / [3, 4, 0.5], материал `metallicFactor: 1`.
 
-- [ ] `test_prompt_templates`: `promptFor("object", "a vase")` начинается с шаблона object и кончается `". a vase"`; то же для tile/decal
-- [ ] `test_size_for`: `"1:1"` → `1024x1024`, `"2:1"` → `2048x1024`, `"1:2"` → `1024x2048`, `"4:3"` → `1024x1024`
-- [ ] `test_cache_key_stable`: одинаковые входы → один ключ; ключ tile меняется при смене `aspect`; патч `/props/0/size/h` ключ предмета не меняет
-- [ ] `test_cache_mode_no_calls`: тест сам кладёт фейковые PNG/GLB по `cacheKey` всех 10 ассетов demo-flat; `runAssets` `cache` с фейками-счётчиками → 0 вызовов, `used` = все 10
-- [ ] `test_missing_asset_falls_back`: тот же кэш без `p_sofa`, CLI `--assets cache` → `missing` = `["p_sofa"]`, exit 0, предупреждение с `p_sofa` в `build.json.warnings`
-- [ ] `test_decal_alpha`: фейковый decal 16×16, рамка 4 px белая (255), внутри (200, 50, 50) → альфа: (0, 0) = 0, (4, 8) = 128, (8, 8) = 255
-- [ ] `test_live_not_yet`: CLI `--assets live --max-dollars 1` → exit 2, stderr `assets: live not implemented`
-- [ ] реализовать
+- [x] `test_prompt_templates`: `promptFor("object", "a vase")` начинается с шаблона object и кончается `". a vase"`; то же для tile/decal
+- [x] `test_size_for`: `"1:1"` → `1024x1024`, `"2:1"` → `2048x1024`, `"1:2"` → `1024x2048`, `"4:3"` → `1024x1024`
+- [x] `test_cache_key_stable`: одинаковые входы → один ключ; ключ tile меняется при смене `aspect`; патч `/props/0/size/h` ключ предмета не меняет
+- [x] `test_cache_mode_no_calls`: тест сам кладёт фейковые PNG/GLB по `cacheKey` всех 10 ассетов demo-flat; `runAssets` `cache` с фейками-счётчиками → 0 вызовов, `used` = все 10
+- [x] `test_missing_asset_falls_back`: тот же кэш без `p_sofa`, CLI `--assets cache` → `missing` = `["p_sofa"]`, exit 0, предупреждение с `p_sofa` в `build.json.warnings`
+- [x] `test_decal_alpha`: фейковый decal 16×16, рамка 4 px белая (255), внутри (200, 50, 50) → альфа: (0, 0) = 0, (4, 8) = 128, (8, 8) = 255
+- [x] `test_live_not_yet`: CLI `--assets live --max-dollars 1` → exit 2, stderr `assets: live not implemented`
+- [x] реализовать
 
 ## Ассеты: залп, деньги, провайдеры
 

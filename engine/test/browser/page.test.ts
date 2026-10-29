@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import type { Browser, Page } from "playwright";
 import { launch, serve, type Served } from "./serve.js";
-import { patched } from "../helpers/scene.js";
+import { demoFlat, patched } from "../helpers/scene.js";
+import { runCheck } from "../../src/check.js";
+import { sceneAssets } from "../../src/assets/run.js";
+import { fakeGlb, fakePng } from "../../src/assets/providers/fake.js";
 
 const ENGINE = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -169,6 +172,78 @@ describe("page", () => {
     expect(info.hasMap).toBe(true);
     expect(info.mapColorSpace).toBe("srgb");
     await page.close();
+  }, 30000);
+
+  it("test_cache_texture_rendered_not_placeholder", async () => {
+    // F3: a material/decal with a cached asset must load the real file,
+    // not the coloured placeholder or the decal label canvas
+    const scene = runCheck(demoFlat()).ctx.scene;
+    const refs = sceneAssets(scene);
+    const cacheDir = mkdtempSync(join(tmpdir(), "dreamer-cache-"));
+    for (const a of refs) {
+      if (a.kind === "object") writeFileSync(join(cacheDir, `${a.key}.glb`), fakeGlb());
+      else writeFileSync(join(cacheDir, `${a.key}.png`), fakePng(4, 4, [120, 90, 60], a.kind === "decal"));
+    }
+    const scenePath = join(mkdtempSync(join(tmpdir(), "dreamer-scene-")), "scene.json");
+    writeFileSync(scenePath, JSON.stringify(demoFlat()));
+    const cacheDist = join(mkdtempSync(join(tmpdir(), "dreamer-")), "dist");
+    const r = spawnSync(
+      "node",
+      ["--import", "tsx", "bin/dreamer.ts", "build", scenePath, "--out", cacheDist, "--assets", "cache", "--cache", cacheDir],
+      { cwd: ENGINE, encoding: "utf-8" },
+    );
+    if (r.status !== 0) throw new Error(`build failed: ${r.stderr}`);
+    const cacheSite = await serve(cacheDist);
+    const page = await browser.newPage({ deviceScaleFactor: 1 });
+    const consoleErrors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") consoleErrors.push(m.text());
+    });
+    await page.goto(cacheSite.url);
+    await ready(page);
+    expect(consoleErrors).toEqual([]);
+    const info = (await page.evaluate("window.__dreamer.inspect('decal.0')")) as {
+      hasMap: boolean;
+      mapWidth: number | null;
+    };
+    expect(info.hasMap).toBe(true);
+    expect(info.mapWidth).toBe(4);
+    await page.close();
+    await cacheSite.close();
+  }, 30000);
+
+  it("test_prop_glb_rendered", async () => {
+    // F7: a prop with a cached GLB must render the real model, not the
+    // OBB placeholder box
+    const scene = runCheck(demoFlat()).ctx.scene;
+    const refs = sceneAssets(scene);
+    const cacheDir = mkdtempSync(join(tmpdir(), "dreamer-cache-"));
+    for (const a of refs) {
+      if (a.kind === "object") writeFileSync(join(cacheDir, `${a.key}.glb`), fakeGlb());
+      else writeFileSync(join(cacheDir, `${a.key}.png`), fakePng(4, 4, [120, 90, 60], a.kind === "decal"));
+    }
+    const scenePath = join(mkdtempSync(join(tmpdir(), "dreamer-scene-")), "scene.json");
+    writeFileSync(scenePath, JSON.stringify(demoFlat()));
+    const cacheDist = join(mkdtempSync(join(tmpdir(), "dreamer-")), "dist");
+    const r = spawnSync(
+      "node",
+      ["--import", "tsx", "bin/dreamer.ts", "build", scenePath, "--out", cacheDist, "--assets", "cache", "--cache", cacheDir],
+      { cwd: ENGINE, encoding: "utf-8" },
+    );
+    if (r.status !== 0) throw new Error(`build failed: ${r.stderr}`);
+    const cacheSite = await serve(cacheDist);
+    const page = await browser.newPage({ deviceScaleFactor: 1 });
+    const consoleErrors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error") consoleErrors.push(m.text());
+    });
+    await page.goto(cacheSite.url);
+    await ready(page);
+    expect(consoleErrors).toEqual([]);
+    const info = (await page.evaluate("window.__dreamer.inspect('table')")) as { type: string };
+    expect(info.type).toBe("Group");
+    await page.close();
+    await cacheSite.close();
   }, 30000);
 
   it("test_walk_height", async () => {

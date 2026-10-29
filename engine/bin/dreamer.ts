@@ -7,6 +7,7 @@ import { runCheck } from "../src/check.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
 import { writeDist } from "../src/build/write.js";
+import { runAssets } from "../src/assets/run.js";
 import type { Report } from "../src/types.js";
 
 const USAGE =
@@ -112,12 +113,17 @@ async function runBuild(args: string[]): Promise<number> {
     return 2;
   }
   const assets = assetsFlag ?? "none";
-  if (assets !== "none") {
-    if (assets !== "cache" && assets !== "live") {
-      console.error(`unknown --assets value: ${assets}`);
-      return 2;
-    }
-    console.error("assets: not implemented");
+  if (assets !== "none" && assets !== "cache" && assets !== "live") {
+    console.error(`unknown --assets value: ${assets}`);
+    return 2;
+  }
+  const cacheFlag = flag(args, "--cache");
+  if (cacheFlag === null) {
+    console.error("--cache requires a value");
+    return 2;
+  }
+  if (assets === "cache" && cacheFlag === undefined) {
+    console.error("--assets cache requires --cache <dir>");
     return 2;
   }
   if (!existsSync(scenePath)) {
@@ -135,7 +141,8 @@ async function runBuild(args: string[]): Promise<number> {
       console.log(JSON.stringify(report, null, 2));
       return 1;
     }
-    await writeDist(ctx, report, outDir, { startedAt: started });
+    const assetReport = await runAssets(ctx.scene, { mode: assets, cacheDir: cacheFlag });
+    await writeDist(ctx, report, outDir, { startedAt: started, assets: assetReport, cacheDir: cacheFlag });
     return 0;
   } catch (e) {
     console.error(String(e));

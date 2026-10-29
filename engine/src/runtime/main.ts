@@ -1,5 +1,6 @@
 import {
   AmbientLight,
+  Box3,
   BufferAttribute,
   CanvasTexture,
   Color,
@@ -10,12 +11,16 @@ import {
   Mesh,
   MeshStandardMaterial,
   PointLight,
+  RepeatWrapping,
   Scene,
   BufferGeometry,
   SRGBColorSpace,
+  Texture,
+  TextureLoader,
   Vector3,
   WebGLRenderer,
 } from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { pickCamera, yawDir } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 
@@ -51,23 +56,54 @@ function labelTexture(id: string, color: string): CanvasTexture {
   return tex;
 }
 
-function materialOf(id: string, def: MaterialDef): MeshStandardMaterial {
+function materialOf(id: string, def: MaterialDef, loadedMap?: Texture): MeshStandardMaterial {
   const m = new MeshStandardMaterial({
     color: new Color(def.color || "#808080"),
     metalness: 0,
     roughness: 0.9,
     side: DoubleSide,
   });
-  if (def.transparent) {
+  if (def.map && loadedMap) {
+    loadedMap.colorSpace = SRGBColorSpace;
+    m.map = loadedMap;
+    m.color.set(0xffffff); // avoid double-tinting: the map already carries the real pixels
+    if (def.transparent) m.transparent = true;
+    if (def.repeat_m) {
+      loadedMap.wrapS = loadedMap.wrapT = RepeatWrapping;
+      // UVs are in metres, so a texture that should tile every `repeat_m`
+      // metres needs its repeat set to the reciprocal
+      loadedMap.repeat.set(1 / def.repeat_m, 1 / def.repeat_m);
+    }
+  } else if (def.transparent) {
     m.transparent = true;
     m.color.set(0xffffff); // avoid double-tinting: the map already carries def.color
     m.map = labelTexture(id, def.color || "#808080");
-  }
-  if (def.repeat_m) {
-    // the tile texture itself arrives with the assets phase
+  } else if (def.repeat_m) {
+    // no cached tile texture yet: still a coloured placeholder
     m.userData.repeat_m = def.repeat_m;
   }
   return m;
+}
+
+/**
+ * Fits a loaded GLB into the OBB placeholder it replaces: uniform scale (so
+ * the model keeps its own proportions) picked as the tightest fit on any
+ * axis, centred in x/z and resting on the placeholder's floor in y.
+ */
+function fitGlb(glbScene: Group, box: { min: Vector3; max: Vector3 }): void {
+  const glbBox = new Box3().setFromObject(glbScene);
+  const glbSize = glbBox.getSize(new Vector3());
+  const boxSize = box.max.clone().sub(box.min);
+  let scale = Infinity;
+  for (const k of ["x", "y", "z"] as const) {
+    if (glbSize[k] > 0) scale = Math.min(scale, boxSize[k] / glbSize[k]);
+  }
+  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
+  glbScene.scale.setScalar(scale);
+  const glbCenter = glbBox.getCenter(new Vector3()).multiplyScalar(scale);
+  const glbMinY = glbBox.min.y * scale;
+  const boxCenter = box.min.clone().add(box.max).multiplyScalar(0.5);
+  glbScene.position.set(boxCenter.x - glbCenter.x, box.min.y - glbMinY, boxCenter.z - glbCenter.z);
 }
 
 function meshOf(src: any, material: MeshStandardMaterial): Mesh {
@@ -112,11 +148,23 @@ async function start(): Promise<void> {
   const scene = new Scene();
   scene.background = new Color(geo.style?.exterior || "#808080");
 
+  // every material whose cached asset made it into dist/assets gets its real
+  // pixels loaded before any mesh using it is built, so __ready never fires
+  // on a page still showing coloured placeholders
+  const loader = new TextureLoader();
+  const loadedMaps = new Map<string, Texture>(
+    await Promise.all(
+      Object.entries((geo.materials ?? {}) as Record<string, MaterialDef>)
+        .filter(([, def]) => typeof def.map === "string")
+        .map(async ([id, def]) => [id, await loader.loadAsync(def.map!)] as [string, Texture]),
+    ),
+  );
+
   const mats = new Map<string, MeshStandardMaterial>();
   const material = (id: string): MeshStandardMaterial => {
     let m = mats.get(id);
     if (!m) {
-      m = materialOf(id, (geo.materials ?? {})[id] ?? { color: "#808080" });
+      m = materialOf(id, (geo.materials ?? {})[id] ?? { color: "#808080" }, loadedMaps.get(id));
       mats.set(id, m);
     }
     return m;
@@ -125,11 +173,29 @@ async function start(): Promise<void> {
   const setup = pickCamera(geo, params, window.innerWidth / Math.max(window.innerHeight, 1));
   const objects = new Map<string, Mesh | Group>();
   const meshTotal = (geo.meshes as any[]).length;
+  const gltfLoader = new GLTFLoader();
+  const glbSwaps: Promise<void>[] = [];
   for (const src of geo.meshes as any[]) {
     const mesh = meshOf(src, material(String(src.material)));
     mesh.visible = !setup.hide.has(String(src.kind));
     objects.set(mesh.name, mesh);
     scene.add(mesh);
+    // the box is the OBB placeholder; once its real GLB is loaded it swaps
+    // in for the box, same name and visibility, so every other lookup by
+    // mesh name keeps working untouched
+    if (typeof src.glb === "string") {
+      mesh.geometry.computeBoundingBox();
+      glbSwaps.push(
+        gltfLoader.loadAsync(src.glb).then((gltf) => {
+          fitGlb(gltf.scene, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max });
+          gltf.scene.name = mesh.name;
+          gltf.scene.visible = mesh.visible;
+          scene.remove(mesh);
+          scene.add(gltf.scene);
+          objects.set(mesh.name, gltf.scene);
+        }),
+      );
+    }
   }
 
   scene.add(new AmbientLight(0xffffff, 0.4 * Number(geo.style?.ambient ?? 1)));
@@ -207,7 +273,13 @@ async function start(): Promise<void> {
     meshCount: (): number => meshTotal,
     inspect: (
       id: string,
-    ): { type: "Mesh" | "Group"; hasMap: boolean; visible: boolean; mapColorSpace: string | null } | null => {
+    ): {
+      type: "Mesh" | "Group";
+      hasMap: boolean;
+      visible: boolean;
+      mapColorSpace: string | null;
+      mapWidth: number | null;
+    } | null => {
       const o = objects.get(id);
       if (!o) return null;
       const m = o instanceof Mesh ? (o.material as MeshStandardMaterial) : null;
@@ -216,12 +288,14 @@ async function start(): Promise<void> {
         hasMap: !!m?.map,
         visible: o.visible,
         mapColorSpace: m?.map?.colorSpace ?? null,
+        mapWidth: m?.map?.image?.width ?? null,
       };
     },
   };
   (window as any).__dreamer = api;
 
   await api.ready;
+  await Promise.all(glbSwaps);
   (window as any).__ready = true;
   requestAnimationFrame(frame);
 }

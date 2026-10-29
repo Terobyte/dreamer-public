@@ -1,6 +1,6 @@
 import type { Ctx } from "../ctx.js";
 import type { V2 } from "../geom/vec.js";
-import type { Mesh } from "./geometry.js";
+import type { AssetFiles, Mesh } from "./geometry.js";
 import { boxMesh } from "./beams.js";
 
 interface PassProp {
@@ -15,7 +15,7 @@ interface PassProp {
  * drift between `check` and `build` surfaces as geometry, not as two
  * placement algorithms quietly disagreeing.
  */
-export function propMeshes(ctx: Ctx): Mesh[] {
+export function propMeshes(ctx: Ctx, assetFiles: AssetFiles = {}): Mesh[] {
   const scene: any = ctx.scene;
   const raws = (scene.props ?? []) as any[];
   const geo = new Map<string, { room: string; src: number }>();
@@ -32,7 +32,12 @@ export function propMeshes(ctx: Ctx): Mesh[] {
     const from: V2 = [(c[0][0] + c[1][0]) / 2, (c[0][1] + c[1][1]) / 2];
     const to: V2 = [(c[3][0] + c[2][0]) / 2, (c[3][1] + c[2][1]) / 2];
     const w = Math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]);
-    out.push(boxMesh(p.id, "prop", String(raws[g.src]?.asset), g.room, from, to, w, p.y[0], p.y[1]));
+    const asset = String(raws[g.src]?.asset);
+    const mesh = boxMesh(p.id, "prop", asset, g.room, from, to, w, p.y[0], p.y[1]);
+    // the real mesh render is future debt (see plan: "предметы по факту");
+    // this just records where its GLB landed so that work has somewhere to start.
+    if (assetFiles[asset]) mesh.glb = assetFiles[asset];
+    out.push(mesh);
   }
   return out;
 }

@@ -1,14 +1,15 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, copyFileSync } from "node:fs";
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import type { Ctx } from "../ctx.js";
 import type { Report } from "../types.js";
-import { buildGeometry } from "./geometry.js";
+import { buildGeometry, type AssetFiles } from "./geometry.js";
 import { buildNav } from "../nav/grid.js";
 import { topSvg } from "../report/topsvg.js";
 import { indexHtml } from "./page.js";
+import { runAssets, resolvedAssets, type AssetReport } from "../assets/run.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -52,9 +53,47 @@ export async function writeDist(
   ctx: Ctx,
   report: Report,
   outDir: string,
-  opts: { startedAt: number },
+  opts: { startedAt: number; assets?: AssetReport; cacheDir?: string },
 ): Promise<BuildJson> {
-  const geometry = buildGeometry(ctx);
+  // Assets the cache could not provide stay coloured placeholders, and the
+  // build says so instead of failing: a half-generated world is still walkable.
+  const assets = opts.assets ?? (await runAssets(ctx.scene, { mode: "none" }));
+
+  // Each `used` asset's real file is copied next to the page, under the id
+  // it's referenced by, so geometry.json can point at a stable `assets/<id>.*`
+  // path instead of the cache's content-addressed one.
+  // a null-prototype map so an asset id of "__proto__" lands as a real own
+  // key instead of silently hitting the inherited accessor (F5)
+  const assetFiles: AssetFiles = Object.create(null) as AssetFiles;
+  if (opts.cacheDir !== undefined && assets.used.length > 0) {
+    const resolved = resolvedAssets(ctx.scene, opts.cacheDir, assets.used);
+    const assetsDir = resolve(join(outDir, "assets"));
+    if (resolved.length > 0) mkdirSync(assetsDir, { recursive: true });
+    for (const r of resolved) {
+      const ext = r.kind === "object" ? "glb" : "png";
+      const rel = `assets/${r.id}.${ext}`;
+      const dest = resolve(join(outDir, rel));
+      // the page fetches `rel` as a URL, so each path segment is encoded on
+      // its own: an id like "tile#custom" must not let "#custom" be read as
+      // a fragment instead of part of the request path
+      const urlRel = rel
+        .split("/")
+        .map((seg) => encodeURIComponent(seg))
+        .join("/");
+      // an asset id is a free-form scene author string, not a path (F4):
+      // reject anything that would land outside dist/assets
+      if (dest !== assetsDir && !dest.startsWith(assetsDir + sep)) {
+        throw new Error(`asset id escapes the assets directory: ${r.id}`);
+      }
+      // an asset id may contain "/" (e.g. "tile/custom"), landing the copy
+      // under a subdirectory of dist/assets that does not exist yet
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(r.path, dest);
+      assetFiles[r.id] = urlRel;
+    }
+  }
+
+  const geometry = buildGeometry(ctx, assetFiles);
   const nav = ctx.nav ?? buildNav(ctx);
   mkdirSync(outDir, { recursive: true });
   writeFileSync(join(outDir, "check.json"), JSON.stringify(report, null, 2));
@@ -64,24 +103,14 @@ export async function writeDist(
   writeFileSync(join(outDir, "index.html"), indexHtml(String((ctx.scene as any)?.name ?? "scene")));
   await bundleRuntime(join(outDir, "runtime.js"));
 
-  // phase 2 draws every asset a mesh actually refers to as a placeholder;
-  // declared-but-unused assets never reach the geometry, so they fall out.
-  // A mesh's `material` is either an asset id directly (props, decals) or a
-  // scene material id that points at a tile asset (`materials.*.tile`).
-  const assets = (ctx.scene as any)?.assets ?? {};
-  const sceneMaterials = (ctx.scene as any)?.materials ?? {};
-  const usedAssets = new Set<string>();
-  for (const m of geometry.meshes) {
-    if (Object.prototype.hasOwnProperty.call(assets, m.material)) usedAssets.add(m.material);
-    const tile = sceneMaterials[m.material]?.tile;
-    if (typeof tile === "string") usedAssets.add(tile);
-  }
-  const fallback = Object.keys(assets as Record<string, unknown>).filter((id) => usedAssets.has(id));
   const out: BuildJson = {
     ok: true,
     seconds: (Date.now() - opts.startedAt) / 1000,
-    assets: { used: [], fallback, missing: [] },
-    warnings: report.warnings.map((w) => `${w.code}: ${w.msg}`),
+    assets: { used: assets.used, fallback: assets.fallback, missing: assets.missing },
+    warnings: [
+      ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
+      ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
+    ],
   };
   writeFileSync(join(outDir, "build.json"), JSON.stringify(out, null, 2));
   return out;
