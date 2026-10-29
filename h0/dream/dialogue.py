@@ -73,18 +73,15 @@ _SQUARE_TAG = re.compile(r"\[(whisper|emphasis|forceful|slow)\](.*?)\[/\1\]", re
 # Lines are spoken by drama-3 (voice.py): it plays what is heard, so the brackets
 # carry the voice, not the body ("[hands up]" is silent). Wording from h0/gate_test.py.
 VOICE_RULES = (
-    "You speak out loud like a voice actor directing your own voice: where the voice "
-    "needs it, a short direction of how it sounds in square brackets -- [out of breath, "
+    "You speak out loud like a voice actor directing your own voice: start with a short "
+    "direction of how it sounds, in square brackets, a new one each time -- [out of breath, "
     "scared] [flat, exhausted] [suddenly shrill] [muttering] [laughing nervously] [voice "
     "breaking]; when the feeling turns mid-line, put a new one right before those words. "
-    "Sounds go in brackets where they happen: [long sigh] [gasp] [scoff]; a pause, rarely. "
+    "Sounds and pauses go in brackets where they happen: [long sigh] [gasp] [scoff] [pause]. "
     "Wrap a single word to change only it: <whisper>...</whisper> <emphasis>...</emphasis> "
     "<forceful>...</forceful>. Only what is heard -- never what your hands or eyes do. "
-    "Talk like a person, not a script: often just one to three words (No. / What. / "
-    "Stop it.), now and then a longer burst, never the same length twice running. Two "
-    "people alone almost never say each other's name. "
     "Hard limit: no more than %d spoken words and three brackets in a line; a longer "
-    "line is thrown away unheard. The limit is a ceiling, not a target." % 15)
+    "line is thrown away unheard, so say one thing and stop." % 15)
 HERO_RULES = (
     "Your day only colours what you notice, want and fear; you never retell it like a "
     "report. You speak only as yourself, in first person, to whoever is here with you -- "
