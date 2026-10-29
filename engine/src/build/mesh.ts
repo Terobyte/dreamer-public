@@ -56,3 +56,45 @@ export function meshBBox(m: Mesh): { min: V3; max: V3 } {
   }
   return { min, max };
 }
+
+/**
+ * A flat quad of exactly 4 vertices: `center`, spanning ±`halfW` along `u`
+ * and ±`halfH` along +Y, facing `n`. UVs run 0..1 over the whole quad, since
+ * a decal or a backdrop carries one image stretched across its face.
+ */
+export function planeMesh(
+  m: Omit<Mesh, "positions" | "normals" | "uvs" | "indices">,
+  center: V3,
+  n: V3,
+  u: V3,
+  halfW: number,
+  halfH: number,
+): Mesh {
+  const at = (sw: number, sh: number): V3 => [
+    center[0] + u[0] * sw * halfW,
+    center[1] + sh * halfH,
+    center[2] + u[2] * sw * halfW,
+  ];
+  const p: V3[] = [at(-1, -1), at(1, -1), at(1, 1), at(-1, 1)];
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const uv: [number, number][] = [
+    [0, 0],
+    [1, 0],
+    [1, 1],
+    [0, 1],
+  ];
+  for (let i = 0; i < 4; i++) {
+    positions.push(p[i][0], p[i][1], p[i][2]);
+    normals.push(n[0], n[1], n[2]);
+    uvs.push(uv[i][0], uv[i][1]);
+  }
+  // wind the pair of triangles to face `n`
+  const a: V3 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]];
+  const b: V3 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
+  const cr: V3 = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const facing = cr[0] * n[0] + cr[1] * n[1] + cr[2] * n[2] > 0;
+  const indices = facing ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+  return { ...m, positions, normals, uvs, indices };
+}

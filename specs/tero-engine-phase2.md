@@ -90,12 +90,12 @@
 - Задник `outside` — плоскость `width + 0.4` × `height + 0.4` на 1.0 м за наружной гранью стены по нормали из комнаты, лицом в комнату.
 - Наклейка — ровно `passport.decals[i].center` (внутренняя грань + 0.02). Наклейка и полотно рисуются с `polygonOffset`.
 
-- [ ] `test_prop_boxes_match_passport`: для каждого `passport.props[k]` есть меш `prop` с тем же `id`; его bbox по x/z = bbox `obb`, по y = `y` (±1e-6); `vase` y [0.75, 1.15], `lamp` y [2.8, 3.4]
-- [ ] `test_decal_plane`: `decal.0` — 4 вершины, центр (3.92, 1.7, −1.6), нормаль (−1, 0, 0), ширина 0.6, высота 0.7
-- [ ] `test_door_leaf_open`: `front:leaf` bbox x [0.43, 0.47], z [3.04, 3.94], y [0, 2.1]
-- [ ] `test_door_leaf_closed`: патч `[{"op":"replace","path":"/openings/0/leaf/open","value":false}]` → bbox полотна z [3.98, 4.02], x [−0.45, 0.45]
-- [ ] `test_window_backdrop`: `sea:outside` — плоскость 2.0 × 1.4, центр по y = 1.5, нормаль смотрит в `living` (z-компонента > 0)
-- [ ] реализовать
+- [x] `test_prop_boxes_match_passport`: для каждого `passport.props[k]` есть меш `prop` с тем же `id`; его bbox по x/z = bbox `obb`, по y = `y` (±1e-6); `vase` y [0.75, 1.15], `lamp` y [2.8, 3.4]
+- [x] `test_decal_plane`: `decal.0` — 4 вершины, центр (3.92, 1.7, −1.6), нормаль (−1, 0, 0), ширина 0.6, высота 0.7
+- [x] `test_door_leaf_open`: `front:leaf` bbox x [0.43, 0.47], z [3.04, 3.94], y [0, 2.1]
+- [x] `test_door_leaf_closed`: патч `[{"op":"replace","path":"/openings/0/leaf/open","value":false}]` → bbox полотна z [3.98, 4.02], x [−0.45, 0.45]
+- [x] `test_window_backdrop`: `sea:outside` — плоскость 2.0 × 1.4, центр по y = 1.5, нормаль смотрит в `living` (z-компонента > 0)
+- [x] реализовать
 
 **Вне этой фазы:** вывод, рантайм, ассеты.
 

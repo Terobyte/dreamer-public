@@ -8,6 +8,9 @@ import { boxMesh } from "./beams.js";
 import { EXTERIOR, intervalMeshes } from "./walls.js";
 import type { WallRoom } from "./walls.js";
 import { meshBBox } from "./mesh.js";
+import { propMeshes } from "./props.js";
+import { decalMeshes } from "./decals.js";
+import { doorMeshes } from "./doors.js";
 
 export { meshBBox };
 
@@ -128,6 +131,9 @@ export function buildGeometry(ctx: Ctx): Geometry {
       );
     });
   }
+
+  // things: props, decals, door leaves and backdrops
+  meshes.push(...propMeshes(ctx), ...decalMeshes(ctx), ...doorMeshes(ctx));
 
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
