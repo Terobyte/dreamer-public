@@ -60,12 +60,12 @@
 - `Ledger(path: Path, prices: dict, cap_usd: float, cap_calls: int)`: `record(event: dict)` дописывает строку в `events.jsonl` (поля: `ts, kind, role, room, round, effort, latency_s, prompt_tokens, completion_tokens, reasoning_tokens, finish_reason, valid, cost_usd`); `charge(kind, units)`; `allow(kind, estimate_usd) -> bool` — до вызова: `spent + estimate > cap_usd` или `calls >= cap_calls` → `False` и событие `cap_hit` (один раз). `prices` — из `h0/pipe2/prices.json`: `{"spark": {"<effort>": {"in": ..., "out": ...}}, "image": ..., "h100_s": ...}` за 1M токенов / за штуку / за секунду; неизвестная цена Spark = `null` → стоимость считается 0, но `calls` всё равно ограничены.
 - `Spark.ask` проверяет `ledger.allow` до вызова; `False` → `Answer(valid=False, error="cap")` без вызова транспорта.
 
-- [ ] тест: 429, 503 и обрыв → ретрай до 2 раз, третий отказ → `valid=False`; 400 → ни одного ретрая (считается число вызовов фейкового транспорта)
-- [ ] тест: `finish_reason="length"`, текст без JSON, обрезанный JSON → `valid=False` с причиной, без исключения
-- [ ] тест: `body` содержит `max_tokens=64000` и переданный effort
-- [ ] тест: `events.jsonl` получает строку на каждый вызов с полями контракта; стоимость считается по `prices`
-- [ ] тест `test_cap_stops_cleanly` (часть клиента): после срабатывания потолка транспорт больше не вызывается, событие `cap_hit` одно
-- [ ] тест `test_key_not_leaked`: фейковый ключ в env не появляется в events.jsonl и в `repr`/`str` ответов
+- [x] тест: 429, 503 и обрыв → ретрай до 2 раз, третий отказ → `valid=False`; 400 → ни одного ретрая (считается число вызовов фейкового транспорта)
+- [x] тест: `finish_reason="length"`, текст без JSON, обрезанный JSON → `valid=False` с причиной, без исключения
+- [x] тест: `body` содержит `max_tokens=64000` и переданный effort
+- [x] тест: `events.jsonl` получает строку на каждый вызов с полями контракта; стоимость считается по `prices`
+- [x] тест `test_cap_stops_cleanly` (часть клиента): после срабатывания потолка транспорт больше не вызывается, событие `cap_hit` одно
+- [x] тест `test_key_not_leaked`: фейковый ключ в env не появляется в events.jsonl и в `repr`/`str` ответов
 
 ## Адаптер движка
 

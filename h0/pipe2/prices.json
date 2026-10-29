@@ -1,0 +1,11 @@
+{
+  "_note": "USD. spark: per 1M tokens, per reasoning_effort; image: per generated image; h100_s: per GPU-second. null = price unknown -> charged as 0, but call caps still apply.",
+  "spark": {
+    "low": null,
+    "medium": null,
+    "high": null,
+    "max": null
+  },
+  "image": null,
+  "h100_s": 0.001267
+}
