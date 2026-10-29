@@ -245,6 +245,11 @@ class Sim:
         self._hero_world = []
         self._pending = {}
         self._schedule = []
+        # 3.2: what the narrator still has to voice -- one entry per cause,
+        # taken one at a time through the same slot a line uses
+        self._narrate = []
+        # 3.2 (F1): a narration is being voiced -- a queued line waits for it
+        self._narrating = False
         self._fired = set()
         self._discard_reason = "human"
         self._gen_thread = None
@@ -364,6 +369,10 @@ class Sim:
                 self._discard_reason = "event"
             self._diagnostic({"type": "event", "what": ev["what"], "who": who,
                               "kind": ev["kind"]})
+            if not who and self.dialogue is not None:
+                # 3.2: an event nobody sees has no mouth to answer it -- one
+                # narration per event, queued, not one per tick
+                self._narrate.append({"cause": "event", "context": ev["what"]})
 
     def _load_goals(self, emit=True):
         """One open goal per actor, in scene list order (7.2 row 1.4)."""
@@ -941,6 +950,12 @@ class Sim:
         # a "Just now" left for someone who is not on this stage is dropped here:
         # the queue is keyed by its recipient, so it can never be handed to another
         self._pending = {k: v for k, v in self._pending.items() if k in self.actors}
+        # 3.2: the new place is nobody's line to say, so the narrator says it --
+        # queued here, before the schedule, so it is voiced before the first line
+        if self.dialogue is not None:
+            self._narrate.append({"cause": "transition",
+                                  "context": "%s (%s)" % (self.place,
+                                                          ", ".join(self.scene["objects"]))})
         self._start_schedule()
         self._load_goals()
 
@@ -964,6 +979,10 @@ class Sim:
             self._last_tick = now - self.clock.scale(TICK)
         queued = None
         audio_seconds = None
+        if self._narrate or self._narrating:
+            # F1: the narrator speaks before the first line -- a queued line
+            # (human or prepared NPC) waits for the pending/in-flight narration
+            return
         if self.next_line is not None:
             queued, self.next_line = self.next_line, None
         elif self.prepared_npc is not None:
@@ -1084,6 +1103,30 @@ class Sim:
         self._diagnostic({"type": "silence", "pressure": table})
         return None, None
 
+    def _start_narration(self, req):
+        """3.2: the narrator takes the generation slot a line takes, so he is never
+        in flight beside a line and is voiced before the first line of a new scene."""
+        cause, context = req["cause"], req["context"]
+        scene_no, epoch = self.n_transitions, self._turn_epoch
+        self._narrating = True
+
+        def work():
+            text = ""
+            try:
+                text = self.dialogue.narrate(cause, context)
+            except Exception as e:
+                self._diagnostic({"type": "line_fail", "who": "narrator",
+                                  "error": "%s: %s" % (type(e).__name__, e)})
+            with self._gen_lock:
+                self._gen_result = ({"role": "narrator", "cause": cause,
+                                     "text": text}, scene_no, epoch, None)
+
+        # no _gen_who: an event must not bump the turn because of a narration
+        self._gen_who = None
+        self._gen_epoch = None
+        self._gen_thread = threading.Thread(target=work, daemon=True)
+        self._gen_thread.start()
+
     def _dialogue_turn(self):
         """Pick up a finished line, or start one on a free tick (1.2a: nothing
         playing, nothing queued, no worker running, scale(TICK) since the last
@@ -1097,7 +1140,17 @@ class Sim:
             line, scene_no, epoch, who = res
             self._gen_who = None
             self._gen_epoch = None
-            if line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
+            if isinstance(line, dict) and line.get("role") == "narrator":
+                # 3.2: a narration is not a line -- no npc_start, no _note_line,
+                # no _count_line: it moves neither pressure nor the consult count.
+                # No turn to lose either: a human line that moved the epoch while
+                # the narration was in flight waits for it in _cycle_line (F1),
+                # so the narration is still voiced before the first line.
+                self._narrating = False
+                if line.get("text"):
+                    self._diagnostic({"type": "narrator", "text": line["text"],
+                                      "cause": line["cause"]})
+            elif line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
                 self.npc_start(line)
             elif line is not None and epoch != self._turn_epoch:
                 # 1.2a: the turn moved on while this line was in flight -- a human
@@ -1122,6 +1175,9 @@ class Sim:
             return
         self._last_tick = now
         if now < self._gen_not_before:
+            return
+        if self._narrate:
+            self._start_narration(self._narrate.pop(0))
             return
         who, role = self._pick_speaker()
         if who is None:

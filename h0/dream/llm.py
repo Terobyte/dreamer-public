@@ -64,6 +64,8 @@ ROLE_TABLE = {
     "hero": (SPARK_OPEN_MODEL, "minimal"),
     "actor": (SPARK_OPEN_MODEL, "minimal"),
     "compress": (SPARK_OPEN_MODEL, "minimal"),
+    # 3.2: without this row resolve() falls through to the paid SPARK_MODEL
+    "narrator": (SPARK_OPEN_MODEL, "minimal"),
     "judge": (SPARK_OPEN_MODEL, "medium"),
     "director": (WONDER_MODEL, "low"),
     "shadow": (WONDER_MODEL, "low"),

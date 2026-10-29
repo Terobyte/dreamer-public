@@ -58,6 +58,7 @@ body.can-click .obj { cursor: pointer; } body.can-click .obj:hover { border-colo
 .note { align-self: center; color: var(--note); font-size: 13px; border: 2px dashed var(--note);
   border-radius: 6px; padding: 4px 10px; background: #f7f0ff; }
 .sys { align-self: center; font-size: 12px; color: var(--muted); }
+.narr { align-self: stretch; margin: 6px 12px; font-style: italic; letter-spacing: .3px; color: var(--muted); text-align: center; }
 .sys.warn { color: var(--bad); }
 .transition { background: var(--panel); border: 3px solid var(--ink); padding: 10px; text-align: center; }
 .fade { position: relative; height: 180px; margin-bottom: 6px; }
@@ -242,6 +243,7 @@ function apply(r) {
       if (povTake(r.hero_owner, r.seq, false)) { povPending = false; renderPov(); }
       break;
     case "line": addLine(r); break;
+    case "narrator": addNarration(r); break;
     case "consult": addConsult(r); break;
     case "message": {
       const n = el("div", "note", "директор ⇢ " + (r.to || "?") + ": " + (r.note || ""));
@@ -300,6 +302,12 @@ async function sendContinue() {
 const contbtn = $("contbtn");
 if (contbtn) contbtn.addEventListener("click", sendContinue);
 function sys(text, warn) { feed().appendChild(el("div", "sys" + (warn ? " warn" : ""), text)); scrollDown(); }
+
+function addNarration(r) {
+  // 3.2: the narrator is nobody in the scene -- no bubble, no name, its own voice
+  feed().appendChild(el("div", "narr", r.text || ""));
+  scrollDown();
+}
 
 function addLine(r) {
   S.lines++;

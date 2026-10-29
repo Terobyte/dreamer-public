@@ -47,6 +47,8 @@ COMPACT_EVERY_CAST = 8
 SHARED_MIND_FROM = 3  # actors in the scene
 SCENE_MIND = "everyone here"  # the name the shared memory is folded under
 MAX_TOKENS = 1500
+# 3.2: a narration is one sentence; longer is cut, it is not a speech
+NARRATOR_MAX_CHARS = 220
 
 
 def compact_every(n_actors):
@@ -629,6 +631,13 @@ class Dialogue:
         "is reached in them. Reply with exactly one word: YES or NO. "
         "The lines are English.")
 
+    # 3.2: the narrator is nobody in the scene -- he says only what no mouth in it
+    # can say (the place has changed, something happened where nobody was looking)
+    NARRATOR_SYSTEM = (
+        "You are the narrator of a dream. You are not in the scene and you talk to "
+        "nobody in it. Say in one short sentence what the dream itself shows right "
+        "now. No dialogue, no names addressed, no questions. English.")
+
     def __init__(self, profile, transport=None, event_sink=None, rng=None):
         self.profile = profile or {}
         self.hero = self.profile.get("hero") or "the hero"
@@ -848,6 +857,19 @@ class Dialogue:
         except Exception:
             return "NO"
         return "YES" if (reply or "").strip().upper() == "YES" else "NO"
+
+    def narrate(self, cause, context):
+        """3.2: one sentence of the narrator over `context` -- the new place
+        (cause "transition") or an event nobody saw (cause "event"). A failed call
+        gives "", and the dream simply goes on without a narration."""
+        user = ("The dream has moved: %s" if cause == "transition"
+                else "Nobody in the scene sees this: %s") % (context or "")
+        user += "\n\nOne sentence:"
+        try:
+            raw = self._call("narrator", lang.lang_text(self.NARRATOR_SYSTEM), user)
+        except Exception:
+            return ""
+        return " ".join((raw or "").split())[:NARRATOR_MAX_CHARS]
 
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""

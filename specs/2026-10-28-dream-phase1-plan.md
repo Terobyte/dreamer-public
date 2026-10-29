@@ -286,12 +286,12 @@
 
 Вызов рассказчика занимает слот `_gen_thread`, как строка, поэтому он идёт раньше первой строки новой сцены. Результат несёт `role="narrator"`. `_dialogue_turn` пишет `narrator` и не зовёт `npc_start`, `_note_line` и `_count_line`.
 
-- [ ] Тест `test_narrator_role_open`: `llm.resolve("narrator")` даёт `SPARK_OPEN_MODEL`.
-- [ ] Тест `test_narrator_on_transition`: после `transition` ровно одна `narrator {cause: transition}`, и она раньше первой `line` новой сцены.
-- [ ] Тест `test_narrator_on_unseen_event`: событие `who: []` → одна `narrator {cause: event}`; событие с `who` → рассказчик молчит.
-- [ ] Тест `test_narrator_rate`: два события в один такт → не больше одной реплики на событие. Реплика рассказчика не считается строкой ни в давлении, ни в `lines` и не даёт `line`.
-- [ ] Реализация: реплика видна в `comic.html` отдельным стилем; `FakeTransport.reply` различает роль по `system`.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_narrator_role_open`: `llm.resolve("narrator")` даёт `SPARK_OPEN_MODEL`.
+- [x] Тест `test_narrator_on_transition`: после `transition` ровно одна `narrator {cause: transition}`, и она раньше первой `line` новой сцены.
+- [x] Тест `test_narrator_on_unseen_event`: событие `who: []` → одна `narrator {cause: event}`; событие с `who` → рассказчик молчит.
+- [x] Тест `test_narrator_rate`: два события в один такт → не больше одной реплики на событие. Реплика рассказчика не считается строкой ни в давлении, ни в `lines` и не даёт `line`.
+- [x] Реализация: реплика видна в `comic.html` отдельным стилем; `FakeTransport.reply` различает роль по `system`.
+- [x] Все тесты зелёные.
 
 ## 3.3 сон из строки
 
