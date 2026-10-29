@@ -216,7 +216,10 @@ def main(argv=None):
         print("refused: an empty --scene/--talk runs every scene/model, the cost is unbounded")
         return 2
     ledger = load_ledger(args.ledger)
-    spent = sum(r.get("dollars") or 0 for r in ledger)
+    # the 1.5 spike lives outside the $1.80 phase ceiling (its own condition is
+    # the whole ledger + 0.20 <= 1.83), so its dollars must not shrink a gated budget
+    spent = sum(r.get("dollars") or 0 for r in ledger
+                if step == SPIKE_STEP or r.get("step") != SPIKE_STEP)
     ceiling = SPIKE_CEILING if step == SPIKE_STEP else CEILING
     if spent + PER_RUN * jobs > ceiling + 1e-9:
         print("refused: ledger $%.2f + %d job(s) x $%.2f > ceiling $%.2f (7.5)"
@@ -262,8 +265,11 @@ def main(argv=None):
                 dollars += score_run(d).get("spent") or 0
             except Exception:  # any broken log: charge the cap, never skip the ledger
                 dollars += PER_RUN
-        # a run that never printed its dir may still have spent up to its cap
-        dollars = round(dollars + PER_RUN * max(args.runs - len(run_dirs), 0), 4)
+        # a run that never printed its dir may still have spent up to its cap --
+        # except after bank's own pre-flight refusal (exit 2), which happens before
+        # a single job starts: that batch cost nothing and must not eat the ceiling
+        missing = 0 if (p.returncode == 2 and not run_dirs) else max(args.runs - len(run_dirs), 0)
+        dollars = round(dollars + PER_RUN * missing, 4)
         os.makedirs(os.path.dirname(os.path.abspath(args.ledger)), exist_ok=True)
         with open(args.ledger, "a", encoding="utf-8") as f:
             f.write(json.dumps({"step": step, "t": stamp, "runs": run_dirs, "dollars": dollars,

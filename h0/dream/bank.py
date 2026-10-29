@@ -235,7 +235,10 @@ def main():
     # the env flag alone is not a pass: the shared ceiling holds here too,
     # counted on the expanded job list (an empty --scenes means every scene)
     import bench_f1
-    spent = sum(r.get("dollars") or 0 for r in bench_f1.load_ledger(bench_f1.LEDGER))
+    # the 1.5 spike is outside the $1.80 phase ceiling, so its dollars are counted
+    # only when this very run is the spike (--lang ru), the same rule as bench_f1
+    spent = sum(r.get("dollars") or 0 for r in bench_f1.load_ledger(bench_f1.LEDGER)
+                if args.lang != "en" or r.get("step") != bench_f1.SPIKE_STEP)
     # F4: --lang ru only ever reaches bank.py through the 1.5 spike (bench_f1
     # refuses --lang ru on every gated step), so the spike's $1.83 applies here too
     ceiling = bench_f1.SPIKE_CEILING if args.lang != "en" else bench_f1.CEILING
@@ -253,7 +256,8 @@ def main():
         if not rundir:
             out.append("## %s\n\nrun failed:\n```\n%s\n```\n" % (head, log[-1500:]))
             continue
-        rows = [json.loads(l) for l in open(os.path.join(rundir, "log.jsonl"), encoding="utf-8")]
+        with open(os.path.join(rundir, "log.jsonl"), encoding="utf-8") as f:
+            rows = [json.loads(l) for l in f]
         s = score(rows)
         total += s["spent"]
         print("run=%s" % rundir, flush=True)  # bench_f1 reads the run dirs from here

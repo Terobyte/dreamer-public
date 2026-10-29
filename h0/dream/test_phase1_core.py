@@ -5,6 +5,8 @@ usage: cd h0/dream && python3 -m unittest test_phase1_core -q
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -185,6 +187,55 @@ class BenchF1Test(unittest.TestCase):
             for r in records:
                 f.write(json.dumps(r) + "\n")
         return path
+
+    def test_bank_refusal_before_spending_charges_nothing(self):
+        """bank.py exits 2 only from its two pre-flight refusals, before a single job
+        starts, so that batch cost nothing: ledgering the cap would burn phase money
+        that was never spent and lock the next gate out of the ceiling."""
+        done = subprocess.CompletedProcess([], 2, "refused: ledger $1.47 ...\n", "")
+        ledger = self._ledger([{"step": "1.2b", "runs": [], "dollars": 1.0,
+                                "metrics": [{"words_per_line": 9.0}], "gate": "PASS"}])
+        with mock.patch("subprocess.run", return_value=done):
+            self.assertEqual(bench_f1.main(["--step", "Ф1", "--runs", "2", "--ledger", ledger,
+                                            "--out", self.root]), 1)
+        with open(ledger, encoding="utf-8") as f:
+            last = json.loads(f.read().splitlines()[-1])
+        self.assertEqual(last["dollars"], 0.0)
+        self.assertEqual(last["gate"], "incomplete")
+
+    def test_spike_dollars_do_not_eat_the_gated_ceiling(self):
+        """7.5 / Global Constraints: the 1.5 spike is outside the $1.80 phase ceiling
+        (its own condition is spent + 0.20 <= 1.83), so its dollars must not shrink the
+        budget of a gated step -- otherwise the final gate cannot be bought at all."""
+        ledger = self._ledger([{"step": "1.4", "runs": [], "dollars": 1.45,
+                                "metrics": [], "gate": "PASS"},
+                               {"step": "1.5", "runs": [], "dollars": 0.20,
+                                "gate": "incomplete"}])
+        # 1.45 + 0.20 <= 1.80 passes the money check: the next stop is the mocked bank run
+        with self.assertRaises(AssertionError):
+            bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", ledger,
+                           "--out", self.root])
+        # the spike itself still answers for every dollar in the ledger, ceiling 1.83
+        hot = self._ledger([{"step": "1.1", "runs": [], "dollars": 1.70,
+                             "metrics": [], "gate": "PASS"},
+                            {"step": "1.5", "runs": [], "dollars": 0.10,
+                             "gate": "incomplete"}])
+        self.assertEqual(bench_f1.main(["--step", "1.5", "--runs", "1", "--ledger", hot,
+                                        "--out", self.root]), 2)
+        # bank.py keeps its own copy of the check (F4) and must exclude the spike too
+        ledger_rows = [{"step": "1.4", "dollars": 1.45}, {"step": "1.5", "dollars": 0.20}]
+        rundir = tempfile.mkdtemp()
+        with open(os.path.join(rundir, "log.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "line", "who": "M", "text": "ok"}) + "\n")
+        sheet = os.path.join(self.root, "bank_sheet.md")
+        argv = ["bank.py", "--scenes", "roof", "--runs", "1", "--max-dollars", "0.20",
+                "--out", sheet]
+        with mock.patch.object(bank, "run_scene", return_value=(rundir, "")), \
+             mock.patch.object(bench_f1, "load_ledger", return_value=ledger_rows), \
+             mock.patch.object(sys, "argv", argv), \
+             mock.patch.dict(os.environ, {bank.BENCH_ENV: "1"}):
+            bank.main()  # must not sys.exit(2): 1.45 + 0.20 <= 1.80
+        self.assertTrue(os.path.exists(sheet))
 
     def test_bench_f1_budget_refuses(self):
         ledger = self._ledger([{"step": "1.0", "runs": ["x"], "dollars": 1.62,
