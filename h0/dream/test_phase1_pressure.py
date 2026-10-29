@@ -301,6 +301,10 @@ class PressureTest(unittest.TestCase):
         sim_mod.use_scene("roof")
         sim = self._sim(StubDialogue("Max"))
         self.assertEqual(sim.actors, ["Dan"])
+        # 1.4: the roof gives Dan an open goal; this test is about the tie-break,
+        # not about goals, so it runs with no goals open
+        sim.scene["goals"] = []
+        sim._load_goals(emit=False)
         sim._silent_ticks.update({"Dan": 3, "Max": 1})
         sim._event_hits["Dan"] = 1
         sim._addressed["Max"] = 1

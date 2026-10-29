@@ -88,7 +88,8 @@ def score_run(rundir):
     m = bank.score(rows)
     m["goal_open_pressure"] = sum(
         1 for r in rows if r["type"] == "pressure"
-        and any(isinstance(v, dict) and v.get("goal_open") for v in r.values()))
+        and any(isinstance(v, dict) and v.get("goal_open")
+                for v in (r.get("pressure") or {}).values()))
     return m
 
 

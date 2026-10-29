@@ -202,6 +202,15 @@ class Sim:
         # clock.scale(4), and that speaker's pressure is 0 for one free tick (1.2b)
         self._gen_not_before = -1e9
         self._skip_once = None
+        # 1.4: actor goals -- done_when is checked by code, judge: true goes
+        # through a background YES/NO ask; form and log are spec 7.2 row 1.4
+        self._goal_open = {}   # actor -> goal dict, one at a time, in list order
+        self._goal_order = []  # goals of the scene not yet closed
+        self._judge_yes = 0    # YES answers in a row for the current goal
+        self._judge_last_line = 0  # line_count of the last judge call
+        self._judge_thread = None
+        self._judge_lock = threading.Lock()
+        self._judge_pending = []  # answers landed, applied on the next _tick
         # 1.2b: who speaks is decided by pressure, not by rotation
         self._spoke_last = None
         self._silent_ticks = {}
@@ -234,6 +243,7 @@ class Sim:
         self.scene_start = self.clock.now()
         self.scene = dict(START_SCENE)
         self.actors = list(self.scene["actors"])
+        self._load_goals(emit=False)
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
                              now=self.clock.now(), params=fsm_params,
                              actors=list(self.actors))
@@ -277,9 +287,10 @@ class Sim:
                                      "scene": list(self.scene["objects"]),
                                      "actors": list(self.scene["actors"]),
                                      "place": self.place, "hero": self.hero,
-                                     "profile": self.profile, "speed": self.speed,
-                                     "max_dollars": self.max_dollars})
+                                      "profile": self.profile, "speed": self.speed,
+                                      "max_dollars": self.max_dollars})
         self._start_schedule()
+        self._load_goals()
 
     # --- event schedule (spec 7.2 row 1.3) ----------------------------------
     def _start_schedule(self):
@@ -333,6 +344,129 @@ class Sim:
             self._diagnostic({"type": "event", "what": ev["what"], "who": who,
                               "kind": ev["kind"]})
 
+    def _load_goals(self, emit=True):
+        """One open goal per actor, in scene list order (7.2 row 1.4)."""
+        self._goal_open = {}
+        self._goal_order = [g for g in (self.scene.get("goals") or [])
+                            if isinstance(g, dict)]
+        self._judge_yes = 0
+        self._judge_last_line = 0
+        self._judge_pending = []
+        if not emit:
+            for g in self._goal_order:
+                actor = g.get("actor")
+                if actor and actor in self.actors and actor not in self._goal_open:
+                    self._goal_open[actor] = g
+            return
+        for g in self._goal_order:
+            actor = g.get("actor")
+            if actor and actor in self.actors and actor not in self._goal_open:
+                self._goal_open[actor] = g
+                self._emit({"type": "goal", "actor": actor,
+                            "status": "open", "goal": g.get("goal") or ""})
+
+    def _goal_words(self, cond):
+        return [str(w or "").lower() for w in (cond.get("any") or [])
+                if str(w or "").strip()]
+
+    def _mentions(self, text, words):
+        low = " " + re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower()) + " "
+        out = []
+        for w in words:
+            w = re.sub(r"[^a-z0-9 ]+", " ", str(w or "").lower()).strip()
+            out.append(" " + w + " " if w else "")
+        return any(w and w in low for w in out)
+
+    def _check_done_when(self, goal, who, text):
+        """Code closes done_when goals: the named speaker says any of the words,
+        and the last line of `not_after.speaker` carries none of its words.
+        Only the last line of that speaker counts as "they asked" -- anything
+        older is a new try, the actor may have moved on."""
+        cond = goal.get("done_when") or {}
+        if (not isinstance(cond, dict) or who != cond.get("speaker")
+                or not self._mentions(text, self._goal_words(cond))):
+            return False
+        na = cond.get("not_after") or {}
+        if isinstance(na, dict) and na.get("speaker"):
+            prev = ([t for w, t in self.transcript if w == na.get("speaker")] or [""])[-1]
+            if self._mentions(prev, self._goal_words(na)):
+                return False
+        return True
+
+    def _close_goal(self, actor, by):
+        self._goal_order = [g for g in self._goal_order
+                            if not (g.get("actor") == actor
+                                    and g is self._goal_open.get(actor))]
+        goal = self._goal_open.pop(actor, None)
+        self._emit({"type": "goal", "actor": actor, "status": "done",
+                    "by": by, "goal": (goal or {}).get("goal") or ""})
+        self._judge_yes = 0
+        for g in self._goal_order:
+            nxt = g.get("actor")
+            if nxt and nxt in self.actors and nxt not in self._goal_open:
+                self._goal_open[nxt] = g
+                self._emit({"type": "goal", "actor": nxt,
+                            "status": "open", "goal": g.get("goal") or ""})
+                break
+
+    def _maybe_check_goals(self, who, text):
+        """After every spoken line: code first, then the judge queue."""
+        if not who:
+            return
+        for actor, goal in list(self._goal_open.items()):
+            if not goal.get("judge") and self._check_done_when(goal, who, text):
+                self._close_goal(actor, "code")
+        self._maybe_ask_judge()
+
+    def _maybe_ask_judge(self):
+        """One background YES/NO ask per 4 lines at most; the answer lands in a
+        pending queue and is applied on the next _tick, never on the line path."""
+        with self._judge_lock:
+            if (self._judge_thread is not None and self._judge_thread.is_alive()):
+                return
+            open_judge = [(a, g) for a, g in self._goal_open.items()
+                          if g.get("judge")]
+            if (not open_judge or self.line_count - self._judge_last_line < 4
+                    or self.dialogue is None
+                    or not hasattr(self.dialogue, "judge")):
+                return
+            actor, goal = open_judge[0]
+            last4 = list(self.transcript[-4:])
+            self._judge_last_line = self.line_count
+
+        def work():
+            answer = "NO"
+            try:
+                answer = self.dialogue.judge(goal.get("goal") or "", last4)
+            except Exception:
+                answer = "NO"
+            answer = "YES" if str(answer or "") == "YES" else "NO"
+            with self._judge_lock:
+                self._judge_pending.append((actor, answer))
+
+        self._judge_thread = threading.Thread(target=work, daemon=True)
+        self._judge_thread.start()
+
+    def _apply_judge(self):
+        """Apply answers landed since the last tick: log + count + maybe close."""
+        with self._judge_lock:
+            pending, self._judge_pending = self._judge_pending, []
+        for actor, answer in pending:
+            if actor not in self._goal_open or not self._goal_open[actor].get("judge"):
+                continue
+            self._diagnostic({"type": "judge", "actor": actor, "answer": answer})
+            if answer == "YES":
+                self._judge_yes += 1
+            else:
+                self._judge_yes = 0
+            if self._judge_yes >= 2:
+                self._close_goal(actor, "judge")
+
+    def _join_judge(self, timeout=5):
+        th = self._judge_thread
+        if th is not None:
+            th.join(timeout)
+
     def _load_soul(self, prof):
         """Spec 7: the core holds the hero's main desire and fear, the facts layer
         the rest of the soul -- diary, past dream and facts hidden from the hero
@@ -361,6 +495,7 @@ class Sim:
         self.director.wait(timeout=None)
         if self._gen_thread is not None:
             self._gen_thread.join()
+        self._join_judge()
         self.memory.wait()
         if self.dialogue is not None and hasattr(self.dialogue, "wait"):
             self.dialogue.wait()
@@ -494,6 +629,7 @@ class Sim:
                 self.dialogue.heard(event.get("who") or "?", line["text"])
                 self.dialogue.compact([self.hero] + list(self.actors), seen=len(self.transcript))
         self._count_line()
+        self._maybe_check_goals(event.get("who") or None, line["text"])
         if line.get("touch"):
             self._touch(line["touch"], "hero")
         return event
@@ -700,6 +836,7 @@ class Sim:
         # the queue is keyed by its recipient, so it can never be handed to another
         self._pending = {k: v for k, v in self._pending.items() if k in self.actors}
         self._start_schedule()
+        self._load_goals()
 
     # --- main loop -----------------------------------------------------------
     def _drain_director(self):
@@ -751,11 +888,10 @@ class Sim:
         return list(self.actors) + [self.hero]
 
     def _pressure(self, name):
-        """The pressure fields of the `pressure` event (7.4) for one participant.
-        goal_open stays 0 until 1.4."""
+        """The pressure fields of the `pressure` event (7.4) for one participant."""
         addressed = 1 if self._addressed.get(name, 0) > 0 else 0
         event_hit = 1 if self._event_hits.get(name, 0) > 0 else 0
-        goal_open = 0
+        goal_open = 1 if name in self._goal_open else 0
         silent = self._silent_ticks.get(name, 0)
         spoke_last = 1 if name == self._spoke_last else 0
         p = (W_ADDRESSED * addressed + W_EVENT_HIT * event_hit
@@ -983,6 +1119,7 @@ class Sim:
     def _tick(self):
         now = self.clock.now()
         self._drain_inbox()
+        self._apply_judge()
         self._fire_due_events()
         self._maybe_start_scene_background()
         self._cycle_line()

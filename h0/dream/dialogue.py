@@ -489,6 +489,10 @@ class Dialogue:
     """One Spark Open call per line; the dream never waits on a failed call (a
     failure gives None and the caller simply tries the next turn)."""
 
+    JUDGE_SYSTEM = (
+        "You read the last lines of a scene and answer whether the actor's goal "
+        "is reached in them. Reply with exactly one word: YES or NO.")
+
     def __init__(self, profile, transport=None, event_sink=None, rng=None):
         self.profile = profile or {}
         self.hero = self.profile.get("hero") or "the hero"
@@ -629,6 +633,19 @@ class Dialogue:
 
     def hero_system(self):
         return ("You are %s.\n%s\n%s" % (self.hero, soul_text(self.profile), HERO_RULES))
+
+    def judge(self, goal, last4):
+        """Whether the actor's goal is reached in the last lines: YES or NO,
+        anything else reads as NO. The word is read after a strip (a live reply
+        comes as "YES\n"), but only the bare word counts -- "Yes, definitely"
+        is a sentence, not a verdict. One flat call, the count is kept by Sim."""
+        user = ("Goal: %s\n\nLast lines:\n%s" %
+                (goal, "\n".join("%s: %s" % (w, t) for w, t in (last4 or []))))
+        try:
+            reply = self._call("judge", self.JUDGE_SYSTEM, user)
+        except Exception:
+            return "NO"
+        return "YES" if (reply or "").strip().upper() == "YES" else "NO"
 
     def hero_line(self, world, transcript, world_events=()):
         """-> {"who", "text", "touch", "remarks", "raw"} or None."""
