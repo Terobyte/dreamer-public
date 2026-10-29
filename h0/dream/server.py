@@ -13,6 +13,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
+from diagnostics import panel_state
 from inputs import sanitize
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -185,6 +186,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._hero()
         if path == "/api/runs":
             return self._send(200, {"runs": self._runs()})
+        if path == "/api/panel":
+            return self._panel(q)
         if path == "/events":
             return self._events(q)
         if path.startswith("/out/"):
@@ -217,6 +220,16 @@ class ViewerHandler(BaseHTTPRequestHandler):
         # against snapshot/pov rows by seq, so neither side can overrule a newer one
         return self._send(200, {"facts": facts, "diary": diary,
                                 "hero_owner": owner, "seq": seq})
+
+    def _panel(self, q):
+        """Director panel (2.3): Python folds the whole log, the page only draws.
+        Same run guard as /events -- a path outside the base is a 404."""
+        run = (q.get("run") or [self.viewer.run or ""])[0]
+        base = _run_dir(run, self.viewer.root)
+        if base is None:
+            return self._not_found()
+        rows, _ = read_rows(os.path.join(base, "log.jsonl"))
+        return self._send(200, panel_state(rows))
 
     def _runs(self):
         out = []

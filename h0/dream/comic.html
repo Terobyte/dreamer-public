@@ -71,6 +71,8 @@ body.can-click .obj { cursor: pointer; } body.can-click .obj:hover { border-colo
 aside { position: sticky; top: 60px; align-self: start; display: flex; flex-direction: column; gap: 10px; }
 .card { background: var(--panel); border: 2px solid var(--ink); border-radius: 6px; padding: 10px; }
 .card h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; color: var(--muted); }
+#panelbox { font-size: 12px; } #panelbox > div { margin-bottom: 4px; word-break: break-word; }
+#panelbox span { color: var(--muted); }
 .big { font-size: 26px; font-weight: bold; font-variant-numeric: tabular-nums; }
 .progress { height: 10px; border: 1.5px solid var(--ink); background: #fff; margin: 4px 0; }
 .progress i { display: block; height: 100%; background: var(--accent); width: 0; }
@@ -112,6 +114,7 @@ footer.off { display: none; }
     </div>
     <div class="card" id="runscard" hidden><h3>Прогоны</h3><div id="runs"></div></div>
     <div class="card"><h3>Герой</h3><button id="herobtn">что знает герой</button><div id="herobox"></div></div>
+    <div class="card" id="panelcard" hidden><h3>Панель директора</h3><div id="panelbox"></div></div>
   </aside>
 </main>
 <footer id="footer" class="off">
@@ -599,6 +602,36 @@ async function showRuns() {
     $("runs").appendChild(a);
   }
 }
+
+// Панель директора (2.3): всё считает Python в /api/panel, страница только рисует.
+const PANEL_URL = '/api/panel';
+const PANEL_TITLES = {schedule: "расписание", fired: "сработало", pressure: "давление",
+  goals: "цели", pov: "POV", lock: "замок", notes: "записки", safety: "стоп-кран"};
+
+function drawPanel(panel) {
+  const box = $("panelbox");
+  box.textContent = "";
+  for (const key of ["schedule", "fired", "pressure", "goals", "pov", "lock", "notes", "safety"]) {
+    if (!(key in panel)) continue;
+    const v = panel[key];
+    const empty = v == null || (Array.isArray(v) ? !v.length
+      : typeof v === "object" ? !Object.keys(v).length : false);
+    if (empty) continue;
+    const row = el("div", "", PANEL_TITLES[key] + ": ");
+    row.appendChild(el("span", "", typeof v === "string" ? v : JSON.stringify(v)));
+    box.appendChild(row);
+  }
+  $("panelcard").hidden = !box.childElementCount;
+}
+
+async function pollPanel() {
+  if (!RUN) return;
+  try {
+    const url = PANEL_URL + "?run=" + encodeURIComponent(RUN);
+    drawPanel(await (await fetch(url)).json());
+  } catch (e) { /* панель не ломает просмотр */ }
+}
+setInterval(pollPanel, 1000);
 
 (async function boot() {
   S = fresh();

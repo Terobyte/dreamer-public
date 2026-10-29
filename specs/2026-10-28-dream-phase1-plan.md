@@ -220,12 +220,12 @@
 
 Записки директора — тип лога `message {to, note}` (fsm.py:276).
 
-- [ ] Тест `test_panel_covers_dictionary`: синтетический лог с одной строкой каждого типа (`schedule`, `door`, `judge`, `pressure`, `silence`, `event`, `goal`, `lock_reject`, `loop_cut`, `turn_skip`, `line_discarded`, `pov`, `safety_pause`, `input_dropped`, `message`, `consult` с `label: ready_stale`). Каждая строка видна в `panel_state`; тест держит таблицу «тип → ключ панели».
-- [ ] Тест `test_panel_pressure_last_tick`: два `pressure` подряд → в панели только последний, по актёрам.
-- [ ] Тест `test_panel_ignores_unknown`: строка неизвестного типа не роняет `panel_state` и в панель не попадает.
-- [ ] Тест `test_server_panel`: `Viewer` (server.py:97) с корнем tmp и `tmp/A/run_1/log.jsonl`; `GET /api/panel?run=A/run_1` → 200 и JSON `panel_state` этого лога; путь вне базы → 404 (как `/events`).
-- [ ] `comic.html` содержит `'/api/panel'` и опрос раз в 1000 мс. Ошибки консоли проверяет хозяин руками.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_panel_covers_dictionary`: синтетический лог с одной строкой каждого типа (`schedule`, `door`, `judge`, `pressure`, `silence`, `event`, `goal`, `lock_reject`, `loop_cut`, `turn_skip`, `line_discarded`, `pov`, `safety_pause`, `input_dropped`, `message`, `consult` с `label: ready_stale`). Каждая строка видна в `panel_state`; тест держит таблицу «тип → ключ панели».
+- [x] Тест `test_panel_pressure_last_tick`: два `pressure` подряд → в панели только последний, по актёрам.
+- [x] Тест `test_panel_ignores_unknown`: строка неизвестного типа не роняет `panel_state` и в панель не попадает.
+- [x] Тест `test_server_panel`: `Viewer` (server.py:97) с корнем tmp и `tmp/A/run_1/log.jsonl`; `GET /api/panel?run=A/run_1` → 200 и JSON `panel_state` этого лога; путь вне базы → 404 (как `/events`).
+- [x] `comic.html` содержит `'/api/panel'` и опрос раз в 1000 мс. Ошибки консоли проверяет хозяин руками.
+- [x] Все тесты зелёные.
 
 ## 3.1a до 5 актёров: ядро
 
