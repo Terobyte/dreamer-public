@@ -217,7 +217,8 @@ function segmentsSelfIntersect(outline: V2[]): [number, number] | null {
   return null;
 }
 
-function overlapArea(a: V2[], b: V2[]): number {
+/** Area the two footprints share, in m² (0 when they only touch). */
+export function overlapArea(a: V2[], b: V2[]): number {
   const pa = a.map((p) => ({ x: Math.round(p[0] * 1000), y: Math.round(p[1] * 1000) }));
   const pb = b.map((p) => ({ x: Math.round(p[0] * 1000), y: Math.round(p[1] * 1000) }));
   const inter = Clipper.intersect([pa], [pb], FillRule.NonZero);

@@ -1,6 +1,8 @@
 import type { Ctx } from "../ctx.js";
 import type { V2 } from "../geom/vec.js";
+import { EPS } from "../geom/vec.js";
 import { FREE, freeWalls, resolveGlassIds } from "../plan/merge.js";
+import { overlapArea } from "../plan/rooms.js";
 import type { FreeWall, Interval, LevelPlan } from "../plan/merge.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import { grayOf } from "./color.js";
@@ -13,12 +15,30 @@ import { propMeshes } from "./props.js";
 import { decalMeshes } from "./decals.js";
 import { doorMeshes } from "./doors.js";
 import { fixtureMeshes } from "./fixtures.js";
+import { stairMeshes } from "./stairs.js";
+import { extrudeFace, footprintsOverlap } from "./slab.js";
+import type { StairGeo } from "../stairs/place.js";
 
 export { meshBBox };
 
 export interface Mesh {
   id: string;
-  kind: "floor" | "ceiling" | "wall" | "band" | "reveal" | "beam" | "fixture" | "prop" | "decal" | "leaf" | "backdrop" | "cap";
+  kind:
+    | "floor"
+    | "ceiling"
+    | "wall"
+    | "band"
+    | "reveal"
+    | "beam"
+    | "fixture"
+    | "prop"
+    | "decal"
+    | "leaf"
+    | "backdrop"
+    | "cap"
+    | "step"
+    | "rail"
+    | "slab";
   material: string;
   positions: number[];
   normals: number[];
@@ -117,13 +137,40 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   for (const r of (scene.rooms ?? []) as any[]) sceneRoom.set(String(r.id), r);
   const geoRooms = (ctx.rooms ?? []) as any[];
 
+  // a stairwell cut goes through the slab under `to.room`, that room's own
+  // floor, and the ceiling of the room the flight runs in (spec "Лестницы")
+  const floorCuts = new Map<string, V2[][]>();
+  const ceilCuts = new Map<string, V2[][]>();
+  const add = (m: Map<string, V2[][]>, room: string, cut: V2[]): void => {
+    const list = m.get(room) ?? [];
+    list.push(cut);
+    m.set(room, list);
+  };
+  for (const g of ((ctx as any).stairs ?? []) as StairGeo[]) {
+    if (g.bad || !g.cut) continue;
+    const src = ((scene.stairs ?? []) as any[])[g.i] ?? {};
+    add(floorCuts, String(src.to?.room), g.cut);
+    add(ceilCuts, String(src.from?.room), g.cut);
+  }
+
   const floors: Geometry["floors"] = [];
   for (const r of geoRooms) {
     const src = sceneRoom.get(r.id);
     const y = levelY.get(String(r.level)) ?? 0;
     floors.push({ room: r.id, level: r.level, y, outline: r.outline });
-    meshes.push(horizontalFace(`${r.id}:floor`, "floor", String(src.floor), r.id, r.outline, y));
-    meshes.push(horizontalFace(`${r.id}:ceiling`, "ceiling", String(src.ceiling), r.id, r.outline, y + Number(r.height)));
+    meshes.push(horizontalFace(`${r.id}:floor`, "floor", String(src.floor), r.id, r.outline, y, floorCuts.get(r.id) ?? []));
+    meshes.push(
+      horizontalFace(`${r.id}:ceiling`, "ceiling", String(src.ceiling), r.id, r.outline, y + Number(r.height), ceilCuts.get(r.id) ?? []),
+    );
+    // the slab a room on an upper level stands on, between it and the ceiling
+    // of the room below: footprint × [y − slab, y] (spec "Уровни"), ends in
+    // `exterior`
+    const below = slabUnder(r, y, geoRooms, levelY);
+    if (below !== null) {
+      meshes.push(
+        extrudeFace({ id: `${r.id}:slab`, kind: "slab", material: EXTERIOR, room: r.id }, r.outline, floorCuts.get(r.id) ?? [], below, y),
+      );
+    }
   }
 
   // walls, per level plan: one body per interval, one face per side
@@ -134,6 +181,8 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     return k;
   };
   const caps = { k: 0 };
+  // kept apart too: a stair rail measures its clearance against these faces
+  const wallMeshes = new Map<string, Mesh[]>();
   const openings = (ctx.openings ?? []) as OpeningGeo[];
   const free = freeWalls(scene, geoRooms);
   // materialTable also keys entries off scene.assets (F6): a glass variant
@@ -146,13 +195,15 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     const y = levelY.get(String(levelId)) ?? 0;
     (plan.intervals as Interval[]).forEach((iv, n) => {
       const own = openings.filter((o) => o.intervalLevel === levelId && o.intervalIndex === n && !o.error);
-      meshes.push(
-        ...intervalMeshes(
-          iv,
-          { levelY: y, openings: own, caps, room: (s) => wallRoom(s, sceneRoom, geoRooms, free, glassIds) },
-          next,
-        ),
+      const built = intervalMeshes(
+        iv,
+        { levelY: y, openings: own, caps, room: (s) => wallRoom(s, sceneRoom, geoRooms, free, glassIds) },
+        next,
       );
+      const list = wallMeshes.get(String(levelId)) ?? [];
+      list.push(...built);
+      wallMeshes.set(String(levelId), list);
+      meshes.push(...built);
     });
   }
 
@@ -170,6 +221,13 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
 
   // things: props, decals, door leaves and backdrops
   meshes.push(...fixtureMeshes(ctx), ...propMeshes(ctx, assetFiles, glbSizes), ...decalMeshes(ctx), ...doorMeshes(ctx));
+  meshes.push(
+    ...stairMeshes(ctx, {
+      sceneRoom,
+      walls: (level) => wallMeshes.get(level) ?? [],
+      levelY: (id) => levelY.get(String(geoRooms.find((r) => r.id === id)?.level)) ?? 0,
+    }),
+  );
 
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
@@ -225,4 +283,33 @@ function wallRoom(
     wallMaterial: String(override?.material ?? src.walls?.material ?? EXTERIOR),
     bands,
   };
+}
+
+/**
+ * Underside of the slab a room stands on: the top of the ceiling of the room
+ * below it. "Below" is any room on the nearest lower level whose footprint
+ * shares positive area with this one — a room may hang half off the one under
+ * it, so touching corners or a contained centroid are neither necessary nor
+ * sufficient. Whether the area is positive is decided exactly
+ * (`footprintsOverlap`), not by the millimetre-rounded `overlapArea`, which
+ * only ranks the candidates: where several qualify, the largest overlap wins,
+ * the first in `rooms` on a tie.
+ */
+function slabUnder(r: any, y: number, geoRooms: any[], levelY: Map<string, number>): number | null {
+  let bestY = -Infinity;
+  for (const ly of levelY.values()) if (ly < y - EPS && ly > bestY) bestY = ly;
+  if (!Number.isFinite(bestY)) return null;
+  let top: number | null = null;
+  let bestArea = 0;
+  for (const other of geoRooms) {
+    if ((levelY.get(String(other.level)) ?? 0) !== bestY) continue;
+    if (!footprintsOverlap(r.outline as V2[], other.outline as V2[])) continue;
+    const ceil = bestY + Number(other.height);
+    if (ceil >= y - EPS) continue;
+    const area = overlapArea(r.outline as V2[], other.outline as V2[]);
+    if (top !== null && area <= bestArea) continue;
+    bestArea = area;
+    top = ceil;
+  }
+  return top;
 }

@@ -2,6 +2,7 @@ import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
 import type { Mesh } from "./geometry.js";
 import { MeshBuilder } from "./mesh.js";
+import { facePoly } from "./slab.js";
 
 /** Ear clipping over a simple polygon; returns index triples into `poly`. */
 export function earClip(poly: V2[]): number[] {
@@ -42,8 +43,13 @@ export function earClip(poly: V2[]): number[] {
       const c = poly[ic];
       if (cross(a, b, c) <= EPS) continue;
       let blocked = false;
+      const same = (p: V2, q: V2): boolean => Math.abs(p[0] - q[0]) < EPS && Math.abs(p[1] - q[1]) < EPS;
       for (const other of idx) {
         if (other === ia || other === ib || other === ic) continue;
+        // a hole is bridged in with two coincident edges, so the polygon holds
+        // the bridge's endpoints twice; a duplicate of the ear's own corner
+        // must not block it, or the whole hole stays untriangulated
+        if (same(poly[other], a) || same(poly[other], b) || same(poly[other], c)) continue;
         if (inside(poly[other], a, b, c)) {
           blocked = true;
           break;
@@ -61,13 +67,23 @@ export function earClip(poly: V2[]): number[] {
   return out;
 }
 
-/** A horizontal slab over the room outline: floor (+Y) or ceiling (−Y). */
-export function horizontalFace(id: string, kind: "floor" | "ceiling", material: string, room: string, outline: V2[], y: number): Mesh {
+/** A horizontal slab over the room outline minus `holes`: floor (+Y) or ceiling (−Y). */
+export function horizontalFace(
+  id: string,
+  kind: "floor" | "ceiling",
+  material: string,
+  room: string,
+  outline: V2[],
+  y: number,
+  holes: V2[][] = [],
+): Mesh {
   const n: [number, number, number] = kind === "floor" ? [0, 1, 0] : [0, -1, 0];
   const mb = new MeshBuilder();
-  const tris = earClip(outline);
+  // a stairwell cut is a hole, and `earClip` only eats simple polygons
+  const poly = holes.length > 0 ? facePoly(outline, holes) : outline;
+  const tris = earClip(poly);
   for (let t = 0; t < tris.length; t += 3) {
-    const p = [tris[t], tris[t + 1], tris[t + 2]].map((i) => outline[i]);
+    const p = [tris[t], tris[t + 1], tris[t + 2]].map((i) => poly[i]);
     mb.tri(
       [p[0][0], y, p[0][1]],
       [p[1][0], y, p[1][1]],
