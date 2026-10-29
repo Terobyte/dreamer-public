@@ -134,6 +134,8 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `decal.${params.i} на ${params.edge}: пересекает decal.${params.other}`;
     case "DECAL_HIDDEN":
       return `decal.${params.i} на ${params.edge}: закрыта предметом ${params.id} в ${params.d} м от грани (нужно ≥ 0.15)`;
+    case "ROUTE_BLOCKED":
+      return `${params.route}: застрял в (${params.x}, ${params.z}) по пути к ${params.target}; мешает ${params.what}`;
     case "NAV_SPAWN_BLOCKED":
       return `spawn в ${params.what}`;
     case "NAV_ROOM_CUT":

@@ -42,5 +42,5 @@ export const CODES: Record<Code, { stage: Stage; level: "error" | "warn" }> = {
   CAMERA_OUTSIDE: { stage: "cameras", level: "error" },
   NAV_SPAWN_BLOCKED: { stage: "nav", level: "error" },
   NAV_ROOM_CUT: { stage: "nav", level: "warn" },
-  ROUTE_BLOCKED: { stage: "nav", level: "error" },
+  ROUTE_BLOCKED: { stage: "routes", level: "error" },
 };

@@ -11,10 +11,10 @@ import { runShots, SHOTS_DEFAULTS } from "../src/build/shots.js";
 import { runAssets, missingAssets } from "../src/assets/run.js";
 import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
 import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
-import type { Report } from "../src/types.js";
+import type { Issue, NavJson, Report } from "../src/types.js";
 
 const USAGE =
-  "usage: dreamer check <scene> [--report <path>]\n" +
+  "usage: dreamer check <scene> [--report <path>] [--built <dist>]\n" +
   "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>]\n" +
   "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]";
 
@@ -31,13 +31,53 @@ function flag(args: string[], name: string): string | null | undefined {
   return v;
 }
 
+/**
+ * The difference with the previous report at the same `--report` path, keyed
+ * by code + path (spec "Сообщения"): what the author fixed and what appeared.
+ */
+function reportDiff(prev: Report, now: Report): { fixed: Issue[]; new: Issue[] } {
+  const key = (i: Issue): string => `${i.code}\u0000${i.path}`;
+  const all = (r: Report): Issue[] => [...r.errors, ...r.warnings];
+  const was = new Map(all(prev).map((i) => [key(i), i]));
+  const is = new Map(all(now).map((i) => [key(i), i]));
+  return {
+    fixed: [...was].filter(([k]) => !is.has(k)).map(([, i]) => i),
+    new: [...is].filter(([k]) => !was.has(k)).map(([, i]) => i),
+  };
+}
+
 /** The report a scene that does not even parse gets: schema fails, rest skipped. */
-function parseFailReport(issues: unknown[]): Report {
+function parseFailReport(issues: unknown[], builtFlag?: string | null): Report {
   const stages = ["schema", "plan", "openings", "stairs", "props", "decals", "cameras", "nav"].map((s, i) => ({
     stage: s as never,
     status: (i === 0 ? "fail" : "skipped") as "fail" | "skipped",
   }));
+  if (builtFlag !== undefined) stages.push({ stage: "routes" as never, status: "skipped" });
   return makeReport(stages as never, emptyPassport(), issues as never, []);
+}
+
+/**
+ * Prints the report, diffs it against whatever is already on disk at `rp`
+ * (if anything) and writes it back: shared by every outcome `check` can
+ * reach, including a scene that fails to parse at all.
+ */
+function printAndDiff(rp: string, report: Report): void {
+  if (existsSync(rp)) {
+    try {
+      const prev = JSON.parse(readFileSync(rp, "utf-8")) as Report;
+      const diff = reportDiff(prev, report);
+      report.diff = diff;
+    } catch {
+      // an unreadable previous report is simply no baseline
+    }
+  }
+  const out = JSON.stringify(report, null, 2);
+  console.log(out);
+  if (report.diff) {
+    for (const i of report.diff.fixed) console.log(`исправлено: ${i.code} ${i.path}`);
+    for (const i of report.diff.new) console.log(`появилось: ${i.code} ${i.path}`);
+  }
+  writeFileSync(rp, out);
 }
 
 async function main(): Promise<number> {
@@ -65,25 +105,31 @@ async function main(): Promise<number> {
     return 2;
   }
   try {
+    const builtFlag = flag(args, "--built");
+    if (builtFlag === null) {
+      console.error("--built requires a value");
+      return 2;
+    }
     const { raw, issues } = parseScene(text);
     if (raw === null && issues.length > 0) {
-      const stages = ["schema", "plan", "openings", "stairs", "props", "decals", "cameras", "nav"].map((s, i) => ({
-        stage: s as never,
-        status: (i === 0 ? "fail" : "skipped") as "fail" | "skipped",
-      }));
-      const report = makeReport(stages as never, emptyPassport(), issues, []);
-      const out = JSON.stringify(report, null, 2);
-      console.log(out);
+      const report = parseFailReport(issues, builtFlag);
       const rp = reportPath ?? defaultReportPath(scenePath);
-      writeFileSync(rp, out);
+      printAndDiff(rp, report);
       return 1;
     }
-    const { report, ctx } = runCheck(raw);
-    const out = JSON.stringify(report, null, 2);
-    console.log(out);
+    let builtNav: NavJson | undefined;
+    if (builtFlag !== undefined) {
+      const navPath = join(builtFlag, "nav.json");
+      if (!existsSync(navPath)) {
+        console.error("built: nav.json not found");
+        return 2;
+      }
+      builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
+    }
+    const { report, ctx } = runCheck(raw, { builtNav });
     const sceneName = typeof ctx.scene?.name === "string" ? ctx.scene.name : undefined;
     const rp = reportPath ?? defaultReportPath(scenePath, sceneName);
-    writeFileSync(rp, out);
+    printAndDiff(rp, report);
     const name = basename(scenePath).replace(/\.scene\.json$/, "");
     writeFileSync(join(dirname(rp), `${name}.top.svg`), topSvg(ctx));
     const nav = ctx.nav ?? buildNav(ctx);

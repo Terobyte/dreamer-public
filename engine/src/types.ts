@@ -8,7 +8,8 @@ export type Stage =
   | "props"
   | "decals"
   | "cameras"
-  | "nav";
+  | "nav"
+  | "routes";
 
 export type Code =
   | "SCHEMA_PARSE"
@@ -82,6 +83,8 @@ export interface Report {
   passport: Passport;
   errors: Issue[];
   warnings: Issue[];
+  /** only from the second `check` into the same `--report` path on */
+  diff?: { fixed: Issue[]; new: Issue[] };
 }
 
 export type Scene = Record<string, any>;

@@ -239,14 +239,14 @@
 - CLI: `dreamer check <scene> [--report <path>] [--built <dist>]`. Все CLI-тесты `check` в плане передают `--report <mkdtemp>/r.json` (иначе отчёт и `nav.json`/`top.svg` пишутся рядом со сценой в `specs/examples`); тесты разницы переиспользуют тот же путь. С `--built` после `nav` идёт этап `routes` (в `stages` — `{stage: "routes", ...}` последним; без `--built` этапа в списке нет — голден не меняется). Нет `<dist>/nav.json` → exit 2, `built: nav.json not found`.
 - `findRoute(nav: NavJson, from: V2, to: V2, level: string): {ok: true, path: V2[]} | {ok: false, stuck: V2}`.
 
-- [ ] `test_route_in_passes`: `build` demo-flat в tmp, затем `check --built` → `ok: true`, этап `routes` = `pass`, ошибок `ROUTE_BLOCKED` нет
-- [ ] `test_route_blocked_by_closed_door`: патч `/openings/0/leaf/open` = false, `build`, `check --built` → ровно одна `ROUTE_BLOCKED`, `path` `/routes/0/path/1` (центр `front` (0, 4) при закрытой двери в 0.34 м от ближайшей проходимой клетки), `msg` содержит `закрытая дверь front`; точка застревания по z ∈ [4.3, 4.6]
-- [ ] `test_route_blocked_by_wall`: маршрут `{id:"x", path:["spawn", {"room":"living","at":[3.5,3.5]}]}` при закрытой двери → `msg` содержит `x:` и `(1.66, 4.34)`, не содержит `закрытая дверь`
-- [ ] `test_find_route_unit`: сетка 10×10 из битов (`origin` [0, 0], клетка 0.04, `from` клетка (1, 5), `to` клетка (8, 5)) с глухой стеной по i = 5 → `ok: false`, `stuck` по x в клетке i = 4; с дыркой в стене → `ok: true`, путь начинается в `from` и кончается в `to` (с точностью до клетки)
-- [ ] `test_report_diff_new_and_fixed`: первый `check` сцены `test/scenes/broken/PROP_HITS_WALL.patch.json` в `--report <tmp>/r.json`, затем исправленной → второй отчёт: `diff.fixed` = одна запись `PROP_HITS_WALL`, `diff.new` = []; stdout содержит `исправлено: PROP_HITS_WALL /props/`
-- [ ] `test_report_diff_same`: два одинаковых `check` подряд → `diff` = `{fixed: [], new: []}`
-- [ ] `test_report_no_diff_first_time`: первый `check` → в отчёте нет поля `diff`
-- [ ] реализовать
+- [x] `test_route_in_passes`: `build` demo-flat в tmp, затем `check --built` → `ok: true`, этап `routes` = `pass`, ошибок `ROUTE_BLOCKED` нет
+- [x] `test_route_blocked_by_closed_door`: патч `/openings/0/leaf/open` = false, `build`, `check --built` → ровно одна `ROUTE_BLOCKED`, `path` `/routes/0/path/1` (центр `front` (0, 4) при закрытой двери в 0.34 м от ближайшей проходимой клетки), `msg` содержит `закрытая дверь front`; точка застревания по z ∈ [4.3, 4.6]
+- [x] `test_route_blocked_by_wall`: маршрут `{id:"x", path:["spawn", {"room":"living","at":[3.5,3.5]}]}` при закрытой двери → `msg` содержит `x:` и `(1.66, 4.34)`, не содержит `закрытая дверь`
+- [x] `test_find_route_unit`: сетка 10×10 из битов (`origin` [0, 0], клетка 0.04, `from` клетка (1, 5), `to` клетка (8, 5)) с глухой стеной по i = 5 → `ok: false`, `stuck` по x в клетке i = 4; с дыркой в стене → `ok: true`, путь начинается в `from` и кончается в `to` (с точностью до клетки)
+- [x] `test_report_diff_new_and_fixed`: первый `check` сцены `test/scenes/broken/PROP_HITS_WALL.patch.json` в `--report <tmp>/r.json`, затем исправленной → второй отчёт: `diff.fixed` = одна запись `PROP_HITS_WALL`, `diff.new` = []; stdout содержит `исправлено: PROP_HITS_WALL /props/`
+- [x] `test_report_diff_same`: два одинаковых `check` подряд → `diff` = `{fixed: [], new: []}`
+- [x] `test_report_no_diff_first_time`: первый `check` → в отчёте нет поля `diff`
+- [x] реализовать
 
 ## Предметы по факту
 

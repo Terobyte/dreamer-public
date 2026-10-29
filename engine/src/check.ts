@@ -7,11 +7,12 @@ import { lintProps } from "./props/lint.js";
 import { decalsStage } from "./decals/place.js";
 import { checkCameras } from "./cameras/check.js";
 import { navStage } from "./nav/grid.js";
+import { routesStage } from "./routes/stage.js";
 import type { Ctx } from "./ctx.js";
-import type { Report, Stage, Issue } from "./types.js";
+import type { NavJson, Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
 
-export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Report; ctx: Ctx } {
+export function runCheck(raw: unknown, opts?: { until?: Stage; builtNav?: NavJson }): { report: Report; ctx: Ctx } {
   const until = opts?.until ?? "nav";
   const untilIdx = STAGES.indexOf(until);
   const passport = emptyPassport();
@@ -22,6 +23,7 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
       stage: s,
       status: i === 0 ? ("fail" as const) : ("skipped" as const),
     }));
+    if (opts?.builtNav !== undefined) stages.push({ stage: "routes", status: "skipped" });
     const report = makeReport(stages, passport, issues, []);
     report.passport = roundReport(passport) as never;
     return { report, ctx: { scene: (raw ?? {}) as never, passport } };
@@ -62,6 +64,13 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
     push(navStage(ctx));
   }
 
+  // `routes` only exists with `--built`: it walks the nav grid of a dist/
+  // that is already on disk, so it is appended after `nav`, never in STAGES.
+  const navFailed = errors.some((e) => e.stage === "nav");
+  const built = opts?.builtNav;
+  const runRoutes = built !== undefined && upToProps && !decalsFailed && !camerasFailed && !navFailed;
+  if (runRoutes) push(routesStage(ctx, built));
+
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
   const stages = STAGES.map((s, i) => {
     if (s === "stairs") return { stage: s, status: "skipped" as const };
@@ -72,6 +81,10 @@ export function runCheck(raw: unknown, opts?: { until?: Stage }): { report: Repo
     if (earlierFail) return { stage: s, status: "skipped" as const };
     return { stage: s, status: "pass" as const };
   });
+  if (built !== undefined) {
+    const status = !runRoutes ? "skipped" : failedAt.has("routes") ? "fail" : "pass";
+    stages.push({ stage: "routes", status: status as never });
+  }
   const report = makeReport(stages, passport, errors, warnings);
   report.passport = roundReport(passport) as never;
   return { report, ctx };
