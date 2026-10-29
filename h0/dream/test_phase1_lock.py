@@ -258,6 +258,24 @@ def dialogue_hint(why):
     return LOCK_HINTS[why]
 
 
+class HumanVoiceRulesTest(unittest.TestCase):
+    """Bench r2 (Ч1): every model held an even meter (short_share 0, len_cv <= 0.33),
+    Haiku named the other in 79 % of lines, Spark put [pause] in 87 %. The shared
+    rules ask for short lines and varied length, keep the 15-word cap as a ceiling
+    only, stop offering [pause] as an example and stop asking for a bracket on every line."""
+
+    def test_rules_ask_for_short_varied_lines_without_names(self):
+        from dialogue import ACTOR_RULES, VOICE_RULES
+        self.assertIn("one to three words", VOICE_RULES)
+        self.assertIn("never the same length twice running", VOICE_RULES)
+        self.assertIn("almost never say each other's name", VOICE_RULES)
+        self.assertIn("a ceiling, not a target", VOICE_RULES)
+        self.assertNotIn("[pause]", VOICE_RULES)
+        self.assertNotIn("a new one each time", VOICE_RULES)
+        for rules in (HERO_RULES, ACTOR_RULES):
+            self.assertIn("one to three words", rules)
+
+
 class HeroRulesTest(unittest.TestCase):
     def test_hero_rules_rewritten(self):
         self.assertNotIn("brings something new", HERO_RULES)
