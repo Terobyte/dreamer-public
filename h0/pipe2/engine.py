@@ -1,0 +1,228 @@
+"""The dreamer CLI behind a Python interface: check, build, shots, asset keys.
+
+Every call runs in its own temporary directory, so rooms can be checked in
+parallel, and reports are memoised per scene: the same scene is never checked
+twice. The engine tree itself is read-only here.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import tempfile
+import threading
+from pathlib import Path
+from typing import Callable
+
+from pipe2.merge import merge
+
+#: a warning the engine never fails the run on, but a room must not ship with
+#: (engine/src/report/codes.ts:44)
+BLOCKING_WARNINGS = ("NAV_ROOM_CUT",)
+
+KEYS_TS = Path(__file__).resolve().parent / "keys.ts"
+
+
+class EngineError(RuntimeError):
+    """The CLI failed as a program: a usage error or a crash, not findings."""
+
+    def __init__(self, code: int, raw: str):
+        super().__init__(f"dreamer exited with {code}:\n{raw}")
+        self.code = code
+        self.raw = raw
+
+
+def blocking(report: dict) -> list[dict]:
+    """Findings a room may not ship with: errors plus NAV_ROOM_CUT."""
+    warnings = [w for w in report.get("warnings") or [] if w.get("code") in BLOCKING_WARNINGS]
+    return list(report.get("errors") or []) + warnings
+
+
+def green(report: dict) -> bool:
+    return report.get("code") == 0 and not blocking(report)
+
+
+def scene_for_room(skeleton: dict, partials: dict, plan: dict, room: str) -> dict:
+    """The scene a single room is checked against: skeleton + that room only."""
+    scene, _violations = merge(skeleton, {room: partials.get(room) or {}}, plan)
+    return scene
+
+
+def _scene_hash(scene: dict) -> str:
+    return hashlib.sha256(json.dumps(scene, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+class _Inflight:
+    """One running CLI call others wait on: the first thread owns the run."""
+
+    def __init__(self):
+        self._done = threading.Event()
+        self.report = None
+        self.error = None
+
+    def finish(self, report, error) -> None:
+        self.report = report
+        self.error = error
+        self._done.set()
+
+    def result(self):
+        self._done.wait()
+        if self.error is not None:
+            raise self.error
+        return self.report
+
+
+class Engine:
+    def __init__(self, engine_dir: str | os.PathLike, *, shots: bool = True):
+        self.engine_dir = Path(engine_dir)
+        self._want_shots = shots
+        self._lock = threading.Lock()
+        self._reports: dict[tuple, dict] = {}
+        # one in-flight CLI run per cache key: latecomers wait on it and
+        # share its report instead of starting a second run
+        self._inflight: dict[tuple, _Inflight] = {}
+
+    # --- the CLI ---------------------------------------------------------
+
+    def _run(self, args: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["node", "--import", "tsx", "bin/dreamer.ts", *args],
+            cwd=self.engine_dir,
+            capture_output=True,
+            text=True,
+        )
+
+    def _room(self, work: str | os.PathLike) -> Path:
+        """A private directory for one CLI call: never next to the engine."""
+        Path(work).mkdir(parents=True, exist_ok=True)
+        return Path(tempfile.mkdtemp(dir=str(work)))
+
+    @staticmethod
+    def _write_scene(where: Path, scene: dict) -> Path:
+        path = where / "room.scene.json"
+        path.write_text(json.dumps(scene), encoding="utf-8")
+        return path
+
+    def _report_of(self, done: subprocess.CompletedProcess, report_path: Path) -> dict:
+        raw = (done.stdout or "") + (done.stderr or "")
+        if done.returncode == 2 or not report_path.exists():
+            raise EngineError(done.returncode or 2, raw)
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        return {
+            "code": done.returncode,
+            "errors": list(data.get("errors") or []),
+            "warnings": list(data.get("warnings") or []),
+            "raw": raw,
+        }
+
+    # --- the interface ---------------------------------------------------
+
+    def check(self, scene: dict, work: str | os.PathLike, built: str | os.PathLike | None = None) -> dict:
+        key = ("check", _scene_hash(scene), str(built) if built is not None else None)
+        return self._once(key, lambda: self._check_uncached(scene, work, built))
+
+    def _check_uncached(self, scene: dict, work: str | os.PathLike, built: str | os.PathLike | None) -> dict:
+        here = self._room(work)
+        scene_path = self._write_scene(here, scene)
+        report_path = here / "report.json"
+        args = ["check", str(scene_path), "--report", str(report_path)]
+        if built is not None:
+            args += ["--built", str(built)]
+        return self._report_of(self._run(args), report_path)
+
+    def _once(self, key: tuple, run: Callable) -> dict:
+        """Run once per key: cache hit returns at once, concurrent calls share."""
+        with self._lock:
+            hit = self._reports.get(key)
+            if hit is not None:
+                return hit
+            mine = self._inflight.get(key)
+            if mine is None:
+                mine = self._inflight[key] = _Inflight()
+                owner = True
+            else:
+                owner = False
+        if not owner:
+            return mine.result()
+        try:
+            report = run()
+        except BaseException as exc:
+            with self._lock:
+                del self._inflight[key]
+            mine.finish(None, exc)
+            raise
+        with self._lock:
+            report = self._reports.setdefault(key, report)
+            del self._inflight[key]
+        mine.finish(report, None)
+        return report
+
+    def check_full(self, scene: dict, work: str | os.PathLike) -> dict:
+        """`check`, and if the scene builds at all, `check --built` on its dist."""
+        return self._once(("full", _scene_hash(scene)), lambda: self._check_full_uncached(scene, work))
+
+    def _check_full_uncached(self, scene: dict, work: str | os.PathLike) -> dict:
+        report = self.check(scene, work)
+        if report["code"] == 0:
+            dist = self._room(work) / "dist"
+            self.build(scene, dist, "none", None)
+            report = self.check(scene, work, built=dist)
+        return report
+
+    def build(self, scene: dict, out: str | os.PathLike, assets: str, cache: str | os.PathLike | None) -> None:
+        here = Path(tempfile.mkdtemp())
+        scene_path = self._write_scene(here, scene)
+        args = ["build", str(scene_path), "--out", str(out), "--assets", assets]
+        if cache is not None:
+            args += ["--cache", str(cache)]
+        done = self._run(args)
+        if done.returncode != 0:
+            raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
+
+    def shots(self, dist: str | os.PathLike, size: str = "960x720") -> None:
+        if not self._want_shots:
+            return
+        done = self._run(["shots", str(dist), "--size", size])
+        if done.returncode != 0:
+            raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
+
+    def asset_keys(self, scene: dict) -> list[dict]:
+        """`{id, kind, key, prompt, size}` per referenced asset, from the engine."""
+        here = Path(tempfile.mkdtemp())
+        scene_path = self._write_scene(here, scene)
+        done = subprocess.run(
+            ["node", "--import", "tsx", str(KEYS_TS), str(scene_path)],
+            cwd=self.engine_dir,
+            capture_output=True,
+            text=True,
+        )
+        if done.returncode != 0:
+            raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
+        return json.loads(done.stdout)
+
+
+class Gated:
+    """Same interface, but `build` and `shots` share `n` slots: they eat the box."""
+
+    def __init__(self, engine, n: int = 2):
+        self.engine = engine
+        self._slots = threading.Semaphore(n)
+
+    def check(self, scene, work, built=None):
+        return self.engine.check(scene, work, built)
+
+    def check_full(self, scene, work):
+        return self.engine.check_full(scene, work)
+
+    def asset_keys(self, scene):
+        return self.engine.asset_keys(scene)
+
+    def build(self, scene, out, assets, cache):
+        with self._slots:
+            return self.engine.build(scene, out, assets, cache)
+
+    def shots(self, dist, size="960x720"):
+        with self._slots:
+            return self.engine.shots(dist, size)

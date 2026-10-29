@@ -108,14 +108,14 @@
 - `Gated(engine, n=2)` — тот же интерфейс; `build` и `shots` под общим `threading.Semaphore(n)`, `check`/`check_full`/`asset_keys` — без семафора.
 - `scene_for_room(skeleton, partials, plan, room) -> dict` — `merge` каркаса и только частичного JSON комнаты `room` (это сцена для `check` комнаты, без маскирования соседями).
 
-- [ ] тест: `check` на `specs/examples/demo.scene.json` → `code == 0`
-- [ ] тест: `check` на синтетической сцене с пропсом в дверном проёме → в `errors` есть `PROP_IN_DOORWAY`, `owner_of` (фаза 1) указывает на нужную комнату
-- [ ] тест: `asset_keys` на demo совпадает по ключам с тем, что `build --assets none` кладёт в отчёт/кэш (или с `engine/src/assets/cache.ts` `cacheKey`, вызванным через tsx)
-- [ ] тест: `build --assets none` + `scene_for_room` даёт `dist/index.html`; снимки (`shots`) — только если в окружении есть Chromium движка, иначе тест пропускается с причиной
-- [ ] тест: синтетическая сцена с `NAV_ROOM_CUT` и пропом, перекрывшим маршрут, → в `check_full` есть и `NAV_ROOM_CUT`, и `ROUTE_BLOCKED`; в простом `check` нет `ROUTE_BLOCKED`; `green` ложно, `blocking` содержит оба
-- [ ] тест: `blocking`/`green` на отчёте только с не-`NAV_ROOM_CUT` warnings → пусто/истинно; `Engine(..., shots=False).shots()` Chromium не запускает
-- [ ] тест: второй `check_full` той же сцены не запускает CLI (счётчик подпроцессов); изменённая сцена — запускает
-- [ ] тест: `Gated` поверх заглушки в тесте: 5 потоков `build`/`shots` → одновременно не больше 2; `check` семафор не ждёт
+- [x] тест: `check` на `specs/examples/demo.scene.json` → `code == 0`
+- [x] тест: `check` на синтетической сцене с пропсом в дверном проёме → в `errors` есть `PROP_IN_DOORWAY`, `owner_of` (фаза 1) указывает на нужную комнату
+- [x] тест: `asset_keys` на demo совпадает по ключам с тем, что `build --assets none` кладёт в отчёт/кэш (или с `engine/src/assets/cache.ts` `cacheKey`, вызванным через tsx)
+- [x] тест: `build --assets none` + `scene_for_room` даёт `dist/index.html`; снимки (`shots`) — только если в окружении есть Chromium движка, иначе тест пропускается с причиной
+- [x] тест: синтетическая сцена с `NAV_ROOM_CUT` и пропом, перекрывшим маршрут, → в `check_full` есть и `NAV_ROOM_CUT`, и `ROUTE_BLOCKED`; в простом `check` нет `ROUTE_BLOCKED`; `green` ложно, `blocking` содержит оба
+- [x] тест: `blocking`/`green` на отчёте только с не-`NAV_ROOM_CUT` warnings → пусто/истинно; `Engine(..., shots=False).shots()` Chromium не запускает
+- [x] тест: второй `check_full` той же сцены не запускает CLI (счётчик подпроцессов); изменённая сцена — запускает
+- [x] тест: `Gated` поверх заглушки в тесте: 5 потоков `build`/`shots` → одновременно не больше 2; `check` семафор не ждёт
 
 ## Владение v2: косметика, fixtures, маппер
 
