@@ -34,11 +34,8 @@ THRESHOLD = 2.0  # below it in everyone -> a tick of silence, a legal turn
 ADDRESS_HOLD = 2  # free ticks an addressed / event_hit mark survives
 SILENT_CAP = 6  # ticks_silent stops paying off here
 # the silence term saturates at SILENT_CAP, so past it the formula cannot say
-# "waiting even longer" and an actor the scene rarely names by name is never the
-# loudest again. Above this many silent ticks a participant wins ties on p ahead
-# of the hero tie-break -- the one guard against a starved actor (1.2b, roof3
-# neighbor). Pressure decides first: it never overrides a louder p (F1).
-STARVE_AFTER = SILENT_CAP + 1
+# "waiting even longer"; ties on p are broken in sim._pick_speaker by the raw
+# silent ticks (7.2 row 1.3: longest-silent, then actors in order, hero last).
 ACTOR_STREAK_MAX = 2  # after this many actor lines in a row no actor is picked
 COMPACT_EVERY = 4
 MAX_TOKENS = 1500
@@ -97,7 +94,7 @@ ACTOR_RULES = (
 # gave 4/4 "I'm not jumping, I just woke up"); surprise has to come from content:
 # now and then the hero's line gets a random impulse he must act on. Only the
 # hero (the player): actors stay in character and name the open bridge outright.
-HERO_IMPULSE_P = 0.35
+HERO_IMPULSE_P = 0.15
 HERO_IMPULSES = (
     "you lie about something, small or big",
     "you laugh at the worst possible moment",
@@ -108,7 +105,6 @@ HERO_IMPULSES = (
     "you get angry about something small",
     "you misunderstand what was just said, on purpose or not",
     "you ask the other one something personal and strange",
-    "you notice something impossible about this place",
     "you confess something you never said aloud",
     "you start a game or a bet",
 )

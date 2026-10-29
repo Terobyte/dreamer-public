@@ -115,10 +115,38 @@ def _goal_first_line(rows):
     return None
 
 
+def _events_first_scene(rows):
+    """Spec 7.4: both metrics are bounded by the first scene up to the first
+    transition (or, with no transition yet, up to the latest row seen). Planned
+    counts every schedule entry due by the sim-time reached there."""
+    idx = next((i for i, r in enumerate(rows) if r["type"] == "schedule"), None)
+    if idx is None:
+        return 0, 0
+    sched = rows[idx]
+    planned_all = list(sched.get("events") or [])
+    rest = rows[idx + 1:]
+    tpos = next((i for i, r in enumerate(rest) if r["type"] == "transition"), None)
+    bound = rest[:tpos] if tpos is not None else rest
+    t0 = sched.get("t") or 0
+    if tpos is not None:
+        t_end = rest[tpos].get("t") or 0
+    else:
+        due = [r.get("t") or 0 for r in bound if r["type"] in ("line", "silence", "event")]
+        if not due:
+            return 0, 0
+        t_end = max(due)
+    speed = next((r.get("speed") for r in rows
+                  if r["type"] == "snapshot" and r.get("speed")), 1)
+    t_sim = max(0, (t_end - t0) * speed)
+    fired = sum(1 for r in bound if r["type"] == "event")
+    planned = sum(1 for ev in planned_all if (ev.get("t") or 0) <= t_sim)
+    return fired, planned
+
+
 def score(rows):
     """Craft signals only, the taste call stays with a human reader. Metrics of
     design doc 7.4: a metric whose events are not in the log yet reads 0,
-    goal_first_line None (events_fired/planned come with 1.3)."""
+    goal_first_line None."""
     lines = [(r.get("who") or "?", r.get("text") or "") for r in rows if r["type"] == "line"]
     kinds = [r["type"] for r in rows]
     by = {}
@@ -142,6 +170,7 @@ def score(rows):
     roles = [r.get("role") for r in rows if r["type"] == "line"]
     tokens = [tok for _, t in lines for tok in _mattr_tokens(t)]
     prompt_tokens = [r.get("tokens") or 0 for r in rows if r["type"] == "prompt"]
+    events_fired, events_planned = _events_first_scene(rows)
     return {"lines": len(lines), "repeats": rep, "bits": bits,
             "hero_q": "%d/%d" % (sum("?" in t for t in hero), len(hero)),
             # craft signals for the weak-vs-strong bench: how much is said per line,
@@ -160,6 +189,9 @@ def score(rows):
             "judge_calls": kinds.count("judge"),
             "max_prompt_tokens": max(prompt_tokens or [0]),
             "auto_touch": kinds.count("auto_touch"),
+            # 1.3: the schedule is code's, so the log says how much of it was kept
+            "events_planned": events_planned,
+            "events_fired": events_fired,
             # 1.1: the detector of dialogue.py reads the log, the three counts are events
             "action_loops": count_action_loops(rows),
             "loop_cuts": kinds.count("loop_cut"),

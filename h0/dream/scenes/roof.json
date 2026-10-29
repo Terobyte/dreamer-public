@@ -14,5 +14,9 @@
  "actors": [{"name": "Dan", "voice": "man",
               "look": "a breathless young man in a rain-soaked hoodie, worried eyes",
               "persona": "Dan: he says he is Max's old friend. He just ran up eleven floors because he is sure Max is about to jump, and he will do anything to get Max away from the edge. He is scared, talks too fast, and is hiding why he really came tonight."}],
+ "events": [{"t": 0, "what": "you have just burst onto the roof, out of breath", "who": ["Dan"], "kind": "world"},
+            {"t": 120, "what": "the roof door slams shut in the wind", "who": "all", "kind": "world"},
+            {"t": 300, "what": "a phone screen lights up in Max's pocket: Maya, calling", "who": "all", "kind": "world"},
+            {"t": 480, "what": "a siren rises in the street below and then cuts off into silence", "who": "all", "kind": "world"}],
  "objects": ["roof edge", "water tower", "roof door", "pigeon coop", "satellite dish", "broken lawn chair", "neon sign", "puddle", "fire escape", "rooftop antenna"],
  "hooks": {"A": ["neon sign"], "B": ["pigeon coop"], "C": ["satellite dish"]}}

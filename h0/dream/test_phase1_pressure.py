@@ -296,6 +296,55 @@ class PressureTest(unittest.TestCase):
         self.assertEqual((who, role), (None, None),
                          "an addressed actor without event_hit got through the block")
 
+    # --- F10: a plain pressure tie goes to the longer-silent actor, not the hero
+    def test_event_hit_tie_goes_to_longer_silent_actor_not_hero(self):
+        sim_mod.use_scene("roof")
+        sim = self._sim(StubDialogue("Max"))
+        self.assertEqual(sim.actors, ["Dan"])
+        sim._silent_ticks.update({"Dan": 3, "Max": 1})
+        sim._event_hits["Dan"] = 1
+        sim._addressed["Max"] = 1
+        self.assertEqual(sim._pressure("Dan")["p"], sim._pressure("Max")["p"])
+        who, _ = sim._pick_speaker()
+        self.assertEqual(who, "Dan",
+                         "F10: hero won a plain pressure tie against a longer-silent actor")
+
+    # --- 7.2 row 1.3 tie-break: longest-silent, then actors in order, hero last
+    def test_tie_break_longest_silent_then_actor_order_hero_last(self):
+        from dialogue import SILENT_CAP
+        cap = SILENT_CAP
+        # all four saturated -> equal p; the one silent longest wins, hero too
+        sim, _ = self._stub_sim()
+        sim._silent_ticks = {"Dan": cap + 1, "Maya": cap + 5,
+                             "neighbor": cap + 2, "Max": cap + 3}
+        ps = {n: sim._pressure(n)["p"] for n in sim._cast()}
+        self.assertEqual(len(set(ps.values())), 1, ps)
+        self.assertEqual(sim._pick_speaker()[0], "Maya",
+                         "equal p: the longest-silent did not win")
+        sim, _ = self._stub_sim()
+        sim._silent_ticks = {"Dan": cap, "Maya": cap, "neighbor": cap, "Max": cap + 9}
+        self.assertEqual(sim._pick_speaker(), ("Max", "hero"),
+                         "equal p: a longer-silent hero lost to an actor")
+        # equal p and equal silence: actors in list order beat spoken-least / name
+        sim, _ = self._stub_sim()
+        sim._silent_ticks = {"Dan": cap + 2, "Maya": cap, "neighbor": cap + 2,
+                             "Max": cap}
+        sim._said_count = {"Dan": 5, "neighbor": 0}
+        self.assertEqual(sim._pick_speaker()[0], "Dan",
+                         "equal p and silence: list order did not decide")
+        # equal everything: the hero comes last (roof: Dan opens)
+        sim, _ = self._stub_sim()
+        sim._silent_ticks = {n: cap for n in sim._cast()}
+        sim._said_count = {"Max": 0, "Dan": 3, "Maya": 3, "neighbor": 3}
+        self.assertEqual(sim._pick_speaker(), ("Dan", "actor"),
+                         "equal p and silence: hero was not last")
+        sim_mod.use_scene("roof")
+        sim = self._sim(StubDialogue("Max"))
+        self.assertEqual(sim.actors, ["Dan"])
+        sim._silent_ticks = {"Dan": cap, "Max": cap}
+        self.assertEqual(sim._pick_speaker()[0], "Dan",
+                         "roof, equal p and silence: the hero spoke before Dan")
+
 
 if __name__ == "__main__":
     unittest.main()

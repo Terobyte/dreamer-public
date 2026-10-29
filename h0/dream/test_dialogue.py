@@ -440,7 +440,10 @@ class SceneSwitchTest(unittest.TestCase):
                 self.assertEqual(s.place, "a flat city rooftop at night")
                 self.assertEqual(s.actors, ["Dan"])
                 self.assertIn("roof edge", s.fsm.objects)
-                self.assertIn("woke up", s._hero_world[0])
+                # 1.3: the hero hears why he is here as the t=0 event of the
+                # schedule, so _hero_world starts empty
+                self.assertEqual(s._hero_world, [])
+                self.assertIn("woke up", s._schedule[0]["what"])
                 self.assertIn("eleven floors", s._personas["Dan"])
         finally:
             simmod.use_scene("start")
@@ -554,12 +557,13 @@ class SimDialogueTest(unittest.TestCase):
         lines = [r for r in rows if r["type"] == "line"]
         self.assertGreaterEqual(len(lines), 4)
         whos = [r["who"] for r in lines[:4]]
-        # 1.2b: nobody is addressed here, so the scene opens on an equal-pressure
-        # tie and a tie goes to the hero; after that the two still alternate
-        self.assertEqual(whos, ["SpongeBob", "Squidward", "SpongeBob", "Squidward"])
-        self.assertEqual(lines[1]["remarks"], ["sigh"])
-        self.assertEqual(lines[1]["role"], "actor")
-        self.assertEqual(lines[0]["role"], "hero")
+        # 7.2 row 1.3: nobody is addressed and start.json has no situation_hero,
+        # so the scene opens on an equal-pressure, equal-silence tie, and the
+        # hero comes last in a tie; after that the two still alternate
+        self.assertEqual(whos, ["Squidward", "SpongeBob", "Squidward", "SpongeBob"])
+        self.assertEqual(lines[0]["remarks"], ["sigh"])
+        self.assertEqual(lines[0]["role"], "actor")
+        self.assertEqual(lines[1]["role"], "hero")
         self.assertNotIn("npc line", json.dumps(lines))
         squid = [t for t in sim.dialogue.turns if t[0] == "Squidward"]
         self.assertIn("clarinet player", squid[0][4], "the actor plays his own persona")

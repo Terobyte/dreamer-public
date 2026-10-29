@@ -15,7 +15,7 @@ import math
 import queue
 
 from clock import Clock
-from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, STARVE_AFTER,
+from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
                       W_SILENT, W_SPOKE_LAST)
 from director import Director
@@ -43,13 +43,26 @@ def _load_start(name="start"):
         return json.load(f)
 
 
+HERO_SELF = "__hero__"  # a scene names the hero only through its own hero block
+
+
 def use_scene(name="start"):
     """Pick the opening scene before a Sim is built (--scene)."""
     global START, START_SCENE, START_VOICES, START_LOOKS, START_PERSONAS, START_PLACE
     START = _load_start(name)
+    # 1.3: the hero's reason to be here is not a start value but the first event of
+    # the schedule, so it reaches him the same way everything else in the world does
+    events = list(START.get("events") or [])
+    if START.get("situation_hero"):
+        hero = START.get("hero")
+        who = [hero["name"]] if isinstance(hero, dict) and hero.get("name") else [HERO_SELF]
+        events.insert(0, {"t": 0, "what": START["situation_hero"], "who": who,
+                          "kind": "world"})
     START_SCENE = {
         "objects": list(START["objects"]),
         "actors": [a["name"] for a in START["actors"]],
+        "events": events,
+        "goals": list(START.get("goals") or []),
     }
     START_VOICES = {a["name"]: a.get("voice") for a in START["actors"]}
     # Muse Image refuses known character names (content_policy_violation): portraits
@@ -193,16 +206,23 @@ class Sim:
         self._spoke_last = None
         self._silent_ticks = {}
         self._addressed = {}
-        self._event_hits = {}  # filled by the schedule in 1.3, until then empty
+        self._event_hits = {}  # 1.3: an event raises its recipients' pressure
         self._actor_streak = 0
         self._said_count = {}
         self._last_pressure = None
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
-        self._hero_world = [START["situation_hero"]] if START.get("situation_hero") else []
-        self._actor_events = []
+        # 1.3: "Just now" is a queue per recipient -- the hero's is _hero_world,
+        # every actor has his own, and a queue nobody owns reaches nobody
+        self._hero_world = []
+        self._pending = {}
+        self._schedule = []
+        self._fired = set()
+        self._discard_reason = "human"
         self._gen_thread = None
+        self._gen_who = None
+        self._gen_epoch = None
         self._gen_result = None
         self._gen_lock = threading.Lock()
         self._turn_epoch = 0
@@ -211,6 +231,7 @@ class Sim:
         self._inbox = queue.Queue()
         self.stopped = False
         self.clock = Clock(speed=speed)
+        self.scene_start = self.clock.now()
         self.scene = dict(START_SCENE)
         self.actors = list(self.scene["actors"])
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
@@ -258,6 +279,59 @@ class Sim:
                                      "place": self.place, "hero": self.hero,
                                      "profile": self.profile, "speed": self.speed,
                                      "max_dollars": self.max_dollars})
+        self._start_schedule()
+
+    # --- event schedule (spec 7.2 row 1.3) ----------------------------------
+    def _start_schedule(self):
+        """A scene starts with its whole schedule in the log: what is going to
+        happen and when, in simulated seconds from this scene's start."""
+        self.scene_start = self.clock.now()
+        self._fired = set()
+        self._schedule = []
+        for ev in self.scene.get("events") or []:
+            if not isinstance(ev, dict):
+                continue
+            who = ev.get("who")
+            if who != "all":
+                who = [self.hero if w == HERO_SELF else w for w in (who or [])]
+            self._schedule.append({"t": float(ev.get("t") or 0),
+                                   "what": str(ev.get("what") or ""),
+                                   "who": who, "kind": ev.get("kind") or "world"})
+        self._diagnostic({"type": "schedule", "events": self._schedule})
+
+    def _recipients(self, ev):
+        """`who: "all"` is every actor on stage and the hero; a name that is not
+        here any more is nobody -- his "Just now" is dropped, not handed on."""
+        who = ev["who"]
+        names = [self.hero] + list(self.actors) if who == "all" else list(who)
+        return [n for n in names if n == self.hero or n in self.actors]
+
+    def _fire_due_events(self):
+        """Checked on every loop step, not only on a free tick: an event is due at
+        its own second even if nobody has said a word since the scene started."""
+        t_sim = (self.clock.now() - self.scene_start) * self.speed
+        for i, ev in enumerate(self._schedule):
+            if i in self._fired or ev["t"] > t_sim:
+                continue
+            self._fired.add(i)
+            who = self._recipients(ev)
+            for name in who:
+                if name == self.hero:
+                    self._hero_world.append(ev["what"])
+                else:
+                    self._pending.setdefault(name, []).append(ev["what"])
+                self._event_hits[name] = ADDRESS_HOLD
+            # 1.2a: a line already in flight from someone the event did not reach
+            # answers a world that no longer exists, so its turn is over.
+            # Review Focus 1: a human line that already moved the turn on wins --
+            # the event must not steal its discard reason
+            if (self._gen_who is not None and self._gen_who not in who
+                    and self._turn_epoch == (self._gen_epoch
+                                             if self._gen_epoch is not None else -1)):
+                self._turn_epoch += 1
+                self._discard_reason = "event"
+            self._diagnostic({"type": "event", "what": ev["what"], "who": who,
+                              "kind": ev["kind"]})
 
     def _load_soul(self, prof):
         """Spec 7: the core holds the hero's main desire and fear, the facts layer
@@ -456,6 +530,7 @@ class Sim:
             self._prepared_meta = None
             self._prepared_audio_seconds = None
         self._turn_epoch += 1
+        self._discard_reason = "human"
         out.append({"type": "line_queued", "turn_owner": "human", "text": clean})
         input_ev = {"type": "input", "source": "speech", "value": clean}
         out.append(input_ev)
@@ -589,10 +664,11 @@ class Sim:
         self.place = self.fsm.destination or "scene %d" % self.n_transitions
         self.transcript = self.transcript[-2:]
         self._notes = {}
-        self._actor_events = []
         self._hero_world = ["you have just arrived in %s" % self.place]
         if ns:
-            self.scene = {"objects": list(ns["objects"]), "actors": list(ns["actors"])}
+            self.scene = {"objects": list(ns["objects"]), "actors": list(ns["actors"]),
+                          "events": list(ns.get("events") or []),
+                          "goals": list(ns.get("goals") or [])}
             self.actors = [a["name"] for a in ns["actors"] if isinstance(a, dict)]
             self._actor_voices = {a["name"]: a.get("voice") for a in ns["actors"]
                                   if isinstance(a, dict)}
@@ -618,6 +694,12 @@ class Sim:
                                          "place": self.place, "hero": self.hero,
                                          "hero_voice": self.hero_voice,
                                          "hero_desc": self._hero_desc})
+        else:
+            self.scene = dict(self.scene, events=[], goals=[])
+        # a "Just now" left for someone who is not on this stage is dropped here:
+        # the queue is keyed by its recipient, so it can never be handed to another
+        self._pending = {k: v for k, v in self._pending.items() if k in self.actors}
+        self._start_schedule()
 
     # --- main loop -----------------------------------------------------------
     def _drain_director(self):
@@ -670,7 +752,7 @@ class Sim:
 
     def _pressure(self, name):
         """The pressure fields of the `pressure` event (7.4) for one participant.
-        goal_open stays 0 until 1.4, event_hit until 1.3."""
+        goal_open stays 0 until 1.4."""
         addressed = 1 if self._addressed.get(name, 0) > 0 else 0
         event_hit = 1 if self._event_hits.get(name, 0) > 0 else 0
         goal_open = 0
@@ -726,16 +808,17 @@ class Sim:
         # F4: an event can still reach its addressee through the block --
         # only an actor with no event_hit is held back by the streak
         blocked = self._actor_streak >= ACTOR_STREAK_MAX
-        # ties go to the hero, then to whoever has spoken least, then by name: the
-        # choice must not depend on dict order, and the silence term saturates at
-        # SILENT_CAP, so a long-quiet actor ties with an addressed one and a
-        # name-only tie-break would starve the last actor of the cast for good.
-        # pressure decides first: a starved actor only wins ties on p (1.2b, F1),
-        # so the one named by name answers next even when another waited longer.
+        # ties on p (spec 7.2, row 1.3): whoever has been silent longer, then
+        # the actors in scene order, the hero last (on the roof Dan speaks
+        # first; two t=0 events reach Dan before Max) -- then whoever has
+        # spoken least, then by name, so the choice never depends on dict
+        # order. Raw silent ticks, not the capped term: the silence term
+        # saturates at SILENT_CAP, and the longer-quiet one must still win.
         order = sorted(table.items(),
                        key=lambda kv: (-kv[1]["p"],
-                                       kv[1]["silent"] < STARVE_AFTER,
-                                       kv[0] != self.hero,
+                                       -kv[1]["silent"],
+                                       kv[0] == self.hero,
+                                       self.actors.index(kv[0]) if kv[0] in self.actors else -1,
                                        self._said_count.get(kv[0], 0), kv[0]))
         for name, row in order:
             if row["p"] < THRESHOLD:
@@ -755,13 +838,17 @@ class Sim:
             res, self._gen_result = self._gen_result, None
         if res is not None:
             line, scene_no, epoch, who = res
+            self._gen_who = None
+            self._gen_epoch = None
             if line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
                 self.npc_start(line)
             elif line is not None and epoch != self._turn_epoch:
-                # 1.2a: the turn moved on while this line was in flight
+                # 1.2a: the turn moved on while this line was in flight -- a human
+                # line took it, or an event this speaker never saw changed the world
                 self._emit({"type": "line_discarded", "turn_owner": "npc",
                             "text": line["text"] if isinstance(line, dict) else line,
-                            "who": who, "reason": "human"})
+                            "who": who, "reason": self._discard_reason})
+                self._discard_reason = "human"
             elif line is None:
                 self._diagnostic({"type": "turn_skip", "who": who})
                 self._gen_not_before = self.clock.now() + self.clock.scale(TICK)
@@ -793,7 +880,7 @@ class Sim:
             locked = self.fsm.state in ("building", "ready")
             state = {"build_pct": self.fsm.build_pct(now),
                      "bridge": self.fsm.bridge if locked else None}
-            events, self._actor_events = self._actor_events, []
+            events = self._pending.pop(who, [])
             args = (who, world, transcript, state, list(self._notes.get(who, [])), events,
                     self._personas.get(who, ""))
             fn = self.dialogue.actor_line
@@ -809,6 +896,8 @@ class Sim:
             with self._gen_lock:
                 self._gen_result = (line, scene_no, epoch, who)
 
+        self._gen_who = who
+        self._gen_epoch = epoch
         self._gen_thread = threading.Thread(target=work, daemon=True)
         self._gen_thread.start()
 
@@ -894,6 +983,7 @@ class Sim:
     def _tick(self):
         now = self.clock.now()
         self._drain_inbox()
+        self._fire_due_events()
         self._maybe_start_scene_background()
         self._cycle_line()
         events = self.fsm.tick(now)

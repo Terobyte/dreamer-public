@@ -41,6 +41,7 @@
    "persona": "The Driver: a grumpy, talkative old man who says this route has no stops until a passenger says where they really want to go. He tells stories about his own son that never quite end. He refuses to be comforting. He is hiding that he never told his own son he was proud of him."
   }
  ],
+ "events": [{"t": 240, "what": "something impossible about this place catches everyone's eye beyond the fogged window", "who": "all", "kind": "world"}],
  "objects": [
   "stop button",
   "driver's mirror",
