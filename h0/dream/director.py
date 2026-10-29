@@ -8,7 +8,7 @@ import threading
 
 import lang
 from clock import Clock
-from fsm import LOCKED_STATES, check_messages, check_target
+from fsm import LOCKED_STATES, check_messages, check_scene, check_target
 from inputs import sanitize
 from diagnostics import report
 
@@ -67,6 +67,43 @@ LOCKED_SCHEMA = (
     "bridge in character. " + NOTE_RULE + " English.")
 
 
+VOICE_POOL = {"old_woman", "old_man", "woman", "man", "child", "creature"}
+
+SEED_SCHEMA = (
+    "Reply with JSON only: {\"destination\": a short place name for the scene, "
+    "\"why\": one sentence on why the dream opens here, "
+    "\"next_scene\": {\"objects\": 5 to 8 object names of that place, "
+    "\"actors\": 1 to 5 [{\"name\": who is there, \"voice\": one of "
+    "old_woman|old_man|woman|man|child|creature, \"persona\": who they are and "
+    "what they want or are busy doing there, a want of their own}], "
+    "\"hero_reason\": one line telling the hero why he is there}}. English.")
+
+SEED_ATTEMPTS = 2
+
+
+def seed_scene(text, transport=None):
+    """3.3: build the dream's first scene out of one line the human wrote.
+    Pure: no fsm, no sim, no state -- up to SEED_ATTEMPTS asks, each reply checked
+    by fsm.check_scene (spec 8), -> the decision dict, or None when both failed."""
+    prompt = ("A human describes a dream he wants to walk into:\n" + str(text or "").strip()
+              + "\nBuild the place he opens his eyes in.")
+    for _ in range(SEED_ATTEMPTS):
+        try:
+            res = llm_call("director", "You are the dream director.",
+                           [{"role": "user", "content": prompt + "\n"
+                             + lang.lang_text(SEED_SCHEMA)}],
+                           max_tokens=2200, _transport=transport)
+            decision = json.loads((res.text or "").strip())
+        except Exception:
+            continue
+        if not isinstance(decision, dict):
+            continue
+        if check_scene(decision.get("next_scene"), VOICE_POOL) is None \
+                and str(decision.get("destination") or "").strip():
+            return decision
+    return None
+
+
 def validate_decision(decision, objects, actors, pool):
     """Check a director decision (spec 8) with the same rules the FSM applies. Returns (ok, errs)."""
     if not isinstance(decision, dict):
@@ -98,8 +135,11 @@ class Director:
 
     def __init__(self, fsm, memory=None, actors=(), delay=0.0, speed=1.0,
                  script=(), outdir=None, clock=None, fake=True,
-                 paused_check=None, pause_lock=None):
+                 paused_check=None, pause_lock=None, transport=None):
         self.fsm = fsm
+        # 3.3: the transport every consult of this director goes through; None
+        # means the real one (llm.RealTransport), a FakeTransport means offline
+        self.transport = transport
         # F7: a consult already in flight when a safety pause lands must not
         # apply its decision to the fsm afterwards (e.g. wake_up flipping
         # fsm.awake while paused). paused_check/pause_lock are the same flag
@@ -196,7 +236,7 @@ class Director:
                              + lang.lang_text(schema)}],
                            # 800 cut the JSON mid-string (bank r1); events, goals
                            # and hero_reason joined the reply in 1.4b
-                           max_tokens=2200)
+                           max_tokens=2200, _transport=self.transport)
             decision = json.loads((res.text or "").strip())
             if not isinstance(decision, dict):
                 raise ValueError("director reply is not a JSON object")

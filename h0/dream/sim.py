@@ -19,7 +19,7 @@ from clock import Clock
 from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
                       W_SILENT, W_SPOKE_LAST)
-from director import Director
+from director import Director, seed_scene
 from fsm import BuildFSM
 from inputs import resolve_touch, sanitize
 from memory import Memory
@@ -96,13 +96,15 @@ def load_profile(pid):
     """Profile soul file (spec 2): hero name and hero voice for playback. A scene
     with a hero of its own (scenes/roof.json: just a man on a roof) replaces the
     profile's hero, and its soul too -- a diary about the fryer has no place there."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles",
-                        str(pid) + ".json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            prof = json.load(f)
-    except (OSError, ValueError):
-        prof = {}
+    prof = {}
+    if pid is not None:  # 3.3: a seeded dream has no soul file to read
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles",
+                            str(pid) + ".json")
+        try:
+            with open(path, encoding="utf-8") as f:
+                prof = json.load(f)
+        except (OSError, ValueError):
+            prof = {}
     hero = START.get("hero")
     if isinstance(hero, dict):
         prof = dict(prof)
@@ -176,7 +178,7 @@ class Sim:
 
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
-                 max_dollars=20.0, dialogue=None):
+                 max_dollars=20.0, dialogue=None, first_events=()):
         self.profile = profile
         self.speed = speed
         self.fake = fake
@@ -315,6 +317,12 @@ class Sim:
                                       "profile": self.profile, "speed": self.speed,
                                       "max_dollars": self.max_dollars,
                                       "hero_owner": self.hero_owner})
+            # 3.3: what happened before the sim existed (the seed consult) goes
+            # into the log right after the snapshot, in the order it was given
+            for ev in first_events or ():
+                row = dict(ev)
+                row.setdefault("t", self.clock.now())
+                self.logger.write_event(row)
         self._start_schedule()
         self._load_goals()
 
@@ -1423,13 +1431,16 @@ class Sim:
 
 
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
-        media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None):
+        media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
+        label=None, first_events=()):
     """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
     the dream then goes on until "stop", the budget or a wake_up.
     max_seconds=None: 90 s, or long enough for one full build (420/speed + 120);
     an explicit value is kept as given (the bench passes 67.5)."""
     random.seed(seed)
-    base = os.path.join(os.path.dirname(__file__), "..", "out", "dream", profile)
+    # 3.3: a seeded dream has no profile, so the run folder is named by `label`
+    base = os.path.join(os.path.dirname(__file__), "..", "out", "dream",
+                        str(label or profile))
     os.makedirs(base, exist_ok=True)
     # bank.py starts several sims in the same millisecond: take the next free name
     stamp = int(time.time() * 1000) % 1000000
@@ -1449,11 +1460,12 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
         if max_transitions > 0:
             max_seconds = max(max_seconds, 420.0 / max(speed, 0.01) + 120.0)
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
-             max_dollars=max_dollars, dialogue=dialogue) as sim:
+             max_dollars=max_dollars, dialogue=dialogue,
+             first_events=first_events) as sim:
         viewer = None
         if serve is not None:
             from server import Viewer
-            viewer = Viewer(sim=sim, run="%s/%s" % (profile, os.path.basename(outdir)))
+            viewer = Viewer(sim=sim, run="%s/%s" % (label or profile, os.path.basename(outdir)))
             port = viewer.start(serve)
             print("dream viewer: http://localhost:%d/?run=%s" % (port, viewer.run), flush=True)
             sim.viewer = viewer
@@ -1591,9 +1603,34 @@ def verify_run(outdir, logpath, max_dollars, actual_spent=None):
             "spent": spent}
 
 
-def main():
+SEED_TRANSPORT = None  # 3.3: tests patch this; None means the real transport
+
+
+def _seed_first_scene(text, transport):
+    """3.3: ask the director for the opening scene and make it the start scene.
+    -> the row that goes first into the log, or None when the director failed."""
+    decision = seed_scene(text, transport)
+    if decision is None:
+        return None
+    ns = decision["next_scene"]
+    place = str(decision.get("destination") or "").strip()
+    if not place:  # guarded by seed_scene, never silently "somewhere"
+        return None
+    # a seeded scene starts bare: no schedule, the director fills it on the first
+    # consult (3.1a/1.3), so `events` stays empty here
+    use_scene({"place": place, "objects": list(ns["objects"]),
+               "actors": list(ns["actors"]), "events": [],
+               "goals": list(ns.get("goals") or [])})
+    return {"type": "consult", "label": "seed", "text": text, "place": place,
+            "why": decision.get("why")}
+
+
+def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--profile", default="A")
+    ap.add_argument("--profile", default=None,
+                    help="soul profile A|B|C (default A); not with --seed")
+    ap.add_argument("--seed", default=None,
+                    help="one line of text: the director builds the first scene (3.3)")
     ap.add_argument("--fake", action="store_true")
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--max-transitions", type=int, default=None,
@@ -1611,24 +1648,41 @@ def main():
                          "default 420/speed + 120, i.e. one full build")
     ap.add_argument("--lang", default="en", choices=lang.LANGS,
                     help="spike 1.5: ru plays the dream in Russian (7.2 row 1.5)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     lang.set_lang(args.lang)  # spike 1.5: before any prompt is built
-    use_scene(args.scene)
     set_talk_model(args.talk)
-    set_cap(args.max_dollars)
+    set_cap(args.max_dollars)  # the seed consult is a paid call: cap it first
+    first_events = ()
+    label = profile = args.profile if args.profile is not None else "A"
+    if args.seed is not None:
+        if args.profile is not None:
+            print("seed: --seed builds its own scene, drop --profile", file=sys.stderr)
+            sys.exit(2)
+        if args.fake and SEED_TRANSPORT is None:
+            print("seed: --fake needs a transport", file=sys.stderr)
+            sys.exit(2)
+        row = _seed_first_scene(args.seed, SEED_TRANSPORT)
+        if row is None:
+            print("seed: director failed", file=sys.stderr)
+            sys.exit(2)
+        first_events = [row]
+        profile, label = None, "seed"
+    else:
+        use_scene(args.scene)
     if args.max_transitions is None:
         args.max_transitions = 10 ** 6 if args.serve else 2
     media = None
     dialogue = None
     if not args.fake:
         from dialogue import Dialogue
-        dialogue = Dialogue(load_profile(args.profile))
+        dialogue = Dialogue(load_profile(profile))
         # live run: real Fish voice (wav, spec 6) and real Muse Image (spec 9);
         # media failures fall back per module, never stop the dream.
         from voice import Voice
         from images import Images
         media = {} if args.text else {"voice": Voice(), "images": Images()}
-    outdir, logpath = run(profile=args.profile, fake=args.fake, speed=args.speed,
+    outdir, logpath = run(profile=profile, label=label, first_events=first_events,
+                           fake=args.fake, speed=args.speed,
                            max_transitions=args.max_transitions, media=media,
                            max_dollars=args.max_dollars, dialogue=dialogue,
                            serve=args.port if args.serve else None,

@@ -313,14 +313,14 @@
   - лог `consult {label: seed}`;
   - профиль души не читается.
 
-- [ ] Тест `test_seed_starts_scene`. Патчи: `sim.SEED_TRANSPORT` (FakeTransport отдаёт валидную `next_scene`) и `sim.run` (запоминает `START_SCENE` и kwargs, пишет пустой `tmp/log.jsonl`, возвращает `(tmp, tmp/log.jsonl)`); `addCleanup(use_scene, "start")`. `main` передаёт первую строку лога через `run(..., first_events=[{"type": "consult", "label": "seed", ...}])`, `Sim` пишет её сразу после `snapshot`. Вызов `main` обёрнут в `assertRaises(SystemExit)` (`main` всегда кончается `sys.exit`).
+- [x] Тест `test_seed_starts_scene`. Патчи: `sim.SEED_TRANSPORT` (FakeTransport отдаёт валидную `next_scene`) и `sim.run` (запоминает `START_SCENE` и kwargs, пишет пустой `tmp/log.jsonl`, возвращает `(tmp, tmp/log.jsonl)`); `addCleanup(use_scene, "start")`. `main` передаёт первую строку лога через `run(..., first_events=[{"type": "consult", "label": "seed", ...}])`, `Sim` пишет её сразу после `snapshot`. Вызов `main` обёрнут в `assertRaises(SystemExit)` (`main` всегда кончается `sys.exit`).
   - Вызов: `main(["--seed", "two strangers stuck in a lift", "--fake"])`.
   - Первая сцена взята из ответа, в kwargs `run` есть `first_events` с `label: seed`.
-- [ ] Тест `test_seed_no_profile_file`: `Sim(fake=True, profile=None, outdir=tmp)` под моком `open` → ни одного пути под `profiles/`. `load_profile(None)` берёт только героя сцены и файл не открывает (сейчас `Sim.__init__` зовёт `load_profile(profile)` всегда).
-- [ ] Тест `test_seed_bad_director`: transport дважды отдаёт сцену, не прошедшую `check_scene` → `SystemExit.code == 2`, в stderr `seed: director failed`.
-- [ ] Тест `test_seed_fake_no_transport`: `--seed x --fake` без патча → `SystemExit.code == 2`, в stderr `seed: --fake needs a transport`, ни одного вызова `llm_call`.
-- [ ] Тест `test_seed_and_profile_conflict`: `--seed` с явным `--profile A` → `SystemExit.code == 2` и понятное сообщение.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_seed_no_profile_file`: `Sim(fake=True, profile=None, outdir=tmp)` под моком `open` → ни одного пути под `profiles/`. `load_profile(None)` берёт только героя сцены и файл не открывает (сейчас `Sim.__init__` зовёт `load_profile(profile)` всегда).
+- [x] Тест `test_seed_bad_director`: transport дважды отдаёт сцену, не прошедшую `check_scene` → `SystemExit.code == 2`, в stderr `seed: director failed`.
+- [x] Тест `test_seed_fake_no_transport`: `--seed x --fake` без патча → `SystemExit.code == 2`, в stderr `seed: --fake needs a transport`, ни одного вызова `llm_call`.
+- [x] Тест `test_seed_and_profile_conflict`: `--seed` с явным `--profile A` → `SystemExit.code == 2` и понятное сообщение.
+- [x] Все тесты зелёные.
 
 ## Ф2–Ф3 итог
 
