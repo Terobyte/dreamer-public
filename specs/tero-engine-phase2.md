@@ -1,7 +1,7 @@
 # Движок сцен, фаза 2: `dreamer build` (план для tero)
 
 Ты пишешь сборку мира в пакете `engine/`. Команда `dreamer build SCENE.json --out dist/` собирает из описания места страницу three.js, по которой можно ходить: стены, полы, потолки, балки, проёмы, двери, предметы, наклейки, свет и камеры. Пока ассетов нет, движок подставляет цветные заглушки. Когда ассеты есть, он берёт текстуры Muse Image и предметы SAM3D.
-**Источник правды — спека `specs/engine-scene.md` (v0.6)**: разделы «Соглашения», «Модель стены», «Проёмы», «Предметы», «Навигация», «Ассеты», «Компилятор», «Фазы v0» п. 2–3. Фаза 1 (`dreamer check`) готова и закоммичена; её код и тесты — основа, их поведение не меняется. Если спека и план расходятся, главнее спека. Неоднозначность → вопрос хозяину, не своё решение.
+**Источник правды — спека `specs/engine-scene.md` (v0.7)**: разделы «Соглашения», «Модель стены», «Проёмы», «Предметы», «Навигация», «Ассеты», «Компилятор», «Фазы v0» п. 2–3. Фаза 1 (`dreamer check`) готова и закоммичена; её код и тесты — основа, их поведение не меняется. Если спека и план расходятся, главнее спека. Неоднозначность → вопрос хозяину, не своё решение.
 
 **Цель:**
 1. `dreamer build specs/examples/demo-flat.scene.json --out <tmp> --assets none` даёт `index.html`. Он открывается в headless Chromium без ошибок консоли, ставит `window.__ready = true`, и по нему можно ходить с коллизией по `nav.json`.
@@ -13,7 +13,7 @@
 **Стек:** TypeScript (ESM, `strict`), Node ≥ 22. К зависимостям фазы 1 добавляются ровно эти, с точными версиями: `three@0.185.0`, `esbuild@0.28.2`, `pngjs@7.0.0`, `playwright@1.64.1`. Других зависимостей нет.
 
 **Правила для всех фаз:**
-- Писать только в `engine/**`. `specs/` — только чтение. Не читать `~/.dreamer-bench` и `h0/out/**`: это скрытый бенч и его ассеты.
+- Писать только в `engine/**`. `specs/` — только чтение. Не читать `~/.dreamer-bench`, `h0/**` и `app/**`: это скрытый бенч, его ассеты и параллельный прогон dream в соседнем worktree.
 - Тесты: `cd engine && npm test` (= `vitest run`), офлайн, без сети и без денег. Весь набор ≤ 90 с; браузерные тесты — только в `test/browser/*.test.ts`, один общий браузер на файл (`beforeAll`). Сначала красный тест, потом код.
 - Всё, что тест пишет, — только в `fs.mkdtemp(os.tmpdir())`. CLI в тестах: `node --import tsx bin/dreamer.ts ...`, `cwd` = `engine/`.
 - Тесты фазы 1 и голден `test/golden/demo-flat.check.json` не меняются. Если тест фазы 1 стал красным, сломан код, а не тест.
@@ -25,7 +25,9 @@
 
 **Намеренные отступления от спеки (тут план главнее):** полотно — бокс 0.04 м, открытое от `hinge_at`, закрытое по оси стены (не «грань + 0.02»); имена в `dist/` без префикса сцены (`top.svg`, `nav.json`, `check.json`); `top.png` нет.
 
-**Вне фазы 2 целиком:** `fixtures`, свободные `walls[]` (остаются `SCHEMA_FUTURE_FIELD`), лестницы и второй уровень, `check --built`, маршруты `routes`, разница с прошлым отчётом, рендер ассета с 4 сторон, `top.png`, `PROP_SIZE_ODD` по факту. Коды и сообщения фазы 1 не трогаются.
+**Порядок:** первые шесть фаз — сборка (до «Снимки с камер» включительно); дальше — долг и всё, что спека v0.7 обещает после `build`: свободные стены и `fixtures`, `top.png`, `check --built` с маршрутами и разницей отчётов, предметы по факту, лестница и второй уровень. До своей фазы `walls[]`, `fixtures`, `stairs` остаются `SCHEMA_FUTURE_FIELD`. Поведение, о котором раньше молчала спека (id, меши стен/`fixtures`/лестницы, маршруты, `diff`, `top.png`), теперь в ней — план его не переопределяет.
+
+**Вне плана целиком:** v0.2 (`u-landing`, шахты, двухсветные комнаты, `holes`, `columns`, `collider: "hull"`, эскалатор), рендер ассета с 4 сторон. Коды фазы 1 не трогаются; новых кодов нет.
 
 **Review Focus** (что спека подразумевает, а тесты фаз ниже иначе бы пропустили; тест на каждое — в фазе, что владеет кодом):
 - сцена с ошибкой `check` → `build` не пишет `dist/` вовсе и выходит с кодом 1, печатая те же `errors` (`test_build_refuses_bad_scene`);
@@ -35,6 +37,19 @@
 - скриншот до загрузки: `__ready` ставится только после всех текстур и GLB (`test_ready_after_assets`);
 - ключ API не утекает в `dist/`, кэш и вывод (`test_key_not_leaked`);
 - GLB от SAM3D без материала или с умолчанием glTF (`metallicFactor` 1) не выходит чёрным (`test_normalize_default_material`).
+
+**Review Focus фаз после сборки:**
+- сцена с лестницей, но без второго уровня (`to.room` на том же уровне) → `REF_UNKNOWN`/`STAIR_EXIT_OUTSIDE`, а не падение (`test_stair_same_level_refused`);
+- маршрут через закрытую дверь говорит «закрытая дверь front», а не «стена» (`test_route_blocked_by_closed_door`);
+- `walls[]` с `h: null` берёт максимум высот комнат уровня (`test_free_wall_default_height`);
+- второй `check` с теми же ошибками → `diff` пустые списки, а не всё «появилось» (`test_report_diff_same`);
+- капсула на рампе не проваливается сквозь перекрытие на выходе (`test_walk_stairs`).
+
+**Приёмка хозяина после всего плана (не tero), спека «Приёмка v0»:**
+1. Комната Сквидварда (H16) `build --assets live --max-dollars <по «го» владельца>` → лист с двух ref-кадров узнаваем (лист «реф | результат» рядом с прошлыми работами Claude и Muse).
+2. demo (две комнаты + лестница) проходит все маршруты — это `test_route_upstairs`.
+3. `muse-spark-1.3` по спеке и двум кадрам пишет SCENE.json, проходящий `check`, ≤ 3 итераций (цикл автора: `check` → правка по `msg` → `check`). Платно, только по «го».
+4. Пересборка без новых ассетов < 10 с — `test_rebuild_under_10s` фазы 2.
 
 **Перед запуском (делает хозяин, не tero):** `npm i -E three@0.185.0 esbuild@0.28.2 pngjs@7.0.0 playwright@1.64.1` в `engine/`, `npx playwright install chromium`, зелёный `npm test`. tero требует зелёный старт.
 
@@ -59,18 +74,18 @@
 - Балка — бокс `from → to`, ширина `w`, верх под потолком своей комнаты, низ = потолок − `h`.
 - `id` меша: стены — `<sides[0].room>#<sides[0].edge>:<side>:<k>`, где `sides` — `LevelPlan.intervals[n].sides` в порядке фазы 1, `k` сквозной по ребру и стороне; `<room>:floor`, `<room>:ceiling`, `<room>:beam:<k>`; откос — `<opening>:reveal:<k>`; пояса и доливка `$exterior` — по правилу стен (тот же счётчик `k`). Все `id` в `geometry.json` уникальны.
 
-- [ ] `test_floor_bbox`: demo-flat → `hall:floor` bbox x [−2, 2], z [4, 12], y 0; `living:floor` bbox x [−4, 4], z [−5.6, 4] (вершина дуги в apex, 36 сегментов); `hall:ceiling` y = 3.0, `living:ceiling` y = 3.4
-- [ ] `test_wall_faces_both_sides`: меши `wall|band` с bbox в x [−2, 2], z ∈ 4 ± 0.07 имеют множество `side` = {`living`, `hall`, `$exterior`}; все нормали `living` = (0, 0, −1), `hall` и `$exterior` = (0, 0, 1); max y по `living` = 3.4, по `hall` = 3.0; `$exterior` y [3.0, 3.4]. Интервал x [2, 4] на z = 4: `side` = {`living`, `$exterior`}, `$exterior` y [0, 3.4]
-- [ ] `test_door_cut`: точка (0, 1.0) на плоскости z = 3.94 и на z = 4.06 не покрыта ни одним треугольником `wall|band`; точка (0, 2.5) покрыта треугольником `wall` с `side` `living` (z = 3.94) и `hall` (z = 4.06); точка (−1, 1.0) покрыта; есть меши `reveal`
-- [ ] `test_window_cut_on_arc`: у мешей `wall|band` с id-префиксом `living#1:` точка (0, 1.5) не покрыта ни на плоскости z = −5.484563, ни на z = −5.604563; точки (0, 0.5) и (0, 2.5) покрыты на обеих плоскостях; все вершины мешей `living#1:living:*` с |x| < 0.8 − 1e-6 лежат на z = −5.484563, у `living#1:$exterior:*` — на z = −5.604563 (допуск 1e-6)
-- [ ] `test_bands`: по объединению bbox: меши `band` `wood` на стороне `living` — y [0, 0.12], меши `wall` `olive` стороны `living` — y [0.12, 3.4]
-- [ ] `test_beam`: `living:beam:0` bbox x [−4, 4], z [−0.125, 0.125], y [3.1, 3.4]
-- [ ] `test_gray_hash`: `grayOf("olive")` = `#8e8e8e`, `grayOf("parquet")` = `#818181`
-- [ ] `test_winding_matches_normals`: для каждого меша demo-flat и каждого треугольника (a, b, c) `dot(cross(b − a, c − a), normal(a)) > 0`; у каждого меша `positions.length = normals.length`, `uvs.length / 2 = positions.length / 3`, индексы < числа вершин
-- [ ] `test_mesh_ids_unique`: все `id` мешей demo-flat различны
-- [ ] `test_materials_table`: `materials.olive` = `{color: "#8e8e8e", repeat_m: 2}`, `materials.wood.color` = `#7a5230`, есть ключи `p_sofa`, `d_door`, `$exterior`
-- [ ] `test_uv_metres`: меши `wall` `olive` ребра `living#0` (8 м, без проёмов) — u ∈ [0, 8], v ∈ [0.12, 3.4]; `band` того же ребра — v ∈ [0, 0.12]
-- [ ] реализовать
+- [x] `test_floor_bbox`: demo-flat → `hall:floor` bbox x [−2, 2], z [4, 12], y 0; `living:floor` bbox x [−4, 4], z [−5.6, 4] (вершина дуги в apex, 36 сегментов); `hall:ceiling` y = 3.0, `living:ceiling` y = 3.4
+- [x] `test_wall_faces_both_sides`: меши `wall|band` с bbox в x [−2, 2], z ∈ 4 ± 0.07 имеют множество `side` = {`living`, `hall`, `$exterior`}; все нормали `living` = (0, 0, −1), `hall` и `$exterior` = (0, 0, 1); max y по `living` = 3.4, по `hall` = 3.0; `$exterior` y [3.0, 3.4]. Интервал x [2, 4] на z = 4: `side` = {`living`, `$exterior`}, `$exterior` y [0, 3.4]
+- [x] `test_door_cut`: точка (0, 1.0) на плоскости z = 3.94 и на z = 4.06 не покрыта ни одним треугольником `wall|band`; точка (0, 2.5) покрыта треугольником `wall` с `side` `living` (z = 3.94) и `hall` (z = 4.06); точка (−1, 1.0) покрыта; есть меши `reveal`
+- [x] `test_window_cut_on_arc`: у мешей `wall|band` с id-префиксом `living#1:` точка (0, 1.5) не покрыта ни на плоскости z = −5.484563, ни на z = −5.604563; точки (0, 0.5) и (0, 2.5) покрыты на обеих плоскостях; все вершины мешей `living#1:living:*` с |x| < 0.8 − 1e-6 лежат на z = −5.484563, у `living#1:$exterior:*` — на z = −5.604563 (допуск 1e-6)
+- [x] `test_bands`: по объединению bbox: меши `band` `wood` на стороне `living` — y [0, 0.12], меши `wall` `olive` стороны `living` — y [0.12, 3.4]
+- [x] `test_beam`: `living:beam:0` bbox x [−4, 4], z [−0.125, 0.125], y [3.1, 3.4]
+- [x] `test_gray_hash`: `grayOf("olive")` = `#8e8e8e`, `grayOf("parquet")` = `#818181`
+- [x] `test_winding_matches_normals`: для каждого меша demo-flat и каждого треугольника (a, b, c) `dot(cross(b − a, c − a), normal(a)) > 0`; у каждого меша `positions.length = normals.length`, `uvs.length / 2 = positions.length / 3`, индексы < числа вершин
+- [x] `test_mesh_ids_unique`: все `id` мешей demo-flat различны
+- [x] `test_materials_table`: `materials.olive` = `{color: "#8e8e8e", repeat_m: 2}`, `materials.wood.color` = `#7a5230`, есть ключи `p_sofa`, `d_door`, `$exterior`
+- [x] `test_uv_metres`: меши `wall` `olive` ребра `living#0` (8 м, без проёмов) — u ∈ [0, 8], v ∈ [0.12, 3.4]; `band` того же ребра — v ∈ [0, 0.12]
+- [x] реализовать
 
 **Вне этой фазы:** предметы, наклейки, двери, вывод на диск.
 
@@ -222,3 +237,100 @@
 - [ ] реализовать
 
 **Вне этой фазы:** маршруты, `check --built`, разница с прошлым отчётом.
+
+## Долг фазы 2
+
+Спека: «Модель стены» (дуги, `circle`, проём на дуге). Долг: Д2, Д3, Д5 из `specs/tero-engine-phase2-debt.md`. Д6 закрыт решением: `build.json.assets.fallback` — ассеты, отрисованные заглушкой (строка «все 10» выше — пример demo-flat), код не меняется.
+Файлы: `src/build/walls.ts`, `src/schema/validate.ts`, `test/debt2.test.ts`.
+
+- [ ] `test_arc_negative_sweep_opening`: комната `living` demo-flat, у вершины 1 `bulge` −0.4 (дуга внутрь); окно `sea` на ней → у мешей `wall|band` с префиксом `living#1:` точка оси при `m` проёма на высоте 1.5 не покрыта, на высоте 0.5 — покрыта
+- [ ] `test_circle_reveal_normals_across_seam`: круглая комната r = 4 с проёмом через `t = 0` (как в `test_circle_opening_across_seam_keeps_chord_wall_and_cap`) → у мешей `kind: "reveal"` подоконник смотрит вверх (n.y > 0.99), перемычка — вниз (n.y < −0.99), оба косяка — внутрь проёма (скалярное произведение нормали с направлением на центр проёма > 0)
+- [ ] `test_id_charset`: патч `/props/0/id` = `cap:0` → `SCHEMA_TYPE` с `path` `/props/0/id`; id demo-flat и demo проходят
+- [ ] реализовать
+
+## Свободные стены и fixtures
+
+Спека: «Формат SCENE.json» (`walls`, `fixtures`, таблица умолчаний), «Модель стены» п. 4 (`Butt` у свободного конца), «Линтер».
+Файлы: `src/schema/validate.ts`, `src/plan/merge.ts`, `src/plan/body.ts`, `src/build/walls.ts`, `src/build/fixtures.ts`, `src/props/lint.ts`, `src/nav/grid.ts`, `test/walls-fixtures.test.ts`.
+
+- `walls[]` участвуют в слиянии плана уровня как интервалы без своей комнаты; `h` по умолчанию — максимум `height` комнат уровня.
+- `fixtures`: задняя грань по `from → to`, перед — в сторону `room` (по нормали внутрь комнаты); умолчания `depth`/`h` из таблицы спеки; `cabinet-wall` — низ на 1.45 м.
+
+- [ ] `test_free_wall_mesh`: demo-flat + `walls: [{"level":"L0","from":[-1,-1],"to":[1,-1],"material":<любой материал стен demo>}]` → `check` ok; есть меши с префиксом `walls#0:`; их общий bbox x [−1, 1] (±1e-6, `Butt`), z [−1.06, −0.94], y [0, 3.4]
+- [ ] `test_free_wall_default_height`: тот же патч → bbox по y верх = 3.4 (максимум `living` 3.4 и `hall` 3.0)
+- [ ] `test_free_wall_blocks`: тот же патч → `isWalkable(nav, 0, -1)` = false; предмет `table` с `at` [0, −1] → `PROP_HITS_WALL`, в `msg` есть `walls#0`
+- [ ] `test_fixture_counter`: `fixtures: [{"kind":"counter","room":"living","from":[-3.94,-2],"to":[-3.94,2],"material":<m>}]` → меш `fixture.0` bbox x [−3.94, −3.34], z [−2, 2], y [0, 0.9]; меш `fixture.0:top` — 4 вершины на y = 0.9
+- [ ] `test_fixture_cabinet_wall`: `kind` `cabinet-wall` с тем же `from/to` → bbox y [1.45, 2.15], x [−3.94, −3.59]
+- [ ] `test_fixture_hits_prop`: предмет с OBB внутри counter → `PROP_HITS_PROP`, в `msg` `fixture.0`
+- [ ] `test_future_fields_gone`: `walls` и `fixtures` больше не дают `SCHEMA_FUTURE_FIELD`; `stairs` пока даёт (до фазы «Лестница»)
+- [ ] реализовать
+
+## Вид сверху в PNG
+
+Спека: «Проверка» → `top.png` подписывает id комнат, номера рёбер, id предметов и проёмов; «Лист» (`top.png` рядом с листом).
+Файлы: `src/build/shots.ts`, `src/build/write.ts`, `test/browser/top.test.ts`.
+
+- [ ] `test_top_png` (browser): `build` demo-flat → `dist/top.png` есть; ширина и высота PNG = `width`/`height` корня `dist/top.svg` (округление вниз до целого), не все пиксели одного цвета
+- [ ] `test_check_no_browser`: `check` demo-flat не создаёт `top.png` и укладывается в 3 с
+- [ ] реализовать
+
+## Маршруты и разница отчётов
+
+Спека: «Проверка» (этапы, `routes` только с `--built`, «Маршруты», «С фазы 4 отчёт печатает разницу»), «Навигация».
+Файлы: `src/routes/{waypoints,astar,stage}.ts`, `src/check.ts`, `src/report/report.ts`, `bin/dreamer.ts`, `test/routes.test.ts`.
+
+Интерфейсы:
+- CLI: `dreamer check <scene> [--report <path>] [--built <dist>]`. С `--built` после `nav` идёт этап `routes` (в `stages` — `{stage: "routes", ...}` последним; без `--built` этапа в списке нет — голден не меняется). Нет `<dist>/nav.json` → exit 2, `built: nav.json not found`.
+- `findRoute(nav: NavJson, from: V2, to: V2, level: string): {ok: true, path: V2[]} | {ok: false, stuck: V2}`.
+
+- [ ] `test_route_in_passes`: `build` demo-flat в tmp, затем `check --built` → `ok: true`, этап `routes` = `pass`, ошибок `ROUTE_BLOCKED` нет
+- [ ] `test_route_blocked_by_closed_door`: патч `/openings/0/leaf/open` = false, `build`, `check --built` → ровно одна `ROUTE_BLOCKED`, `path` `/routes/0/path/2`, `msg` содержит `закрытая дверь front`; точка застревания по z ∈ [4.0, 4.6]
+- [ ] `test_route_blocked_by_wall`: маршрут `{id:"x", path:["spawn", {"room":"living","at":[3.5,3.5]}]}` при закрытой двери → `msg` содержит `x:` и координаты
+- [ ] `test_find_route_unit`: сетка 10×10 из битов с глухой стеной по i = 5 → `ok: false`, `stuck` по x в клетке i = 4; с дыркой в стене → `ok: true`, путь начинается в `from` и кончается в `to` (с точностью до клетки)
+- [ ] `test_report_diff_new_and_fixed`: первый `check` сцены с `PROP_HITS_WALL` в `--report <tmp>/r.json`, затем исправленной → второй отчёт: `diff.fixed` = одна запись `PROP_HITS_WALL`, `diff.new` = []; stdout содержит `исправлено: PROP_HITS_WALL /props/`
+- [ ] `test_report_diff_same`: два одинаковых `check` подряд → `diff` = `{fixed: [], new: []}`
+- [ ] `test_report_no_diff_first_time`: первый `check` → в отчёте нет поля `diff`
+- [ ] реализовать
+
+## Предметы по факту
+
+Спека: «Проверка» («до build предметы проверяются по size, после — по факту, и check предлагает исправленный size»; предупреждение «факт и size расходятся > 20%»; «Лист: нет чёрных/пустых текстур, все GLB загрузились»).
+Файлы: `src/build/write.ts` (поле `props` в `build.json`), `src/props/fact.ts`, `src/check.ts`, `test/props-fact.test.ts`.
+
+Интерфейсы:
+- `build.json.props: {[propId]: {fact: {w, d, h} | null}}` — габарит нормализованного GLB в системе предмета (до поворота); `null` у заглушки.
+- `check --built`: у предмета с `fact` OBB строится по `fact`, а не `size`; если `|fact.x − size.x| / size.x > 0.2` по любой оси → предупреждение `PROP_SIZE_ODD` с `fix: {"size": fact}` (округление 1e-3).
+- `build.json.warnings` получает `ASSET_BLANK <id>` для текстуры, у которой > 98% пикселей одного цвета, и `ASSET_GLB_BROKEN <id>` для GLB, который не разобрался.
+
+- [ ] `test_fact_size_warns`: фейковый провайдер отдаёт GLB-куб 1×1×1, предмет `size` {w:2, d:0.9, h:0.85} → после нормализации по `h` факт {0.85, 0.85, 0.85}; `check --built` → `PROP_SIZE_ODD` с `fix.size` = факт
+- [ ] `test_fact_close_no_warning`: GLB с пропорциями `size` (±10%) → предупреждения нет
+- [ ] `test_fact_null_for_placeholder`: `--assets none` → `fact` = null у всех предметов, `check --built` проверяет по `size`
+- [ ] `test_blank_texture_warned`: фейк отдаёт однотонный PNG для tile → `ASSET_BLANK` в `warnings`
+- [ ] реализовать
+
+## Лестница и второй уровень
+
+Спека: «Лестницы», «Навигация» (рампы, `links`), «Модель стены» (перекрытие между уровнями), «Проверка» (этап `stairs`, паспорт лестницы), «Фазы v0» п. 5.
+Файлы: `src/schema/validate.ts`, `src/stairs/{place,stage}.ts`, `src/openings/graph.ts`, `src/build/{stairs,slab}.ts`, `src/build/floors.ts`, `src/nav/{grid,floor}.ts`, `src/runtime/walk.ts`, `test/stairs.test.ts`, `test/browser/stairs.test.ts`.
+
+Числа demo (`specs/examples/demo.scene.json`, лестница `up`: `from` hall (1.4, 11.6), `dir` 180, `to` loft, width 0.9, rise 0.17, going 0.28): Δy = 3.6, N = round(3.6 / 0.17) = 21, r = 3.6 / 21 = 0.171429, марш (N−1)·going = 5.6, выход (1.4, 6.0). Перекрытие под `loft`: slab = 3.6 − 0 − 3.0 = 0.6, низ на 3.0. Линия носков y(s) = r + s·r/going (r/going = 0.612245); просвет < 2.0 при s > 1.353333, то есть вырез x [0.95, 1.85] × z [6.0, 10.246667].
+
+- `stairs` больше не `SCHEMA_FUTURE_FIELD`; этап `stairs` = `pass` / `fail` (не `skipped`), если в сцене есть лестницы, иначе `skipped` (голден demo-flat не меняется).
+- Комнаты уровней, отличных от `spawn`, входят в граф и `nav`, если до них есть лестница.
+- Паспорт: `stairs: [{"id", "n", "rise", "len", "exit": [x, z], "cut": [[x,z], ...] | null}]` после `decals`.
+
+- Единственная правка теста фазы 1 во всём плане: `test_demo_full_future` (`test/schema.test.ts`) удаляется — спека v0.7 принимает `stairs`, его место занимает `test_demo_check_ok`.
+
+- [ ] `test_demo_check_ok`: `check` demo → `ok: true`, этап `stairs` = `pass`, в паспорте `up`: n = 21, rise 0.171, len 5.6, exit [1.4, 6], cut — прямоугольник x [0.95, 1.85], z [6, 10.247] (округление отчёта 1e-3)
+- [ ] `test_stair_exit_outside`: патч `/stairs/0/from/at` = [1.4, 9.0] → `STAIR_EXIT_OUTSIDE`, `msg` содержит `up`, `(1.4, 3.4)` и `loft`
+- [ ] `test_stair_headroom`: патч `/rooms/2/shape` = [[-2,4],[2,4],[2,8],[-2,8]] → `STAIR_HEADROOM`, `msg` содержит интервал s [1.353, 3.6] и просвет 0.624
+- [ ] `test_stair_same_level_refused`: `to.room` = `living` → ошибка этапа `stairs`, `check` не падает (exit 1)
+- [ ] `test_stair_meshes`: `build` demo → 20 мешей `up:step:<k>`; у `up:step:20` bbox z [6.0, 6.28], y [0, 3.428571]; меш `loft:slab` y [3.0, 3.6], точка (1.4, 8.0) не покрыта ни `loft:slab`, ни `loft:floor`, ни `hall:ceiling`, точка (−1, 8.0) покрыта всеми тремя
+- [ ] `test_stair_rail_sides`: у `up` есть `up:rail:left` (сторона x = 0.95, до стены hall > 0.15 м) и нет `up:rail:right` (до стены x = 1.94 — 0.09 м)
+- [ ] `test_nav_ramp_and_link`: `nav.json` demo: `ramps` = [{stair: "up", y0: 0, y1: 3.6, axis: {from: [1.4, 11.6], dir: 180, len: 5.6}, poly — прямоугольник x [0.95, 1.85] × z [6.0, 11.6]}], `links` = [{from: "L0", to: "L1", via: "up"}], слой `L1` есть
+- [ ] `test_floor_at_ramp`: `floorAtRooms` + рампа: (1.4, 11.6 − 2.8) при `yPrev` 1.5 → 0.171429 + 2.8·0.612245 = 1.885715 (±1e-5)
+- [ ] `test_route_upstairs`: `build` demo, `check --built` → маршруты `in` и `upstairs` проходят
+- [ ] `test_walk_stairs` (browser): `teleport(1.4, 11.9)`, 150 × `tryMove(0, −0.05)` → z < 6.0, `pos()[1]` = 3.6 + 1.6 (±0.01)
+- [ ] реализовать
+
+**Вне этой фазы:** v0.2.
