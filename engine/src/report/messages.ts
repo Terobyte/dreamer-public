@@ -59,6 +59,7 @@ export function msg(code: Code, params: Record<string, string>): string {
     case "SCHEMA_FUTURE_FIELD":
       return `${params.path}: поле появится ${params.when}; сейчас ${params.instead}`;
     case "SCHEMA_TYPE":
+      if (params.id !== undefined) return `${params.path}: id "${params.id}" — только латиница, цифры, _ и -`;
       return `${params.path}: неверный тип или диапазон`;
     case "SCHEMA_REQUIRED":
       return `${params.path}: отсутствует обязательное поле`;

@@ -212,8 +212,25 @@ function applyExclusiveAndRequired(raw: any, slots: Map<string, Slot>): void {
   walkOn(raw, "");
 }
 
-function codeChecks(raw: any): Array<{ path: string }> {
-  const out: Array<{ path: string }> = [];
+function codeChecks(raw: any): Array<{ path: string; id?: string }> {
+  const out: Array<{ path: string; id?: string }> = [];
+  // `#`, `:` and `.` build the generated mesh ids (`cap:0`, `living#1:in:0`,
+  // `chairs.0`), so an author id using them can collide with one and make
+  // `inspect` by id ambiguous (D5). Only rooms, openings, props and stairs
+  // carry an id that reaches `geometry.json`; levels/decals/lights don't.
+  const okId = /^[A-Za-z][A-Za-z0-9_-]*$/;
+  const walkIds = (node: unknown, base: string): void => {
+    if (Array.isArray(node)) {
+      node.forEach((v, i) => walkIds(v, `${base}/${i}`));
+      return;
+    }
+    if (!isObj(node)) return;
+    if (typeof node.id === "string" && !okId.test(node.id)) out.push({ path: `${base}/id`, id: node.id });
+    for (const [k, v] of Object.entries(node)) walkIds(v, `${base}/${escapePtr(k)}`);
+  };
+  for (const section of ["rooms", "openings", "props", "stairs"]) {
+    walkIds(raw?.[section], `/${section}`);
+  }
   if (Array.isArray(raw?.rooms)) {
     raw.rooms.forEach((r: any, i: number) => {
       if (Array.isArray(r?.shape)) {
@@ -319,7 +336,12 @@ export function validate(raw: unknown): { scene: Scene | null; issues: Issue[] }
   };
   for (const c of codeChecks(raw)) {
     if (hasErrAncestor(c.path)) continue;
-    setSlot(slots, c.path, 1, { code: "SCHEMA_TYPE", stage: "schema", path: c.path, msg: msg("SCHEMA_TYPE", { path: c.path }) });
+    setSlot(slots, c.path, 1, {
+      code: "SCHEMA_TYPE",
+      stage: "schema",
+      path: c.path,
+      msg: msg("SCHEMA_TYPE", c.id !== undefined ? { path: c.path, id: c.id } : { path: c.path }),
+    });
   }
 
   const issues = [...slots.values()].map((s) => s.issue);

@@ -352,21 +352,24 @@ function revealMeshes(o: OpeningGeo, iv: Interval, poly: { pts: V2[]; u: number[
   const out: Mesh[] = [];
   const y0 = levelY + hole.v[0];
   const y1 = levelY + hole.v[1];
+  const a = pointAtU(poly, hole.u[0], true);
+  const b = pointAtU(poly, hole.u[1]);
+  // The whole reveal sits on the chord between the two ends, so its frame
+  // comes from that chord and not from whichever panel happens to start at
+  // u[0]: for a hole across the seam that panel is the arc running away from
+  // the gap, which pointed both jambs and the thickness the wrong way (D3).
+  const dir = norm2([b.p[0] - a.p[0], b.p[1] - a.p[1]]);
+  const n: V2 = [-dir[1], dir[0]];
   let k = 0;
-  const jamb = (u: number, sign: number, forward: boolean): void => {
-    const { p, dir } = pointAtU(poly, u, forward);
-    const n: V2 = [-dir[1], dir[0]];
+  const jamb = (p: V2, sign: number): void => {
     const c = (s: number, y: number): V3 => [p[0] + n[0] * s * off, y, p[1] + n[1] * s * off];
     const mb = new MeshBuilder();
     const q = [c(-1, y0), c(1, y0), c(1, y1), c(-1, y1)];
     mb.quad(q[0], q[1], q[2], q[3], [dir[0] * sign, 0, dir[1] * sign], [0, y0 - levelY], [2 * off, y0 - levelY], [2 * off, y1 - levelY], [0, y1 - levelY]);
     out.push(mb.finish({ id: `${o.id}:reveal:${k++}`, kind: "reveal", material: EXTERIOR, side: EXTERIOR }));
   };
-  jamb(hole.u[0], 1, true);
-  jamb(hole.u[1], -1, false);
-  const a = pointAtU(poly, hole.u[0], true);
-  const b = pointAtU(poly, hole.u[1]);
-  const n: V2 = [-a.dir[1], a.dir[0]];
+  jamb(a.p, 1);
+  jamb(b.p, -1);
   const horiz = (y: number, ny: number): void => {
     const c = (p: V2, s: number): V3 => [p[0] + n[0] * s * off, y, p[1] + n[1] * s * off];
     const mb = new MeshBuilder();

@@ -155,15 +155,6 @@ describe("build cli", () => {
     expect(() => walker.teleport(0, 0)).not.toThrow();
   });
 
-  it("test_mesh_count_ignores_id_collisions", () => {
-    const scene = patched([{ op: "replace", path: "/props/2/id", value: "cap:0" }]);
-    const ctx = runCheck(scene as never).ctx;
-    const geo = buildGeometry(ctx);
-    // ids collide (a generated wall cap also gets "cap:0"), but every mesh
-    // in `geometry.meshes` must still be counted
-    expect(new Set(geo.meshes.map((m) => m.id)).size).toBeLessThan(geo.meshes.length);
-  });
-
   it("test_fallback_excludes_unused_assets", () => {
     const dir = tmp();
     const scenePath = join(dir, "unused-asset.scene.json");

@@ -196,10 +196,10 @@
 Спека: «Модель стены» (дуги, `circle`, проём на дуге). Долг: Д2 (кроме проёма у границы wrap — остаётся долгом), Д3, Д5 из `specs/tero-engine-phase2-debt.md`. Д6 закрыт решением: `build.json.assets.fallback` — ассеты, отрисованные заглушкой (строка «все 10» выше — пример demo-flat), код не меняется.
 Файлы: `src/build/walls.ts`, `src/schema/validate.ts`, `test/debt2.test.ts`.
 
-- [ ] `test_arc_negative_sweep_opening`: комната `living` demo-flat, у вершины 1 `bulge` −0.4 (дуга внутрь); окно `sea` на ней → у мешей `wall|band` с префиксом `living#1:` точка оси при `m` проёма на высоте 1.5 не покрыта, на высоте 0.5 — покрыта
-- [ ] `test_circle_reveal_normals_across_seam`: круглая комната r = 4 с проёмом через `t = 0` (как в `test_circle_opening_across_seam_keeps_chord_wall_and_cap`) → у мешей `kind: "reveal"` подоконник смотрит вверх (n.y > 0.99), перемычка — вниз (n.y < −0.99), оба косяка — внутрь проёма (скалярное произведение нормали с направлением на центр проёма > 0)
-- [ ] `test_id_charset`: патч `/props/4/id` (`lamp`, на него никто не ссылается) = `cap:0` → ошибки ровно `[SCHEMA_TYPE]` с `path` `/props/4/id`; id demo-flat и demo проходят
-- [ ] реализовать
+- [x] `test_arc_negative_sweep_opening`: комната `living` demo-flat, у вершины 1 `bulge` −0.4 (дуга внутрь); окно `sea` на ней → у мешей `wall|band` с префиксом `living#1:` точка оси при `m` проёма на высоте 1.5 не покрыта, на высоте 0.5 — покрыта
+- [x] `test_circle_reveal_normals_across_seam`: круглая комната r = 4 с проёмом через `t = 0` (как в `test_circle_opening_across_seam_keeps_chord_wall_and_cap`) → у мешей `kind: "reveal"` подоконник смотрит вверх (n.y > 0.99), перемычка — вниз (n.y < −0.99), оба косяка — внутрь проёма (скалярное произведение нормали с направлением на центр проёма > 0)
+- [x] `test_id_charset`: патч `/props/4/id` (`lamp`, на него никто не ссылается) = `cap:0` → ошибки ровно `[SCHEMA_TYPE]` с `path` `/props/4/id`; id demo-flat и demo проходят
+- [x] реализовать
 
 ## Свободные стены и fixtures
 

@@ -146,18 +146,22 @@ describe("page", () => {
   }, 30000);
 
   it("test_mesh_count_ignores_id_collisions", async () => {
-    // a prop id colliding with a generated wall cap must not make the
-    // runtime undercount meshes (see F6: meshCount must not be derived
-    // from an ID-keyed map)
-    const dir = mkdtempSync(join(tmpdir(), "dreamer-scene-"));
-    const scenePath = join(dir, "collision.scene.json");
-    writeFileSync(scenePath, JSON.stringify(patched([{ op: "replace", path: "/props/2/id", value: "cap:0" }])));
-    const built = build(scenePath);
+    // Д5's id charset and the global id uniqueness check together make a
+    // real scene unable to forge a prop id equal to a generated mesh id
+    // (those always carry `:` or `.`), so the collision is injected
+    // directly into geometry.json instead: the runtime must still count
+    // every mesh (see F6: meshCount must not be derived from an ID-keyed
+    // map)
+    const built = build(join(ENGINE, "../specs/examples/demo-flat.scene.json"));
+    const geoPath = join(built.dist, "geometry.json");
+    const geo = JSON.parse(readFileSync(geoPath, "utf-8"));
+    geo.meshes.push({ ...geo.meshes[0] });
+    writeFileSync(geoPath, JSON.stringify(geo));
     const collisionSite = await serve(built.dist);
     const page = await browser.newPage({ deviceScaleFactor: 1 });
     await page.goto(collisionSite.url);
     await ready(page);
-    expect(await page.evaluate("window.__dreamer.meshCount()")).toBe(built.meshes);
+    expect(await page.evaluate("window.__dreamer.meshCount()")).toBe(geo.meshes.length);
     await page.close();
     await collisionSite.close();
   }, 30000);
