@@ -153,12 +153,12 @@
 - Тайлы: `RepeatWrapping`, `repeat` = 1 / `repeat_m` на uv в метрах, `colorSpace = SRGBColorSpace`. Наклейки и полотна — `transparent: true`, `alphaTest: 0.5`.
 - `dist/assets/` при каждой сборке: `<key>.glb` = `normalizeGlb(cache/<key>.glb, asset.front_deg).glb`; tile → копия `<key>.png`; decal → `<key>.alpha.png` (нет в кэше — вырезка при сборке, без денег). Страница никогда не читает кэш напрямую.
 
-- [ ] `test_glb_roundtrip`: `writeGlb(readGlb(x))` для фейкового GLB даёт тот же JSON и BIN
-- [ ] `test_normalize_bottom_centre`: фейковый GLB с bbox x [1, 3], y [2, 4], z [−0.5, 0.5] (w 2, d 1, h 2) → после нормализации bbox x [−1, 1], y [0, 2], z [−0.5, 0.5]; `metallicFactor` = 0
-- [ ] `test_normalize_front`: тот же GLB с `frontDeg` 90 → `size` = {w: 1, d: 2, h: 2}; вершина с максимальным x исходника после нормализации имеет максимальный z
-- [ ] `test_normalize_default_material`: фейк с материалом без `pbrMetallicRoughness` и примитивом без `material` → у всех материалов результата `metallicFactor` 0, у каждого примитива есть `material`
-- [ ] `test_bbox_node_trs`: фейковый GLB под корнем с `translation` [5, 0, 0], `rotation` [0.7071068, 0, 0, 0.7071068] → bbox до нормализации x [6, 8], y [−0.5, 0.5], z [2, 4]; `size` = {w: 2, d: 2, h: 1}; после — x [−1, 1], y [0, 1], z [−1, 1] (допуск 1e-6)
-- [ ] реализовать
+- [x] `test_glb_roundtrip`: `writeGlb(readGlb(x))` для фейкового GLB даёт тот же JSON и BIN
+- [x] `test_normalize_bottom_centre`: фейковый GLB с bbox x [1, 3], y [2, 4], z [−0.5, 0.5] (w 2, d 1, h 2) → после нормализации bbox x [−1, 1], y [0, 2], z [−0.5, 0.5]; `metallicFactor` = 0
+- [x] `test_normalize_front`: тот же GLB с `frontDeg` 90 → `size` = {w: 1, d: 2, h: 2}; вершина с максимальным x исходника после нормализации имеет максимальный z
+- [x] `test_normalize_default_material`: фейк с материалом без `pbrMetallicRoughness` и примитивом без `material` → у всех материалов результата `metallicFactor` 0, у каждого примитива есть `material`
+- [x] `test_bbox_node_trs`: фейковый GLB под корнем с `translation` [5, 0, 0], `rotation` [0.7071068, 0, 0, 0.7071068] → bbox до нормализации x [6, 8], y [−0.5, 0.5], z [2, 4]; `size` = {w: 2, d: 2, h: 1}; после — x [−1, 1], y [0, 1], z [−1, 1] (допуск 1e-6)
+- [x] реализовать
 
 ## Ассеты на странице
 
