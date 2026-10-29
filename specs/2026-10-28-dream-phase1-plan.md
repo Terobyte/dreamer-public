@@ -116,11 +116,11 @@
 
 Строка 1.4b таблицы 7.2. Шаг только офлайн. Имя: `fsm.clean_extras(d, hero) -> dict | None`.
 
-- [ ] Тест `test_bad_goals_keep_bridge`: директор на `FakeTransport` отдаёт кривые `goals`. Мост и `next_scene` остаются, `fail_streak == 0`, в логе `invalid {fields: ["goals"], reason}`.
-- [ ] Тест `test_good_extras_reach_next_scene`: корректные `events`/`goals`/`hero_reason` доходят до следующей сцены: строка `schedule` с ними, `hero_reason` приходит событием `t=0, who=[hero]`.
-- [ ] Тесты `clean_extras`: `t > 600`, 2 или 6 событий, `who` вне актёров, `goals[].actor` вне актёров — каждый случай даёт дескриптор `invalid`.
-- [ ] Реализация: `DIRECTOR_SCHEMA` += поля, `max_tokens` 2200, `BuildFSM(hero=None)`, вызов в `finish_consult` перед `check_target`, перенос в `_apply_transition`.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_bad_goals_keep_bridge`: директор на `FakeTransport` отдаёт кривые `goals`. Мост и `next_scene` остаются, `fail_streak == 0`, в логе `invalid {fields: ["goals"], reason}`.
+- [x] Тест `test_good_extras_reach_next_scene`: корректные `events`/`goals`/`hero_reason` доходят до следующей сцены: строка `schedule` с ними, `hero_reason` приходит событием `t=0, who=[hero]`.
+- [x] Тесты `clean_extras`: `t > 600`, 2 или 6 событий, `who` вне актёров, `goals[].actor` вне актёров — каждый случай даёт дескриптор `invalid`.
+- [x] Реализация: `DIRECTOR_SCHEMA` += поля, `max_tokens` 2200, `BuildFSM(hero=None)`, вызов в `finish_consult` перед `check_target`, перенос в `_apply_transition`.
+- [x] Все тесты зелёные.
 
 ## 1.5 спайк: русский
 

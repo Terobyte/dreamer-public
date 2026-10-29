@@ -36,7 +36,16 @@ DIRECTOR_SCHEMA = (
     "\"next_scene\": {\"objects\": 5 to 8 object names of the destination, "
     "\"actors\": 1 or 2 [{\"name\": who waits there, \"voice\": one of "
     "old_woman|old_man|woman|man|child|creature, \"persona\": who they are and what "
-    "they want or are busy doing there, a want of their own}]}, "
+    "they want or are busy doing there, a want of their own}], "
+    "\"events\": 3 to 5 [{\"t\": 0 to 600 seconds from that scene's start, "
+    "\"what\": what the world does there, one short line, \"who\": \"all\" or a list "
+    "of names of that scene (its actors or the hero), \"kind\": \"world\"}], "
+    "\"goals\": 0 to 2 [{\"actor\": an actor of that scene, \"goal\": what he wants "
+    "to get out of the hero, \"done_when\": null or {\"speaker\": who of that scene has to say it, "
+    "\"any\": the words that close it, \"not_after\": null or {\"speaker\": who must "
+    "not have just asked, \"any\": the words}}, \"judge\": true only when the "
+    "words above can never prove it (feelings, promises, wishes), else false}], "
+    "\"hero_reason\": one line telling the hero why he is there}, "
     "\"hero_next\": {\"changes\": false} or {\"changes\": true, "
     "\"description\": the hero's new look, \"voice\": one of "
     "old_woman|old_man|woman|man|child|creature}, "
@@ -172,7 +181,9 @@ class Director:
         try:
             res = llm_call("director", "You are the dream director.",
                            [{"role": "user", "content": prompt + "\n" + schema}],
-                           max_tokens=1500)  # 800 cut the JSON mid-string (bank r1)
+                           # 800 cut the JSON mid-string (bank r1); events, goals
+                           # and hero_reason joined the reply in 1.4b
+                           max_tokens=2200)
             decision = json.loads((res.text or "").strip())
             if not isinstance(decision, dict):
                 raise ValueError("director reply is not a JSON object")

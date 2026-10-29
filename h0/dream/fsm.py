@@ -43,6 +43,117 @@ def check_target(d, objects, voices):
     return None
 
 
+MAX_EVENT_T = 600
+EVENTS_RANGE = (3, 5)
+GOALS_MAX = 2
+
+
+def _check_events(events, names, hero):
+    """Shape of a director `events` block (format of 7.2 row 1.3) -> reason or None."""
+    if not isinstance(events, list):
+        return "bad_type"
+    if not EVENTS_RANGE[0] <= len(events) <= EVENTS_RANGE[1]:
+        return "bad_size"
+    for e in events:
+        if not isinstance(e, dict):
+            return "bad_type"
+        t = e.get("t")
+        if isinstance(t, bool) or not isinstance(t, (int, float)):
+            return "bad_type"
+        if not 0 <= t <= MAX_EVENT_T:
+            return "bad_t"
+        if not isinstance(e.get("what"), str) or not e["what"].strip():
+            return "bad_type"
+        if e.get("kind") != "world":
+            return "bad_kind"
+        who = e.get("who")
+        if who == "all":
+            continue
+        if not _names(who):
+            return "bad_type"
+        if any(w not in names for w in who):
+            return "unknown_recipient"
+    return None
+
+
+def _check_goals(goals, actors, names):
+    """Shape of a director `goals` block (format of 7.2 row 1.4) -> reason or None.
+    The hero is an NPC with no goal of his own, so he is not in `actors`; he does
+    say the words that close one, so he is in `names`."""
+    if not isinstance(goals, list):
+        return "bad_type"
+    if len(goals) > GOALS_MAX:
+        return "bad_size"
+    for g in goals:
+        if not isinstance(g, dict):
+            return "bad_type"
+        try:
+            actor_ok = g.get("actor") in actors
+        except TypeError:
+            return "unknown_actor"
+        if not actor_ok:
+            return "unknown_actor"
+        if not isinstance(g.get("goal"), str) or not g["goal"].strip():
+            return "bad_type"
+        if "judge" in g and not isinstance(g.get("judge"), bool):
+            return "bad_judge"
+        judge = g.get("judge") is True
+        cond = g.get("done_when")
+        if cond is None:
+            # a judge goal closes through Dialogue.judge; a code goal with no
+            # words to listen for never closes and blocks later goals (F5)
+            if judge:
+                continue
+            return "bad_done_when"
+        if not isinstance(cond, dict):
+            return "bad_done_when"
+        # a speaker who is not in that scene never says the words, so the goal
+        # would hold `goal_open` all scene and block every goal after it
+        for who in (cond, cond.get("not_after")):
+            if who is None:
+                continue
+            if (not isinstance(who, dict) or not who.get("any")
+                    or not _names(who.get("any"))):
+                return "bad_done_when"
+            try:
+                speaker_ok = who.get("speaker") in names
+            except TypeError:
+                return "unknown_speaker"
+            if not speaker_ok:
+                return "unknown_speaker"
+    return None
+
+
+def clean_extras(d, hero=None):
+    """Director extras for the next scene (spec 7.2 row 1.4b): drop a broken
+    `events` or `goals` block from `d["next_scene"]` and report it once as
+    {fields, reason}, or None when both are fine. A bad block must not cost the
+    decision its bridge, so this never rejects the whole reply."""
+    if not isinstance(d, dict):
+        return None
+    ns = d.get("next_scene")
+    if not isinstance(ns, dict):
+        return None
+    raw_actors = ns.get("actors")
+    actors = {a.get("name") for a in (raw_actors if isinstance(raw_actors, list) else [])
+              if isinstance(a, dict) and isinstance(a.get("name"), str)}
+    names = actors | ({hero} if hero else set())
+    fields, reason = [], None
+    if "events" in ns:
+        bad = _check_events(ns.get("events"), names, hero)
+        if bad:
+            ns.pop("events")
+            fields.append("events")
+            reason = bad
+    if "goals" in ns:
+        bad = _check_goals(ns.get("goals"), actors, names)
+        if bad:
+            ns.pop("goals")
+            fields.append("goals")
+            reason = reason or bad
+    return {"fields": fields, "reason": reason} if fields else None
+
+
 def check_messages(d, actors):
     """Notes go only to actors of the current scene (spec 8) -> (field, reason) or None."""
     msgs = d.get("messages") or []
@@ -55,12 +166,14 @@ def check_messages(d, actors):
 
 
 class BuildFSM:
-    def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None, actors=()):
+    def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None, actors=(),
+                 hero=None):
         p = dict(DEFAULTS, **(params or {}))
         self.p = {k: (tuple(x / speed for x in v) if isinstance(v, tuple) else v / speed)
                   for k, v in p.items()}
         self.voices = set(voices)
         self.actors = list(actors)
+        self.hero = hero  # 1.4b: clean_extras needs him to read `events[].who`
         self.build_epoch = 0
         self.fail_streak = 0
         self.awake = False
@@ -258,6 +371,10 @@ class BuildFSM:
                 self.pending_wakeup = pending  # invalid reply: the next ticket carries it again
                 return ev + self._bad(now, ticket, ["bridge"], "null_bridge")
             return ev + [self._consult(now, ticket, "ok")]
+        extras = clean_extras(decision, self.hero)
+        if extras:
+            # a broken events/goals block is dropped, the bridge stands (1.4b)
+            ev.append(self._e(now, "invalid", **extras))
         err = check_target(decision, self.objects, self.voices)
         if err:
             self.pending_wakeup = pending

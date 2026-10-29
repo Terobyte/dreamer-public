@@ -246,7 +246,7 @@ class Sim:
         self._load_goals(emit=False)
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
                              now=self.clock.now(), params=fsm_params,
-                             actors=list(self.actors))
+                             actors=list(self.actors), hero=self.hero)
         self.script = script if script is not None else _scripted_decisions(profile, 8)
         self.outdir = outdir
         if outdir:
@@ -802,9 +802,16 @@ class Sim:
         self._notes = {}
         self._hero_world = ["you have just arrived in %s" % self.place]
         if ns:
+            # 1.4b: the director's reason for the hero to be here is not a start
+            # value either -- it is the first event of this scene's schedule
+            events = list(ns.get("events") or [])
+            if ns.get("hero_reason"):
+                events.insert(0, {"t": 0, "what": str(ns["hero_reason"]),
+                                  "who": [self.hero], "kind": "world"})
             self.scene = {"objects": list(ns["objects"]), "actors": list(ns["actors"]),
-                          "events": list(ns.get("events") or []),
-                          "goals": list(ns.get("goals") or [])}
+                          "events": events,
+                          "goals": list(ns.get("goals") or []),
+                          "hero_reason": ns.get("hero_reason")}
             self.actors = [a["name"] for a in ns["actors"] if isinstance(a, dict)]
             self._actor_voices = {a["name"]: a.get("voice") for a in ns["actors"]
                                   if isinstance(a, dict)}
