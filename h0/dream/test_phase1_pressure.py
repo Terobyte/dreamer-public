@@ -119,6 +119,18 @@ class PressureTest(unittest.TestCase):
         logged = [r for r in rows(self.root) if r["type"] == "pressure"]
         self.assertEqual(len(logged), ticks)
 
+    def test_npc_hero_alone_goes_through_the_formula(self):
+        """7.2 row 1.2b: the NPC hero has the same formula and threshold --
+        an empty scene is no shortcut past `pressure`/`silence`."""
+        sim, _ = self._stub_sim()
+        sim.actors = []
+        sim._note_line("Max", "hero", "[flat] anyone?")
+        self.assertEqual(sim._pick_speaker(), (None, None))
+        log = rows(self.root)
+        self.assertEqual(list([r for r in log if r["type"] == "pressure"][-1]["pressure"]),
+                         ["Max"])
+        self.assertTrue([r for r in log if r["type"] == "silence"])
+
     # --- two actor lines in a row block the actors ---------------------------
     def test_two_actor_lines_block_actors(self):
         # everyone calls Dan: without the rule Dan and friends would never stop

@@ -1066,11 +1066,10 @@ class Sim:
         # 2.1: while the player owns the hero he is not in the cast at all --
         # neither picked nor written into `pressure`
         human = self.hero_owner == "human"
-        if not self.actors:
-            if human:
-                return None, None
-            self._silent_ticks[self.hero] = self._silent_ticks.get(self.hero, 0) + 1
-            return self.hero, "hero"
+        # an empty scene (check_scene keeps 1-5 actors, so only a broken transition
+        # gets here) is no exception: the NPC hero goes through the same formula
+        if not self.actors and human:
+            return None, None
         cast = [n for n in self._cast() if not (human and n == self.hero)]
         for name in cast:
             self._silent_ticks[name] = self._silent_ticks.get(name, 0) + 1
