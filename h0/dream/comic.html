@@ -584,7 +584,10 @@ function step() {
   apply(r);
   const nx = rows[replayIdx];
   if (!nx) { replayRunning = false; renderPause(); return; }
-  const dt = Math.min(Math.max(0, (nx.t || 0) - (r.t || 0)) * 1000, 8000);
+  let dt = Math.min(Math.max(0, (nx.t || 0) - (r.t || 0)) * 1000, 8000);
+  // a run voiced after the fact logs lines faster than they sound: with sound on,
+  // the next row waits for this voice, or the 2-deep audio queue drops lines
+  if (sound && r.type === "line" && r.audio && r.dur) dt = Math.max(dt, r.dur * 1000 + 300);
   replayDue = performance.now() + dt;
   replayTimer = setTimeout(step, dt);
 }
