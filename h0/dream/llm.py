@@ -23,6 +23,8 @@ WONDER_MODEL = "muse-wonder-1.0"
 # Bench r2 probe: Claude Haiku through the local Claude Code CLI on the owner's
 # subscription, no API key -- price 0 here, the dollars are not Meta's to count.
 CLAUDE_HAIKU_MODEL = "claude-cli/haiku"
+CLAUDE_OPUS_MODEL = "claude-cli/opus"
+CLAUDE_CLI_MODELS = (CLAUDE_HAIKU_MODEL, CLAUDE_OPUS_MODEL)
 
 # Prices checked 2026-10-27, one verifiable source per service:
 # - Muse Spark 1.3 ($1.25/$4.25 per 1M in/out) and Muse Wonder 1.0
@@ -55,6 +57,7 @@ PRICE_SOURCES = {
     "muse-image": "2026-10-27 https://dev.meta.ai/docs/pricing-rate-limits",
     SPARK_OPEN_MODEL: "2026-10-27 https://inference.baseten.co/v1 (hackathon key, free)",
     CLAUDE_HAIKU_MODEL: "2026-10-29 claude -p on the owner's subscription (no per-call price)",
+    CLAUDE_OPUS_MODEL: "2026-10-29 claude -p on the owner's subscription (no per-call price)",
 }
 META_API = "https://api.meta.ai/v1/chat/completions"
 BASETEN_API = "https://inference.baseten.co/v1/chat/completions"
@@ -87,7 +90,8 @@ TALK_ROLES = ("hero", "actor", "compress")
 TALK_MODELS = {"spark-open": (SPARK_OPEN_MODEL, "minimal"),
                "spark": (SPARK_MODEL, "minimal"),
                "wonder": (WONDER_MODEL, "low"),
-               "haiku": (CLAUDE_HAIKU_MODEL, "minimal")}
+               "haiku": (CLAUDE_HAIKU_MODEL, "minimal"),
+               "opus": (CLAUDE_OPUS_MODEL, "high")}
 _cap = {0: None}
 
 
@@ -182,7 +186,7 @@ def _min_tokens(model):
 
 
 def _price(model, prompt_tok, completion_tok):
-    if model in (SPARK_OPEN_MODEL, CLAUDE_HAIKU_MODEL):
+    if model == SPARK_OPEN_MODEL or model in CLAUDE_CLI_MODELS:
         return 0.0
     if model.startswith("muse-spark"):
         rate = (SPARK_IN_PER_M, SPARK_OUT_PER_M)
@@ -232,8 +236,9 @@ class RealTransport:
 
     def complete(self, model, effort, system, messages, max_tokens, temperature=None):
         diagnostics = []
-        if model == CLAUDE_HAIKU_MODEL:
-            return {"content": _claude_cli("haiku", system, messages), "usage": {},
+        if model in CLAUDE_CLI_MODELS:
+            return {"content": _claude_cli(model.split("/")[1], system, messages, effort),
+                    "usage": {},
                     "model": model}
         if model == SPARK_OPEN_MODEL:
             key = _baseten_key()
@@ -258,13 +263,15 @@ class RealTransport:
         return out
 
 
-def _claude_cli(alias, system, messages):
+def _claude_cli(alias, system, messages, effort="minimal"):
     """One `claude -p` call with no user settings, MCP, tools or session: the
     system prompt and the turn text are all the model sees (~2 s a call)."""
     turn = "\n\n".join(m.get("content", "") if isinstance(m, dict) else str(m)
                         for m in messages or [])
     cmd = ["claude", "-p", "--model", alias, "--strict-mcp-config", "--setting-sources", "",
            "--tools", "", "--no-session-persistence", "--system-prompt", system or ""]
+    if effort in ("low", "medium", "high", "xhigh", "max"):
+        cmd += ["--effort", effort]
     done = subprocess.run(cmd, input=turn, capture_output=True, text=True, timeout=120,
                           cwd=tempfile.gettempdir())
     if done.returncode != 0:
