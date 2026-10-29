@@ -12,6 +12,7 @@ import { runAssets, missingAssets } from "../src/assets/run.js";
 import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
 import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
 import type { Issue, NavJson, Report } from "../src/types.js";
+import type { PropFact } from "../src/props/fact.js";
 
 const USAGE =
   "usage: dreamer check <scene> [--report <path>] [--built <dist>]\n" +
@@ -118,6 +119,7 @@ async function main(): Promise<number> {
       return 1;
     }
     let builtNav: NavJson | undefined;
+    let facts: Record<string, PropFact | null> | undefined;
     if (builtFlag !== undefined) {
       const navPath = join(builtFlag, "nav.json");
       if (!existsSync(navPath)) {
@@ -125,8 +127,19 @@ async function main(): Promise<number> {
         return 2;
       }
       builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
+      // the same dist/ also carries what every prop's model measures, so
+      // `--built` checks the props by fact instead of the author's `size`
+      const buildPath = join(builtFlag, "build.json");
+      if (existsSync(buildPath)) {
+        const props = JSON.parse(readFileSync(buildPath, "utf-8")).props as
+          | Record<string, { fact: PropFact | null }>
+          | undefined;
+        if (props) {
+          facts = Object.fromEntries(Object.entries(props).map(([id, p]) => [id, p?.fact ?? null]));
+        }
+      }
     }
-    const { report, ctx } = runCheck(raw, { builtNav });
+    const { report, ctx } = runCheck(raw, { builtNav, facts });
     const sceneName = typeof ctx.scene?.name === "string" ? ctx.scene.name : undefined;
     const rp = reportPath ?? defaultReportPath(scenePath, sceneName);
     printAndDiff(rp, report);

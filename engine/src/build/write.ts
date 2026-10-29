@@ -11,12 +11,40 @@ import { topSvg } from "../report/topsvg.js";
 import { indexHtml } from "./page.js";
 import { runAssets, type AssetReport } from "../assets/run.js";
 import { placeAssets, type GlbSize } from "./materials.js";
+import { factOf, type PropFact } from "../props/fact.js";
+import type { Geometry } from "./geometry.js";
 
 export interface BuildJson {
   ok: boolean;
   seconds: number;
   assets: { used: string[]; fallback: string[]; missing: string[] };
+  /** what each prop's model really measures, so `check --built` can use it */
+  props: Record<string, { fact: PropFact | null }>;
   warnings: string[];
+}
+
+/**
+ * The measured bound of every prop: the normalized GLB's own box times the
+ * scale its mesh was fitted with. A prop left as a placeholder has no model
+ * to measure, so its fact is `null` and `check` falls back to the author's
+ * `size`. Copies of an `around` prop share one asset and one size, so the
+ * first mesh of the group answers for the whole prop.
+ */
+function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbSize>): BuildJson["props"] {
+  const scaleOf = new Map<string, number>();
+  for (const m of geometry.meshes as any[]) {
+    if (m.kind !== "prop" || m.glb === undefined || typeof m.scale !== "number") continue;
+    const id = String(m.id).split(".")[0];
+    if (!scaleOf.has(id)) scaleOf.set(id, m.scale);
+  }
+  const out: BuildJson["props"] = {};
+  for (const raw of (scene?.props ?? []) as any[]) {
+    const id = String(raw?.id);
+    const glb = glbSizes[String(raw?.asset)];
+    const scale = scaleOf.get(id);
+    out[id] = { fact: glb !== undefined && scale !== undefined ? factOf(glb, scale) : null };
+  }
+  return out;
 }
 
 const RUNTIME_ENTRY = fileURLToPath(new URL("../runtime/main.ts", import.meta.url));
@@ -91,10 +119,12 @@ export async function writeDist(
   // in Node, not measured again in the browser.
   let assetFiles: AssetFiles = {};
   let glbSizes: Record<string, GlbSize> = {};
+  const assetWarnings: string[] = [];
   if (opts.cacheDir !== undefined && assets.used.length > 0) {
     const placed = placeAssets(ctx.scene, opts.cacheDir, assets.used, outDir);
     assetFiles = placed.files;
     glbSizes = placed.sizes;
+    assetWarnings.push(...placed.warnings);
   }
 
   const geometry = buildGeometry(ctx, assetFiles, glbSizes);
@@ -112,7 +142,9 @@ export async function writeDist(
     ok: true,
     seconds: (Date.now() - opts.startedAt) / 1000,
     assets: { used: assets.used, fallback: assets.fallback, missing: assets.missing },
+    props: propFacts(ctx.scene, geometry, glbSizes),
     warnings: [
+      ...assetWarnings,
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
       ...refWarnings,

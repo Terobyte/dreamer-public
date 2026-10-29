@@ -115,6 +115,11 @@ export function msg(code: Code, params: Record<string, string>): string {
     case "PROP_WALL_NOT_FOUND":
       return `${params.id}: ближайшая стена ${params.edge} в ${params.d} м (нужно < ${params.need})`;
     case "PROP_SIZE_ODD":
+      // `check --built` compares the measured model with the author's size;
+      // without a fact it is the plausibility check against `cat`
+      if (params.fact) {
+        return `${params.id}: факт ${params.w}×${params.d}×${params.h} расходится с size > 20%`;
+      }
       return `${params.id}: размер не похож на ${params.cat}: ${params.bad}`;
     case "FACE_ROOM_FAR":
       return `${params.id}: от at до внутренней грани ${params.edge} ${params.d} м (> ${params.max}); задай yaw или точку`;

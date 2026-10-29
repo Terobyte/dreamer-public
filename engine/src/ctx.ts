@@ -1,3 +1,4 @@
+import type { PropFact } from "./props/fact.js";
 import type { DecalGeo, LevelPlan, NavJson, OpeningGeo, Passport, PropGeo, RoomGeo, Scene } from "./types.js";
 
 export interface Ctx {
@@ -9,5 +10,7 @@ export interface Ctx {
   props?: PropGeo[];
   decals?: DecalGeo[];
   nav?: NavJson;
+  /** measured prop bounds from a built `dist/` (`check --built`) */
+  facts?: Record<string, PropFact | null>;
   passport: Passport;
 }

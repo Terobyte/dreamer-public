@@ -1,4 +1,5 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { PNG } from "pngjs";
 import { dirname, join, resolve, sep } from "node:path";
 import type { Scene } from "../types.js";
 import { normalizeGlb } from "../assets/glb.js";
@@ -16,6 +17,39 @@ export interface GlbSize {
 export interface PlacedAssets {
   files: AssetFiles;
   sizes: Record<string, GlbSize>;
+  /** `ASSET_BLANK <id>` / `ASSET_GLB_BROKEN <id>` lines for `build.json` */
+  warnings: string[];
+}
+
+/** A texture this flat carries no detail: the sheet would show a colour field. */
+const BLANK_SHARE = 0.98;
+
+/**
+ * True when nearly every pixel is the same colour — the shape a failed or
+ * refused generation takes. It is a warning, not an error: the page still
+ * draws the tile, the author just has nothing to look at.
+ */
+function blankPng(buf: Buffer): boolean {
+  let png: PNG;
+  try {
+    png = PNG.sync.read(buf);
+  } catch {
+    return false;
+  }
+  const counts = new Map<number, number>();
+  const n = png.width * png.height;
+  if (n === 0) return false;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    // alpha counts too: identical RGB with varying opacity is still a
+    // texture with detail, not a flat colour field
+    const key =
+      (png.data[o] << 24) | (png.data[o + 1] << 16) | (png.data[o + 2] << 8) | png.data[o + 3];
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let top = 0;
+  for (const c of counts.values()) top = Math.max(top, c);
+  return top / n > BLANK_SHARE;
 }
 
 /**
@@ -34,6 +68,7 @@ export function placeAssets(scene: Scene, cacheDir: string, used: string[], outD
   const sizes: Record<string, GlbSize> = Object.create(null) as Record<string, GlbSize>;
   const declared = ((scene as any)?.assets ?? {}) as Record<string, any>;
 
+  const warnings: string[] = [];
   const resolved = resolvedAssets(scene, cacheDir, used);
   const assetsDir = resolve(join(outDir, "assets"));
   if (resolved.length > 0) mkdirSync(assetsDir, { recursive: true });
@@ -57,13 +92,30 @@ export function placeAssets(scene: Scene, cacheDir: string, used: string[], outD
     // under a subdirectory of dist/assets that does not exist yet
     mkdirSync(dirname(dest), { recursive: true });
     if (r.kind === "object") {
-      const out = normalizeGlb(readFileSync(r.path), Number(declared[r.id]?.front_deg ?? 0));
+      // a GLB that will not parse leaves the prop a placeholder box instead
+      // of killing the build: one bad mesh must not cost the whole world
+      let out;
+      try {
+        out = normalizeGlb(readFileSync(r.path), Number(declared[r.id]?.front_deg ?? 0));
+      } catch {
+        warnings.push(`ASSET_GLB_BROKEN ${r.id}`);
+        continue;
+      }
+      // a model with no height cannot be fitted to the prop's `h` (the fit
+      // scale would be infinite), so it is as unusable as one that would not
+      // parse: same warning, same fall back to the OBB placeholder
+      if (!(out.size.h > 0)) {
+        warnings.push(`ASSET_GLB_BROKEN ${r.id}`);
+        continue;
+      }
       writeFileSync(dest, out.glb);
       sizes[r.id] = out.size;
     } else {
+      const buf = readFileSync(r.path);
+      if (blankPng(buf)) warnings.push(`ASSET_BLANK ${r.id}`);
       copyFileSync(r.path, dest);
     }
     files[r.id] = urlRel;
   }
-  return { files, sizes };
+  return { files, sizes, warnings };
 }

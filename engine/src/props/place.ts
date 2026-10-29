@@ -281,7 +281,12 @@ export function placeProps(ctx: Ctx): PropGeo[] {
     const room = roomById.get(String(raw.room));
     if (!room) return 0;
     const rawRoom = rawById.get(String(raw.room));
-    const size = { w: raw.size.w, d: raw.size.d, h: raw.size.h };
+    // `check --built` places by what the built model measures, not by the
+    // author's promise: the OBB a walker bumps into is the real one
+    const fact = ctx.facts?.[String(raw.id)];
+    const size = fact
+      ? { w: fact.w, d: fact.d, h: fact.h }
+      : { w: raw.size.w, d: raw.size.d, h: raw.size.h };
     const half: [number, number] = [size.w / 2, size.d / 2];
     const solid = raw.solid !== false;
     const mount = raw.mount ?? "floor";

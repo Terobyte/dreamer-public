@@ -9,6 +9,7 @@ import { obbCorners, obbIntersects, obbPolyIntersects, rotLocal } from "../geom/
 import type { AuthorEdge } from "./place.js";
 import { beamPolys, closestOnEdge, edgeNormal, edgePoint, nearestEdge, onWallAxis, wallThicknessAt } from "./place.js";
 import { CATS } from "./cats.js";
+import { factIssues } from "./fact.js";
 import { freeWalls, freeWallPoly } from "../plan/merge.js";
 import { fixtureGeos, fixtureFootprint } from "../build/fixtures.js";
 import { msg } from "../report/messages.js";
@@ -484,6 +485,8 @@ export function lintProps(ctx: Ctx): Issue[] {
       msg: msg("PROP_SIZE_ODD", { id: String(raw.id), cat: String(raw.cat), bad: bad.join(", ") }),
     });
   });
+
+  issues.push(...factIssues(ctx));
 
   return issues;
 }

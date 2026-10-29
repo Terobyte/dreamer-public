@@ -259,12 +259,12 @@
 - `check --built`: у предмета с `fact` OBB строится по `fact`, а не `size`; если `|fact.x − size.x| / size.x > 0.2` по любой оси → предупреждение `PROP_SIZE_ODD` с `fix: {"size": fact}` (округление 1e-3).
 - `build.json.warnings` получает строки `ASSET_BLANK <id>` для текстуры, у которой > 98% пикселей одного цвета, и `ASSET_GLB_BROKEN <id>` для GLB, который не разобрался. Это строки `build.json`, не коды `CODES` (иначе ломается `test_broken_one_code_each`).
 
-- [ ] `test_fact_size_warns`: фейковый провайдер отдаёт GLB-куб 1×1×1 только для `p_sofa` (остальные — обычный фейк), `sofa` `size` {w:2, d:0.9, h:0.85} → после нормализации по `h` факт {0.85, 0.85, 0.85}; `check --built` → у `sofa` ровно одна запись `PROP_SIZE_ODD` с `fix.size` = факт. Во всех тестах этой фазы фейк отдаёт остальным предметам GLB-бокс, равный их `size` (иначе стулья из куба 1×1×1 наезжают друг на друга и дают `PROP_HITS_PROP`)
-- [ ] `test_fact_close_no_warning`: GLB-бокс 2.0×0.9×0.85 для `p_sofa` → после масштаба факт = `size`, `PROP_SIZE_ODD` у `sofa` нет
-- [ ] `test_fact_null_for_placeholder`: `--assets none` → `fact` = null у всех предметов, `check --built` проверяет по `size`
-- [ ] `test_blank_texture_warned`: фейк отдаёт однотонный PNG для `t_wall` и шахматку из двух цветов для `t_floor` → в `warnings` есть `ASSET_BLANK t_wall`, нет `ASSET_BLANK t_floor`
-- [ ] `test_glb_broken_warned`: фейк отдаёт для `p_sofa` 12 случайных байт → в `warnings` есть `ASSET_GLB_BROKEN p_sofa`, у `sofa` `fact` = null, `build` exit 0
-- [ ] реализовать
+- [x] `test_fact_size_warns`: фейковый провайдер отдаёт GLB-куб 1×1×1 только для `p_sofa` (остальные — обычный фейк), `sofa` `size` {w:2, d:0.9, h:0.85} → после нормализации по `h` факт {0.85, 0.85, 0.85}; `check --built` → у `sofa` ровно одна запись `PROP_SIZE_ODD` с `fix.size` = факт. Во всех тестах этой фазы фейк отдаёт остальным предметам GLB-бокс, равный их `size` (иначе стулья из куба 1×1×1 наезжают друг на друга и дают `PROP_HITS_PROP`)
+- [x] `test_fact_close_no_warning`: GLB-бокс 2.0×0.9×0.85 для `p_sofa` → после масштаба факт = `size`, `PROP_SIZE_ODD` у `sofa` нет
+- [x] `test_fact_null_for_placeholder`: `--assets none` → `fact` = null у всех предметов, `check --built` проверяет по `size`
+- [x] `test_blank_texture_warned`: фейк отдаёт однотонный PNG для `t_wall` и шахматку из двух цветов для `t_floor` → в `warnings` есть `ASSET_BLANK t_wall`, нет `ASSET_BLANK t_floor`
+- [x] `test_glb_broken_warned`: фейк отдаёт для `p_sofa` 12 случайных байт → в `warnings` есть `ASSET_GLB_BROKEN p_sofa`, у `sofa` `fact` = null, `build` exit 0
+- [x] реализовать
 
 ## Лестница: check и паспорт
 

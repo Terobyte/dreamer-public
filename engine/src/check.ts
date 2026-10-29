@@ -9,10 +9,14 @@ import { checkCameras } from "./cameras/check.js";
 import { navStage } from "./nav/grid.js";
 import { routesStage } from "./routes/stage.js";
 import type { Ctx } from "./ctx.js";
+import type { PropFact } from "./props/fact.js";
 import type { NavJson, Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
 
-export function runCheck(raw: unknown, opts?: { until?: Stage; builtNav?: NavJson }): { report: Report; ctx: Ctx } {
+export function runCheck(
+  raw: unknown,
+  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null> },
+): { report: Report; ctx: Ctx } {
   const until = opts?.until ?? "nav";
   const untilIdx = STAGES.indexOf(until);
   const passport = emptyPassport();
@@ -29,7 +33,7 @@ export function runCheck(raw: unknown, opts?: { until?: Stage; builtNav?: NavJso
     return { report, ctx: { scene: (raw ?? {}) as never, passport } };
   }
 
-  const ctx: Ctx = { scene, passport };
+  const ctx: Ctx = { scene, passport, facts: opts?.facts };
   const errors: Issue[] = [];
   const warnings: Issue[] = [];
   const push = (list: Issue[]): void => {
