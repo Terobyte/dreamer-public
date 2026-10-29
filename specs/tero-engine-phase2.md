@@ -279,12 +279,12 @@
 - Паспорт: `stairs: [{"id", "n", "rise", "len", "exit": [x, z], "cut": [[x,z], ...] | null}]` после `decals` — ключ есть только если в сцене есть лестницы (у demo-flat его нет, голден не меняется).
 - Единственная правка теста фазы 1 во всём плане: `test_demo_full_future` (`test/schema.test.ts`) удаляется — спека v0.7 принимает `stairs`, его место занимает `test_demo_check_ok`.
 
-- [ ] `test_demo_check_ok`: `check` demo → `ok: true`, этап `stairs` = `pass`, в паспорте `up`: n = 21, rise 0.171, len 5.6, exit [1.4, 6], cut — прямоугольник x [0.95, 1.85], z [6, 10.247] (округление отчёта 1e-3)
-- [ ] `test_stair_exit_outside`: патч `/stairs/0/from/at` = [1.4, 9.0] → `STAIR_EXIT_OUTSIDE`, `msg` содержит `up`, `(1.4, 3.4)` и `loft`
-- [ ] `test_stair_headroom`: патч `/rooms/2/shape` = [[-2,4],[2,4],[2,8],[-2,8]] → `STAIR_HEADROOM`, `msg` содержит `1.353` и просвет `0.624`
-- [ ] `test_stair_same_level_refused`: `to.room` = `living` → `STAIR_EXIT_OUTSIDE` этапа `stairs`, `msg` содержит `up` и `living`, в отчёте нет `NaN`, exit 1
-- [ ] `test_future_stairs_gone`: `stairs` в demo больше не даёт `SCHEMA_FUTURE_FIELD`
-- [ ] реализовать
+- [x] `test_demo_check_ok`: `check` demo → `ok: true`, этап `stairs` = `pass`, в паспорте `up`: n = 21, rise 0.171, len 5.6, exit [1.4, 6], cut — прямоугольник x [0.95, 1.85], z [6, 10.247] (округление отчёта 1e-3)
+- [x] `test_stair_exit_outside`: патч `/stairs/0/from/at` = [1.4, 9.0] → `STAIR_EXIT_OUTSIDE`, `msg` содержит `up`, `(1.4, 3.4)` и `loft`
+- [x] `test_stair_headroom`: патч `/rooms/2/shape` = [[-2,4],[2,4],[2,8],[-2,8]] → `STAIR_HEADROOM`, `msg` содержит `1.353` и просвет `0.624`
+- [x] `test_stair_same_level_refused`: `to.room` = `living` → `STAIR_EXIT_OUTSIDE` этапа `stairs`, `msg` содержит `up` и `living`, в отчёте нет `NaN`, exit 1
+- [x] `test_future_stairs_gone`: `stairs` в demo больше не даёт `SCHEMA_FUTURE_FIELD`
+- [x] реализовать
 
 ## Лестница: меши и вырез
 
@@ -294,11 +294,11 @@
 - Пол/потолок с вырезом: `earClip` дыр не умеет — дыра соединяется с внешним контуром мостом (две совпадающие кромки от самой правой вершины дыры к видимой вершине контура), получившийся простой полигон идёт в `earClip`.
 - Перила (`up:rail:left|right`) — с той стороны марша, где до внутренней грани стены > 0.15 м. Перила по краю выреза (`up:rail:cut:<k>`, по ребру выреза k) — на всех рёбрах выреза, кроме стороны выхода (z = 6.0 у demo).
 
-- [ ] `test_stair_meshes`: `build` demo → 20 мешей `up:step:<k>`; у `up:step:20` bbox z [6.0, 6.28], y [0, 3.428571]; меш `loft:slab` y [3.0, 3.6], точка (1.4, 8.0) не покрыта ни `loft:slab`, ни `loft:floor`, ни `hall:ceiling`, точка (−1, 8.0) покрыта всеми тремя
-- [ ] `test_stair_rail_sides`: у `up` есть `up:rail:left` (сторона x = 0.95, до внутренней грани стены hall > 0.15 м) и нет `up:rail:right` (до внутренней грани x = 1.94 — 0.09 м)
-- [ ] `test_cut_rails_skip_exit`: есть `up:rail:cut:<k>` по краям выреза x = 0.95, x = 1.85 и z = 10.246667; ни один меш перил не пересекает отрезок z = 6.0, x [1.0, 1.8] на высоте 3.6–4.6
-- [ ] `test_floor_with_hole_area`: площадь треугольников `loft:floor` = площадь комнаты loft − 0.9 · 4.246667 (±1e-4)
-- [ ] реализовать
+- [x] `test_stair_meshes`: `build` demo → 20 мешей `up:step:<k>`; у `up:step:20` bbox z [6.0, 6.28], y [0, 3.428571]; меш `loft:slab` y [3.0, 3.6], точка (1.4, 8.0) не покрыта ни `loft:slab`, ни `loft:floor`, ни `hall:ceiling`, точка (−1, 8.0) покрыта всеми тремя
+- [x] `test_stair_rail_sides`: у `up` есть `up:rail:left` (сторона x = 0.95, до внутренней грани стены hall > 0.15 м) и нет `up:rail:right` (до внутренней грани x = 1.94 — 0.09 м)
+- [x] `test_cut_rails_skip_exit`: есть `up:rail:cut:<k>` по краям выреза x = 0.95, x = 1.85 и z = 10.246667; ни один меш перил не пересекает отрезок z = 6.0, x [1.0, 1.8] на высоте 3.6–4.6
+- [x] `test_floor_with_hole_area`: площадь треугольников `loft:floor` = площадь комнаты loft − 0.9 · 4.246667 (±1e-4)
+- [x] реализовать
 
 ## Лестница: навигация, маршрут, ходьба
 
@@ -315,11 +315,11 @@
 - Внутри `poly` рампы высота — только рампа, полы уровней под ней игнорируются. Проходимость на рампе: точка в `poly`, эродированном на r по боковым сторонам; вне рампы — биты слоя, чей `y` ближе к `fy`.
 - `makeWalker(layer, bits, floors, start, more?: {layers: {layer: NavLayer; bits: Uint8Array}[]; ramps: NavRamp[]})` — старые вызовы (`main.ts`, `build-cli.test.ts`) не меняются; `main.ts` передаёт `more` из `nav.json`.
 
-- [ ] `test_nav_ramp_and_link`: `nav.json` demo: `ramps` = [{stair: "up", y0: 0, y1: 3.6, axis: {from: [1.4, 11.6], dir: 180, len: 5.6}, poly — прямоугольник x [0.95, 1.85] × z [6.0, 11.6]}], `links` = [{from: "L0", to: "L1", via: "up"}], слой `L1` есть
-- [ ] `test_floor_at_ramp`: `floorAtRooms` + рампа: (1.4, 8.8) при `yPrev` 1.7 → 1.8 (±1e-6); окно `[yPrev − 0.5, yPrev + STEP_MAX]` действует и на рампе
-- [ ] `test_l1_exit_walkable`: `navBit` слоя L1 в (1.4, 5.9) = true (выход с рампы не съеден эрозией); `navBit` слоя L0 в (1.4, 11.6) и (1.4, 11.65) = true
-- [ ] `test_route_upstairs`: `build` demo, `check --built` → маршруты `in` и `upstairs` проходят; `check` demo даёт `warnings` = [] (нет `NAV_ROOM_CUT` у loft)
-- [ ] `test_walk_stairs` (browser): `teleport(1.4, 11.65)`, 150 × `tryMove(0, −0.05)` → z < 6.0, `pos()[1]` = 3.6 + 1.6 (±0.01)
-- [ ] реализовать
+- [x] `test_nav_ramp_and_link`: `nav.json` demo: `ramps` = [{stair: "up", y0: 0, y1: 3.6, axis: {from: [1.4, 11.6], dir: 180, len: 5.6}, poly — прямоугольник x [0.95, 1.85] × z [6.0, 11.6]}], `links` = [{from: "L0", to: "L1", via: "up"}], слой `L1` есть
+- [x] `test_floor_at_ramp`: `floorAtRooms` + рампа: (1.4, 8.8) при `yPrev` 1.7 → 1.8 (±1e-6); окно `[yPrev − 0.5, yPrev + STEP_MAX]` действует и на рампе
+- [x] `test_l1_exit_walkable`: `navBit` слоя L1 в (1.4, 5.9) = true (выход с рампы не съеден эрозией); `navBit` слоя L0 в (1.4, 11.6) и (1.4, 11.65) = true
+- [x] `test_route_upstairs`: `build` demo, `check --built` → маршруты `in` и `upstairs` проходят; `check` demo даёт `warnings` = [] (нет `NAV_ROOM_CUT` у loft)
+- [x] `test_walk_stairs` (browser): `teleport(1.4, 11.65)`, 150 × `tryMove(0, −0.05)` → z < 6.0, `pos()[1]` = 3.6 + 1.6 (±0.01)
+- [x] реализовать
 
 **Вне этой фазы:** v0.2.
