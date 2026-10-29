@@ -17,6 +17,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import bank  # noqa: E402
+import lang  # noqa: E402
 
 OUT = os.path.realpath(os.path.join(HERE, "..", "out", "dream", "bank"))
 LEDGER = os.path.join(OUT, "f1_ledger.jsonl")
@@ -164,6 +165,8 @@ def main(argv=None):
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--scene", default="roof")
     ap.add_argument("--talk", default="spark-open")
+    ap.add_argument("--lang", default="en", choices=lang.LANGS,
+                    help="spike 1.5: ru for the Russian spike; a gate is en only")
     ap.add_argument("--owner-go", action="store_true",
                     help="the owner allowed one run past two gate fails (7.5)")
     args = ap.parse_args(argv)
@@ -174,6 +177,7 @@ def main(argv=None):
         if not args.score:
             print("refused: --score needs at least one run dir")
             return 2
+        lang.set_lang(args.lang)  # F2: score in the run language, not always en
         runs = [score_run(d) for d in args.score]
         for d, m in zip(args.score, runs):
             print("%s %s" % (os.path.basename(d), json.dumps(m, ensure_ascii=False)))
@@ -200,6 +204,12 @@ def main(argv=None):
     if step in GATES and (args.scene != CANONICAL_SCENE or args.talk != CANONICAL_TALK):
         print("refused: step %s is gated on --scene %s --talk %s, got --scene %s --talk %s"
               % (step, CANONICAL_SCENE, CANONICAL_TALK, args.scene, args.talk))
+        return 2
+    # 7.2 row 1.5: until the spike is read, every gated bench runs in English,
+    # so a gated step with --lang ru refuses before spending
+    if step in GATES and args.lang != "en":
+        print("refused: step %s is gated in English, got --lang %s (7.2 row 1.5)"
+              % (step, args.lang))
         return 2
     jobs = job_count(args.scene, args.talk, args.runs)
     if jobs == 0:
@@ -232,12 +242,14 @@ def main(argv=None):
     sheet = os.path.join(args.out, "f1_%s_%s.md" % (step.replace(".", "_"), stamp))
     cmd = [sys.executable, os.path.join(HERE, "bank.py"), "--scenes", args.scene,
            "--talk", args.talk, "--runs", str(args.runs), "--speed", str(SPEED),
-           "--max-dollars", str(PER_RUN), "--max-seconds", str(MAX_SECONDS), "--out", sheet]
+           "--max-dollars", str(PER_RUN), "--max-seconds", str(MAX_SECONDS),
+           "--lang", args.lang, "--out", sheet]
     print("$ " + " ".join(cmd), flush=True)
     p = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE, timeout=3600,
                        env=dict(os.environ, **{bank.BENCH_ENV: "1"}))
     sys.stdout.write(p.stdout)
     sys.stderr.write(p.stderr)
+    lang.set_lang(args.lang)  # F5: score the paid run in its own language, not always en
     run_dirs = [l[len("run="):].strip() for l in p.stdout.splitlines() if l.startswith("run=")]
     # the gate is a median over --runs runs: fewer runs, or a bank that exited
     # non-zero, means the batch is unfinished and nothing goes into the ledger
@@ -255,7 +267,8 @@ def main(argv=None):
         os.makedirs(os.path.dirname(os.path.abspath(args.ledger)), exist_ok=True)
         with open(args.ledger, "a", encoding="utf-8") as f:
             f.write(json.dumps({"step": step, "t": stamp, "runs": run_dirs, "dollars": dollars,
-                                "gate": "incomplete", "bank_exit": p.returncode, "sheet": sheet},
+                                "gate": "incomplete", "bank_exit": p.returncode, "sheet": sheet,
+                                "lang": args.lang},
                                ensure_ascii=False) + "\n")
         print("bank exited %s with %d of %d run(s); nothing scored, $%.4f charged to the ledger"
               % (p.returncode, len(run_dirs), args.runs, dollars))
@@ -276,7 +289,8 @@ def main(argv=None):
     os.makedirs(os.path.dirname(args.ledger) or ".", exist_ok=True)
     with open(args.ledger, "a", encoding="utf-8") as f:
         f.write(json.dumps({"step": step, "t": stamp, "runs": run_dirs, "dollars": dollars,
-                            "metrics": runs, "gate": result["gate"], "sheet": sheet},
+                            "metrics": runs, "gate": result["gate"], "sheet": sheet,
+                            "lang": args.lang},
                            ensure_ascii=False) + "\n")
     print_table(step, runs, result)
     print("dollars this bench $%.4f, ledger total $%.4f of $%.2f" % (dollars, spent + dollars, ceiling))

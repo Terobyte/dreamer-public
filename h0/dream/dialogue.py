@@ -6,6 +6,7 @@ import random
 import re
 import threading
 
+import lang
 from inputs import sanitize
 
 try:
@@ -139,9 +140,19 @@ def world_line(world, extra=()):
     return "\n".join([line] + ["Just now: %s." % e for e in extra])
 
 
+def _lang_tokens(text):
+    r"""Tokens of the repeat checks. At `en` exactly what they always took,
+    [a-z']+ -- the 1.5 spike may not move one byte of the English score (7.2).
+    At `ru` \w+ with every word shorter than 4 cut: Cyrillic has no [a-z], and
+    the short Russian words are inflection noise, not content."""
+    if lang.LANG == "ru":
+        return [w for w in re.findall(r"\w+", text) if len(w) >= 4]
+    return re.findall(r"[a-z']+", text)
+
+
 def _content_words(text):
     text = _REMARK.sub(" ", (text or "").lower())
-    return {w for w in re.findall(r"[a-z']+", text) if len(w) > 3}
+    return {w for w in _lang_tokens(text) if len(w) > 3}
 
 
 def repeats(text, earlier):
@@ -158,7 +169,7 @@ def repeats(text, earlier):
 
 def _phrases(text):
     """Spoken word 3-grams with at least one real word ("that's one lost")."""
-    words = re.findall(r"[a-z']+", _REMARK.sub(" ", _VOICE_TAG.sub(" ", (text or "").lower())))
+    words = _lang_tokens(_REMARK.sub(" ", _VOICE_TAG.sub(" ", (text or "").lower())))
     return {" ".join(words[i:i + 3]) for i in range(len(words) - 2)
             if any(len(w) > 3 for w in words[i:i + 3])}
 
@@ -491,7 +502,8 @@ class Dialogue:
 
     JUDGE_SYSTEM = (
         "You read the last lines of a scene and answer whether the actor's goal "
-        "is reached in them. Reply with exactly one word: YES or NO.")
+        "is reached in them. Reply with exactly one word: YES or NO. "
+        "The lines are English.")
 
     def __init__(self, profile, transport=None, event_sink=None, rng=None):
         self.profile = profile or {}
@@ -632,7 +644,8 @@ class Dialogue:
         return res.text or ""
 
     def hero_system(self):
-        return ("You are %s.\n%s\n%s" % (self.hero, soul_text(self.profile), HERO_RULES))
+        return ("You are %s.\n%s\n%s"
+                % (self.hero, soul_text(self.profile), lang.lang_text(HERO_RULES)))
 
     def judge(self, goal, last4):
         """Whether the actor's goal is reached in the last lines: YES or NO,
@@ -642,7 +655,7 @@ class Dialogue:
         user = ("Goal: %s\n\nLast lines:\n%s" %
                 (goal, "\n".join("%s: %s" % (w, t) for w, t in (last4 or []))))
         try:
-            reply = self._call("judge", self.JUDGE_SYSTEM, user)
+            reply = self._call("judge", lang.lang_text(self.JUDGE_SYSTEM), user)
         except Exception:
             return "NO"
         return "YES" if (reply or "").strip().upper() == "YES" else "NO"
@@ -714,7 +727,7 @@ class Dialogue:
         who = persona or "Play who you are in this place, with wants of your own."
         return ("You are %s, in %s. %s is here with you.\n%s\n%s%s"
                 % (actor, world.get("place") or "a strange place", self.hero, who,
-                   ACTOR_RULES, note_text))
+                   lang.lang_text(ACTOR_RULES), note_text))
 
     def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
         """state: {build_pct, bridge} (kept for the log; no ladder, no stall: the actor

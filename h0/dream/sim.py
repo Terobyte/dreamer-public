@@ -14,6 +14,7 @@ import threading
 import math
 import queue
 
+import lang
 from clock import Clock
 from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
@@ -1389,7 +1390,10 @@ def main():
     ap.add_argument("--max-seconds", type=float, default=None,
                     help="stop after this many real seconds (bench: 67.5); "
                          "default 420/speed + 120, i.e. one full build")
+    ap.add_argument("--lang", default="en", choices=lang.LANGS,
+                    help="spike 1.5: ru plays the dream in Russian (7.2 row 1.5)")
     args = ap.parse_args()
+    lang.set_lang(args.lang)  # spike 1.5: before any prompt is built
     use_scene(args.scene)
     set_talk_model(args.talk)
     set_cap(args.max_dollars)

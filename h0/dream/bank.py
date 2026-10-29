@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import lang  # noqa: E402
 from dialogue import _phrases, _spoken, count_action_loops, repeats  # noqa: E402
 
 OUT = os.path.join(HERE, "..", "out", "dream", "bank")
@@ -23,12 +24,12 @@ OUT = os.path.join(HERE, "..", "out", "dream", "bank")
 BENCH_ENV = "DREAM_BENCH_F1"
 
 
-def run_scene(scene, dollars, speed, talk="spark-open", max_seconds=None):
+def run_scene(scene, dollars, speed, talk="spark-open", max_seconds=None, language="en"):
     """One text-only dream -> its run dir (the sim prints outdir=...).
     max_seconds is handed to sim.py as is; None keeps the sim's own default."""
     cmd = [sys.executable, os.path.join(HERE, "sim.py"), "--profile", "bank", "--scene", scene,
            "--text", "--speed", str(speed), "--max-transitions", "1",
-           "--max-dollars", str(dollars), "--talk", talk]
+           "--max-dollars", str(dollars), "--talk", talk, "--lang", language]
     if max_seconds is not None:
         cmd += ["--max-seconds", str(max_seconds)]
     p = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE, timeout=1200)
@@ -217,7 +218,10 @@ def main():
     ap.add_argument("--runs", type=int, default=1, help="runs per scene per talk model")
     ap.add_argument("--max-seconds", type=float, default=None,
                     help="real seconds per run, passed to sim.py (bench: 67.5)")
+    ap.add_argument("--lang", default="en", choices=lang.LANGS,
+                    help="spike 1.5: ru switches the rules and the repeat tokens")
     args = ap.parse_args()
+    lang.set_lang(args.lang)  # F1: score in the run language, not always en
     if os.environ.get(BENCH_ENV) != "1":
         print("refused: bank.py is paid, run it through bench_f1.py (ceiling, ledger)")
         sys.exit(2)
@@ -232,13 +236,16 @@ def main():
     # counted on the expanded job list (an empty --scenes means every scene)
     import bench_f1
     spent = sum(r.get("dollars") or 0 for r in bench_f1.load_ledger(bench_f1.LEDGER))
-    if spent + args.max_dollars * len(jobs) > bench_f1.CEILING + 1e-9:
+    # F4: --lang ru only ever reaches bank.py through the 1.5 spike (bench_f1
+    # refuses --lang ru on every gated step), so the spike's $1.83 applies here too
+    ceiling = bench_f1.SPIKE_CEILING if args.lang != "en" else bench_f1.CEILING
+    if spent + args.max_dollars * len(jobs) > ceiling + 1e-9:
         print("refused: ledger $%.2f + %d job(s) x $%.2f > ceiling $%.2f"
-              % (spent, len(jobs), args.max_dollars, bench_f1.CEILING))
+              % (spent, len(jobs), args.max_dollars, ceiling))
         sys.exit(2)
     with ThreadPoolExecutor(args.jobs) as ex:
         done = list(ex.map(lambda j: j + run_scene(j[0], args.max_dollars, args.speed, j[1],
-                                                   args.max_seconds), jobs))
+                                                   args.max_seconds, args.lang), jobs))
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     out, total = [], 0.0
     for name, talk, rundir, log in done:

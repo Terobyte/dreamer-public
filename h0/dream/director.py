@@ -6,6 +6,7 @@ import json
 import os
 import threading
 
+import lang
 from clock import Clock
 from fsm import LOCKED_STATES, check_messages, check_target
 from inputs import sanitize
@@ -180,7 +181,8 @@ class Director:
         falls back to a no-op so a bad response never stalls the dream."""
         try:
             res = llm_call("director", "You are the dream director.",
-                           [{"role": "user", "content": prompt + "\n" + schema}],
+                           [{"role": "user", "content": prompt + "\n"
+                             + lang.lang_text(schema)}],
                            # 800 cut the JSON mid-string (bank r1); events, goals
                            # and hero_reason joined the reply in 1.4b
                            max_tokens=2200)
