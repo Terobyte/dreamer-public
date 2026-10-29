@@ -89,20 +89,31 @@ export function makeWalker(
 export interface Keys {
   dir(yaw: number, dt: number): [number, number];
   yaw(): number;
+  pitch(): number;
+}
+
+export const PITCH_MAX = 85;
+
+/** One mouse step of look, 0.2 deg/px; pitch (up +) stays within +-PITCH_MAX. */
+export function mouseLook(yaw: number, pitch: number, mx: number, my: number): [number, number] {
+  const p = Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch - my * 0.2));
+  return [yaw - mx * 0.2, p];
 }
 
 /** WASD + mouse look; the pointer locks on click, as a walk-around page does. */
 export function controls(dom: HTMLElement, yaw0: number): Keys {
   const down = new Set<string>();
   let yaw = yaw0;
+  let pitch = 0;
   addEventListener("keydown", (e) => down.add(e.code));
   addEventListener("keyup", (e) => down.delete(e.code));
   dom.addEventListener("click", () => void dom.requestPointerLock?.());
   addEventListener("mousemove", (e) => {
-    if (document.pointerLockElement === dom) yaw -= e.movementX * 0.2;
+    if (document.pointerLockElement === dom) [yaw, pitch] = mouseLook(yaw, pitch, e.movementX, e.movementY);
   });
   return {
     yaw: () => yaw,
+    pitch: () => pitch,
     dir(y: number, dt: number): [number, number] {
       const f = (down.has("KeyW") ? 1 : 0) - (down.has("KeyS") ? 1 : 0);
       const s = (down.has("KeyD") ? 1 : 0) - (down.has("KeyA") ? 1 : 0);

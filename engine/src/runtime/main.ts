@@ -21,7 +21,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { loadGlb, loadMaps } from "./assets.js";
-import { pickCamera, yawDir } from "./cams.js";
+import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 
 import type { MaterialDef } from "./assets.js";
@@ -194,7 +194,7 @@ async function start(): Promise<void> {
   const syncCamera = (): void => {
     const p = walker.pos();
     camera.position.set(p[0], p[1], p[2]);
-    const d = yawDir(keys.yaw());
+    const d = lookDir(keys.yaw(), keys.pitch());
     camera.lookAt(p[0] + d.x, p[1] + d.y, p[2] + d.z);
     camera.updateMatrixWorld();
   };

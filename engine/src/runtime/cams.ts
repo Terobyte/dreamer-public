@@ -16,6 +16,13 @@ export function yawDir(yaw: number): Vector3 {
   return new Vector3(Math.sin(a), 0, Math.cos(a));
 }
 
+/** Look direction of a `yaw` and a `pitch` (up +) in degrees: yaw, then pitch. */
+export function lookDir(yaw: number, pitch: number): Vector3 {
+  const a = (yaw * Math.PI) / 180;
+  const b = (pitch * Math.PI) / 180;
+  return new Vector3(Math.sin(a) * Math.cos(b), Math.sin(b), Math.cos(a) * Math.cos(b));
+}
+
 function walkCamera(aspect: number): PerspectiveCamera {
   return new PerspectiveCamera(70, aspect, 0.05, 500);
 }
