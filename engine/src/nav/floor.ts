@@ -32,13 +32,49 @@ export function levelY(ctx: Ctx, level: string): number {
  */
 export function floorAt(ctx: Ctx, x: number, z: number, yPrev: number): number | null {
   const rooms = (ctx.rooms ?? []) as Array<{ level: string; outline: V2[] }>;
+  return floorAtRooms(
+    rooms.map((r) => ({ y: levelY(ctx, r.level), outline: r.outline })),
+    x,
+    z,
+    yPrev,
+  );
+}
+
+/**
+ * The same nearest-floor rule over plain floor planes, with no `Ctx`: the
+ * page gets this one through the runtime bundle (`geometry.floors`).
+ */
+export function floorAtRooms(
+  floors: Array<{ y: number; outline: V2[] }>,
+  x: number,
+  z: number,
+  yPrev: number,
+): number | null {
   const p: V2 = [x, z];
   let best: number | null = null;
-  for (const r of rooms) {
-    if (!pointInPoly(p, r.outline)) continue;
-    const y = levelY(ctx, r.level);
+  for (const f of floors) {
+    if (!pointInPoly(p, f.outline)) continue;
+    const y = f.y;
     if (y < yPrev - 0.5 || y > yPrev + STEP_MAX) continue;
     if (best === null || Math.abs(y - yPrev) < Math.abs(best - yPrev)) best = y;
   }
   return best;
+}
+
+export interface NavLayer {
+  level: string;
+  y: number;
+  origin: [number, number];
+  w: number;
+  h: number;
+  bits?: string;
+}
+
+/** Is the cell holding (x, z) walkable? Cell index and bit order as in `grid.ts`. */
+export function navBit(layer: NavLayer, bytes: Uint8Array, x: number, z: number): boolean {
+  const i = Math.floor((x - layer.origin[0]) / CELL + 1e-9);
+  const j = Math.floor((z - layer.origin[1]) / CELL + 1e-9);
+  if (i < 0 || j < 0 || i >= layer.w || j >= layer.h) return false;
+  const n = j * layer.w + i;
+  return ((bytes[n >> 3] >> (n & 7)) & 1) === 1;
 }

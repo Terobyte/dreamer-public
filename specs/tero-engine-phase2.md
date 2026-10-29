@@ -120,17 +120,17 @@
 - `?top=1`: ортокамера сверху на весь AABB уровня `spawn`, потолки и балки скрыты.
 - `__ready = true` — после загрузки `geometry.json`, `nav.json`, всех текстур и GLB и первого кадра (`requestAnimationFrame` после `render`).
 
-- [ ] `test_build_cli_writes_dist`: CLI на demo-flat → exit 0, есть `index.html`, `runtime.js`, `geometry.json`, `nav.json`, `check.json`, `top.svg`, `build.json`; `geometry.json` проходит `JSON.parse`, `build.json.ok` = true, `build.json.assets.fallback.length` = 10
-- [ ] `test_build_refuses_bad_scene`: патч `broken/PROP_HITS_WALL` → exit 1, `dist/` не существует, stdout содержит `PROP_HITS_WALL`
-- [ ] `test_build_no_side_effects`: после сборки demo-flat листинг `specs/examples/` тот же, что до
-- [ ] `test_runtime_bundle_clean`: в `dist/runtime.js` нет строк `clipper2` и `Buffer.from`
-- [ ] `test_floor_at_rooms`: по `geometry.floors` в точках (−1, 10), (0, 4), (0, 0.5), (−3.45, 1.5), (10, 10) при `yPrev` 0 — те же значения, что `floorAt(ctx, …)` (0, 0, 0, 0, null)
-- [ ] `test_rebuild_under_10s`: вторая сборка demo-flat `--assets none` → `build.json.seconds` < 10
-- [ ] `test_page_ready` (browser): `index.html` → `__ready` = true за ≤ 15 с, ноль `console.error`/`pageerror`, `meshCount()` = числу мешей в `geometry.json`
-- [ ] `test_cam_param` (browser): `?cam=door` → `camera().pos` ≈ (0, 1.6, 4.6), `dir` ≈ нормированное (0, −0.4, −6.6), `fov` = 70 (до 1e-6); `?cam=nope` → ровно одна `console.error`, страница не падает
-- [ ] `test_walk_collision` (browser): `teleport(0, 10)`, 200 × `tryMove(0, −0.05)` → z < 3.9 (прошёл `front`); `teleport(0.3, 10)`, то же → z ≥ 4.25 (проход капсулы x ∈ (−0.2, 0.2)); `teleport(−1, 10)`, то же → z ≥ 4.25; `teleport(−2.5, 1.5)`, 40 × `tryMove(−0.05, 0)` → x ≥ −2.79 (край OBB дивана −3.0 + капсула 0.25 − клетка 0.04)
-- [ ] `test_walk_height` (browser): `teleport(0, 2)` и `teleport(0, 8)` → `pos()[1]` = 1.6
-- [ ] реализовать
+- [x] `test_build_cli_writes_dist`: CLI на demo-flat → exit 0, есть `index.html`, `runtime.js`, `geometry.json`, `nav.json`, `check.json`, `top.svg`, `build.json`; `geometry.json` проходит `JSON.parse`, `build.json.ok` = true, `build.json.assets.fallback.length` = 10
+- [x] `test_build_refuses_bad_scene`: патч `broken/PROP_HITS_WALL` → exit 1, `dist/` не существует, stdout содержит `PROP_HITS_WALL`
+- [x] `test_build_no_side_effects`: после сборки demo-flat листинг `specs/examples/` тот же, что до
+- [x] `test_runtime_bundle_clean`: в `dist/runtime.js` нет строк `clipper2` и `Buffer.from`
+- [x] `test_floor_at_rooms`: по `geometry.floors` в точках (−1, 10), (0, 4), (0, 0.5), (−3.45, 1.5), (10, 10) при `yPrev` 0 — те же значения, что `floorAt(ctx, …)` (0, 0, 0, 0, null)
+- [x] `test_rebuild_under_10s`: вторая сборка demo-flat `--assets none` → `build.json.seconds` < 10
+- [x] `test_page_ready` (browser): `index.html` → `__ready` = true за ≤ 15 с, ноль `console.error`/`pageerror`, `meshCount()` = числу мешей в `geometry.json`
+- [x] `test_cam_param` (browser): `?cam=door` → `camera().pos` ≈ (0, 1.6, 4.6), `dir` ≈ нормированное (0, −0.4, −6.6), `fov` = 70 (до 1e-6); `?cam=nope` → ровно одна `console.error`, страница не падает
+- [x] `test_walk_collision` (browser): `teleport(0, 10)`, 200 × `tryMove(0, −0.05)` → z < 3.9 (прошёл `front`); `teleport(0.3, 10)`, то же → z ≥ 4.25 (проход капсулы x ∈ (−0.2, 0.2)); `teleport(−1, 10)`, то же → z ≥ 4.25; `teleport(−2.5, 1.5)`, 40 × `tryMove(−0.05, 0)` → x ≥ −2.79 (край OBB дивана −3.0 + капсула 0.25 − клетка 0.04)
+- [x] `test_walk_height` (browser): `teleport(0, 2)` и `teleport(0, 8)` → `pos()[1]` = 1.6
+- [x] реализовать
 
 **Вне этой фазы:** ассеты (все материалы пока заглушки).
 
