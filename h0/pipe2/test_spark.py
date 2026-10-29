@@ -396,5 +396,83 @@ class TestHttpTransportRetryScopeNarrow(unittest.TestCase):
                 os.environ["META_MODEL_API_KEY"] = old
 
 
+class SpyLedger(Ledger):
+    """Records what Spark reserved and settled, without changing the accounting."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reserves = []
+        self.settles = []
+
+    def allow(self, kind, estimate_usd, reserve_tokens=0):
+        granted = super().allow(kind, estimate_usd, reserve_tokens=reserve_tokens)
+        self.reserves.append((reserve_tokens, granted))
+        return granted
+
+    def settle(self, reserve_tokens, actual_tokens):
+        self.settles.append((reserve_tokens, actual_tokens))
+        return super().settle(reserve_tokens, actual_tokens)
+
+
+def spy_spark(*queue, cap_tokens=None, cap_usd=1000.0, cap_calls=1000):
+    path = Path(tempfile.mkdtemp()) / "events.jsonl"
+    led = SpyLedger(path, PRICES, cap_usd, cap_calls, cap_tokens=cap_tokens)
+    transport = FakeTransport(*queue)
+    return Spark(transport, led, clock=iter_clock(), sleep=lambda _s: None), transport, led
+
+
+def image_msgs(payload):
+    return [{"role": "system", "content": "a" * 30},
+            {"role": "user", "content": [{"type": "text", "text": "b" * 9},
+                                         {"type": "image_url",
+                                          "image_url": {"url": "data:image/png;base64," + payload}}]}]
+
+
+class TestTokenReserve(unittest.TestCase):
+    OK = staticmethod(lambda: answer_body("```json\n" + json.dumps(SCENE) + "\n```"))
+
+    def test_reserve_follows_the_contract_formula(self):
+        sp, _, led = spy_spark(self.OK())
+        msgs = image_msgs("Z" * 64)
+        self.assertTrue(sp.ask("builder", "kitchen", 1, msgs, "high").valid)
+        self.assertEqual(led.reserves, [(39 // 3 + 1500 + 64000, True)])
+
+    def test_one_megabyte_image_does_not_inflate_the_reserve(self):
+        sp, _, led = spy_spark(self.OK())
+        msgs = image_msgs("Z" * (1024 * 1024))
+        sp.ask("builder", "kitchen", 1, msgs, "high")
+        reserve = led.reserves[0][0]
+        self.assertLessEqual(reserve, 64000 + 1500 + 39 // 3)
+
+    def test_settle_runs_once_per_ask_even_with_retries(self):
+        sp, tr, led = spy_spark(TransportError("rate", 429, True), TransportError("rate", 429, True),
+                                self.OK())
+        sp.ask("builder", "kitchen", 1, MSGS, "high")
+        self.assertEqual(tr.calls, 3)
+        self.assertEqual(len(led.reserves), 1)
+        self.assertEqual(led.settles, [(64000, 3000)])
+        self.assertEqual(led.tokens_reserved, 0)
+        self.assertEqual(led.tokens_used, 3000)
+
+    def test_settle_runs_once_for_an_invalid_answer(self):
+        sp, _, led = spy_spark(answer_body("no json here", finish_reason="length"))
+        self.assertFalse(sp.ask("builder", "kitchen", 1, MSGS, "high").valid)
+        self.assertEqual(led.settles, [(64000, 3000)])
+
+    def test_without_usage_the_reserve_is_charged_as_actual(self):
+        sp, _, led = spy_spark(TransportError("bad request", 400, False))
+        sp.ask("builder", "kitchen", 1, MSGS, "high")
+        self.assertEqual(led.settles, [(64000, 64000)])
+
+    def test_token_cap_below_the_reserve_refuses_without_calling_out(self):
+        sp, tr, led = spy_spark(self.OK(), cap_tokens=1000)
+        ans = sp.ask("builder", "kitchen", 1, MSGS, "high")
+        self.assertFalse(ans.valid)
+        self.assertEqual(ans.error, "cap")
+        self.assertEqual(tr.calls, 0)
+        self.assertEqual(led.settles, [])
+        self.assertEqual(led.tokens_reserved, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

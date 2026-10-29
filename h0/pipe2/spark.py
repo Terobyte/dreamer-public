@@ -19,6 +19,8 @@ MODEL = "muse-spark-1.3"
 MAX_TOKENS = 64000
 POST_TIMEOUT_S = 1800.0
 MAX_RETRIES = 2
+CHARS_PER_TOKEN = 3
+TOKENS_PER_IMAGE = 1500
 RETRY_BASE_S = 20
 RETRY_JITTER_S = 5
 
@@ -99,6 +101,33 @@ def parse_scene(text: str) -> dict:
     return scene
 
 
+def text_chars(messages: list) -> int:
+    """Characters of prompt text. Base64 image payloads are deliberately not counted:
+    they are megabytes of characters but only ~TOKENS_PER_IMAGE tokens."""
+    total = 0
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            total += len(content)
+            continue
+        for part in content or ():
+            if isinstance(part, dict) and part.get("type") == "text":
+                total += len(part.get("text") or "")
+    return total
+
+
+def n_images(messages: list) -> int:
+    return sum(1 for message in messages
+               for part in (message.get("content") or ()) if isinstance(part, dict)
+               and part.get("type") == "image_url")
+
+
+def reserve_of(messages: list) -> int:
+    """Pessimistic token bound for one call: prompt + the whole output ceiling."""
+    return (text_chars(messages) // CHARS_PER_TOKEN
+            + TOKENS_PER_IMAGE * n_images(messages) + MAX_TOKENS)
+
+
 def _usage_of(raw: dict) -> dict:
     usage = raw.get("usage") or {}
     details = usage.get("completion_tokens_details") or {}
@@ -119,22 +148,37 @@ class Spark:
 
     def ask(self, role: str, room: str, round_no: int, messages: list, effort: str) -> Answer:
         estimate = self.ledger.cost_of("spark", {"effort": effort, "in": 0, "out": MAX_TOKENS})
-        if not self.ledger.allow("spark", estimate):
+        # One reserve per ask, retries included: the token cap must bound the call, not
+        # each attempt. Released by the `settle` below whatever the answer turns out to be.
+        reserve = reserve_of(messages)
+        if not self.ledger.allow("spark", estimate, reserve_tokens=reserve):
             return Answer(valid=False, error="cap")
-        body = {"model": self.model, "reasoning_effort": effort,
-                "max_tokens": MAX_TOKENS, "messages": messages}
-        started = self.clock()
-        raw, error = self._post(body)
-        answer = Answer(latency_s=self.clock() - started, error=error)
-        if raw is not None:
-            self._fill(answer, raw)
-        self._record(answer, role, room, round_no, effort, estimate)
-        return answer
+        actual = reserve
+        try:
+            body = {"model": self.model, "reasoning_effort": effort,
+                    "max_tokens": MAX_TOKENS, "messages": messages}
+            started = self.clock()
+            usages = []
+            raw, error = self._post(body, usages)
+            answer = Answer(latency_s=self.clock() - started, error=error)
+            if raw is not None:
+                self._fill(answer, raw)
+            self._record(answer, role, room, round_no, effort, estimate)
+            if usages:  # no usage from any attempt -> the reserve is the best guess
+                actual = sum(u.get("prompt_tokens", 0) + u.get("completion_tokens", 0)
+                             for u in usages)
+            return answer
+        finally:
+            self.ledger.settle(reserve, actual)
 
-    def _post(self, body) -> tuple[Any, str | None]:
+    def _post(self, body, usages) -> tuple[Any, str | None]:
         for attempt in range(MAX_RETRIES + 1):
             try:
-                return self.transport.post(body, POST_TIMEOUT_S), None
+                raw = self.transport.post(body, POST_TIMEOUT_S)
+                usage = raw.get("usage") if isinstance(raw, dict) else None
+                if isinstance(usage, dict):
+                    usages.append(usage)
+                return raw, None
             except TransportError as exc:
                 if not exc.retryable or attempt == MAX_RETRIES:
                     return None, f"transport {exc.status}: {exc}"

@@ -87,12 +87,12 @@
 - `capped: bool` — публичное; `True` после первого отказа по любому потолку, и дальше каждый `allow` → `False` (освобождённый `settle` резерв потолок не «отпускает»).
 - `Spark.ask`: `reserve = text_chars(messages) // 3 + 1500 * n_images(messages) + 64000`, где `text_chars` — сумма длин строкового `content` и `text` у частей `type == "text"`, `n_images` — число частей `type == "image_url"` (base64 картинки в символы не считается); передаёт `ledger.allow("spark", estimate, reserve_tokens=reserve)`; один резерв на `ask` вместе с ретраями; после разрешённого `allow` — `settle(reserve, actual)` в `finally`, `actual = prompt_tokens + completion_tokens` из `usage` (сумма по попыткам); нет `usage` ни у одной попытки → `actual = reserve`. Отказ `allow` → `Answer(valid=False, error="cap")` без вызова транспорта и без `settle`.
 
-- [ ] тест: 10 потоков (`threading.Barrier`) зовут `allow` с `reserve_tokens`, `cap_tokens` вмещает ровно 3 резерва → ровно 3 `True`, событие `cap_hit` одно
-- [ ] тест: `settle` освобождает резерв и прибавляет фактические токены; без срабатывания потолка следующий `allow` проходит; после `capped` — `False` даже при освобождённом резерве
-- [ ] тест: `Ledger(path, prices, cap_usd, cap_calls)` без `cap_tokens` не ограничивает токены; старые тесты `test_ledger.py`/`test_spark.py` не правились и зелёные
-- [ ] тест: 200× `allow("image", 0)` при `cap_calls=3` → все `True`, `capped` ложно, `calls_by_kind["image"] == 200`; `allow("h100_s", est)` упирается только в `cap_usd`
-- [ ] тест: `Spark.ask` передаёт `reserve_tokens` по формуле контракта и зовёт `settle` ровно один раз (и при ретраях, и при невалидном ответе); при отказе `allow` `settle` не зовётся; `cap_tokens` меньше резерва → `error="cap"`, транспорт не вызывался
-- [ ] тест: сообщение с картинкой `image_url` на 1 МБ base64 → `reserve ≤ 64000 + 1500 + text_chars // 3`
+- [x] тест: 10 потоков (`threading.Barrier`) зовут `allow` с `reserve_tokens`, `cap_tokens` вмещает ровно 3 резерва → ровно 3 `True`, событие `cap_hit` одно
+- [x] тест: `settle` освобождает резерв и прибавляет фактические токены; без срабатывания потолка следующий `allow` проходит; после `capped` — `False` даже при освобождённом резерве
+- [x] тест: `Ledger(path, prices, cap_usd, cap_calls)` без `cap_tokens` не ограничивает токены; старые тесты `test_ledger.py`/`test_spark.py` не правились и зелёные
+- [x] тест: 200× `allow("image", 0)` при `cap_calls=3` → все `True`, `capped` ложно, `calls_by_kind["image"] == 200`; `allow("h100_s", est)` упирается только в `cap_usd`
+- [x] тест: `Spark.ask` передаёт `reserve_tokens` по формуле контракта и зовёт `settle` ровно один раз (и при ретраях, и при невалидном ответе); при отказе `allow` `settle` не зовётся; `cap_tokens` меньше резерва → `error="cap"`, транспорт не вызывался
+- [x] тест: сообщение с картинкой `image_url` на 1 МБ base64 → `reserve ≤ 64000 + 1500 + text_chars // 3`
 
 ## Адаптер движка
 

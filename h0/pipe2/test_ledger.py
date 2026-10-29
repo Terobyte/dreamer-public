@@ -140,5 +140,80 @@ class TestConcurrentSpend(unittest.TestCase):
         self.assertAlmostEqual(led.spent, 1.0)
 
 
+class TestTokenCap(unittest.TestCase):
+    """cap_tokens is the real Spark cap: dollars are only reported."""
+
+    def test_concurrent_token_reserves_admit_exactly_the_cap(self):
+        path = Path(tempfile.mkdtemp()) / "events.jsonl"
+        led = Ledger(path, PRICES, 1000.0, 1000, cap_tokens=300)
+        barrier = threading.Barrier(10)
+        results = []
+
+        def go():
+            barrier.wait(timeout=30)
+            results.append(led.allow("spark", 0.0, reserve_tokens=100))
+
+        threads = [threading.Thread(target=go) for _ in range(10)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(results.count(True), 3)
+        self.assertEqual(results.count(False), 7)
+        self.assertEqual(led.tokens_reserved, 300)
+        kinds = [json.loads(l)["kind"] for l in led.path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(kinds.count("cap_hit"), 1)
+
+    def test_settle_frees_the_reserve_and_counts_actual_tokens(self):
+        path = Path(tempfile.mkdtemp()) / "events.jsonl"
+        led = Ledger(path, PRICES, 1000.0, 1000, cap_tokens=1000)
+        self.assertTrue(led.allow("spark", 0.0, reserve_tokens=900))
+        led.settle(900, 10)
+        self.assertEqual(led.tokens_reserved, 0)
+        self.assertEqual(led.tokens_used, 10)
+        self.assertFalse(led.capped)
+        self.assertTrue(led.allow("spark", 0.0, reserve_tokens=900))
+
+    def test_once_capped_a_freed_reserve_does_not_reopen_the_run(self):
+        path = Path(tempfile.mkdtemp()) / "events.jsonl"
+        led = Ledger(path, PRICES, 1000.0, 1000, cap_tokens=1000)
+        self.assertTrue(led.allow("spark", 0.0, reserve_tokens=900))
+        self.assertFalse(led.allow("spark", 0.0, reserve_tokens=900))
+        self.assertTrue(led.capped)
+        led.settle(900, 1)
+        self.assertFalse(led.allow("spark", 0.0, reserve_tokens=1))
+
+    def test_without_cap_tokens_tokens_are_unlimited(self):
+        led = ledger()  # old positional signature, no cap_tokens
+        self.assertIsNone(led.cap_tokens)
+        for _ in range(5):
+            self.assertTrue(led.allow("spark", 0.0, reserve_tokens=10 ** 9))
+        self.assertFalse(led.capped)
+
+
+class TestCallCapIsSparkOnly(unittest.TestCase):
+    def test_call_cap_does_not_limit_images_or_gpu(self):
+        led = ledger(cap_usd=1000.0, cap_calls=3)
+        for _ in range(200):
+            self.assertTrue(led.allow("image", 0.0))
+        self.assertFalse(led.capped)
+        self.assertEqual(led.calls_by_kind["image"], 200)
+        self.assertEqual(led.calls, 0)
+
+    def test_gpu_seconds_stop_only_on_the_usd_cap(self):
+        led = ledger(cap_usd=1.0, cap_calls=1)
+        self.assertTrue(led.allow("h100_s", 0.6))
+        self.assertFalse(led.allow("h100_s", 0.6))
+        self.assertTrue(led.capped)
+        self.assertEqual(led.calls_by_kind["h100_s"], 1)
+
+    def test_spark_calls_are_counted_per_kind_too(self):
+        led = ledger()
+        self.assertTrue(led.allow("spark", 0.0))
+        self.assertEqual(led.calls, 1)
+        self.assertEqual(led.calls_by_kind["spark"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
