@@ -276,6 +276,31 @@ class BenchF1Test(unittest.TestCase):
             bench_f1.main(["--step", "1.2b", "--runs", "2", "--ledger", self._ledger([]),
                            "--out", self.root])
 
+    def test_compare_step_counts_fails_per_talk(self):
+        """Ч1 compares talk models on one bar: two FAILs on Wonder must not lock Haiku
+        or Spark Open, two FAILs on Haiku still lock Haiku (exit 3 before spending)."""
+        def rec(talk):
+            return {"step": "Ч1", "runs": [], "dollars": 0.1, "metrics": [], "gate": "FAIL",
+                    "talk": talk}
+        wonder2 = self._ledger([rec("wonder"), rec("wonder")])
+        for talk in ("haiku", "spark-open"):
+            with self.assertRaises(AssertionError):  # the mocked bank run, not a refusal
+                bench_f1.main(["--step", "Ч1", "--talk", talk, "--runs", "2",
+                               "--ledger", wonder2, "--out", self.root])
+        self.assertEqual(bench_f1.main(["--step", "Ч1", "--talk", "wonder", "--runs", "2",
+                                        "--ledger", wonder2, "--out", self.root]), 3)
+        mixed = self._ledger([rec("wonder"), rec("haiku")])
+        with self.assertRaises(AssertionError):
+            bench_f1.main(["--step", "Ч1", "--talk", "haiku", "--runs", "2",
+                           "--ledger", mixed, "--out", self.root])
+        haiku2 = self._ledger([rec("haiku"), rec("wonder"), rec("haiku")])
+        self.assertEqual(bench_f1.main(["--step", "Ч1", "--talk", "haiku", "--runs", "2",
+                                        "--ledger", haiku2, "--out", self.root]), 3)
+        # a step that is not a compare step still counts per step, talk or not
+        other = self._ledger([dict(rec("wonder"), step="1.1"), dict(rec("haiku"), step="1.1")])
+        self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", other,
+                                        "--out", self.root]), 3)
+
     def test_bench_f1_gate_median(self):
         for step in ("1.0", "1.1", "1.2b", "1.2c", "1.3", "1.4", "Ф1"):
             self.assertIn(step, bench_f1.GATES)

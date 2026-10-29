@@ -3,7 +3,7 @@ usage: python3 h0/dream/bench_f1.py --step 1.0 --runs 1          # paid: one ban
        python3 h0/dream/bench_f1.py --score RUN_DIR [RUN_DIR ...] [--step 1.1]   # free recount
 The wrapper refuses before spending: exit 2 when ledger dollars + cap * runs would pass the
 ceiling (the plan's $1.80 plus the owner's grant, see CEILING; the 1.5 spike gets $0.03 more),
-exit 3 when the step already failed its gate twice. After a run it appends {step, runs,
+exit 3 when the step already failed its gate twice (Ч1: twice on that --talk). After a run it appends {step, runs,
 dollars, metrics, gate, talk} to h0/out/dream/bank/f1_ledger.jsonl and prints the metric
 table with medians and PASS/FAIL. Step Ч1 (bench r2, humanness) is the one gated step that
 takes any single --talk, so Spark Open and Wonder are measured by the same bar."""
@@ -255,7 +255,10 @@ def main(argv=None):
         print("refused: ledger $%.2f + %d job(s) x $%.2f > ceiling $%.2f (7.5)"
               % (spent, jobs, cap, ceiling))
         return 2
-    mine = [r.get("gate") for r in ledger if r.get("step") == step]
+    # a compare step (Ч1) is one bar for several talk models: the two-fail stop counts
+    # per (step, talk), so a Wonder FAIL does not lock Haiku; every other step per step
+    mine = [r.get("gate") for r in ledger if r.get("step") == step
+            and (step not in COMPARE_STEPS or (r.get("talk") or CANONICAL_TALK) == args.talk)]
     fails = mine.count("FAIL")
     # the owner's go covers one run right after the second fail: any record
     # after it (PASS or incomplete) spends the go
