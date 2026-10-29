@@ -163,6 +163,8 @@ def main(argv=None):
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--scene", default="roof")
     ap.add_argument("--talk", default="spark-open")
+    ap.add_argument("--owner-go", action="store_true",
+                    help="the owner allowed one run past two gate fails (7.5)")
     args = ap.parse_args(argv)
     # F13: --score with nargs="*" and no dirs parses to [], which is falsy --
     # `is not None` catches that case and refuses instead of falling through
@@ -209,8 +211,14 @@ def main(argv=None):
         print("refused: ledger $%.2f + %d job(s) x $%.2f > ceiling $%.2f (7.5)"
               % (spent, jobs, PER_RUN, ceiling))
         return 2
-    fails = sum(1 for r in ledger if r.get("step") == step and r.get("gate") == "FAIL")
-    if fails >= 2:
+    mine = [r.get("gate") for r in ledger if r.get("step") == step]
+    fails = mine.count("FAIL")
+    # the owner's go covers one run right after the second fail: any record
+    # after it (PASS or incomplete) spends the go
+    second = [i for i, g in enumerate(mine) if g == "FAIL"][1:2]
+    go = (args.owner_go and fails == 2 and args.runs == 1
+          and second and second[0] == len(mine) - 1)
+    if fails >= 2 and not go:
         print("refused: step %s already failed its gate twice; the owner decides (7.5)" % step)
         return 3
     ref = None

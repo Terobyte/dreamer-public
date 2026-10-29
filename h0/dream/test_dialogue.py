@@ -24,6 +24,45 @@ class PromptTest(unittest.TestCase):
         self.assertNotIn("fog", soul, "past dream is the director's, not the hero's (spec 12)")
         self.assertNotIn("goes silent", soul)
 
+    def test_transcript_keep_4(self):
+        """1.2c: an actor reads at most the last 4 lines; what fell out lives in
+        memory, not in the window (COMPACT_EVERY folds exactly one window's worth)."""
+        import dialogue as dl
+        self.assertEqual(dl.TRANSCRIPT_KEEP, 4)
+        self.assertEqual(dl.COMPACT_EVERY, 4)
+        d = Dialogue({"hero": "Max"}, transport=FakeTransport(["[flat] Fine."]))
+        d.background = False
+        for i in range(10):
+            d.heard("Dan" if i % 2 else "Max", "line number %d about the roof" % i)
+        d.actor_line("Dan", WORLD, list(d.log), {})
+        prompt = d.transport.sent[-1]["messages"][0]["content"]
+        window = prompt.split("Just said:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(len(window.splitlines()), 4)
+        kept = [i for i in range(10) if ("line number %d about the roof" % i) in window]
+        self.assertEqual(kept, [6, 7, 8, 9])
+        for i in (6, 7, 8, 9):
+            self.assertIn("line number %d about the roof" % i, prompt)
+        for i in range(6):
+            self.assertNotIn("line number %d about the roof" % i, prompt,
+                             "line %d leaked outside the 4-line window" % i)
+
+    def test_repeat_window_matches_transcript_window(self):
+        """1.2c: the repeat check reads the same 4 lines as the prompt. A line that
+        fell out of the window lives in memory, so echoing it must not burn the one
+        retry the lock shares with the repeat check."""
+        import dialogue as dl
+        said = "I am not going to wait here any longer."
+        d = Dialogue({"hero": "Max"},
+                     transport=FakeTransport(["[flat] " + said, "[flat] Fine then."]))
+        d.background = False
+        d.heard("Max", said)
+        for i in range(dl.TRANSCRIPT_KEEP):
+            d.heard("Dan" if i % 2 else "Max", "nothing much happens on day %d" % i)
+        d.actor_line("Dan", WORLD, list(d.log), {})
+        self.assertEqual(len(d.transport.sent), 1,
+                         "the repeat check looked past the %d-line window"
+                         % dl.TRANSCRIPT_KEEP)
+
     def test_no_ladder_left_in_dialogue(self):
         # design doc 2026-10-28, 7.1: no L0-L4 stage lines, no stall lines
         import dialogue

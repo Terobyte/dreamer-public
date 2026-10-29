@@ -199,6 +199,25 @@ class BenchF1Test(unittest.TestCase):
                               {"step": "1.1", "runs": [], "dollars": 0.1, "metrics": [], "gate": "FAIL"}])
         self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", twice,
                                         "--out", self.root]), 3)
+        # owner's go (7.5): one run past two fails gets to the (mocked) bank run;
+        # a third fail is a stop again, the go is not a blanket pass
+        with self.assertRaises(AssertionError):
+            bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", twice,
+                           "--out", self.root, "--owner-go"])
+        thrice = self._ledger([{"step": "1.1", "runs": [], "dollars": 0.1, "metrics": [],
+                                "gate": "FAIL"}] * 3)
+        self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", thrice,
+                                        "--out", self.root, "--owner-go"]), 3)
+        # the go is spent by any record after the second fail (PASS or incomplete),
+        # and it covers one run, not a --runs 2 batch
+        spent = self._ledger([{"step": "1.1", "runs": [], "dollars": 0.1, "metrics": [],
+                               "gate": "FAIL"}] * 2
+                             + [{"step": "1.1", "runs": [], "dollars": 0.1, "metrics": [],
+                                 "gate": "incomplete"}])
+        self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", spent,
+                                        "--out", self.root, "--owner-go"]), 3)
+        self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "2", "--ledger", twice,
+                                        "--out", self.root, "--owner-go"]), 3)
         # an empty ledger: 0 + 0.20*2 fits, so the mocked bank run is what stops it
         with self.assertRaises(AssertionError):
             bench_f1.main(["--step", "1.2b", "--runs", "2", "--ledger", self._ledger([]),

@@ -17,7 +17,10 @@ except ImportError:
 # TRANSCRIPT_KEEP lines go verbatim, older ones are folded every COMPACT_EVERY lines
 # into what this character remembers. A 12-line window with nothing behind it made
 # actors forget the sister after a minute and loop on the window's own mood.
-TRANSCRIPT_KEEP = 8
+# 1.2c: 4, not 8 -- one window equals one fold (COMPACT_EVERY), so a line is
+# summarised as soon as it leaves the window and an actor reads a short present
+# plus everything older through memory.
+TRANSCRIPT_KEEP = 4
 TICK = 4  # sim-seconds between free ticks (design doc 2026-10-28, 1.2a)
 # 1.2b: pressure to speak, p = W_ADDRESSED*addressed + W_EVENT_HIT*event_hit
 # + W_GOAL_OPEN*goal_open + W_SILENT*min(ticks_silent, SILENT_CAP)
@@ -183,7 +186,9 @@ def _own_lines(transcript, who):
 
 
 def _no_repeat_block(transcript, who):
-    own = _own_lines(transcript, who)
+    # 1.2c: only the TRANSCRIPT_KEEP window -- older lines live in memory, and
+    # quoting them here would smuggle a second window into the prompt (F1).
+    own = _own_lines(list(transcript)[-TRANSCRIPT_KEEP:], who)
     if not own:
         return ""
     block = ("\n\nYou already said (do not say any of this again, not even in other "
@@ -646,7 +651,9 @@ class Dialogue:
             "\n\nYour last lines were all questions: this time ask nothing -- answer, react, "
             "claim or want something." if hush else "",
             self.hero)
-        recent = [t for _, t in list(transcript)[-8:]]
+        # 1.2c: the same window the prompt shows -- a line he cannot see must not
+        # cost him the one retry the repeat check shares with the lock.
+        recent = [t for _, t in list(transcript)[-TRANSCRIPT_KEEP:]]
         self._learn_names(*world_events)
         user += self._cut_block(self.hero)
         names = self._allowed_names(world, transcript)
@@ -714,7 +721,9 @@ class Dialogue:
         names = self._allowed_names(world, transcript)
         objects = list(world.get("objects") or [])
         system = self.actor_system(actor, self._prompt_world(world, actor), notes, persona)
-        recent = [t for _, t in list(transcript)[-8:]]
+        # 1.2c: the same window the prompt shows -- a line he cannot see must not
+        # cost him the one retry the repeat check shares with the lock.
+        recent = [t for _, t in list(transcript)[-TRANSCRIPT_KEEP:]]
         for attempt in range(2):
             raw = self._call("actor", system, user)
             clean, _ = sanitize(raw, "actor")
