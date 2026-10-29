@@ -95,12 +95,21 @@ TALK_MODELS = {"spark-open": (SPARK_OPEN_MODEL, "minimal"),
 _cap = {0: None}
 
 
+_talk = {0: "spark-open"}
+
+
 def set_talk_model(name):
     """Route hero/actor/compress to one of TALK_MODELS. Raises on an unknown name."""
     if name not in TALK_MODELS:
         raise ValueError("unknown talk model %r, want one of %s" % (name, sorted(TALK_MODELS)))
     for role in TALK_ROLES:
         ROLE_TABLE[role] = TALK_MODELS[name]
+    _talk[0] = name
+
+
+def talk_model_name():
+    """The name the talk roles are routed to (the run's snapshot records it)."""
+    return _talk[0]
 
 
 def set_cap(dollars):

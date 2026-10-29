@@ -8,6 +8,7 @@ import argparse
 import json
 import mimetypes
 import os
+import random
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,7 @@ from inputs import sanitize
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 COMIC = os.path.join(HERE, "comic.html")
+AB_PAGE = os.path.join(HERE, "ab.html")
 OUT_ROOT = os.path.realpath(os.path.join(HERE, "..", "out", "dream"))
 SNAPSHOT_EVERY = 30.0
 POLL = 0.2
@@ -111,6 +113,9 @@ class Viewer:
         self.port = None
         self.httpd = None
         self.thread = None
+        # blind A/B: the A/B order of every pair is drawn from this salt, fixed for
+        # the server's life so the page and the verdict agree, fresh on each start
+        self.ab_salt = "%016x" % random.getrandbits(64)
 
     def allowed_hosts(self):
         return {"127.0.0.1:%d" % self.port, "localhost:%d" % self.port}
@@ -186,6 +191,11 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._hero()
         if path == "/api/runs":
             return self._send(200, {"runs": self._runs()})
+        if path in ("/ab", "/ab.html"):
+            with open(AB_PAGE, "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
+        if path == "/api/ab":
+            return self._send(200, self._ab_state())
         if path == "/api/panel":
             return self._panel(q)
         if path == "/events":
@@ -230,6 +240,68 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._not_found()
         rows, _ = read_rows(os.path.join(base, "log.jsonl"))
         return self._send(200, panel_state(rows))
+
+    # --- blind A/B (Oct 29): the owner judges pairs of runs with the labels hidden
+    def _ab_pairs(self):
+        """<root>/ab/pairs.json: [{"id", "runs": {"<profile>/<run>": "<label>"}}]."""
+        path = os.path.join(self.viewer.root, "ab", "pairs.json")
+        if not os.path.isfile(path):
+            return []
+        with open(path, encoding="utf-8") as f:
+            pairs = json.load(f)
+        return [p for p in pairs if isinstance(p, dict) and p.get("id")
+                and isinstance(p.get("runs"), dict) and len(p["runs"]) == 2]
+
+    def _ab_verdicts(self):
+        path = os.path.join(self.viewer.root, "ab", "verdicts.jsonl")
+        return read_rows(path)[0] if os.path.isfile(path) else []
+
+    def _ab_order(self, pair):
+        """A and B for a pair: the two runs, shuffled by the server's salt."""
+        runs = sorted(pair["runs"])
+        if random.Random(self.viewer.ab_salt + pair["id"]).random() < 0.5:
+            runs.reverse()
+        return runs
+
+    def _ab_state(self):
+        pairs = self._ab_pairs()
+        if not pairs:
+            return {"pairs": []}
+        judged = {v.get("id"): v for v in self._ab_verdicts()}
+        out = []
+        for p in pairs:
+            a, b = self._ab_order(p)
+            out.append({"id": p["id"], "a": a, "b": b, "done": p["id"] in judged})
+        state = {"pairs": out}
+        if all(o["done"] for o in out):
+            # the tally shows only when every pair is judged: no peeking mid-way
+            labels = sorted({l for p in pairs for l in p["runs"].values()})
+            tally = {l: 0 for l in labels}
+            tally["same"] = 0
+            for p in pairs:
+                w = judged[p["id"]].get("winner")
+                tally[w if w in tally else "same"] += 1
+            state["summary"] = tally
+        return state
+
+    def _ab_verdict(self, body):
+        pairs = {p["id"]: p for p in self._ab_pairs()}
+        p = pairs.get(body.get("id"))
+        pick = body.get("pick")
+        if p is None or pick not in ("a", "b", "same"):
+            return self._send(400, {"error": "unknown pair or pick"})
+        a, b = body.get("a"), body.get("b")
+        if {a, b} != set(p["runs"]) or a == b:
+            return self._send(400, {"error": "runs do not match the pair"})
+        row = {"t": time.time(), "id": p["id"], "pick": pick, "a": a, "b": b,
+               "a_label": p["runs"][a], "b_label": p["runs"][b],
+               "winner": {"a": p["runs"][a], "b": p["runs"][b]}.get(pick, "same")}
+        d = os.path.join(self.viewer.root, "ab")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "verdicts.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        done = len({v.get("id") for v in self._ab_verdicts()} & set(pairs))
+        return self._send(200, {"ok": True, "done": done, "total": len(pairs)})
 
     def _runs(self):
         out = []
@@ -340,6 +412,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if not isinstance(body, dict):
             return self._send(400, {"error": "json object expected"})
         path = urlparse(self.path).path
+        if path == "/api/ab":
+            return self._ab_verdict(body)
         sim = self.viewer.sim
         if path not in ("/say", "/event", "/pov", "/continue", "/stop"):
             return self._not_found()

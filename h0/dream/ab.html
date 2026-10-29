@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Слепой A/B</title>
+<style>
+:root { --ink: #222; --bg: #f6f3ec; --card: #fff; --line: #ddd; --win: #2a7; }
+body { margin: 0; font: 15px/1.4 -apple-system, "Helvetica Neue", sans-serif; color: var(--ink); background: var(--bg); }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--card); }
+h1 { font-size: 18px; margin: 0; }
+main { padding: 12px 16px; }
+.pair { background: var(--card); border: 1px solid var(--line); border-radius: 8px; margin: 0 0 18px; padding: 10px; }
+.pair h2 { font-size: 15px; margin: 0 0 8px; display: flex; gap: 12px; align-items: center; }
+.pair.done h2 .tag { color: var(--win); }
+.cols { display: flex; gap: 10px; }
+.cols > div { flex: 1 1 0; min-width: 0; }
+.cols h3 { margin: 0 0 4px; font-size: 14px; }
+iframe { width: 100%; height: 78vh; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.vote { display: flex; gap: 8px; margin-top: 8px; }
+button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #999; background: #fff; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+#summary { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 14px; }
+#summary:empty { display: none; }
+.muted { color: #777; }
+@media (max-width: 900px) { .cols { flex-direction: column; } iframe { height: 60vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Слепой A/B</h1>
+  <span class="muted">одна сцена, два прогона; читай оба и жми, какой живее. Кто есть кто, откроется после последней пары.</span>
+</header>
+<main>
+  <div id="summary"></div>
+  <div id="pairs"></div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function frame(run) {
+  const f = document.createElement("iframe");
+  f.src = "/comic.html?run=" + encodeURIComponent(run) + "&blind=1";
+  f.loading = "lazy";
+  return f;
+}
+async function vote(p, pick, box) {
+  box.querySelectorAll("button").forEach((b) => (b.disabled = true));
+  const r = await fetch("/api/ab", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({id: p.id, a: p.a, b: p.b, pick})});
+  if (!r.ok) { box.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
+  await load();
+}
+async function load() {
+  const data = await (await fetch("/api/ab")).json();
+  const root = $("pairs");
+  root.textContent = "";
+  if (!data.pairs.length) { root.appendChild(el("p", "muted", "пар нет: положи h0/out/dream/ab/pairs.json")); return; }
+  for (const p of data.pairs) {
+    const card = el("div", "pair" + (p.done ? " done" : ""));
+    const h = el("h2", "", "пара " + p.id);
+    h.appendChild(el("span", "tag", p.done ? "✓ оценено" : "ждёт"));
+    card.appendChild(h);
+    const cols = el("div", "cols");
+    for (const [k, run] of [["A", p.a], ["B", p.b]]) {
+      const c = el("div");
+      c.appendChild(el("h3", "", k));
+      c.appendChild(frame(run));
+      cols.appendChild(c);
+    }
+    card.appendChild(cols);
+    const v = el("div", "vote");
+    for (const [pick, label] of [["a", "A живее"], ["same", "одинаково"], ["b", "B живее"]]) {
+      const b = el("button", "", label);
+      b.disabled = !!p.done;
+      b.addEventListener("click", () => vote(p, pick, v));
+      v.appendChild(b);
+    }
+    card.appendChild(v);
+    root.appendChild(card);
+  }
+  const s = $("summary");
+  s.textContent = "";
+  if (data.summary) {
+    s.appendChild(el("b", "", "итог: "));
+    s.appendChild(document.createTextNode(Object.entries(data.summary).map(([k, n]) => k + " " + n).join(" · ")));
+  }
+}
+load();
+</script>
+</body>
+</html>

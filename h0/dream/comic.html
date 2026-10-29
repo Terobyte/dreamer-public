@@ -648,8 +648,10 @@ setInterval(pollPanel, 1000);
   if (!RUN && status.live) RUN = status.live;
   render();
   if (!RUN) { $("mode").textContent = "выбери прогон"; return showRuns(); }
-  $("runname").textContent = RUN;
-  if (status.live && status.live === RUN) startLive(); else { startReplay(); showRuns(); }
+  // blind A/B (ab.html): no run name, no run list, nothing that says which version this is
+  const blind = !!Q.get("blind");
+  $("runname").textContent = blind ? "" : RUN;
+  if (status.live && status.live === RUN) startLive(); else { startReplay(); if (!blind) showRuns(); }
 })();
 </script>
 </body>

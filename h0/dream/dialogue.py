@@ -1006,3 +1006,13 @@ class Dialogue:
                         "remarks": remarks(text), "raw": raw, "cuts": cuts,
                         "whisper_to": whisper_to}
         return None
+
+
+def prompt_version():
+    """Eight hex chars of the voice rules: a run logs them so prompt versions
+    can be told apart later (blind A/B in the viewer, Oct 29)."""
+    import hashlib
+    return hashlib.sha1(VOICE_RULES.encode("utf-8")).hexdigest()[:8]
+
+
+PROMPT_VERSION = prompt_version()

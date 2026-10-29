@@ -16,6 +16,7 @@ import queue
 
 import lang
 from clock import Clock
+from dialogue import PROMPT_VERSION
 from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
                       W_SILENT, W_SPOKE_LAST)
@@ -27,9 +28,9 @@ from safety import SOFT_NOTE
 from safety import match as safety_match
 from fake import FakeTransport
 try:
-    from llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap
+    from llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap, talk_model_name
 except ImportError:
-    from .llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap
+    from .llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap, talk_model_name
 try:
     from images import background_prompt, portrait_prompt
 except ImportError:
@@ -315,7 +316,10 @@ class Sim:
                                      "place": self.place, "hero": self.hero,
                                       "profile": self.profile, "speed": self.speed,
                                       "max_dollars": self.max_dollars,
-                                      "hero_owner": self.hero_owner})
+                                      "hero_owner": self.hero_owner,
+                                      # which model and prompt version spoke (blind A/B)
+                                      "talk": talk_model_name(),
+                                      "prompt": PROMPT_VERSION})
             # 3.3: what happened before the sim existed (the seed consult) goes
             # into the log right after the snapshot, in the order it was given
             for ev in first_events or ():
