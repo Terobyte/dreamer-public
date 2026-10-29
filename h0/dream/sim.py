@@ -23,6 +23,8 @@ from director import Director
 from fsm import BuildFSM
 from inputs import resolve_touch, sanitize
 from memory import Memory
+from safety import SOFT_NOTE
+from safety import match as safety_match
 from fake import FakeTransport
 try:
     from llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap
@@ -171,10 +173,14 @@ class Sim:
         self.fake = fake
         self.max_dollars = float(max_dollars)
         self.media = media or {}
+        # 2.2: a safety phrase from the human holds the whole dream until /continue
+        self.safety_paused = False
         self._voice = self.media.get("voice")
         self._images = self.media.get("images")
         self._audio_dir = self._image_dir = None
         self._image_threads = []
+        self._held_images = []
+        self._image_lock = threading.Lock()
         self._line_seq = 0
         self._bg_seq = 0
         self._portrait_seq = 0
@@ -272,7 +278,9 @@ class Sim:
         self.memory.set_scene("start", self.scene["objects"])
         self.director = Director(self.fsm, memory=self.memory, actors=self.actors,
                                  delay=delay, speed=speed, script=self.script,
-                                 outdir=outdir, clock=self.clock, fake=fake)
+                                 outdir=outdir, clock=self.clock, fake=fake,
+                                 paused_check=lambda: self.safety_paused,
+                                 pause_lock=self._image_lock)
         self.n_transitions = 0
         self.stop_reason = None  # why the last run() loop ended (F7: main trusts this, not the wall clock)
         self.playing = False
@@ -512,7 +520,8 @@ class Sim:
     # --- turn management (human replaces npc, spec 5a) ---------------------
     def _count_line(self):
         self.line_count += 1
-        if (self.line_count % 4 == 0 and not self.director.in_flight
+        if (self.line_count % 4 == 0 and not self.safety_paused
+                and not self.director.in_flight
                 and (self.fake or self._budget_ok())):
             self.director.consult_async(self.clock.now())
 
@@ -571,7 +580,7 @@ class Sim:
         """The only playback entry point: timing, journal and memory agree."""
         res = None
         if (self._voice is not None and self.logger is not None and not self.fake
-                and self._budget_ok()):
+                and not self.safety_paused and self._budget_ok()):
             self._line_seq += 1
             voice_label = line.get("voice")
             if not voice_label:
@@ -608,7 +617,9 @@ class Sim:
             else:
                 event["silent"] = True
         if res is not None and not res["ok"]:
-            self._diagnostic({"type": "tts_fail", "error": res["error"]["error"]})
+            err = res.get("error") or {}
+            self._diagnostic({"type": "tts_fail",
+                              "error": str(err.get("error") if isinstance(err, dict) else err)})
         self._emit(event)
         # 1.2b: only a spoken line moves the pressure state (a human line = the hero's)
         self._note_line(event.get("who") or (self.hero if line["owner"] == "human"
@@ -660,8 +671,49 @@ class Sim:
             self._emit(event)
         return [event]
 
+    def _safety_check(self, text):
+        """2.2: the one place where human input meets the safety list. A hit pauses
+        the dream (clock included); while paused anything else is dropped. True means
+        the caller returns at once -- before any _emit, so the line is in no journal,
+        no memory, no turn and no consult."""
+        hit = safety_match(text)
+        if hit:
+            # F9: the flag goes up (and the clock stops) under _image_lock first,
+            # before the journal write -- a write is slow enough for an in-flight
+            # consult or image to slip through an unpaused dream otherwise.
+            with self._image_lock:
+                if not self.safety_paused:
+                    self.safety_paused = True
+                    self.clock.pause()
+            self._diagnostic({"type": "safety_pause", "matched": hit})
+            return True
+        if self.safety_paused:
+            self._diagnostic({"type": "input_dropped", "reason": "safety"})
+            return True
+        return False
+
+    def safety_continue(self):
+        """POST /continue: the dream goes on from the same second, and every actor
+        on stage gets the one soft note. A second /continue is nothing."""
+        if not self.safety_paused:
+            return []
+        self.safety_paused = False
+        self.clock.resume()
+        held = []
+        with self._image_lock:
+            held, self._held_images = self._held_images, []
+        for ev in held:
+            if self.logger:
+                self.logger.write_event(ev)
+        out = [{"type": "message", "to": a, "note": SOFT_NOTE} for a in self.actors]
+        for e in out:
+            self._emit(e)
+        return out
+
     def human_say(self, text):
         clean, ev = sanitize(text, "human")
+        if self._safety_check(clean):
+            return []
         out = list(ev)
         if self.prepared_npc is not None:
             out.append({"type": "turn_replace", "turn_owner": "human", "text": clean,
@@ -725,6 +777,15 @@ class Sim:
                 err = img.get("error") or img.get("diagnostic")
                 if isinstance(err, dict) and err.get("error"):
                     ev["error"] = str(err["error"])[:200]
+            # 2.2: a picture finished under a safety pause is held, not logged,
+            # until /continue -- the pause stops pictures, it does not rerun them.
+            # The lock covers the decision and the flag flip in _safety_check, not
+            # the write: holding it across the write would make the pause itself
+            # wait on a picture, and a row landing after safety_pause is in order.
+            with self._image_lock:
+                if self.safety_paused:
+                    self._held_images.append(ev)
+                    return
             self.logger.write_event(ev)
 
         th = threading.Thread(target=work, daemon=True)
@@ -732,7 +793,8 @@ class Sim:
         th.start()
 
     def _media_live(self):
-        return self._images is not None and not self.fake and self.logger is not None
+        return (self._images is not None and not self.fake and self.logger is not None
+                and not self.safety_paused)
 
     def _start_background_image(self, place):
         path = os.path.join(self._image_dir, "scene_%d.png" % self._bg_seq)
@@ -884,6 +946,8 @@ class Sim:
 
     def _maybe_generate_line(self):
         """Keep NPC dialogue flowing so every 4th line triggers a consult (F5/F20)."""
+        if self.safety_paused:
+            return
         if self.dialogue is not None:
             return self._dialogue_turn()
         now = self.clock.now()
@@ -989,6 +1053,8 @@ class Sim:
         playing, nothing queued, no worker running, scale(TICK) since the last
         start). A line from an old scene, or
         one overtaken by a human line, is dropped."""
+        if self.safety_paused:
+            return
         with self._gen_lock:
             res, self._gen_result = self._gen_result, None
         if res is not None:
@@ -1100,6 +1166,8 @@ class Sim:
                 self.post_event(payload if isinstance(payload, dict) else {})
             elif kind == "pov":
                 self.set_pov(payload)
+            elif kind == "continue":
+                self.safety_continue()
             elif kind == "stop":
                 self.stop()
 
@@ -1133,13 +1201,20 @@ class Sim:
         reaches the director's next consult; every text field is sanitized."""
         source = sanitize(str(payload.get("source") or "tool"), "human")[0][:40]
         value, rejected = sanitize(str(payload.get("value") or ""), "human")
+        outcome_raw = payload.get("outcome")
+        outcome = ""
+        if outcome_raw is not None:
+            outcome, more = sanitize(str(outcome_raw), "human")
+            rejected += more
+        if self._safety_check(value):
+            return []
+        if outcome and self._safety_check(outcome):
+            return []
         if source == "click":
             return self.click(value)
         ev = {"type": "input", "source": source, "value": value}
-        if payload.get("outcome") is not None:
-            outcome, more = sanitize(str(payload["outcome"]), "human")
+        if outcome_raw is not None:
             ev["outcome"] = outcome
-            rejected += more
         for e in rejected:
             self._emit(e)
         self._emit(ev)
@@ -1174,6 +1249,11 @@ class Sim:
     def _tick(self):
         now = self.clock.now()
         self._drain_inbox()
+        # 2.2: everything below is the dream running -- lines, fsm timers, scene
+        # events, pictures. Only the inbox above keeps working, or "continue" could
+        # never arrive.
+        if self.safety_paused:
+            return []
         self._apply_judge()
         self._fire_due_events()
         self._maybe_start_scene_background()
@@ -1190,7 +1270,7 @@ class Sim:
         """Due events (nudge/force/abort) or an idle consult every min_interval: only idle
         picks a bridge (R6). Locked builds still hear from the director via the 4-line rhythm."""
         now = self.clock.now()
-        if self.director.in_flight:
+        if self.safety_paused or self.director.in_flight:
             return last_consult
         if not self.fake and not self._budget_ok():
             return last_consult

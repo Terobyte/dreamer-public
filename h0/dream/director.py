@@ -95,8 +95,16 @@ class Director:
     """Single-flight async director on fakes; events queue into next call."""
 
     def __init__(self, fsm, memory=None, actors=(), delay=0.0, speed=1.0,
-                 script=(), outdir=None, clock=None, fake=True):
+                 script=(), outdir=None, clock=None, fake=True,
+                 paused_check=None, pause_lock=None):
         self.fsm = fsm
+        # F7: a consult already in flight when a safety pause lands must not
+        # apply its decision to the fsm afterwards (e.g. wake_up flipping
+        # fsm.awake while paused). paused_check/pause_lock are the same flag
+        # and lock the sim uses to flip safety_paused, so the check below and
+        # the pause can't race each other.
+        self.paused_check = paused_check
+        self.pause_lock = pause_lock or threading.Lock()
         self.memory = memory
         self.actors = list(actors)
         self.fake = fake
@@ -257,8 +265,14 @@ class Director:
             if self.delay > 0:
                 self.clock.real_sleep(self.delay)
             decision = self._next_decision(ticket, prompt)
-            now = self.clock.now()
-            ev = self.fsm.finish_consult(now, ticket, decision)
+            with self.pause_lock:
+                if self.paused_check is not None and self.paused_check():
+                    # the dream paused while this consult was in flight: the
+                    # reply is discarded, not applied -- it never reaches the fsm
+                    self.fsm.in_flight = False
+                    return
+                now = self.clock.now()
+                ev = self.fsm.finish_consult(now, ticket, decision)
             self.notes_given += [(e.get("to"), e.get("note")) for e in ev
                                  if e.get("type") == "message"]
             for e in ev:

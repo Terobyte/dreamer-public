@@ -118,6 +118,7 @@ footer.off { display: none; }
   <input id="say" placeholder="сказать за героя…" maxlength="400" autocomplete="off">
   <button id="saybtn">сказать</button>
   <button id="povbtn" disabled>🤖 герой сам</button>
+  <button id="contbtn" hidden>продолжить</button>
   <button id="stopbtn" class="stop">стоп</button>
 </footer>
 <script>
@@ -268,11 +269,33 @@ function apply(r) {
     case "director_nudge": sys("· подсказка директору (2:00)"); break;
     case "director_force": sys("! требование моста (5:00)", true); break;
     case "wake_up": sys("☀ пробуждение: " + r.reason, true); S.ended = true; break;
+    case "safety_pause": sys("⏸ пауза: сон остановлен, нажми «продолжить»", true); setPaused(true); freezeTimer(); stopAudio(); break;
+    case "input_dropped": break;
     case "stop": sys("■ стоп"); S.ended = true; break;
   }
   if (!instant) render();
 }
 
+// 2.2: a safety pause holds the dream; only this button lets it go on.
+let paused = false, frozenT = 0;
+function setPaused(on) {
+  const b = $("contbtn");
+  if (b) { b.hidden = !on || !live; b.disabled = false; }
+  if (on) { paused = true; frozenT = S.lastT; }
+}
+function freezeTimer() { paused = true; frozenT = S.lastT; }
+function stopAudio() { if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; } audioQ.length = 0; }
+async function sendContinue() {
+  const b = $("contbtn");
+  if (b) b.disabled = true;
+  try {
+    await fetch('/continue', {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    setPaused(false);
+    paused = false; S.tRecv = performance.now(); S.lastT = frozenT;
+  } catch (e) { if (b) b.disabled = false; }
+}
+const contbtn = $("contbtn");
+if (contbtn) contbtn.addEventListener("click", sendContinue);
 function sys(text, warn) { feed().appendChild(el("div", "sys" + (warn ? " warn" : ""), text)); scrollDown(); }
 
 function addLine(r) {
@@ -381,7 +404,7 @@ function highlight(cands) {
 }
 
 // --- sidebar ---------------------------------------------------------------------
-function nowT() { return S.lastT + (live && !S.ended ? (performance.now() - S.tRecv) / 1000 : 0); }
+function nowT() { if (paused) return frozenT; return S.lastT + (live && !S.ended ? (performance.now() - S.tRecv) / 1000 : 0); }
 function render() {
   $("bstate").textContent = S.ended ? "сон окончен" : S.build;
   $("bridge").textContent = S.bridge ? S.bridge + " → " + S.dest : "";
@@ -406,6 +429,7 @@ setInterval(() => { if (S) render(); }, 250);
 
 // --- audio --------------------------------------------------------------------
 function queueAudio(url) {
+  if (paused) return;
   audioQ.push(url);
   while (audioQ.length > 2) audioQ.shift();
   if (!audioEl || audioEl.ended || audioEl.paused) nextAudio();

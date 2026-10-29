@@ -195,20 +195,20 @@
   `safety_pause` пишется через `_diagnostic`.
 - **Новая реплика во время паузы** проверяется `match`. Если совпадения нет, она отбрасывается: `input_dropped {t, reason: safety}` через `_diagnostic`.
 
-- [ ] Тест `test_safety_match`: `match` работает без учёта регистра, после схлопывания пробелов, по подстроке.
+- [x] Тест `test_safety_match`: `match` работает без учёта регистра, после схлопывания пробелов, по подстроке.
   - Стартовый список (решение хозяина, правится в `safety.py`, запись в DEVLOG): en `kill myself`, `want to die`, `end my life`, `suicide`, `hurt myself`; ru `убить себя`, `хочу умереть`, `покончить с собой`, `суицид`, `причинить себе вред`.
   - «I'll kill this song» → `None`.
-- [ ] Тест `test_safety_pauses_everything`. Тест **не** использует `manual_clock`: он патчит `clock.time.monotonic` до создания `Sim(...)`, иначе `Clock.t0` взят с настоящих часов, и двигает её руками.
+- [x] Тест `test_safety_pauses_everything`. Тест **не** использует `manual_clock`: он патчит `clock.time.monotonic` до создания `Sim(...)`, иначе `Clock.t0` взят с настоящих часов, и двигает её руками.
   - `human_say("i want to die")` → `safety_pause {t, matched: "want to die"}`.
   - Нет `line` с `turn_owner: human`, `len(director.prompts)` не вырос.
   - Затем 50 × (`_tick(); _maybe_generate_line(); _maybe_consult(-1e9)`), между шагами `monotonic` сдвигается на 5 с. После этого: `FakeTransport.calls` не растёт, нет `line`/`event`/`consult`, `fsm.state` тот же, `sim.clock.now()` тот же.
-- [ ] Тест `test_safety_drops_input_while_paused`: во время паузы `human_say("hello")` → `input_dropped {reason: safety}`, нет `line_queued`.
-- [ ] Тест `test_safety_no_tts`: `Sim` собран по общему правилу, `Stub.synthesize(text, label, out_path)` считает вызовы и возвращает `{"ok": False, "pause": 0.2}` (`_start_line` читает `res["ok"]` и `res["pause"]`). Во время паузы `_start_line` не зовёт `synthesize`, после `/continue` зовёт.
-- [ ] Тест `test_safety_ignores_npc`: строка актёра со словом `suicide` паузу не ставит. Проверяется только ввод человека: `human_say` и `POST /event`.
-- [ ] Тест `test_continue_resumes_soft`: `POST /continue` → флаг снят, часы идут с того же `now()`, каждый актёр сцены получает `SOFT_NOTE`. После двух `/continue` подряд `sim._notes[a].count(SOFT_NOTE) == 1` для каждого актёра.
-- [ ] Тест `test_clock_pause_resume`: пауза на 5 с (мок `time.monotonic`) → после `resume` `now()` больше значения до паузы на 0 (± 1e-9), а не на 5.
-- [ ] Реализация по 7.2: флаг проверяют `_dialogue_turn`, `_maybe_consult`, `_count_line`, консультация из `human_say`, TTS в `_start_line` и картинки; `set_cap` не трогать. `comic.html` содержит `fetch('/continue'` с `Content-Type: application/json`.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_safety_drops_input_while_paused`: во время паузы `human_say("hello")` → `input_dropped {reason: safety}`, нет `line_queued`.
+- [x] Тест `test_safety_no_tts`: `Sim` собран по общему правилу, `Stub.synthesize(text, label, out_path)` считает вызовы и возвращает `{"ok": False, "pause": 0.2}` (`_start_line` читает `res["ok"]` и `res["pause"]`). Во время паузы `_start_line` не зовёт `synthesize`, после `/continue` зовёт.
+- [x] Тест `test_safety_ignores_npc`: строка актёра со словом `suicide` паузу не ставит. Проверяется только ввод человека: `human_say` и `POST /event`.
+- [x] Тест `test_continue_resumes_soft`: `POST /continue` → флаг снят, часы идут с того же `now()`, каждый актёр сцены получает `SOFT_NOTE`. После двух `/continue` подряд `sim._notes[a].count(SOFT_NOTE) == 1` для каждого актёра.
+- [x] Тест `test_clock_pause_resume`: пауза на 5 с (мок `time.monotonic`) → после `resume` `now()` больше значения до паузы на 0 (± 1e-9), а не на 5.
+- [x] Реализация по 7.2: флаг проверяют `_dialogue_turn`, `_maybe_consult`, `_count_line`, консультация из `human_say`, TTS в `_start_line` и картинки; `set_cap` не трогать. `comic.html` содержит `fetch('/continue'` с `Content-Type: application/json`.
+- [x] Все тесты зелёные.
 
 ## 2.3 дебаг в HTML
 

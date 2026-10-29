@@ -328,7 +328,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "json object expected"})
         path = urlparse(self.path).path
         sim = self.viewer.sim
-        if path not in ("/say", "/event", "/pov", "/stop"):
+        if path not in ("/say", "/event", "/pov", "/continue", "/stop"):
             return self._not_found()
         if sim is None:
             return self._send(409, {"error": "no live dream"})
@@ -346,6 +346,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "hero_owner must be npc or human"})
             sim.submit("pov", owner)
             return self._send(200, {"ok": True, "hero_owner": owner})
+        if path == "/continue":
+            # 2.2: the only way out of a safety pause; the sim resumes on its next tick
+            sim.submit("continue")
+            return self._send(200, {"ok": True})
         if path == "/event":
             if not body.get("value"):
                 return self._send(400, {"error": "value required"})
