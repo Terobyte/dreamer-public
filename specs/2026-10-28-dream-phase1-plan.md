@@ -136,3 +136,199 @@
 
 - [ ] Бенч `python3 h0/dream/bench_f1.py --step Ф1 --runs 2`. Гейт Ф1 считается по правилу медианы, бенч-гейты 1.2b–1.4 — на этих же прогонах.
 - [ ] Итог фазы в DEVLOG и PROGRESS.md: таблица всех шагов (метрики, $, PASS/FAIL), сумма ledger, пункты Долга §13 (закрыт или открыт). Отдельной строкой: «чтение человеком ≥ 3 (7б) — за хозяином».
+
+## 2.1 POV
+
+Строка 2.1 таблицы 7.2 (Фаза 2 «Игрок внутри»). Шаг офлайн, бенча нет.
+
+**Правила фаз 2.1–3.3:**
+- **Не-fake путь.** Ни один тест не создаёт `Sim(fake=False)`: у `Sim` нет параметра transport, а директор при `fake=False` зовёт платный Wonder. Где нужен не-fake путь (TTS), тест делает так:
+  - строит `Sim(fake=True, outdir=tmp, memory=<фейк>, media={"voice": Stub()})`;
+  - затем ставит `sim.fake = False`;
+  - патчит `director.llm_call` моком с `assert_not_called()`.
+- **`llm_call`.** Ни один тест не зовёт его без `_transport`.
+- **`use_scene`.** Он меняет глобалы модуля, поэтому каждый тест, который его зовёт, делает `addCleanup(use_scene, "start")`.
+- **Настоящая память.** Тесты, которым она нужна, берут `Dialogue` + `FakeTransport(reply=…)`, а не заглушку `_ScriptedDialogue`. Перед `pump` гейт фейка открывают (`gate.set()`): `pump` ждёт поток `join(2)`, а фейк держит 5 с.
+- **Сцена с 3+ актёрами** — `scenes/roof3.json`: герой Max, актёры Dan, Maya, neighbor.
+
+Имена:
+- `Sim.hero_owner: "npc" | "human"` (по умолчанию `"npc"`).
+- `POST /pov {"hero_owner": …}` проверяет значение, затем делает `sim.submit("pov", …)` → `_drain_inbox` → `Sim.set_pov(owner) -> list[dict]`.
+- `GET /api/hero` отдаёт живое состояние, а не лог.
+  - Без живого сна → `409 {"error": "no live dream"}`.
+  - Тело — `{facts: [str], diary: [str]}`: `facts` — тексты фактов с `hidden_from_hero: false`, `diary` = `[profile["soul"]["diary"]]`.
+  - Профиль — `sim.dialogue.profile`, а без `dialogue` (fake) — `load_profile(sim.profile)`.
+- Подготовленная строка: `prepared_npc` (строка), её говорящий — `_prepared_meta["who"]`.
+
+Правило:
+- При `human` герой молчит, пока игрок не скажет.
+- Актёры после двух своих строк подряд ждут игрока, как ждали героя (серия ≤ 2).
+- Без актёров `_pick_speaker` при `human` никого не выбирает.
+
+- [ ] Тест `test_pov_human_silences_npc_hero`: после `set_pov("human")` 30 × `pump` на `Dialogue` + `FakeTransport` → ни одной `line` героя с `turn_owner: npc`; в `pressure` нет записи героя; в логе ровно одна `pov {t, hero_owner: human}`.
+- [ ] Тест `test_pov_back_to_npc_resumes`: `human` → `npc` → за 30 × `pump` появляется `line` героя с `turn_owner: npc`; `sim.dialogue.mind(hero)` — тот же объект, что до `human`.
+- [ ] Тест `test_pov_discards_hero_in_flight`: генерация героя в полёте (`_gen_who` = герой, гейт закрыт) → `set_pov("human")` → `_turn_epoch` вырос на 1; после `gate.set()` и одного `pump` → `line_discarded {who: hero, reason: human}`, нет `transition`.
+- [ ] Тест `test_pov_keeps_actor_in_flight`: в полёте строка актёра → после `set_pov("human")`, `gate.set()` и `pump` строка актёра выходит (`line` актёра есть, `line_discarded` нет).
+- [ ] Тест `test_pov_drops_prepared_hero`: `prepared_npc` готов и `_prepared_meta["who"]` = герой → после `set_pov("human")` его нет, в логе `line_discarded {who: hero, reason: human}`.
+- [ ] Тест `test_server_pov`: `POST /pov {"hero_owner": "human"}` → 200 и после `_drain_inbox` `sim.hero_owner == "human"`; `{"hero_owner": "x"}` → 400; чужой `Origin` → 403 (как у `/say`); без живого сна → 409; `GET /api/hero` → 200 с `facts` (только не скрытые) и `diary`.
+- [ ] `comic.html` содержит `fetch('/pov'` с `Content-Type: application/json` и `fetch('/api/hero'` (§9). Лог `pov` идёт через `_emit`.
+- [ ] Все тесты зелёные.
+
+## 2.2 предохранитель
+
+Строка 2.2 таблицы 7.2. Шаг офлайн.
+
+Имена:
+- новый `safety.py` с `PHRASES: dict[str, tuple[str, ...]]` (`"en"`, `"ru"`) и `match(text) -> str | None`;
+- `Clock.pause()`, `Clock.resume()`;
+- `Sim.safety_paused: bool`;
+- `POST /continue` (путь как у `/pov`: `submit` → `_drain_inbox`);
+- `SOFT_NOTE` — одна фиксированная записка актёрам.
+
+Правила:
+- **Пауза** останавливает строки, директора, таймеры `fsm`, события, картинки и TTS. `_drain_inbox` продолжает работать, иначе «продолжить» не дойдёт.
+- **Совпадение.** `match` идёт сразу после `sanitize`, и `human_say` возвращается до любого `_emit`. Поэтому реплика:
+  - не ставится в `next_line`;
+  - не попадает в `memory` (ни `input`, ни `line_queued`);
+  - не зовёт директора.
+
+  `safety_pause` пишется через `_diagnostic`.
+- **Новая реплика во время паузы** проверяется `match`. Если совпадения нет, она отбрасывается: `input_dropped {t, reason: safety}` через `_diagnostic`.
+
+- [ ] Тест `test_safety_match`: `match` работает без учёта регистра, после схлопывания пробелов, по подстроке.
+  - Стартовый список (решение хозяина, правится в `safety.py`, запись в DEVLOG): en `kill myself`, `want to die`, `end my life`, `suicide`, `hurt myself`; ru `убить себя`, `хочу умереть`, `покончить с собой`, `суицид`, `причинить себе вред`.
+  - «I'll kill this song» → `None`.
+- [ ] Тест `test_safety_pauses_everything`. Тест **не** использует `manual_clock`: он патчит `clock.time.monotonic` до создания `Sim(...)`, иначе `Clock.t0` взят с настоящих часов, и двигает её руками.
+  - `human_say("i want to die")` → `safety_pause {t, matched: "want to die"}`.
+  - Нет `line` с `turn_owner: human`, `len(director.prompts)` не вырос.
+  - Затем 50 × (`_tick(); _maybe_generate_line(); _maybe_consult(-1e9)`), между шагами `monotonic` сдвигается на 5 с. После этого: `FakeTransport.calls` не растёт, нет `line`/`event`/`consult`, `fsm.state` тот же, `sim.clock.now()` тот же.
+- [ ] Тест `test_safety_drops_input_while_paused`: во время паузы `human_say("hello")` → `input_dropped {reason: safety}`, нет `line_queued`.
+- [ ] Тест `test_safety_no_tts`: `Sim` собран по общему правилу, `Stub.synthesize(text, label, out_path)` считает вызовы и возвращает `{"ok": False, "pause": 0.2}` (`_start_line` читает `res["ok"]` и `res["pause"]`). Во время паузы `_start_line` не зовёт `synthesize`, после `/continue` зовёт.
+- [ ] Тест `test_safety_ignores_npc`: строка актёра со словом `suicide` паузу не ставит. Проверяется только ввод человека: `human_say` и `POST /event`.
+- [ ] Тест `test_continue_resumes_soft`: `POST /continue` → флаг снят, часы идут с того же `now()`, каждый актёр сцены получает `SOFT_NOTE`. После двух `/continue` подряд `sim._notes[a].count(SOFT_NOTE) == 1` для каждого актёра.
+- [ ] Тест `test_clock_pause_resume`: пауза на 5 с (мок `time.monotonic`) → после `resume` `now()` больше значения до паузы на 0 (± 1e-9), а не на 5.
+- [ ] Реализация по 7.2: флаг проверяют `_dialogue_turn`, `_maybe_consult`, `_count_line`, консультация из `human_say`, TTS в `_start_line` и картинки; `set_cap` не трогать. `comic.html` содержит `fetch('/continue'` с `Content-Type: application/json`.
+- [ ] Все тесты зелёные.
+
+## 2.3 дебаг в HTML
+
+Строка 2.3 таблицы 7.2. Шаг офлайн. Решение хозяина: панель считает Python, страница только рисует (в dream нет браузерных тестов).
+
+Имена:
+- `diagnostics.panel_state(events: list[dict]) -> dict` с ключами `schedule`, `fired`, `pressure`, `goals`, `pov`, `lock`, `notes`, `safety`;
+- `GET /api/panel?run=…`.
+
+Записки директора — тип лога `message {to, note}` (fsm.py:276).
+
+- [ ] Тест `test_panel_covers_dictionary`: синтетический лог с одной строкой каждого типа (`schedule`, `door`, `judge`, `pressure`, `silence`, `event`, `goal`, `lock_reject`, `loop_cut`, `turn_skip`, `line_discarded`, `pov`, `safety_pause`, `input_dropped`, `message`, `consult` с `label: ready_stale`). Каждая строка видна в `panel_state`; тест держит таблицу «тип → ключ панели».
+- [ ] Тест `test_panel_pressure_last_tick`: два `pressure` подряд → в панели только последний, по актёрам.
+- [ ] Тест `test_panel_ignores_unknown`: строка неизвестного типа не роняет `panel_state` и в панель не попадает.
+- [ ] Тест `test_server_panel`: `Viewer` (server.py:97) с корнем tmp и `tmp/A/run_1/log.jsonl`; `GET /api/panel?run=A/run_1` → 200 и JSON `panel_state` этого лога; путь вне базы → 404 (как `/events`).
+- [ ] `comic.html` содержит `'/api/panel'` и опрос раз в 1000 мс. Ошибки консоли проверяет хозяин руками.
+- [ ] Все тесты зелёные.
+
+## 3.1a до 5 актёров: ядро
+
+Строка 3.1a таблицы 7.2 (Фаза 3 «Сцена шире»). Шаг офлайн.
+
+Имена:
+- `fsm.check_scene(ns, voices) -> (field, reason) | None`: размер (1–5 актёров) и голоса. `check_target` зовёт её после проверки `bridge`.
+- `DIRECTOR_SCHEMA` (director.py:37, сейчас «1 or 2») говорит «1 to 5 actors».
+- `COMPACT_EVERY = 4` остаётся: на нём стоят тесты test_dialogue.py. Новая `dialogue.compact_every(n_actors) -> int` возвращает `COMPACT_EVERY if n < 3 else 8` (7.2). Пробел «окно 4 строки, свёртка 8» (dialogue.py:20) — строкой в DEVLOG.
+- `Dialogue.scene_mind: Mind`. При ≥ 3 актёрах:
+  - один вызов compress на свёртку сворачивает `scene_mind` целиком (so_far/knows/promised/tried);
+  - `mind(a)` актёра читает so_far/knows/promised из `scene_mind`, а `tried` — только пункты из своих строк (`who == a`), без отдельного compress на актёра;
+  - у героя своя `Mind`.
+- Лог `prompt {t, who, tokens}` пишет `Dialogue._call(role, system, user, who=None)` через `event_sink` для ролей hero и actor (`hero_line`/`actor_line` передают имя). `tokens = llm._tokens(llm._prompt_text(system, messages))`, второй формулы нет.
+- `use_scene(x)`: `x` — имя в `scenes/`, путь (относительно `dirname(sim.__file__)`) или dict сцены. Фикстуры лежат в `h0/dream/testdata/`, не в `scenes/`: `scenes/` берёт `bank.main`.
+
+- [ ] Тест `test_check_scene_actor_count`: при валидных `bridge` и `objects` 1 и 5 актёров → `None`; 0 и 6 → `("next_scene", "bad_size")`.
+- [ ] Тест `test_compact_every_by_cast`: `compact_every(2) == 4`, `compact_every(3) == 8`, `compact_every(5) == 8`; `COMPACT_EVERY == 4`.
+- [ ] Тест `test_shared_mind_plus_tried`: roof3, `Dialogue` + `FakeTransport` → на одну свёртку ровно 1 вызов роли compress; у Dan и Maya `memory_text` одинаковый, `tried_text` разный; `mind("Max")` — не `scene_mind`.
+- [ ] Тест `test_prompt_log_five_actors`: `use_scene("testdata/five.json")` (5 актёров), `Sim(fake=True, outdir=tmp, dialogue=Dialogue(load_profile("A"), transport=FakeTransport(reply=…)))` (без `dialogue` строки — заглушки и `prompt` не пишется), `manual_clock(self, sim)`, затем 40 × `pump`. Ожидается:
+  - `prompt` есть у каждого говорившего;
+  - `max(tokens) ≤ 5800`;
+  - `bank.score([json.loads(l) for l in open(tmp / "log.jsonl")])["max_prompt_tokens"]` равен тому же максимуму.
+- [ ] Все тесты зелёные.
+
+## 3.1b шёпот и записки
+
+Строка 3.1b таблицы 7.2. Шаг офлайн.
+
+Решение хозяина по синтаксису: шёпот — тег `[[whisper Имя]]` в ответе актёра. `<whisper>` занят тегом голоса drama-3 (dialogue.py:51).
+
+Как это работает:
+- `sanitize(raw, "actor")` режет все `[[…]]`, кроме `ACTOR_TAGS`. Поэтому `actor_line` читает `_WHISPER = re.compile(r"\[\[\s*whisper\s+([^\[\]]+?)\s*\]\]", re.I)` из `raw` **до** `sanitize` и кладёт `whisper_to` в словарь строки.
+- Вся строка — шёпот адресату. Озвучивается строка, обёрнутая в `<whisper>…</whisper>`.
+- Адресат-актёр получает текст через `self._pending[to]`, адресат-герой — через `_hero_world`.
+- В `sim.transcript`, `Dialogue.log` и во вход сжатия `scene_mind` идёт только `[Dan whispers to Maya]`.
+
+- [ ] Тест `test_whisper_only_addressee`: roof3, ответ Dan `[[whisper Maya]] it's me` → следующий промпт Maya (`FakeTransport.sent`) содержит `it's me`, промпты neighbor и Max — нет; в `sim.transcript` — `[Dan whispers to Maya]` без текста.
+- [ ] Тест `test_whisper_to_hero`: ответ Dan `[[whisper Max]] look up` → `look up` есть в следующем промпте Max (`FakeTransport.sent`, system героя); в промптах Maya и neighbor — нет. `_hero_world` напрямую не проверять: его обнуляет начало хода героя.
+- [ ] Тест `test_whisper_unknown_addressee`: адресата нет в сцене → строка идёт как обычная, тег снят.
+- [ ] Тест `test_voice_whisper_untouched`: `<whisper>тихо</whisper>` без `[[whisper …]]` остаётся тегом голоса, как в Фазе 1.
+- [ ] Тест `test_whisper_not_in_shared_mind`: при 3 актёрах текст шёпота не попадает во вход compress `scene_mind` (`FakeTransport.sent` для роли compress).
+- [ ] Записки директора: `messages[].to` — строка или список имён актёров. `check_messages` принимает строку или список и проверяет каждое имя (сейчас список всегда даёт `unknown_recipient`); `_deliver_messages` разворачивает список, и у каждой строки лога `message` поле `to` — строка (`Sim._emit` кладёт `_notes` по ключу `to`, список там — TypeError). Обновить `DIRECTOR_SCHEMA`/`LOCKED_SCHEMA` и `notes_given`.
+- [ ] Тест `test_note_to_two_actors`: roof3, `to: ["Dan", "Maya"]` → в `sim._notes` записка ровно один раз у Dan и у Maya, у neighbor её нет. `to: ["Dan", "Max"]` (герой) и `to: ["Dan", "Nobody"]` → `("messages", "unknown_recipient")`.
+- [ ] Тест `test_whisper_not_in_lock_words`: тег `[[whisper …]]` не считается в лимит слов и ремарок замка 1.1.
+- [ ] Все тесты зелёные.
+
+## 3.2 рассказчик
+
+Строка 3.2 таблицы 7.2. Шаг офлайн. Живой Spark Open — только в бенче 3.4, вне плана.
+
+Имена:
+- `ROLE_TABLE['narrator'] = (SPARK_OPEN_MODEL, "minimal")`. Без этой строки `resolve` уходит в платный `SPARK_MODEL`.
+- `Dialogue.narrate(cause, context) -> str`.
+- Лог `narrator {t, text, cause: transition | event}`.
+
+Событие, «которое никто не видит», — это `who: []` в расписании 1.3.
+
+Вызов рассказчика занимает слот `_gen_thread`, как строка, поэтому он идёт раньше первой строки новой сцены. Результат несёт `role="narrator"`. `_dialogue_turn` пишет `narrator` и не зовёт `npc_start`, `_note_line` и `_count_line`.
+
+- [ ] Тест `test_narrator_role_open`: `llm.resolve("narrator")` даёт `SPARK_OPEN_MODEL`.
+- [ ] Тест `test_narrator_on_transition`: после `transition` ровно одна `narrator {cause: transition}`, и она раньше первой `line` новой сцены.
+- [ ] Тест `test_narrator_on_unseen_event`: событие `who: []` → одна `narrator {cause: event}`; событие с `who` → рассказчик молчит.
+- [ ] Тест `test_narrator_rate`: два события в один такт → не больше одной реплики на событие. Реплика рассказчика не считается строкой ни в давлении, ни в `lines` и не даёт `line`.
+- [ ] Реализация: реплика видна в `comic.html` отдельным стилем; `FakeTransport.reply` различает роль по `system`.
+- [ ] Все тесты зелёные.
+
+## 3.3 сон из строки
+
+Строка 3.3 таблицы 7.2. Шаг офлайн.
+
+Имена:
+- `Director(transport=None)` передаётся как `_transport` в `llm_call`.
+- Чистая `director.seed_scene(text, transport) -> dict | None` делает до двух попыток; сцена проверяется `fsm.check_scene` из 3.1a.
+- `sim.SEED_TRANSPORT = None` — переменная модуля, её патчит тест.
+  - `--seed` с `--fake` при `SEED_TRANSPORT is None` → exit 2 `seed: --fake needs a transport`.
+  - Живой seed идёт только после `set_cap`.
+- CLI:
+  - `main(argv=None)` → `ap.parse_args(argv)`;
+  - флаг `--seed "текст"`;
+  - `--profile` по умолчанию `None` (без `--seed` → `"A"`, как раньше);
+  - с `--seed` метка прогона в `run()` — `seed` вместо профиля.
+- Первая сцена:
+  - `use_scene(dict)` из `next_scene`, `place` = `destination` ответа, `events` = [];
+  - лог `consult {label: seed}`;
+  - профиль души не читается.
+
+- [ ] Тест `test_seed_starts_scene`. Патчи: `sim.SEED_TRANSPORT` (FakeTransport отдаёт валидную `next_scene`) и `sim.run` (запоминает `START_SCENE` и kwargs, пишет пустой `tmp/log.jsonl`, возвращает `(tmp, tmp/log.jsonl)`); `addCleanup(use_scene, "start")`. `main` передаёт первую строку лога через `run(..., first_events=[{"type": "consult", "label": "seed", ...}])`, `Sim` пишет её сразу после `snapshot`. Вызов `main` обёрнут в `assertRaises(SystemExit)` (`main` всегда кончается `sys.exit`).
+  - Вызов: `main(["--seed", "two strangers stuck in a lift", "--fake"])`.
+  - Первая сцена взята из ответа, в kwargs `run` есть `first_events` с `label: seed`.
+- [ ] Тест `test_seed_no_profile_file`: `Sim(fake=True, profile=None, outdir=tmp)` под моком `open` → ни одного пути под `profiles/`. `load_profile(None)` берёт только героя сцены и файл не открывает (сейчас `Sim.__init__` зовёт `load_profile(profile)` всегда).
+- [ ] Тест `test_seed_bad_director`: transport дважды отдаёт сцену, не прошедшую `check_scene` → `SystemExit.code == 2`, в stderr `seed: director failed`.
+- [ ] Тест `test_seed_fake_no_transport`: `--seed x --fake` без патча → `SystemExit.code == 2`, в stderr `seed: --fake needs a transport`, ни одного вызова `llm_call`.
+- [ ] Тест `test_seed_and_profile_conflict`: `--seed` с явным `--profile A` → `SystemExit.code == 2` и понятное сообщение.
+- [ ] Все тесты зелёные.
+
+## Ф2–Ф3 итог
+
+Код не меняется.
+
+- [ ] Полный набор `cd h0/dream && python3 -m unittest -q` зелёный трижды подряд (ловим тайминговые флаки).
+- [ ] Итог в DEVLOG и PROGRESS.md:
+  - таблица шагов 2.1–3.3;
+  - решения хозяина: список фраз 2.2, тег шёпота 3.1b, формат `messages[].to`, `compact_every` и пробел окна;
+  - что ждёт денег (3.1c, 3.4) и что ждёт спеки (Фаза 4);
+  - отдельной строкой: «ручная проверка панели и кнопок в браузере — за хозяином».
