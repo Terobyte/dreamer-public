@@ -20,16 +20,11 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { loadGlb, loadMaps } from "./assets.js";
 import { pickCamera, yawDir } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 
-interface MaterialDef {
-  color: string;
-  map?: string;
-  repeat_m?: number;
-  transparent?: boolean;
-}
+import type { MaterialDef } from "./assets.js";
 
 /** base64 → bytes without `Buffer`: the nav bitmap is read in the page. */
 function unbase64(s: string): Uint8Array {
@@ -85,27 +80,6 @@ function materialOf(id: string, def: MaterialDef, loadedMap?: Texture): MeshStan
   return m;
 }
 
-/**
- * Fits a loaded GLB into the OBB placeholder it replaces: uniform scale (so
- * the model keeps its own proportions) picked as the tightest fit on any
- * axis, centred in x/z and resting on the placeholder's floor in y.
- */
-function fitGlb(glbScene: Group, box: { min: Vector3; max: Vector3 }): void {
-  const glbBox = new Box3().setFromObject(glbScene);
-  const glbSize = glbBox.getSize(new Vector3());
-  const boxSize = box.max.clone().sub(box.min);
-  let scale = Infinity;
-  for (const k of ["x", "y", "z"] as const) {
-    if (glbSize[k] > 0) scale = Math.min(scale, boxSize[k] / glbSize[k]);
-  }
-  if (!Number.isFinite(scale) || scale <= 0) scale = 1;
-  glbScene.scale.setScalar(scale);
-  const glbCenter = glbBox.getCenter(new Vector3()).multiplyScalar(scale);
-  const glbMinY = glbBox.min.y * scale;
-  const boxCenter = box.min.clone().add(box.max).multiplyScalar(0.5);
-  glbScene.position.set(boxCenter.x - glbCenter.x, box.min.y - glbMinY, boxCenter.z - glbCenter.z);
-}
-
 function meshOf(src: any, material: MeshStandardMaterial): Mesh {
   const g = new BufferGeometry();
   g.setAttribute("position", new Float32BufferAttribute(src.positions, 3));
@@ -151,14 +125,7 @@ async function start(): Promise<void> {
   // every material whose cached asset made it into dist/assets gets its real
   // pixels loaded before any mesh using it is built, so __ready never fires
   // on a page still showing coloured placeholders
-  const loader = new TextureLoader();
-  const loadedMaps = new Map<string, Texture>(
-    await Promise.all(
-      Object.entries((geo.materials ?? {}) as Record<string, MaterialDef>)
-        .filter(([, def]) => typeof def.map === "string")
-        .map(async ([id, def]) => [id, await loader.loadAsync(def.map!)] as [string, Texture]),
-    ),
-  );
+  const loadedMaps = await loadMaps((geo.materials ?? {}) as Record<string, MaterialDef>);
 
   const mats = new Map<string, MeshStandardMaterial>();
   const material = (id: string): MeshStandardMaterial => {
@@ -173,7 +140,6 @@ async function start(): Promise<void> {
   const setup = pickCamera(geo, params, window.innerWidth / Math.max(window.innerHeight, 1));
   const objects = new Map<string, Mesh | Group>();
   const meshTotal = (geo.meshes as any[]).length;
-  const gltfLoader = new GLTFLoader();
   const glbSwaps: Promise<void>[] = [];
   for (const src of geo.meshes as any[]) {
     const mesh = meshOf(src, material(String(src.material)));
@@ -186,13 +152,12 @@ async function start(): Promise<void> {
     if (typeof src.glb === "string") {
       mesh.geometry.computeBoundingBox();
       glbSwaps.push(
-        gltfLoader.loadAsync(src.glb).then((gltf) => {
-          fitGlb(gltf.scene, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max });
-          gltf.scene.name = mesh.name;
-          gltf.scene.visible = mesh.visible;
+        loadGlb(src, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max }).then((root) => {
+          root.name = mesh.name;
+          root.visible = mesh.visible;
           scene.remove(mesh);
-          scene.add(gltf.scene);
-          objects.set(mesh.name, gltf.scene);
+          scene.add(root);
+          objects.set(mesh.name, root);
         }),
       );
     }

@@ -165,12 +165,12 @@
 Продолжение «Нормализации GLB» — её интерфейсы и решения в силе.
 Файлы: `src/build/materials.ts`, `src/build/write.ts`, `src/runtime/assets.ts`, `test/build-assets.test.ts`, `test/browser/assets.test.ts`.
 
-- [ ] `test_scale_from_size`: у `vase` (`h` 0.4) при `glbSize.h` = 2 → `scale` = 0.2; `glbPos[1]` у `lamp` = 2.8, у `vase` = 0.75
-- [ ] `test_missing_glb_stub`: кэш без `p_sofa` → у меша `sofa` нет `glb`, у `chairs.0` есть
-- [ ] `test_rebuild_cache_under_10s`: вторая сборка `--assets cache` на заполненном фейками кэше → `build.json.seconds` < 10
-- [ ] `test_ready_after_assets` (browser): сервер держит ответ `.glb` гейтом; через 1 с `__ready` = false; после отпускания гейта `__ready` = true за ≤ 5 с
-- [ ] `test_textured_page` (browser): с ассетами из кэша — ноль ошибок консоли, `inspect("living:floor").hasMap` = true, `inspect("sofa").type` = `"Group"`
-- [ ] реализовать
+- [x] `test_scale_from_size`: у `vase` (`h` 0.4) при `glbSize.h` = 2 → `scale` = 0.2; `glbPos[1]` у `lamp` = 2.8, у `vase` = 0.75
+- [x] `test_missing_glb_stub`: кэш без `p_sofa` → у меша `sofa` нет `glb`, у `chairs.0` есть
+- [x] `test_rebuild_cache_under_10s`: вторая сборка `--assets cache` на заполненном фейками кэше → `build.json.seconds` < 10
+- [x] `test_ready_after_assets` (browser): сервер держит ответ `.glb` гейтом; через 1 с `__ready` = false; после отпускания гейта `__ready` = true за ≤ 5 с
+- [x] `test_textured_page` (browser): с ассетами из кэша — ноль ошибок консоли, `inspect("living:floor").hasMap` = true, `inspect("sofa").type` = `"Group"`
+- [x] реализовать
 
 **Вне этой фазы:** рендер с 4 сторон, `check --built`, лист.
 

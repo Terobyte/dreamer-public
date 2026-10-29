@@ -63,6 +63,9 @@ export interface Geometry {
 /** Asset ids that `--assets cache`/`live` resolved, each pointing at its `dist/assets/<id>.*` file. */
 export type AssetFiles = Record<string, string>;
 
+/** Each object asset's own bound after normalization, keyed by asset id. */
+export type GlbSizes = Record<string, { w: number; d: number; h: number }>;
+
 /** Scene materials, `$exterior` and the asset placeholders, keyed by mesh material id. */
 export function materialTable(scene: any, assetFiles: AssetFiles = {}): Record<string, MaterialDef> {
   // a plain object trips on an id literally named "__proto__" (it would set
@@ -90,7 +93,7 @@ export function materialTable(scene: any, assetFiles: AssetFiles = {}): Record<s
   return out;
 }
 
-export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}): Geometry {
+export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: GlbSizes = {}): Geometry {
   const scene: any = ctx.scene;
   const meshes: Mesh[] = [];
   const levelY = new Map<string, number>();
@@ -140,7 +143,7 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}): Geometry {
   }
 
   // things: props, decals, door leaves and backdrops
-  meshes.push(...propMeshes(ctx, assetFiles), ...decalMeshes(ctx), ...doorMeshes(ctx));
+  meshes.push(...propMeshes(ctx, assetFiles, glbSizes), ...decalMeshes(ctx), ...doorMeshes(ctx));
 
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
