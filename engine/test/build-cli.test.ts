@@ -65,6 +65,36 @@ describe("build cli", () => {
     expect(JSON.parse(r.stdout).errors).toEqual(want);
   }, 60000);
 
+  it("test_build_ref_directory_falls_back", () => {
+    const dir = tmp();
+    const scene = patched([{ op: "add", path: "/cameras/0/ref", value: dir }]);
+    const scenePath = join(dir, "demo-flat.scene.json");
+    writeFileSync(scenePath, JSON.stringify(scene));
+    const dist = join(dir, "dist");
+    const r = cli(["build", scenePath, "--out", dist, "--assets", "none", "--cache", tmp()]);
+    expect([r.status, r.stderr]).toEqual([0, ""]);
+    const build = JSON.parse(readFileSync(join(dist, "build.json"), "utf-8"));
+    expect(build.ok).toBe(true);
+    expect(build.warnings.some((w: string) => w.includes("door"))).toBe(true);
+    const geometry = JSON.parse(readFileSync(join(dist, "geometry.json"), "utf-8"));
+    expect(geometry.cameras[0].ref).toBe(null);
+  });
+
+  it("test_build_empty_ref_falls_back", () => {
+    const dir = tmp();
+    const scene = patched([{ op: "add", path: "/cameras/0/ref", value: "" }]);
+    const scenePath = join(dir, "demo-flat.scene.json");
+    writeFileSync(scenePath, JSON.stringify(scene));
+    const dist = join(dir, "dist");
+    const r = cli(["build", scenePath, "--out", dist, "--assets", "none", "--cache", tmp()]);
+    expect([r.status, r.stderr]).toEqual([0, ""]);
+    const build = JSON.parse(readFileSync(join(dist, "build.json"), "utf-8"));
+    expect(build.ok).toBe(true);
+    expect(build.warnings.some((w: string) => w.includes("door"))).toBe(true);
+    const geometry = JSON.parse(readFileSync(join(dist, "geometry.json"), "utf-8"));
+    expect(geometry.cameras[0].ref).toBe(null);
+  });
+
   it("test_build_rejects_flag_as_value", () => {
     const cwd = tmp();
     const beforeCwd = readdirSync(cwd).sort();

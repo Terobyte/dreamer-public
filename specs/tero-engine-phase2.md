@@ -184,10 +184,10 @@
 - Камеры и ref берутся из `geometry.json` `cameras[]`: `build` копирует `cameras[i].ref` (путь относительно файла сцены) в `dist/refs/<i>-<basename>` и пишет в `ref` этот путь.
 - `sheet.png` — по строке на камеру: слева ref, справа снимок. Строка без ref — только снимок и подпись `нет ref`. Лист собирается HTML-страницей `<dist>/sheet.html` и снимается тем же playwright (без библиотек картинок). Нет файла `ref` → предупреждение в `build.json.warnings`, у камеры `ref` = null.
 
-- [ ] `test_shots_per_camera` (browser): demo-flat → `shots/door.png` 1280×720 (ширина и высота PNG по заголовку), `sheet.png` существует
-- [ ] `test_shots_wait_ready` (browser): в копии `dist/` `runtime.js` заменён заглушкой без `__ready`, `--ready-timeout 2` → exit 2, stderr содержит `door`, за ≤ 5 с
-- [ ] `test_sheet_with_ref` (timeout 60000): сцена с камерой, у которой есть `ref` (PNG 8×8 в tmp), → `dist/refs/0-<имя>` существует, `sheet.html` содержит `src="refs/0-<имя>"`; без ref — содержит `нет ref`
-- [ ] реализовать
+- [x] `test_shots_per_camera` (browser): demo-flat → `shots/door.png` 1280×720 (ширина и высота PNG по заголовку), `sheet.png` существует
+- [x] `test_shots_wait_ready` (browser): в копии `dist/` `runtime.js` заменён заглушкой без `__ready`, `--ready-timeout 2` → exit 2, stderr содержит `door`, за ≤ 5 с
+- [x] `test_sheet_with_ref` (timeout 60000): сцена с камерой, у которой есть `ref` (PNG 8×8 в tmp), → `dist/refs/0-<имя>` существует, `sheet.html` содержит `src="refs/0-<имя>"`; без ref — содержит `нет ref`
+- [x] реализовать
 
 **Вне этой фазы:** маршруты, `check --built`, разница с прошлым отчётом.
 

@@ -43,7 +43,8 @@ export type Light =
 
 export interface Camera {
   id: string;
-  ref?: string;
+  /** `null` once `build` has looked for the ref file and not found it. */
+  ref?: string | null;
   pos: [number, number, number];
   look?: [number, number, number];
   fov: number;

@@ -7,6 +7,7 @@ import { runCheck } from "../src/check.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
 import { writeDist } from "../src/build/write.js";
+import { runShots, SHOTS_DEFAULTS } from "../src/build/shots.js";
 import { runAssets, missingAssets } from "../src/assets/run.js";
 import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
 import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
@@ -14,7 +15,8 @@ import type { Report } from "../src/types.js";
 
 const USAGE =
   "usage: dreamer check <scene> [--report <path>]\n" +
-  "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>]";
+  "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>]\n" +
+  "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]";
 
 /**
  * `undefined` = flag absent, `null` = flag present but its value is missing
@@ -41,6 +43,7 @@ function parseFailReport(issues: unknown[]): Report {
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   if (args[0] === "build") return runBuild(args);
+  if (args[0] === "shots") return runShotsCmd(args);
   if (args[0] !== "check" || !args[1]) {
     console.error(USAGE);
     return 2;
@@ -169,8 +172,64 @@ async function runBuild(args: string[]): Promise<number> {
       image: needsLive ? new MuseImageProvider() : undefined,
       object: needsLive ? new Sam3dProvider() : undefined,
     });
-    await writeDist(ctx, report, outDir, { startedAt: started, assets: assetReport, cacheDir: cacheFlag });
+    await writeDist(ctx, report, outDir, {
+      startedAt: started,
+      assets: assetReport,
+      cacheDir: cacheFlag,
+      scenePath,
+    });
     return 0;
+  } catch (e) {
+    console.error(String(e));
+    return 2;
+  }
+}
+
+/**
+ * `shots` works on an already built `dist/`, so it never parses the scene and
+ * never touches a provider: the only thing it can fail on is a page that does
+ * not become ready, and that is exit 2.
+ */
+async function runShotsCmd(args: string[]): Promise<number> {
+  const dist = args[1];
+  if (!dist || dist.startsWith("--")) {
+    console.error(USAGE);
+    return 2;
+  }
+  if (!existsSync(join(dist, "geometry.json"))) {
+    console.error(`not a built dist/: ${dist}`);
+    return 2;
+  }
+  let { width, height, readyTimeoutMs } = SHOTS_DEFAULTS;
+  const sizeFlag = flag(args, "--size");
+  if (sizeFlag === null) {
+    console.error("--size requires a value");
+    return 2;
+  }
+  if (sizeFlag !== undefined) {
+    const m = /^(\d+)x(\d+)$/.exec(sizeFlag);
+    if (!m) {
+      console.error(`--size must look like 1280x720: ${sizeFlag}`);
+      return 2;
+    }
+    width = Number(m[1]);
+    height = Number(m[2]);
+  }
+  const timeoutFlag = flag(args, "--ready-timeout");
+  if (timeoutFlag === null) {
+    console.error("--ready-timeout requires a value");
+    return 2;
+  }
+  if (timeoutFlag !== undefined) {
+    const s = Number(timeoutFlag);
+    if (!Number.isFinite(s) || s <= 0) {
+      console.error(`--ready-timeout must be a positive number of seconds: ${timeoutFlag}`);
+      return 2;
+    }
+    readyTimeoutMs = s * 1000;
+  }
+  try {
+    return await runShots(dist, { width, height, readyTimeoutMs });
   } catch (e) {
     console.error(String(e));
     return 2;

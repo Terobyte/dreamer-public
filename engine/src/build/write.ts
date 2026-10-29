@@ -1,11 +1,11 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import type { Ctx } from "../ctx.js";
 import type { Report } from "../types.js";
-import { buildGeometry, type AssetFiles } from "./geometry.js";
+import { buildGeometry, type AssetFiles, type Camera } from "./geometry.js";
 import { buildNav } from "../nav/grid.js";
 import { topSvg } from "../report/topsvg.js";
 import { indexHtml } from "./page.js";
@@ -49,12 +49,38 @@ export async function bundleRuntime(outFile: string): Promise<void> {
   });
 }
 
+/**
+ * Camera refs live next to the scene, which `dist/` must not depend on: each
+ * one is copied into `dist/refs/<i>-<basename>` and the geometry points there,
+ * so `dreamer shots` can build the sheet out of `dist/` alone. A ref that is
+ * not on disk is downgraded to `null` with a warning, never an error: the shot
+ * is still worth taking, it just has no pair on the sheet.
+ */
+function copyRefs(cameras: Camera[], outDir: string, scenePath?: string): string[] {
+  const warnings: string[] = [];
+  cameras.forEach((cam, i) => {
+    const ref = cam.ref;
+    if (ref === undefined) return;
+    const src = scenePath === undefined ? ref : resolve(dirname(scenePath), ref);
+    if (!existsSync(src) || !statSync(src).isFile()) {
+      cam.ref = null;
+      warnings.push(`cameras: no ref file for camera ${cam.id} at ${ref}, the sheet row has no pair`);
+      return;
+    }
+    const rel = join("refs", `${i}-${basename(ref)}`);
+    mkdirSync(join(outDir, "refs"), { recursive: true });
+    copyFileSync(src, join(outDir, rel));
+    cam.ref = rel.split(sep).join("/");
+  });
+  return warnings;
+}
+
 /** Everything `build` puts in `dist/`; the scene's own directory is untouched. */
 export async function writeDist(
   ctx: Ctx,
   report: Report,
   outDir: string,
-  opts: { startedAt: number; assets?: AssetReport; cacheDir?: string },
+  opts: { startedAt: number; assets?: AssetReport; cacheDir?: string; scenePath?: string },
 ): Promise<BuildJson> {
   // Assets the cache could not provide stay coloured placeholders, and the
   // build says so instead of failing: a half-generated world is still walkable.
@@ -74,6 +100,7 @@ export async function writeDist(
   const geometry = buildGeometry(ctx, assetFiles, glbSizes);
   const nav = ctx.nav ?? buildNav(ctx);
   mkdirSync(outDir, { recursive: true });
+  const refWarnings = copyRefs(geometry.cameras, outDir, opts.scenePath);
   writeFileSync(join(outDir, "check.json"), JSON.stringify(report, null, 2));
   writeFileSync(join(outDir, "top.svg"), topSvg(ctx));
   writeFileSync(join(outDir, "nav.json"), JSON.stringify(nav));
@@ -88,6 +115,7 @@ export async function writeDist(
     warnings: [
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
+      ...refWarnings,
     ],
   };
   writeFileSync(join(outDir, "build.json"), JSON.stringify(out, null, 2));
