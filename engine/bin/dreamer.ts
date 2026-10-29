@@ -114,6 +114,11 @@ async function main(): Promise<number> {
       console.error("--built requires a value");
       return 2;
     }
+    // a missing nav is a usage error, so it wins over a scene that does not parse
+    if (builtFlag !== undefined && !existsSync(join(builtFlag, "nav.json"))) {
+      console.error("built: nav.json not found");
+      return 2;
+    }
     const { raw, issues } = parseScene(text);
     if (raw === null && issues.length > 0) {
       const report = parseFailReport(issues, builtFlag);
@@ -125,10 +130,6 @@ async function main(): Promise<number> {
     let facts: Record<string, PropFact | null> | undefined;
     if (builtFlag !== undefined) {
       const navPath = join(builtFlag, "nav.json");
-      if (!existsSync(navPath)) {
-        console.error("built: nav.json not found");
-        return 2;
-      }
       builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
       // the same dist/ also carries what every prop's model measures, so
       // `--built` checks the props by fact instead of the author's `size`

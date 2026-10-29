@@ -75,6 +75,15 @@ describe("routes stage", () => {
     expect(c.stderr).toContain("built: nav.json not found");
   }, 60000);
 
+  it("test_route_built_missing_nav_malformed_scene", () => {
+    const dir = tmp();
+    const scene = join(dir, "bad.scene.json");
+    writeFileSync(scene, "{ not json");
+    const c = cli(["check", scene, "--report", join(dir, "r.json"), "--built", tmp()]);
+    expect(c.status).toBe(2);
+    expect(c.stderr).toContain("built: nav.json not found");
+  }, 60000);
+
   it("test_route_blocked_by_closed_door", () => {
     const scene = patched([{ op: "replace", path: "/openings/0/leaf/open", value: false }]);
     const r = buildAndCheck(scene);
