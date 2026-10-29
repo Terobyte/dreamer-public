@@ -10,9 +10,9 @@ import lang
 from inputs import sanitize
 
 try:
-    from llm import call as llm_call
+    from llm import call as llm_call, _prompt_text, _tokens
 except ImportError:
-    from .llm import call as llm_call
+    from .llm import call as llm_call, _prompt_text, _tokens
 
 # Memory per character (Letta-style block + recursive summary, Oct 28): the last
 # TRANSCRIPT_KEEP lines go verbatim, older ones are folded every COMPACT_EVERY lines
@@ -39,7 +39,19 @@ SILENT_CAP = 6  # ticks_silent stops paying off here
 # silent ticks (7.2 row 1.3: longest-silent, then actors in order, hero last).
 ACTOR_STREAK_MAX = 2  # after this many actor lines in a row no actor is picked
 COMPACT_EVERY = 4
+# 3.1a: a scene of three or more actors folds one shared memory (see scene_mind), so
+# the window may be twice as wide -- a fold costs one call for the whole cast, and a
+# wider window keeps the prompt of five actors inside the token budget. With one or
+# two actors each of them still folds his own memory every COMPACT_EVERY lines.
+COMPACT_EVERY_CAST = 8
+SHARED_MIND_FROM = 3  # actors in the scene
+SCENE_MIND = "everyone here"  # the name the shared memory is folded under
 MAX_TOKENS = 1500
+
+
+def compact_every(n_actors):
+    """Lines that have to leave the window before a fold (7.2 row 3.1a)."""
+    return COMPACT_EVERY if n_actors < SHARED_MIND_FROM else COMPACT_EVERY_CAST
 
 _TOUCH = re.compile(r"\[\[\s*TOUCH\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
 _LOOK = re.compile(r"\[\[\s*LOOK\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
@@ -216,6 +228,74 @@ MEMORY_RULES = (
     "KNOW: what I learned about the others, separated by ;\n"
     "PROMISED: what I promised or was promised, separated by ; or none\n"
     "TRIED: what I already tried, asked or brought up, as short ideas separated by ;")
+# 3.1a: one compress call folds every actor's side at once, and the contract says
+# an actor's `tried` is only what his own lines (`who == a`) brought up. Who said a
+# line is a fact of Dialogue.log, not something the model may claim: the fold shows
+# the new lines numbered, a TRIED item names the number of the line it summarises,
+# and the owner is that line's speaker. A name the model adds is only a hint that
+# must agree with the line, and a line no valid item covers still counts for its
+# speaker as its own words (_scene_tried). So an untagged item, a wrong tag or the
+# same idea from two people can never move or drop an actor's own line (F2-F9).
+SCENE_MEMORY_RULES = (
+    "You keep the whole scene's shared memory of tonight: everyone's side of what "
+    "was heard and said, folded into one. Rewrite the whole memory: fold the new "
+    "lines in, keep what still matters, drop what no longer does, fix anything the "
+    "new lines changed. The new lines are numbered. Reply with exactly four lines:\n"
+    "SO FAR: what has happened tonight, at most 4 short sentences\n"
+    "KNOW: what the scene learned about the people here, separated by ;\n"
+    "PROMISED: what was promised or asked for, separated by ; or none\n"
+    "TRIED: for the new lines only, what the speaker of a line tried, asked or "
+    "brought up in that very line, as \"[number] Name: short idea\" with the "
+    "number and speaker of that line, separated by ; or none")
+TRIED_KEEP = 6  # items per actor (scene_mind) or per personal Mind
+TRIED_GIST_WORDS = 12
+_TRIED_ITEM = re.compile(r"^\[?\s*(\d+)\s*\]?\s*[:.)\-]?\s*(.*)$", re.S)
+
+
+def _gist(text):
+    """An actor's own line as a TRIED item, when no valid item covers it."""
+    return _words(" ".join(_spoken(text).split()), TRIED_GIST_WORDS).strip(" .,;:!?-")
+
+
+def _scene_tried(tried_raw, lines, actors, names):
+    """TRIED items of a scene fold -> {actor: [items]}, every item grounded in one
+    of `lines` (the folded (who, text) pairs) whose speaker is that actor.
+    tried_raw: the reply's items. An item counts only with the number of a folded
+    line; the owner is the speaker of that line. A name before the idea must be
+    that speaker (any other known name -> the item is dropped, a tag is a hint, not
+    evidence). Lines of an actor that no valid item covers give their own gist, so
+    an actor never loses what he said because the reply skipped or mislabelled it.
+    names: every name the reply could tag with (speakers, cast, hero)."""
+    actors = set(actors or ())
+    known = {n.lower() for n in names if n}
+    per_line = {}
+    for item in tried_raw:
+        m = _TRIED_ITEM.match(item)
+        if not m:
+            continue
+        n, rest = int(m.group(1)), m.group(2).strip()
+        if not 1 <= n <= len(lines):
+            continue
+        who = lines[n - 1][0]
+        tag, sep, idea = rest.partition(":")
+        if sep and tag.strip().lower() in known:
+            if tag.strip().lower() != who.lower():
+                continue  # the hint disagrees with the log: nobody gets it
+            rest = idea.strip()
+        rest = _words(rest.strip(" ."), 25)
+        if rest and rest.lower() not in ("none", "nothing"):
+            per_line.setdefault(n, []).append(rest)
+    out = {}
+    for i, (who, text) in enumerate(lines, 1):
+        if who not in actors:
+            continue  # the hero folds his own Mind
+        for x in per_line.get(i) or [_gist(text)]:
+            mine = out.setdefault(who, [])
+            if x and x.lower() not in {y.lower() for y in mine}:
+                mine.append(x)
+    return out
+
+
 _MEM_KEYS = (("SO FAR", "so_far"), ("KNOW", "knows"), ("PROMISED", "promised"),
              ("TRIED", "tried"))
 
@@ -231,6 +311,10 @@ class Mind:
 
     def __init__(self, cursor=0):
         self.so_far, self.knows, self.promised, self.tried = "", [], [], []
+        # 3.1a: the shared scene_mind keeps TRIED per actor, each item grounded
+        # in one of that actor's own lines (_scene_tried); `tried` is then their
+        # union, for the log. Personal Minds leave it empty.
+        self.tried_by = {}
         self.cursor = cursor
         self.busy = False
 
@@ -257,8 +341,26 @@ class Mind:
         return {"so_far": self.so_far, "knows": list(self.knows),
                 "promised": list(self.promised), "tried": list(self.tried)}
 
-    def update(self, reply):
-        """Parse the four MEMORY_RULES lines; False (memory kept) if SO FAR is missing."""
+    def fold_input(self):
+        """What a fold's compress call is shown of memory so far (F5): so_far/knows/
+        promised plus tried. For the scene_mind the old items are listed with their
+        actor -- shown for context only: they are kept by _scene_tried's merge, not
+        by the reply repeating them."""
+        base = self.text()
+        if self.tried_by:
+            tagged = "; ".join("%s: %s" % (who, x) for who, items in self.tried_by.items()
+                               for x in items)
+        else:
+            tagged = "; ".join(self.tried)
+        if tagged:
+            base = (base + "\n" if base else "") + "Already tried: " + tagged
+        return base or "(nothing yet)"
+
+    def update(self, reply, lines=None, actors=(), names=()):
+        """Parse the four MEMORY_RULES lines; False (memory kept) if SO FAR is missing.
+        lines: for the scene_mind fold (3.1a), the folded (who, text) lines -- TRIED
+        is then grounded per line (_scene_tried) and merged per actor into tried_by,
+        so an old item stays until TRIED_KEEP newer ones of the same actor push it."""
         got = {}
         for raw in (reply or "").splitlines():
             line = raw.strip().lstrip("-*# ").strip()
@@ -268,9 +370,28 @@ class Mind:
         if not got.get("so_far"):
             return False
         self.so_far = _words(got["so_far"], 90)
-        for key in ("knows", "promised", "tried"):
+        for key in ("knows", "promised"):
             items = [_words(x.strip(" ."), 25) for x in (got.get(key) or "").split(";")]
             setattr(self, key, [x for x in items if x and x.lower() not in ("none", "nothing")][:6])
+        tried_raw = [x.strip(" .") for x in (got.get("tried") or "").split(";")]
+        tried_raw = [x for x in tried_raw if x and x.lower() not in ("none", "nothing")]
+        if lines is None:
+            self.tried = [_words(x, 25) for x in tried_raw][:TRIED_KEEP]
+            return True
+        new = _scene_tried(tried_raw, lines, actors, names)
+        merged = {who: list(items) for who, items in self.tried_by.items()}
+        for who, items in new.items():
+            mine = merged.setdefault(who, [])
+            for x in items:
+                if x.lower() in {y.lower() for y in mine}:
+                    mine.remove(next(y for y in mine if y.lower() == x.lower()))
+                mine.append(x)
+            merged[who] = mine[-TRIED_KEEP:]
+        self.tried_by = merged
+        flat = []
+        for items in merged.values():
+            flat += [x for x in items if x not in flat]
+        self.tried = flat
         return True
 
 
@@ -517,6 +638,10 @@ class Dialogue:
         # memory (see Mind): every spoken line, and who remembers what of it
         self.log = []
         self.minds = {}
+        # 3.1a: from SHARED_MIND_FROM actors on, the scene remembers once for all of
+        # them; what stays personal is `tried` (what this one already brought up)
+        self.scene_mind = Mind()
+        self.n_actors = 0
         self.background = True
         self.on_memory = None
         self._mind_lock = threading.Lock()
@@ -581,9 +706,30 @@ class Dialogue:
         with self._mind_lock:
             self.log.append((who, text))
 
+    @property
+    def shared(self):
+        """Whether the scene is folded into one memory (3.1a)."""
+        return self.n_actors >= SHARED_MIND_FROM
+
+    def _own_view(self, name):
+        """An actor of a shared scene reads the scene's memory, but only the TRIED
+        items his own lines brought up -- the prompt must not tell Dan that Maya
+        already asked. Not stored: a view over scene_mind, rebuilt per line. Every
+        item in tried_by[name] came from a line of the log whose speaker is `name`
+        (_scene_tried), so nothing here depends on a tag the model wrote."""
+        with self._mind_lock:
+            shared = self.scene_mind
+            m = Mind()
+            m.so_far, m.knows = shared.so_far, list(shared.knows)
+            m.promised = list(shared.promised)
+            m.tried = list(shared.tried_by.get(name) or [])
+            return m
+
     def mind(self, name, seen=TRANSCRIPT_KEEP):
         """seen: lines the newcomer was shown (after a transition the sim keeps 2);
         it remembers only from those on, never the scene before it came."""
+        if self.shared and name != self.hero:
+            return self._own_view(name)
         with self._mind_lock:
             if name not in self.minds:
                 shown = max(0, min(TRANSCRIPT_KEEP, seen))
@@ -594,32 +740,66 @@ class Dialogue:
         return self.mind(name).text()
 
     def compact(self, cast, seen=TRANSCRIPT_KEEP):
-        """Fold lines that left the window into each present character's memory,
-        once COMPACT_EVERY of them piled up; in the background, never on a line's path."""
+        """Fold lines that left the window into memory, once compact_every() of them
+        piled up; in the background, never on a line's path. With a cast of
+        SHARED_MIND_FROM actors or more the whole scene folds in one call (3.1a);
+        the hero always keeps his own memory."""
+        actors = [c for c in cast if c != self.hero]
+        self.n_actors = len(actors)
+        if self.shared:
+            names = ([self.hero] if self.hero in cast else []) + [SCENE_MIND]
+        else:
+            names = list(cast)
+        every = compact_every(self.n_actors)
         started = []
-        for name in cast:
-            m = self.mind(name, seen)
+        for name in names:
+            m = self.scene_mind if name == SCENE_MIND else self.mind(name, seen)
             with self._mind_lock:
                 end = len(self.log) - TRANSCRIPT_KEEP
-                if m.busy or end - m.cursor < COMPACT_EVERY:
+                if m.busy or end - m.cursor < every:
                     continue
                 m.busy = True
                 lines = list(self.log[m.cursor:end])
             started.append(name)
+            fold_args = (name, m, lines, end, actors if name == SCENE_MIND else None)
             if self.background:
-                t = threading.Thread(target=self._fold, args=(name, m, lines, end), daemon=True)
+                t = threading.Thread(target=self._fold, args=fold_args, daemon=True)
                 self._mind_threads.append(t)
                 t.start()
             else:
-                self._fold(name, m, lines, end)
+                self._fold(*fold_args)
         return started
 
-    def _fold(self, name, m, lines, end):
+    def new_scene(self, cast):
+        """A transition starts a new scene: the shared memory belongs to the old
+        one, so a newcomer (seen=2) must not read it. The reset happens here,
+        before the first generation -- not at the first compact, which runs
+        after lines were already spoken. The hero keeps his own Mind."""
+        with self._mind_lock:
+            self.n_actors = len([c for c in cast if c != self.hero])
+            self.scene_mind = Mind(cursor=len(self.log))
+            for name in list(self.minds):
+                if name != self.hero and name not in cast:
+                    del self.minds[name]
+
+    def _fold(self, name, m, lines, end, cast_names=None):
         try:
+            if name == SCENE_MIND:
+                # the numbers are what a TRIED item has to point at (_scene_tried)
+                new = "\n".join("[%d] %s: %s" % (i, who, text)
+                                 for i, (who, text) in enumerate(lines, 1))
+            else:
+                new = "\n".join("%s: %s" % l for l in lines)
             user = "My memory until now:\n%s\n\nNew lines:\n%s\n\nThe whole memory:" % (
-                m.text() or "(nothing yet)", "\n".join("%s: %s" % l for l in lines))
-            reply = self._call("compress", MEMORY_RULES.format(name=name), user)
-            ok = m.update(reply)
+                m.fold_input(), new)
+            if name == SCENE_MIND:
+                names = ({w for w, _ in lines} | set(cast_names or ())
+                         | {self.hero} | set(m.tried_by))
+                reply = self._call("compress", SCENE_MEMORY_RULES, user)
+                ok = m.update(reply, lines=lines, actors=cast_names or (), names=names)
+            else:
+                reply = self._call("compress", MEMORY_RULES.format(name=name), user)
+                ok = m.update(reply)
         except Exception as e:
             ok, reply = False, "%s: %s" % (type(e).__name__, e)
         with self._mind_lock:
@@ -636,8 +816,14 @@ class Dialogue:
     def _impulse(self, deck, p):
         return self.rng.choice(deck) if self.rng.random() < p else None
 
-    def _call(self, role, system, user):
+    def _call(self, role, system, user, who=None):
+        """who: the speaker a hero/actor prompt is built for -- only then the size of
+        the prompt is logged (`prompt`, read by bank.score as max_prompt_tokens)."""
         self.calls += 1
+        messages = [{"role": "user", "content": user}]
+        if who and role in ("hero", "actor") and self.event_sink is not None:
+            self.event_sink({"type": "prompt", "who": who,
+                             "tokens": _tokens(_prompt_text(system, messages))})
         res = llm_call(role, system, [{"role": "user", "content": user}],
                        max_tokens=MAX_TOKENS, fake=self.transport is not None,
                        _transport=self.transport, event_sink=self.event_sink)
@@ -686,7 +872,7 @@ class Dialogue:
         objects = list(world.get("objects") or [])
         text = None
         for attempt in range(2):
-            raw = self._call("hero", self.hero_system(), user)
+            raw = self._call("hero", self.hero_system(), user, who=self.hero)
             cand = _clean_spoken(raw, "hero", self.hero)
             # no leading [direction] = the model stepped out of the character (on a
             # roof edge it slips into a counsellor voice); that line is never voiced
@@ -751,7 +937,7 @@ class Dialogue:
         # cost him the one retry the repeat check shares with the lock.
         recent = [t for _, t in list(transcript)[-TRANSCRIPT_KEEP:]]
         for attempt in range(2):
-            raw = self._call("actor", system, user)
+            raw = self._call("actor", system, user, who=actor)
             clean, _ = sanitize(raw, "actor")
             look = None
             m = _LOOK.search(clean)

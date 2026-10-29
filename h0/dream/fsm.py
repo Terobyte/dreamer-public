@@ -21,24 +21,37 @@ def _names(xs):
     return isinstance(xs, list) and all(isinstance(x, str) and x for x in xs)
 
 
-def check_target(d, objects, voices):
-    """Spec 8 checks on the target block -> (field, reason), or None when it is valid."""
-    if d.get("bridge") not in objects:
-        return "bridge", "bridge_not_in_scene"
-    ns = d.get("next_scene")
+CAST_RANGE = (1, 5)  # 3.1a: a scene holds up to five actors, not two
+SCENE_OBJECTS_RANGE = (5, 8)
+
+
+def check_scene(ns, voices):
+    """Spec 8 checks on a `next_scene` block alone: shape, size (CAST_RANGE actors,
+    SCENE_OBJECTS_RANGE objects) and the voices its actors ask for.
+    -> (field, reason), or None when the scene is valid."""
     if not isinstance(ns, dict):
         return "next_scene", "missing"
     actors, objects = ns.get("actors"), ns.get("objects")
     if not isinstance(actors, list) or not all(isinstance(a, dict) for a in actors) \
             or not _names(objects):
         return "next_scene", "bad_type"
-    if not 1 <= len(actors) <= 2 or not 5 <= len(objects) <= 8:
+    if not CAST_RANGE[0] <= len(actors) <= CAST_RANGE[1] \
+            or not SCENE_OBJECTS_RANGE[0] <= len(objects) <= SCENE_OBJECTS_RANGE[1]:
         return "next_scene", "bad_size"
-    voices_used = [a.get("voice") for a in actors]
+    if any(a.get("voice") not in voices for a in actors):
+        return "voice", "voice_not_in_pool"
+    return None
+
+
+def check_target(d, objects, voices):
+    """Spec 8 checks on the target block -> (field, reason), or None when it is valid."""
+    if d.get("bridge") not in objects:
+        return "bridge", "bridge_not_in_scene"
+    bad = check_scene(d.get("next_scene"), voices)
+    if bad:
+        return bad
     hero = d.get("hero_next")
-    if isinstance(hero, dict) and hero.get("changes"):
-        voices_used.append(hero.get("voice"))
-    if any(v not in voices for v in voices_used):
+    if isinstance(hero, dict) and hero.get("changes") and hero.get("voice") not in voices:
         return "voice", "voice_not_in_pool"
     return None
 

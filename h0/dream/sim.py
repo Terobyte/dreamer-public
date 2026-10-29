@@ -40,8 +40,16 @@ VOICES = {"old_woman", "old_man", "woman", "man", "child", "creature"}
 def _load_start(name="start"):
     """scenes/<name>.json is the opening scene (spec 9): place, objects, actors
     with their voices, looks and personas, and the hero's situation. The sim,
-    the background prompt and TTS all read it."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "scenes", name + ".json")
+    the background prompt and TTS all read it. 3.1a: a scene may also come as a
+    path (relative to this file, so test fixtures live outside scenes/) or as the
+    dict itself -- scenes/ stays the bank's shelf (bank.main)."""
+    if isinstance(name, dict):
+        return name
+    here = os.path.dirname(os.path.abspath(__file__))
+    if name.endswith(".json") or os.sep in name:
+        path = name if os.path.isabs(name) else os.path.join(here, name)
+    else:
+        path = os.path.join(here, "scenes", name + ".json")
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -50,7 +58,8 @@ HERO_SELF = "__hero__"  # a scene names the hero only through its own hero block
 
 
 def use_scene(name="start"):
-    """Pick the opening scene before a Sim is built (--scene)."""
+    """Pick the opening scene before a Sim is built (--scene): a name in scenes/,
+    a path to a json file, or a scene dict."""
     global START, START_SCENE, START_VOICES, START_LOOKS, START_PERSONAS, START_PLACE
     START = _load_start(name)
     # 1.3: the hero's reason to be here is not a start value but the first event of
@@ -883,6 +892,8 @@ class Sim:
                                   if isinstance(a, dict)}
             self._personas = {a["name"]: str(a.get("persona") or "")[:400] for a in ns["actors"]
                               if isinstance(a, dict)}
+            if self.dialogue is not None and hasattr(self.dialogue, "new_scene"):
+                self.dialogue.new_scene([self.hero] + list(self.actors))
             self.director.actors = self.actors
             self.director.notes_given = []
             self.memory.set_scene(self.fsm.destination or "scene %d" % self.n_transitions,

@@ -351,7 +351,9 @@ class BannedObjectLockTest(unittest.TestCase):
         self.assertIn("roof door", dlg._banned("Squidward"))
         line = dlg.actor_line("Squidward", ROOF_WORLD, [], {})
         self.assertIsNone(line)
-        self.assertEqual([e["reason"] for e in self.prompts], ["objects", "objects"])
+        # 3.1a: the sink also carries `prompt` (the size of every hero/actor prompt)
+        self.assertEqual([e["reason"] for e in self.prompts
+                          if e["type"] == "lock_reject"], ["objects", "objects"])
 
     def test_banned_object_leaves_the_hero_prompt(self):
         def reply(model, effort, system, messages):

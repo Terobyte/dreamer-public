@@ -35,7 +35,7 @@ DIRECTOR_SCHEMA = (
     "\"destination\": a short place name or null, "
     "\"why\": one sentence naming the diary fact or memory that decided it, "
     "\"next_scene\": {\"objects\": 5 to 8 object names of the destination, "
-    "\"actors\": 1 or 2 [{\"name\": who waits there, \"voice\": one of "
+    "\"actors\": 1 to 5 [{\"name\": who waits there, \"voice\": one of "
     "old_woman|old_man|woman|man|child|creature, \"persona\": who they are and what "
     "they want or are busy doing there, a want of their own}], "
     "\"events\": 3 to 5 [{\"t\": 0 to 600 seconds from that scene's start, "
