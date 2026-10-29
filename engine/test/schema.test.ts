@@ -28,14 +28,6 @@ describe("schema phase contract", () => {
     expect(report.warnings).toEqual([]);
   });
 
-  it("test_demo_full_future", () => {
-    const { raw } = parseScene(readExample("demo.scene.json"));
-    const { report } = runCheck(raw);
-    expect(report.errors).toHaveLength(1);
-    expect(report.errors[0].code).toBe("SCHEMA_FUTURE_FIELD");
-    expect(report.errors[0].path).toBe("/stairs");
-  });
-
   it("test_broken_schema_codes", () => {
     const cases: Array<{ file: string; code: string; path?: string }> = [
       { file: "SCHEMA_UNKNOWN_FIELD", code: "SCHEMA_UNKNOWN_FIELD", path: "/rooms/0/colour" },

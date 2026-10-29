@@ -190,6 +190,23 @@ async function renderTopPng(dist: string, browser: Browser): Promise<void> {
   }
 }
 
+/**
+ * How long a launched chromium gets to shut down gracefully. Under a loaded
+ * machine `browser.close()` was measured taking 12 s on its own (with the ready
+ * wait itself bounded to 2 s), which blew `--ready-timeout` deadlines. Every
+ * file is already written by the time we close, so there is nothing left to
+ * wait for: after the grace the close keeps going in the background, and the
+ * CLI's `process.exit` makes Playwright's exit handler kill the process.
+ */
+const CLOSE_GRACE_MS = 1000;
+
+async function closeWithin(browser: Browser, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const closing = browser.close().catch(() => undefined);
+  await Promise.race([closing, new Promise<void>((ok) => (timer = setTimeout(ok, ms)))]);
+  clearTimeout(timer);
+}
+
 export interface RunShotsDeps {
   /** Reuse an already-launched browser instead of starting a new one. */
   browser?: Browser;
@@ -234,7 +251,8 @@ export async function runShots(
         await page.waitForFunction("window.__ready === true", undefined, { timeout: opts.readyTimeoutMs });
       } catch {
         console.error(`camera ${cam.id}: page never set window.__ready`);
-        await page.close();
+        // no page.close() here: closing the browser below closes the page, and
+        // each extra round-trip to a loaded chromium eats into the deadline
         return 2;
       }
       await page.screenshot({ path: join(dist, "shots", names[i]!) });
@@ -257,7 +275,7 @@ export async function runShots(
     }
     return 0;
   } finally {
-    if (!deps.browser) await browser.close();
+    if (!deps.browser) await closeWithin(browser, CLOSE_GRACE_MS);
     if (!deps.served) await served.close();
   }
 }

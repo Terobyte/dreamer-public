@@ -11,7 +11,6 @@ const ajv = new AjvClass({ allErrors: true, strict: false });
 const validateFn = ajv.compile(schemaJson);
 
 const FUTURE_PATTERNS: Array<{ re: RegExp; prefix: string }> = [
-  { re: /^\/stairs(\/|$)/, prefix: "/stairs" },
   { re: /^\/shafts(\/|$)/, prefix: "/shafts" },
   { re: /^\/holes(\/|$)/, prefix: "/holes" },
   { re: /^\/columns(\/|$)/, prefix: "/columns" },
@@ -367,6 +366,7 @@ export function applyDefaults(raw: any): Scene {
   s.openings ??= [];
   s.walls ??= [];
   s.fixtures ??= [];
+  s.stairs ??= [];
   s.props ??= [];
   s.decals ??= [];
   s.lights ??= [];
@@ -653,6 +653,13 @@ export function applyDefaults(raw: any): Scene {
     } else o.height ??= d.height;
     o.sill ??= d.sill;
     if (o.leaf) o.leaf.open ??= true;
+  }
+  for (const st of s.stairs as any[]) {
+    if (!st || typeof st !== "object") continue;
+    st.width ??= 1.0;
+    st.rise ??= 0.17;
+    st.going ??= 0.28;
+    st.rail ??= false;
   }
   for (const p of s.props as any[]) {
     p.mount ??= "floor";

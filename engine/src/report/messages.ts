@@ -32,7 +32,8 @@ const KNOWN_FIELDS = (
   "levels id y rooms level height shape circle c r floor ceiling walls material thickness bands to edges " +
   "beams from w h openings kind width on edge t m az height sill leaf decal open swing hinge glass " +
   "outside backdrop props asset cat size d mount top_of face around center n start solid decals lights " +
-  "pos power assets prompt aspect front_deg cameras ref look fov routes path"
+  "pos power assets prompt aspect front_deg cameras ref look fov routes path " +
+  "stairs dir rise going rail"
 ).split(" ");
 
 export function suggestField(got: string): string | null {
@@ -123,6 +124,10 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.id}: размер не похож на ${params.cat}: ${params.bad}`;
     case "FACE_ROOM_FAR":
       return `${params.id}: от at до внутренней грани ${params.edge} ${params.d} м (> ${params.max}); задай yaw или точку`;
+    case "STAIR_EXIT_OUTSIDE":
+      return `${params.id}: выход (${params.x}, ${params.z}) вне ${params.room}`;
+    case "STAIR_HEADROOM":
+      return `${params.id}: просвет ${params.min} м < 2.0 на оси s [${params.s0}, ${params.s1}]`;
     case "ROOM_UNREACHABLE":
       return `${params.room}: комната недостижима из spawn`;
     case "DECAL_OFF_WALL":

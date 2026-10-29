@@ -213,11 +213,19 @@ export function openingsStage(ctx: Ctx): Issue[] {
   // reachability, only with no other errors on this stage
   if (issues.length === 0 && typeof spawnRoom === "string") {
     const spawnLevel = roomById.get(spawnRoom)?.level;
-    if (spawnLevel) {
+    if (spawnLevel !== undefined) {
       const rawRooms: any[] = scene.rooms ?? [];
+      // levels other than spawn's are checked only once a stair can reach them
+      const stairLevels = new Set<unknown>();
+      for (const st of (scene.stairs ?? []) as any[]) {
+        for (const id of [st?.from?.room, st?.to?.room]) {
+          const lvl = roomById.get(String(id))?.level;
+          if (lvl !== undefined) stairLevels.add(lvl);
+        }
+      }
       for (let i = 0; i < rawRooms.length; i++) {
         const r = rawRooms[i];
-        if (r?.level !== spawnLevel) continue;
+        if (r?.level !== spawnLevel && !stairLevels.has(r?.level)) continue;
         if (r?.id === spawnRoom) continue;
         if (!dist.has(r?.id)) {
           const path = `/rooms/${i}`;

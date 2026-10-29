@@ -164,6 +164,39 @@
         }
       }
     },
+    "stairs": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["straight"] },
+          "from": {
+            "type": "object",
+            "required": ["room", "at", "dir"],
+            "additionalProperties": false,
+            "properties": {
+              "room": { "type": "string" },
+              "at": { "$ref": "#/$defs/point2" },
+              "dir": { "type": "number" }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["room"],
+            "additionalProperties": false,
+            "properties": { "room": { "type": "string" } }
+          },
+          "width": { "type": "number", "exclusiveMinimum": 0, "default": 1.0 },
+          "rise": { "type": "number", "exclusiveMinimum": 0, "default": 0.17 },
+          "going": { "type": "number", "exclusiveMinimum": 0, "default": 0.28 },
+          "rail": { "type": "boolean", "default": false }
+        }
+      }
+    },
     "openings": {
       "type": "array",
       "default": [],

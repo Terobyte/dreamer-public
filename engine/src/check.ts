@@ -2,6 +2,7 @@ import { validate } from "./schema/validate.js";
 import { emptyPassport, makeReport, roundReport, STAGES } from "./report/report.js";
 import { planStage } from "./plan/lint.js";
 import { openingsStage } from "./openings/stage.js";
+import { stairsStage } from "./stairs/stage.js";
 import { placeProps } from "./props/place.js";
 import { lintProps } from "./props/lint.js";
 import { decalsStage } from "./decals/place.js";
@@ -48,13 +49,17 @@ export function runCheck(
     push(openingsStage(ctx));
   }
   const openingsFailed = errors.some((e) => e.stage === "openings");
-  if (!planFailed && !openingsFailed && want.includes("props")) {
+  if (!planFailed && !openingsFailed && want.includes("stairs")) {
+    push(stairsStage(ctx));
+  }
+  const stairsFailed = errors.some((e) => e.stage === "stairs");
+  if (!planFailed && !openingsFailed && !stairsFailed && want.includes("props")) {
     ctx.props = placeProps(ctx);
     push(lintProps(ctx));
   }
 
   const propsFailed = errors.some((e) => e.stage === "props");
-  const upToProps = !planFailed && !openingsFailed && !propsFailed;
+  const upToProps = !planFailed && !openingsFailed && !stairsFailed && !propsFailed;
   if (upToProps && want.includes("decals")) {
     push(decalsStage(ctx));
   }
@@ -77,7 +82,8 @@ export function runCheck(
 
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
   const stages = STAGES.map((s, i) => {
-    if (s === "stairs") return { stage: s, status: "skipped" as const };
+    // `stairs` is only a stage when the scene has any (spec "Лестницы")
+    if (s === "stairs" && ((scene as any).stairs ?? []).length === 0) return { stage: s, status: "skipped" as const };
     if (i > untilIdx) return { stage: s, status: "skipped" as const };
     if (s === "openings" && !want.includes("openings")) return { stage: s, status: "pass" as const };
     if (failedAt.has(s)) return { stage: s, status: "fail" as const };

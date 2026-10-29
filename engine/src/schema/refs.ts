@@ -91,6 +91,7 @@ export function checkRefs(raw: any): Issue[] {
   (raw.props ?? []).forEach((p: any, i: number) => typeof p?.id === "string" && reg(p.id, `/props/${i}/id`));
   (raw.cameras ?? []).forEach((c: any, i: number) => typeof c?.id === "string" && reg(c.id, `/cameras/${i}/id`));
   (raw.routes ?? []).forEach((r: any, i: number) => typeof r?.id === "string" && reg(r.id, `/routes/${i}/id`));
+  (raw.stairs ?? []).forEach((st: any, i: number) => typeof st?.id === "string" && reg(st.id, `/stairs/${i}/id`));
 
 
   const haveList = (s: Set<string>) => [...s].slice(0, 10).join(", ");
@@ -99,6 +100,12 @@ export function checkRefs(raw: any): Issue[] {
   };
 
   if (raw.spawn && typeof raw.spawn.room === "string") ref("/spawn/room", "room", raw.spawn.room, roomIds);
+
+  (raw.stairs ?? []).forEach((st: any, i: number) => {
+    if (!st || typeof st !== "object") return;
+    if (typeof st.from?.room === "string") ref(`/stairs/${i}/from/room`, "room", st.from.room, roomIds);
+    if (typeof st.to?.room === "string") ref(`/stairs/${i}/to/room`, "room", st.to.room, roomIds);
+  });
 
   (raw.rooms ?? []).forEach((r: any, i: number) => {
     if (!r || typeof r !== "object") return;

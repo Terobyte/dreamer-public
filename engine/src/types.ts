@@ -75,6 +75,8 @@ export interface Passport {
   openings: unknown[];
   props: unknown[];
   decals: unknown[];
+  /** only present when the scene has stairs (spec "Лестницы") */
+  stairs?: unknown[];
 }
 
 export interface Report {

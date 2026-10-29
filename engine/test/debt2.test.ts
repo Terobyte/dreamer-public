@@ -116,6 +116,6 @@ describe("phase 2 debt", () => {
     const { raw } = parseScene(
       readFileSync(new URL("../../specs/examples/demo.scene.json", import.meta.url), "utf-8"),
     );
-    expect(runCheck(raw).report.errors.map((e) => e.path)).toEqual(["/stairs"]);
+    expect(runCheck(raw).report.errors).toEqual([]);
   });
 });

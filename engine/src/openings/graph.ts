@@ -18,6 +18,12 @@ export function roomGraph(ctx: Ctx): Map<string, string[]> {
     }
     for (const r of rooms) if (!g.has(r)) g.set(r, new Set());
   }
+  // a stair is an edge of the graph too, across levels (spec "Лестницы")
+  for (const st of ((ctx.scene as any).stairs ?? []) as any[]) {
+    const a = st?.from?.room;
+    const b = st?.to?.room;
+    if (typeof a === "string" && typeof b === "string") link(a, b);
+  }
   const out = new Map<string, string[]>();
   for (const [k, v] of g) out.set(k, [...v].sort());
   return out;
