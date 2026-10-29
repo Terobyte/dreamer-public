@@ -27,7 +27,9 @@ class BlockingTest(unittest.TestCase):
         self.assertEqual((llm.SPARK_IN_PER_M, llm.SPARK_OUT_PER_M), (1.25, 4.25))
         self.assertEqual((llm.WONDER_IN_PER_M, llm.WONDER_OUT_PER_M), (4.0, 20.0))
         self.assertEqual(llm.IMAGE_PER_PIC, 0.01)
-        for v in llm.PRICE_SOURCES.values():
+        for k, v in llm.PRICE_SOURCES.items():
+            if k == llm.CLAUDE_HAIKU_MODEL:
+                continue  # bench r2 probe on the owner's subscription: no price page to cite
             self.assertIn("2026-10-27", v)
             self.assertIn("http", v)
 
