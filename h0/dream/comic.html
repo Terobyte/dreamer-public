@@ -82,6 +82,11 @@ footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel)
   padding: 8px 16px; display: flex; gap: 8px; z-index: 5; }
 footer input { flex: 1; min-width: 0; padding: 4px 8px; border: 1.5px solid var(--ink); border-radius: 6px; }
 footer.off { display: none; }
+/* blind A/B (ab.html): the strip alone, no side cards, no footer -- in a narrow
+   iframe the sticky aside would otherwise cover the whole frame */
+body.blind main { grid-template-columns: 1fr; padding: 8px; }
+body.blind aside, body.blind footer { display: none; }
+body.blind #strip { padding-bottom: 16px; }
 #runs a { display: block; padding: 2px 0; color: var(--dir-ink); }
 </style>
 </head>
@@ -650,6 +655,7 @@ setInterval(pollPanel, 1000);
   if (!RUN) { $("mode").textContent = "выбери прогон"; return showRuns(); }
   // blind A/B (ab.html): no run name, no run list, nothing that says which version this is
   const blind = !!Q.get("blind");
+  if (blind) document.body.classList.add("blind");
   $("runname").textContent = blind ? "" : RUN;
   if (status.live && status.live === RUN) startLive(); else { startReplay(); if (!blind) showRuns(); }
 })();
