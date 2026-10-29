@@ -22,6 +22,7 @@ button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid
 button:disabled { opacity: .5; cursor: default; }
 #summary { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 14px; }
 #summary:empty { display: none; }
+#progress { font-weight: 600; margin-bottom: 10px; }
 .muted { color: #777; }
 @media (max-width: 900px) { .cols { flex-direction: column; } iframe { height: 60vh; } }
 </style>
@@ -32,6 +33,7 @@ button:disabled { opacity: .5; cursor: default; }
   <span class="muted">одна сцена, два прогона; читай оба и жми, какой живее. Кто есть кто, откроется после последней пары.</span>
 </header>
 <main>
+  <div id="progress"></div>
   <div id="summary"></div>
   <div id="pairs"></div>
 </main>
@@ -55,7 +57,20 @@ async function vote(p, pick, box) {
   const r = await fetch("/api/ab", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({id: p.id, a: p.a, b: p.b, pick})});
   if (!r.ok) { box.querySelectorAll("button").forEach((b) => (b.disabled = false)); return; }
-  await load();
+  const res = await r.json();
+  // no full reload: rebuilding every iframe would jump the page back to the top
+  p.done = true;
+  const card = box.closest(".pair");
+  card.classList.add("done");
+  card.querySelector(".tag").textContent = "✓ оценено";
+  if (res.done >= res.total) { await load(); window.scrollTo(0, 0); return; }
+  showProgress(res.done, res.total);
+  const next = document.querySelector(".pair:not(.done)");
+  if (next) next.scrollIntoView({behavior: "smooth"});
+}
+function showProgress(done, total) {
+  $("progress").textContent = done >= total ? "все пары оценены" :
+    "оценено " + done + " из " + total + " — пары идут сверху вниз, листай";
 }
 async function load() {
   const data = await (await fetch("/api/ab")).json();
@@ -64,7 +79,7 @@ async function load() {
   if (!data.pairs.length) { root.appendChild(el("p", "muted", "пар нет: положи h0/out/dream/ab/pairs.json")); return; }
   for (const p of data.pairs) {
     const card = el("div", "pair" + (p.done ? " done" : ""));
-    const h = el("h2", "", "пара " + p.id);
+    const h = el("h2", "", "пара " + (data.pairs.indexOf(p) + 1) + " из " + data.pairs.length);
     h.appendChild(el("span", "tag", p.done ? "✓ оценено" : "ждёт"));
     card.appendChild(h);
     const cols = el("div", "cols");
@@ -85,6 +100,7 @@ async function load() {
     card.appendChild(v);
     root.appendChild(card);
   }
+  showProgress(data.pairs.filter((p) => p.done).length, data.pairs.length);
   const s = $("summary");
   s.textContent = "";
   if (data.summary) {
