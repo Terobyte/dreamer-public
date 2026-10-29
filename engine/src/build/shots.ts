@@ -146,6 +146,50 @@ ${rows}
 `;
 }
 
+/**
+ * The plan svg sizes itself in svg user units, which can be fractional; a
+ * viewport is whole pixels, so the png is the svg rounded down (and never
+ * degenerate).
+ */
+function svgPixelSize(svg: string): { width: number; height: number } {
+  const tag = /<svg\b[^>]*>/.exec(svg)?.[0] ?? "";
+  const num = (attr: string): number => Number(new RegExp(`\\s${attr}="([\\d.]+)"`).exec(tag)?.[1] ?? NaN);
+  const w = Math.floor(num("width"));
+  const h = Math.floor(num("height"));
+  if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(h) || h <= 0) {
+    throw new Error(`top.svg has no valid width/height (got width=${num("width")}, height=${num("height")})`);
+  }
+  return { width: w, height: h };
+}
+
+/**
+ * `build` and `check` never open a browser, so the labelled plan is rasterized
+ * here. The svg is inlined into a blank page instead of being fetched from the
+ * dist server: served with an unknown MIME type a browser downloads an svg
+ * rather than drawing it, and the markup is already on disk next to us.
+ */
+async function renderTopPng(dist: string, browser: Browser): Promise<void> {
+  const svgPath = join(dist, "top.svg");
+  let svg: string;
+  try {
+    svg = readFileSync(svgPath, "utf-8");
+  } catch (e) {
+    throw new Error(`cannot read ${svgPath}: ${String(e)}`);
+  }
+  const size = svgPixelSize(svg);
+  const page = await browser.newPage({ viewport: size, deviceScaleFactor: 1 });
+  try {
+    await page.setContent(
+      `<!doctype html><html><head><meta charset="utf-8"><link rel="icon" href="data:,">` +
+        `<style>html,body{margin:0;background:#fff}svg{display:block}</style></head>` +
+        `<body>${svg}</body></html>`,
+    );
+    await page.screenshot({ path: join(dist, "top.png") });
+  } finally {
+    await page.close();
+  }
+}
+
 export interface RunShotsDeps {
   /** Reuse an already-launched browser instead of starting a new one. */
   browser?: Browser;
@@ -205,6 +249,12 @@ export async function runShots(
     await sheet.goto(`${served.url}sheet.html`);
     await sheet.screenshot({ path: join(dist, "sheet.png"), fullPage: true });
     await sheet.close();
+    try {
+      await renderTopPng(dist, browser);
+    } catch (e) {
+      console.error(String(e));
+      return 2;
+    }
     return 0;
   } finally {
     if (!deps.browser) await browser.close();

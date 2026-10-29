@@ -224,9 +224,9 @@
 `top.png` снимает `dreamer shots` (см. «Намеренные отступления»): тот же браузер, `top.svg` → `<dist>/top.png`. `build` и `check` браузер не поднимают.
 Файлы: `src/build/shots.ts`, `test/browser/top.test.ts`.
 
-- [ ] `test_top_png` (browser): `build` + `shots` demo-flat → `dist/top.png` есть; ширина и высота PNG = `width`/`height` корня `dist/top.svg` (округление вниз до целого), не все пиксели одного цвета
-- [ ] `test_check_no_browser`: `check` и `build --assets none` demo-flat не создают `top.png`; `check` укладывается в 3 с
-- [ ] реализовать
+- [x] `test_top_png` (browser): `build` + `shots` demo-flat → `dist/top.png` есть; ширина и высота PNG = `width`/`height` корня `dist/top.svg` (округление вниз до целого), не все пиксели одного цвета
+- [x] `test_check_no_browser`: `check` и `build --assets none` demo-flat не создают `top.png`; `check` укладывается в 3 с
+- [x] реализовать
 
 ## Маршруты и разница отчётов
 
