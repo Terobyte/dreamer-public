@@ -19,6 +19,24 @@ except ImportError:
 # actors forget the sister after a minute and loop on the window's own mood.
 TRANSCRIPT_KEEP = 8
 TICK = 4  # sim-seconds between free ticks (design doc 2026-10-28, 1.2a)
+# 1.2b: pressure to speak, p = W_ADDRESSED*addressed + W_EVENT_HIT*event_hit
+# + W_GOAL_OPEN*goal_open + W_SILENT*min(ticks_silent, SILENT_CAP)
+# + W_SPOKE_LAST*spoke_last (weights from design doc 2026-10-28, 7.4)
+W_ADDRESSED = 3
+W_EVENT_HIT = 2
+W_GOAL_OPEN = 1
+W_SILENT = 0.5
+W_SPOKE_LAST = -2
+THRESHOLD = 2.0  # below it in everyone -> a tick of silence, a legal turn
+ADDRESS_HOLD = 2  # free ticks an addressed / event_hit mark survives
+SILENT_CAP = 6  # ticks_silent stops paying off here
+# the silence term saturates at SILENT_CAP, so past it the formula cannot say
+# "waiting even longer" and an actor the scene rarely names by name is never the
+# loudest again. Above this many silent ticks a participant wins ties on p ahead
+# of the hero tie-break -- the one guard against a starved actor (1.2b, roof3
+# neighbor). Pressure decides first: it never overrides a louder p (F1).
+STARVE_AFTER = SILENT_CAP + 1
+ACTOR_STREAK_MAX = 2  # after this many actor lines in a row no actor is picked
 COMPACT_EVERY = 4
 MAX_TOKENS = 1500
 

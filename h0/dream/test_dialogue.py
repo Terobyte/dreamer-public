@@ -515,9 +515,12 @@ class SimDialogueTest(unittest.TestCase):
         lines = [r for r in rows if r["type"] == "line"]
         self.assertGreaterEqual(len(lines), 4)
         whos = [r["who"] for r in lines[:4]]
-        self.assertEqual(whos, ["Squidward", "SpongeBob", "Squidward", "SpongeBob"])
-        self.assertEqual(lines[0]["remarks"], ["sigh"])
-        self.assertEqual(lines[0]["role"], "actor")
+        # 1.2b: nobody is addressed here, so the scene opens on an equal-pressure
+        # tie and a tie goes to the hero; after that the two still alternate
+        self.assertEqual(whos, ["SpongeBob", "Squidward", "SpongeBob", "Squidward"])
+        self.assertEqual(lines[1]["remarks"], ["sigh"])
+        self.assertEqual(lines[1]["role"], "actor")
+        self.assertEqual(lines[0]["role"], "hero")
         self.assertNotIn("npc line", json.dumps(lines))
         squid = [t for t in sim.dialogue.turns if t[0] == "Squidward"]
         self.assertIn("clarinet player", squid[0][4], "the actor plays his own persona")

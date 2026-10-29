@@ -15,7 +15,9 @@ import math
 import queue
 
 from clock import Clock
-from dialogue import TICK
+from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, STARVE_AFTER,
+                      THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
+                      W_SILENT, W_SPOKE_LAST)
 from director import Director
 from fsm import BuildFSM
 from inputs import resolve_touch, sanitize
@@ -184,9 +186,17 @@ class Sim:
         if dialogue is not None and getattr(dialogue, "event_sink", None) is None:
             dialogue.event_sink = self._diagnostic  # lock_reject lands in the log (1.1)
         # 1.1: both attempts refused by the lock -> turn_skip, no generation before
-        # clock.scale(4), the speaker is passed over once by _next_speaker
+        # clock.scale(4), and that speaker's pressure is 0 for one free tick (1.2b)
         self._gen_not_before = -1e9
         self._skip_once = None
+        # 1.2b: who speaks is decided by pressure, not by rotation
+        self._spoke_last = None
+        self._silent_ticks = {}
+        self._addressed = {}
+        self._event_hits = {}  # filled by the schedule in 1.3, until then empty
+        self._actor_streak = 0
+        self._said_count = {}
+        self._last_pressure = None
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
@@ -387,6 +397,12 @@ class Sim:
         if res is not None and not res["ok"]:
             self._diagnostic({"type": "tts_fail", "error": res["error"]["error"]})
         self._emit(event)
+        # 1.2b: only a spoken line moves the pressure state (a human line = the hero's)
+        self._note_line(event.get("who") or (self.hero if line["owner"] == "human"
+                                             else None),
+                        event.get("role") or ("hero" if line["owner"] == "human"
+                                              else "actor"),
+                        line["text"])
         # 1.1: the line is really spoken, so now it counts for the speaker's loop
         # state; a generated line dropped on the way (old scene, a human line in
         # between, a reserved turn) leaves no turn, no cut and no loop_cut (F1)
@@ -647,26 +663,88 @@ class Sim:
             self._last_line_gen = now
             self.npc_start("npc line %d" % (self.line_count + 1))
 
-    # --- live dialogue (spec 4-6): free-tick generation, in a worker ---------------
-    def _next_speaker(self):
-        last = self.transcript[-1][0] if self.transcript else None
+    # --- who speaks (spec 7.2 row 1.2b): pressure, not rotation --------------
+    def _cast(self):
+        """Everyone whose pressure is counted: the actors and the NPC hero."""
+        return list(self.actors) + [self.hero]
+
+    def _pressure(self, name):
+        """The pressure fields of the `pressure` event (7.4) for one participant.
+        goal_open stays 0 until 1.4, event_hit until 1.3."""
+        addressed = 1 if self._addressed.get(name, 0) > 0 else 0
+        event_hit = 1 if self._event_hits.get(name, 0) > 0 else 0
+        goal_open = 0
+        silent = self._silent_ticks.get(name, 0)
+        spoke_last = 1 if name == self._spoke_last else 0
+        p = (W_ADDRESSED * addressed + W_EVENT_HIT * event_hit
+             + W_GOAL_OPEN * goal_open + W_SILENT * min(silent, SILENT_CAP)
+             + W_SPOKE_LAST * spoke_last)
+        return {"p": round(p, 3), "addressed": addressed, "event_hit": event_hit,
+                "goal_open": goal_open, "silent": silent, "spoke_last": spoke_last}
+
+    def _note_line(self, who, role, text):
+        """A line really spoken moves the pressure state: its author stops being
+        silent and becomes `spoke_last`, everyone it names by name is addressed.
+        A human line arrives here as the hero's line (owner/role set in _start_line)."""
+        if not who:
+            return
+        self._spoke_last = who
+        self._silent_ticks[who] = 0
+        self._addressed.pop(who, None)
+        self._event_hits.pop(who, None)
+        self._actor_streak = self._actor_streak + 1 if role == "actor" else 0
+        self._said_count[who] = self._said_count.get(who, 0) + 1
+        for other in self._cast():
+            if other != who and re.search(r"\b%s\b" % re.escape(other), text or "",
+                                          re.I):
+                self._addressed[other] = ADDRESS_HOLD
+
+    def _pick_speaker(self):
+        """One free tick: silence grows for everyone, pressure is logged, and the
+        loudest above THRESHOLD speaks. After ACTOR_STREAK_MAX actor lines in a row
+        no actor is picked -- their pressure is still counted and written, but only
+        the hero (or, from 1.3, an event) breaks through; the hero gets there on the
+        silence term alone. Nobody above the threshold -> (None, None) and `silence`."""
         if not self.actors:
+            self._silent_ticks[self.hero] = self._silent_ticks.get(self.hero, 0) + 1
             return self.hero, "hero"
-        if last == self.hero or last is None and self.n_transitions == 0:
-            spoken = [w for w, _ in self.transcript]
-            # rotate between actors, least recently heard first
-            pick = min(self.actors, key=lambda a: max(
-                [i for i, w in enumerate(spoken) if w == a] or [-1]))
-            who, role = pick, "actor"
-        else:
-            who, role = self.hero, "hero"
-        if who == self._skip_once:
-            # 1.1: a skipped speaker is passed over once (until 1.2b: the other side)
+        for name in self._cast():
+            self._silent_ticks[name] = self._silent_ticks.get(name, 0) + 1
+        table = {name: self._pressure(name) for name in self._cast()}
+        if self._skip_once in table:
+            # 1.1: the lock refused both attempts, so p = 0 for one free tick
+            table[self._skip_once]["p"] = 0.0
             self._skip_once = None
-            if role == "hero":
-                return self.actors[0], "actor"
-            return self.hero, "hero"
-        return who, role
+        for marks in (self._addressed, self._event_hits):
+            for name in list(marks):
+                marks[name] -= 1
+                if marks[name] <= 0:
+                    del marks[name]
+        if table != self._last_pressure:
+            self._last_pressure = table
+            self._diagnostic({"type": "pressure", "pressure": table})
+        # F4: an event can still reach its addressee through the block --
+        # only an actor with no event_hit is held back by the streak
+        blocked = self._actor_streak >= ACTOR_STREAK_MAX
+        # ties go to the hero, then to whoever has spoken least, then by name: the
+        # choice must not depend on dict order, and the silence term saturates at
+        # SILENT_CAP, so a long-quiet actor ties with an addressed one and a
+        # name-only tie-break would starve the last actor of the cast for good.
+        # pressure decides first: a starved actor only wins ties on p (1.2b, F1),
+        # so the one named by name answers next even when another waited longer.
+        order = sorted(table.items(),
+                       key=lambda kv: (-kv[1]["p"],
+                                       kv[1]["silent"] < STARVE_AFTER,
+                                       kv[0] != self.hero,
+                                       self._said_count.get(kv[0], 0), kv[0]))
+        for name, row in order:
+            if row["p"] < THRESHOLD:
+                break
+            if blocked and name != self.hero and not row["event_hit"]:
+                continue
+            return name, ("hero" if name == self.hero else "actor")
+        self._diagnostic({"type": "silence", "pressure": table})
+        return None, None
 
     def _dialogue_turn(self):
         """Pick up a finished line, or start one on a free tick (1.2a: nothing
@@ -701,7 +779,9 @@ class Sim:
         self._last_tick = now
         if now < self._gen_not_before:
             return
-        who, role = self._next_speaker()
+        who, role = self._pick_speaker()
+        if who is None:
+            return
         world = {"place": self.place, "objects": list(self.scene["objects"]),
                  "actors": list(self.actors)}
         transcript = list(self.transcript)

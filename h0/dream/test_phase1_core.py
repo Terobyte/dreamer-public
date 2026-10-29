@@ -218,6 +218,8 @@ class BenchF1Test(unittest.TestCase):
         # action_loops/dare_lines must be 0 in every run, a median of 0.5 is not enough
         res = bench_f1.evaluate("1.2b", [a, dict(b, dare_lines=1)])
         self.assertEqual(res["gate"], "FAIL")
+        res = bench_f1.evaluate("1.2b", [a, dict(b, action_loops=1)])
+        self.assertEqual(res["gate"], "FAIL", res)
         # null in a gated metric fails the run
         res = bench_f1.evaluate("1.3", [dict(live, events_fired=0, events_planned=0)])
         self.assertEqual(res["gate"], "FAIL")

@@ -15,7 +15,7 @@ from unittest import mock
 from dialogue import Dialogue, TICK
 from fake import FakeTransport
 from sim import Sim, load_profile
-from test_phase1_util import manual_clock
+from test_phase1_util import manual_clock, start_turn
 
 
 def rows(root):
@@ -57,7 +57,7 @@ class TickTest(unittest.TestCase):
         gate = threading.Event()
         sim, transport = self._sim(gate=gate)
         self.addCleanup(gate.set)
-        sim._maybe_generate_line()
+        start_turn(self, sim, join=False)
         self.assertTrue(transport.entered.wait(5), "the first call never started")
         for _ in range(7):
             self.now += sim.clock.scale(TICK)
@@ -68,9 +68,8 @@ class TickTest(unittest.TestCase):
 
     def test_generations_spaced_by_tick(self):
         sim, _ = self._sim(reply="[flat] No.")
-        sim._maybe_generate_line()
-        sim._gen_thread.join(2)
-        self.now = 0.01
+        start_turn(self, sim)
+        self.now += 0.01
         sim._tick()
         sim._maybe_generate_line()
         self.assertIsNotNone(sim.active_line)
@@ -94,8 +93,7 @@ class TickTest(unittest.TestCase):
 
     def test_first_free_tick_immediate(self):
         sim, transport = self._sim()
-        self.now += sim.clock.scale(TICK)
-        self.step(sim)
+        start_turn(self, sim)
         self.assertEqual(len(self.gens), 1)
         # the line is taken on the next step and starts playing
         self.now += sim.clock.scale(TICK)
@@ -118,7 +116,7 @@ class TickTest(unittest.TestCase):
     def test_human_discards_in_flight(self):
         gate = threading.Event()
         sim, transport = self._sim(reply="[flat] Nothing to say here.", gate=gate)
-        sim._maybe_generate_line()
+        start_turn(self, sim, join=False)
         self.assertTrue(transport.entered.wait(5), "the first call never started")
         sim.human_say("stop")
         gate.set()

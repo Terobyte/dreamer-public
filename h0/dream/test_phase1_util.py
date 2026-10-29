@@ -1,6 +1,6 @@
 """Shared fixtures for the phase 1 offline tests (spec 7.2, "Фикстуры").
-usage: from test_phase1_util import manual_clock, pump
-Every phase 1 test drives the sim through pump(); no test here sleeps for real."""
+usage: from test_phase1_util import manual_clock, pump, start_turn
+Every phase 1 test drives the sim through pump() or start_turn(); no test here sleeps for real."""
 
 from unittest import mock
 
@@ -15,6 +15,22 @@ def manual_clock(case, sim, start=0.0):
     case.addCleanup(patch.stop)
     sim._manual = case
     return case
+
+
+def start_turn(case, sim, max_ticks=12, join=True):
+    """1.2b: at the start of a scene nobody is above THRESHOLD yet, so the first
+    line waits for the silence term to grow. Step free ticks until a generation
+    really starts (the 1.2a/1.1 tests count generations, not ticks of silence)."""
+    for _ in range(max_ticks):
+        sim._tick()
+        sim._maybe_generate_line()
+        th = sim._gen_thread
+        if th is not None:
+            if join and th.is_alive():
+                th.join(2)
+            return True
+        case.now += sim.clock.scale(TICK)
+    raise AssertionError("no generation in %d free ticks" % max_ticks)
 
 
 def pump(sim, ticks=1, consult=False):

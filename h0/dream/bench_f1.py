@@ -37,8 +37,8 @@ GATES = {
     "1.1": [("words_per_line", "<=", 18), ("remarks_per_line", "<=", 2.5),
             ("action_loops", "==", 0, "each"), ("lock_rejects_per_line", "<=", 0.3)] + LIVELINESS,
     "1.2b": [("silence_turns", ">=", 2), ("silences_per_line", ">=", 0.5),
-             ("max_actor_streak", "<=", 2), ("hero_share", ">=", 0.35), ("hero_share", "<=", 0.65),
-             ("dare_lines", "==", 0, "each")] + LIVELINESS,
+             ("max_actor_streak", "<=", 2), ("hero_share", ">=", 0.35), ("hero_share", "<=", 0.65)]
+            + NO_LOOPS + LIVELINESS,
     "1.2c": [("words_per_line", "<=", ("ref", "words_per_line", 1.10)),
              ("remarks_per_line", "<=", ("ref", "remarks_per_line", 1.10)),
              ("lock_rejects_per_line", "<=", ("ref", "lock_rejects_per_line", 1.10))]
@@ -49,7 +49,8 @@ GATES = {
 }
 GATES["Ф1"] = ([("words_per_line", "<=", 17), ("remarks_per_line", "<=", 2.4),
                 ("vocab", ">=", 0.69)] + NO_LOOPS + LIVELINESS
-               + [r for r in GATES["1.2b"] + GATES["1.3"] + GATES["1.4"] if r not in LIVELINESS]
+               + [r for r in GATES["1.2b"] + GATES["1.3"] + GATES["1.4"]
+                  if r not in LIVELINESS and r not in NO_LOOPS]
                # F8: the final gate keeps the 1.2c regression bars (relative to 1.2b)
                + [r for r in GATES["1.2c"] if r not in LIVELINESS and r not in NO_LOOPS])
 CANONICAL_SCENE = "roof"

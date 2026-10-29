@@ -15,7 +15,7 @@ from dialogue import (Dialogue, HERO_RULES, count_action_loops, lock_line,
                       loop_items)
 from fake import FakeTransport
 from sim import Sim, load_profile
-from test_phase1_util import manual_clock, pump
+from test_phase1_util import manual_clock, pump, start_turn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOF = ["roof edge", "water tower", "roof door", "pigeon coop", "satellite dish",
@@ -150,7 +150,7 @@ class LockRejectsAllTest(unittest.TestCase):
         mock.patch.object(sim.director, "consult_async").start()
         self.addCleanup(mock.patch.stopall)
         manual_clock(self, sim)
-        pump(sim, 1)
+        start_turn(self, sim)
         sim._maybe_generate_line()  # pick up the result of the worker
         self.assertEqual(t.calls, 2)
         with open(os.path.join(root, "log.jsonl"), encoding="utf-8") as f:
