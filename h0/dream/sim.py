@@ -238,7 +238,6 @@ class Sim:
         self._event_hits = {}  # 1.3: an event raises its recipients' pressure
         self._actor_streak = 0
         self._said_count = {}
-        self._last_pressure = None
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
@@ -545,8 +544,11 @@ class Sim:
 
     # --- turn management (human replaces npc, spec 5a) ---------------------
     def _count_line(self):
+        # 2.2: a paused dream counts nothing -- the count drives the consult cadence
+        if self.safety_paused:
+            return
         self.line_count += 1
-        if (self.line_count % 4 == 0 and not self.safety_paused
+        if (self.line_count % 4 == 0
                 and not self.director.in_flight
                 and (self.fake or self._budget_ok())):
             self.director.consult_async(self.clock.now())
@@ -1082,9 +1084,9 @@ class Sim:
                 marks[name] -= 1
                 if marks[name] <= 0:
                     del marks[name]
-        if table != self._last_pressure:
-            self._last_pressure = table
-            self._diagnostic({"type": "pressure", "pressure": table})
+        # 7.4: the table is written on every free tick, also when it repeats
+        # (silent saturates at SILENT_CAP and the table stops changing)
+        self._diagnostic({"type": "pressure", "pressure": table})
         # F4: an event can still reach its addressee through the block --
         # only an actor with no event_hit is held back by the streak
         blocked = self._actor_streak >= ACTOR_STREAK_MAX
@@ -1687,7 +1689,8 @@ def main(argv=None):
                            max_dollars=args.max_dollars, dialogue=dialogue,
                            serve=args.port if args.serve else None,
                            max_seconds=args.max_seconds)
-    rows = [json.loads(l) for l in open(logpath, encoding="utf-8")]
+    with open(logpath, encoding="utf-8") as f:
+        rows = [json.loads(l) for l in f]
     transitions = sum(1 for r in rows if r["type"] == "transition")
     stopped = any(r["type"] in ("stop", "wake_up") for r in rows)
     report = verify_run(outdir, logpath, args.max_dollars, actual_spent=get_spent())

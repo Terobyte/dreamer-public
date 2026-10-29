@@ -121,6 +121,17 @@ class SafetyPauseTest(unittest.TestCase):
         self.sim._drain_director()
         self.sim.memory.wait(timeout=5)
 
+    def test_count_line_honors_pause(self):
+        """7.2 row 2.2: `_count_line` checks the flag -- no count, no consult."""
+        sim = self.sim
+        sim.safety_paused = True
+        before = sim.line_count
+        with mock.patch.object(sim.director, "consult_async") as consult:
+            for _ in range(8):
+                sim._count_line()
+        self.assertEqual(sim.line_count, before)
+        consult.assert_not_called()
+
     def test_safety_pauses_everything(self):
         sim = self.sim
         self._quiet()

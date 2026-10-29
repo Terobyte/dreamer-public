@@ -109,6 +109,16 @@ class PressureTest(unittest.TestCase):
         self.assertTrue([r for r in log if r["type"] == "pressure"],
                         "pressure was never logged on a free tick")
 
+    def test_pressure_logged_on_every_free_tick(self):
+        """7.4: `pressure` is written on the tick, also when the table repeats --
+        past SILENT_CAP nothing in it moves and it used to go unlogged."""
+        sim, _ = self._stub_sim()
+        ticks = 12
+        for _ in range(ticks):
+            sim._pick_speaker()
+        logged = [r for r in rows(self.root) if r["type"] == "pressure"]
+        self.assertEqual(len(logged), ticks)
+
     # --- two actor lines in a row block the actors ---------------------------
     def test_two_actor_lines_block_actors(self):
         # everyone calls Dan: without the rule Dan and friends would never stop
