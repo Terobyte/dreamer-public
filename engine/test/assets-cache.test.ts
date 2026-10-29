@@ -101,12 +101,6 @@ describe("assets without generation", () => {
     expect([alpha(0, 0), alpha(4, 8), alpha(8, 8)]).toEqual([0, 128, 255]);
   });
 
-  it("test_live_not_yet", () => {
-    const r = cli(["build", DEMO, "--out", join(tmp(), "dist"), "--assets", "live", "--max-dollars", "1", "--cache", tmp()]);
-    expect(r.status).toBe(2);
-    expect(r.stderr).toContain("assets: live not implemented");
-  });
-
   it("test_live_runs_check_first", () => {
     const bad = join(tmp(), "bad.scene.json");
     writeFileSync(bad, JSON.stringify({ version: 0 }));

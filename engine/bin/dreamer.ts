@@ -7,7 +7,9 @@ import { runCheck } from "../src/check.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
 import { writeDist } from "../src/build/write.js";
-import { runAssets } from "../src/assets/run.js";
+import { runAssets, missingAssets } from "../src/assets/run.js";
+import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
+import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
 import type { Report } from "../src/types.js";
 
 const USAGE =
@@ -122,9 +124,24 @@ async function runBuild(args: string[]): Promise<number> {
     console.error("--cache requires a value");
     return 2;
   }
-  if (assets === "cache" && cacheFlag === undefined) {
-    console.error("--assets cache requires --cache <dir>");
+  if (assets !== "none" && cacheFlag === undefined) {
+    console.error(`--assets ${assets} requires --cache <dir>`);
     return 2;
+  }
+  // The cap is a hard gate: no provider is even constructed without it, so a
+  // typo can never reach a paid endpoint.
+  const dollarsFlag = flag(args, "--max-dollars");
+  let maxDollars: number | undefined;
+  if (assets === "live") {
+    if (dollarsFlag === undefined || dollarsFlag === null) {
+      console.error("--assets live requires --max-dollars <n>");
+      return 2;
+    }
+    maxDollars = Number(dollarsFlag);
+    if (!Number.isFinite(maxDollars) || maxDollars <= 0) {
+      console.error(`--max-dollars must be a positive number: ${dollarsFlag}`);
+      return 2;
+    }
   }
   if (!existsSync(scenePath)) {
     console.error(`file not found: ${scenePath}`);
@@ -141,7 +158,17 @@ async function runBuild(args: string[]): Promise<number> {
       console.log(JSON.stringify(report, null, 2));
       return 1;
     }
-    const assetReport = await runAssets(ctx.scene, { mode: assets, cacheDir: cacheFlag });
+    const live = assets === "live";
+    // A fully populated cache needs no live provider at all, so it must not
+    // require an API key: only construct them once something is missing.
+    const needsLive = live && (cacheFlag === undefined || missingAssets(ctx.scene, cacheFlag).length > 0);
+    const assetReport = await runAssets(ctx.scene, {
+      mode: assets,
+      cacheDir: cacheFlag,
+      maxDollars,
+      image: needsLive ? new MuseImageProvider() : undefined,
+      object: needsLive ? new Sam3dProvider() : undefined,
+    });
     await writeDist(ctx, report, outDir, { startedAt: started, assets: assetReport, cacheDir: cacheFlag });
     return 0;
   } catch (e) {

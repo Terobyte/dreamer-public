@@ -123,15 +123,15 @@
 Продолжение фазы «Ассеты: шаблоны, кэш, вырезка» — её интерфейсы и решения в силе. Снимает `assets: live not implemented` (тест `test_live_not_yet` этой фазы удаляется — единственная правка своего теста в плане, кроме `test_demo_full_future`).
 Файлы: `src/assets/{batch,cost}.ts`, `src/assets/providers/{muse-image,sam3d}.ts`, `src/assets/run.ts`, `bin/dreamer.ts` (`--assets live`, `--max-dollars`), `test/assets-live.test.ts`.
 
-- [ ] `test_cache_key`: заполненный кэш → `runAssets` `live` (`maxDollars` 1) → 0 вызовов, `used` = 10
-- [ ] `test_live_fills_cache` (фейки): demo-flat `live` с `maxDollars` 1 → `ImageProvider` 10 вызовов (2 tile + 3 decal + 5 картинок предметов), `ObjectProvider` 5; все ключи в кэше; `ledger.jsonl` — 15 строк; `report.cents` = 85
-- [ ] `test_cap_exact`: `maxDollars` 0.85 → разрешено (сравнение в центах, без ошибки плавающей точки)
-- [ ] `test_refuse_over_cap`: `runAssets` live, `maxDollars` 0.10 → бросает `CapError`, в сообщении `85`, 0 вызовов фейков; CLI `build --assets live` без `--max-dollars` → exit 2 (провайдеры не создаются)
-- [ ] `test_stop_mid_batch`: фейк `ObjectProvider` бросает на первой попытке `p_sofa`, `maxDollars` 0.85 → попыток 10 картинок + 6 предметов = 100 ¢ > 85; `ObjectProvider` вызван ровно 5 раз, `missing` — ровно один id, сумма `cents` в ledger ≤ 85
-- [ ] `test_one_failure_isolated`: фейк бросает на `p_vase` → остальные 9 в кэше, `missing` = `["p_vase"]`
-- [ ] `test_image_concurrency_cap`: demo-flat + 20 новых tile-ассетов `t_k` с разными промтами, 20 материалов `m_k` (`tile: t_k`), у `living.walls.bands` 20 полос по 0.1 м заменяют существующую (0.12 wood) (`to` = 0.1·(k+1), материал `m_k`); `maxDollars` 2 (цена 105 ¢); фейк держит каждый вызов 20 мс и считает одновременные → максимум одновременных ровно 16
-- [ ] `test_key_not_leaked`: локальный `node:http` отвечает 500 с телом, в котором эхо заголовка `Authorization`; `runAssets` live с `muse-image.ts` на этот `baseUrl`, фейковым `ObjectProvider` (не `sam3d`) и `META_MODEL_API_KEY=sk-test-LEAK` → `sk-test-LEAK` нет в `warnings`, `build.json`, кэше, ledger и stdout/stderr
-- [ ] реализовать
+- [x] `test_cache_key`: заполненный кэш → `runAssets` `live` (`maxDollars` 1) → 0 вызовов, `used` = 10
+- [x] `test_live_fills_cache` (фейки): demo-flat `live` с `maxDollars` 1 → `ImageProvider` 10 вызовов (2 tile + 3 decal + 5 картинок предметов), `ObjectProvider` 5; все ключи в кэше; `ledger.jsonl` — 15 строк; `report.cents` = 85
+- [x] `test_cap_exact`: `maxDollars` 0.85 → разрешено (сравнение в центах, без ошибки плавающей точки)
+- [x] `test_refuse_over_cap`: `runAssets` live, `maxDollars` 0.10 → бросает `CapError`, в сообщении `85`, 0 вызовов фейков; CLI `build --assets live` без `--max-dollars` → exit 2 (провайдеры не создаются)
+- [x] `test_stop_mid_batch`: фейк `ObjectProvider` бросает на первой попытке `p_sofa`, `maxDollars` 0.85 → попыток 10 картинок + 6 предметов = 100 ¢ > 85; `ObjectProvider` вызван ровно 5 раз, `missing` — ровно один id, сумма `cents` в ledger ≤ 85
+- [x] `test_one_failure_isolated`: фейк бросает на `p_vase` → остальные 9 в кэше, `missing` = `["p_vase"]`
+- [x] `test_image_concurrency_cap`: demo-flat + 20 новых tile-ассетов `t_k` с разными промтами, 20 материалов `m_k` (`tile: t_k`), у `living.walls.bands` 20 полос по 0.1 м заменяют существующую (0.12 wood) (`to` = 0.1·(k+1), материал `m_k`); `maxDollars` 2 (цена 105 ¢); фейк держит каждый вызов 20 мс и считает одновременные → максимум одновременных ровно 16
+- [x] `test_key_not_leaked`: локальный `node:http` отвечает 500 с телом, в котором эхо заголовка `Authorization`; `runAssets` live с `muse-image.ts` на этот `baseUrl`, фейковым `ObjectProvider` (не `sam3d`) и `META_MODEL_API_KEY=sk-test-LEAK` → `sk-test-LEAK` нет в `warnings`, `build.json`, кэше, ledger и stdout/stderr
+- [x] реализовать
 
 **Вне этих двух фаз:** нормализация GLB и подключение ассетов к странице.
 
