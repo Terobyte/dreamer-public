@@ -219,8 +219,8 @@ class BenchLangTest(unittest.TestCase):
 
 
 class BankSpikeCeilingTest(unittest.TestCase):
-    """F4: bank.py's own budget check must honor the $1.83 spike ceiling for
-    --lang ru, not the regular $1.80 (bench_f1.py already allows the spike)."""
+    """F4: bank.py's own budget check must honor the spike ceiling (+0.03) for
+    --lang ru, not the regular one (bench_f1.py already allows the spike)."""
 
     def tearDown(self):
         lang.set_lang("en")
@@ -228,7 +228,7 @@ class BankSpikeCeilingTest(unittest.TestCase):
     def test_bank_allows_spike_over_regular_ceiling(self):
         root = tempfile.mkdtemp()
         sheet = os.path.join(root, "sheet.md")
-        ledger = [{"dollars": 1.61}]
+        ledger = [{"dollars": round(bench_f1.CEILING - 0.19, 2)}]
         rundir = tempfile.mkdtemp()
         with open(os.path.join(rundir, "log.jsonl"), "w", encoding="utf-8") as f:
             f.write(json.dumps({"type": "line", "who": "M", "text": RU_LINE},

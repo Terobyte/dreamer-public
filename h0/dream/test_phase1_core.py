@@ -207,23 +207,25 @@ class BenchF1Test(unittest.TestCase):
         """7.5 / Global Constraints: the 1.5 spike is outside the $1.80 phase ceiling
         (its own condition is spent + 0.20 <= 1.83), so its dollars must not shrink the
         budget of a gated step -- otherwise the final gate cannot be bought at all."""
-        ledger = self._ledger([{"step": "1.4", "runs": [], "dollars": 1.45,
+        ledger = self._ledger([{"step": "1.4", "runs": [], "dollars": round(bench_f1.CEILING - 0.35, 2),
                                 "metrics": [], "gate": "PASS"},
                                {"step": "1.5", "runs": [], "dollars": 0.20,
                                 "gate": "incomplete"}])
-        # 1.45 + 0.20 <= 1.80 passes the money check: the next stop is the mocked bank run
+        # (ceiling - 0.35) + 0.20 passes the money check only without the spike's 0.20:
+        # the next stop is the mocked bank run
         with self.assertRaises(AssertionError):
             bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", ledger,
                            "--out", self.root])
         # the spike itself still answers for every dollar in the ledger, ceiling 1.83
-        hot = self._ledger([{"step": "1.1", "runs": [], "dollars": 1.70,
+        hot = self._ledger([{"step": "1.1", "runs": [], "dollars": round(bench_f1.SPIKE_CEILING - 0.13, 2),
                              "metrics": [], "gate": "PASS"},
                             {"step": "1.5", "runs": [], "dollars": 0.10,
                              "gate": "incomplete"}])
         self.assertEqual(bench_f1.main(["--step", "1.5", "--runs", "1", "--ledger", hot,
                                         "--out", self.root]), 2)
         # bank.py keeps its own copy of the check (F4) and must exclude the spike too
-        ledger_rows = [{"step": "1.4", "dollars": 1.45}, {"step": "1.5", "dollars": 0.20}]
+        ledger_rows = [{"step": "1.4", "dollars": round(bench_f1.CEILING - 0.35, 2)},
+                       {"step": "1.5", "dollars": 0.20}]
         rundir = tempfile.mkdtemp()
         with open(os.path.join(rundir, "log.jsonl"), "w", encoding="utf-8") as f:
             f.write(json.dumps({"type": "line", "who": "M", "text": "ok"}) + "\n")
@@ -234,15 +236,15 @@ class BenchF1Test(unittest.TestCase):
              mock.patch.object(bench_f1, "load_ledger", return_value=ledger_rows), \
              mock.patch.object(sys, "argv", argv), \
              mock.patch.dict(os.environ, {bank.BENCH_ENV: "1"}):
-            bank.main()  # must not sys.exit(2): 1.45 + 0.20 <= 1.80
+            bank.main()  # must not sys.exit(2): the spike's 0.20 is not counted
         self.assertTrue(os.path.exists(sheet))
 
     def test_bench_f1_budget_refuses(self):
-        ledger = self._ledger([{"step": "1.0", "runs": ["x"], "dollars": 1.62,
+        ledger = self._ledger([{"step": "1.0", "runs": ["x"], "dollars": round(bench_f1.CEILING - 0.18, 2),
                                 "metrics": [], "gate": "PASS"}])
         self.assertEqual(bench_f1.main(["--step", "1.1", "--runs", "1", "--ledger", ledger,
                                         "--out", self.root]), 2)
-        # the spike has its own ceiling: 1.62 + 0.20 <= 1.83 passes the money check,
+        # the spike has its own ceiling (+0.03): (ceiling - 0.18) + 0.20 passes the money check,
         # so the next refusal is the missing bank run (mocked), not the budget
         with self.assertRaises(AssertionError):
             bench_f1.main(["--step", "1.5", "--runs", "1", "--ledger", ledger, "--out", self.root])
@@ -416,7 +418,8 @@ class FailedRunTest(unittest.TestCase):
         import sys
         ledger = os.path.join(tempfile.mkdtemp(), "f1_ledger.jsonl")
         with open(ledger, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"step": "1.0", "dollars": 1.50, "gate": "PASS"}) + "\n")
+            f.write(json.dumps({"step": "1.0", "dollars": round(bench_f1.CEILING - 0.30, 2),
+                                "gate": "PASS"}) + "\n")
         fake = [os.path.join(bank.HERE, "scenes", n) for n in ("a.json", "b.json")]
         with mock.patch.dict(os.environ, {bank.BENCH_ENV: "1"}), \
              mock.patch.object(bench_f1, "LEDGER", ledger), \
@@ -426,7 +429,7 @@ class FailedRunTest(unittest.TestCase):
                                              "--out", os.path.join(tempfile.mkdtemp(), "s.md")]):
             with self.assertRaises(SystemExit) as cm:
                 bank.main()
-        self.assertEqual(cm.exception.code, 2, "1.50 + 2 x 0.20 > 1.80 must refuse")
+        self.assertEqual(cm.exception.code, 2, "(ceiling - 0.30) + 2 x 0.20 > ceiling must refuse")
 
     def test_ok_bank_with_unscorable_run_charges_the_cap(self):
         """Judge critic r3: bank exit 0 with all run= lines, but score_run raises:

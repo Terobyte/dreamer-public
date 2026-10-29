@@ -85,19 +85,24 @@ class PhaseSummaryTest(unittest.TestCase):
         for where, text in (("DEVLOG", self.devlog), ("PROGRESS", self.progress)):
             self.assertIn(OWNER_LINE, text, "%s summary misses the 7б line" % where)
 
-    def test_two_runs_of_f1_exceed_the_ceiling(self):
-        """Why the paid Ф1 bench is not repeated: the median needs 2 runs and 2 more runs do
-        not fit under the ceiling. Pure arithmetic over the ledger -- this test never buys anything."""
-        gated, _ = ledger_totals()
-        jobs = bench_f1.job_count(bench_f1.CANONICAL_SCENE, bench_f1.CANONICAL_TALK, 2)
-        self.assertEqual(jobs, 2)
-        self.assertGreater(gated + bench_f1.PER_RUN * jobs, bench_f1.CEILING,
-                           "the ceiling now has room for 2 runs: run the Ф1 bench")
-        self.assertIn("потолок", self.devlog,
-                      "DEVLOG summary must say why the Ф1 bench was not repeated")
+    def test_owner_grant_and_f1_verdict_are_written_down(self):
+        """2026-10-29: the owner raised the ceiling ("поднимай потолок") and the Ф1 bench
+        ran n=2 to a verdict. The grant and the new ceiling must be in the summaries, the
+        last Ф1 record of the ledger must carry a verdict (no "incomplete" median), and
+        Д12 must say so. Pure arithmetic over the ledger -- this test never buys anything."""
+        self.assertGreater(bench_f1.OWNER_EXTRA, 0)
+        self.assertAlmostEqual(bench_f1.CEILING, bench_f1.PHASE_CEILING + bench_f1.OWNER_EXTRA)
+        rows = [r for r in bench_f1.load_ledger(bench_f1.LEDGER) if r.get("step") == "Ф1"]
+        self.assertTrue(rows, "the ledger has no Ф1 record")
+        self.assertIn(rows[-1].get("gate"), ("PASS", "FAIL"),
+                      "the last Ф1 record has no verdict: %r" % rows[-1].get("gate"))
+        self.assertEqual(len(rows[-1].get("runs") or []), 2, "the Ф1 verdict needs n=2")
         for where, text in (("DEVLOG", self.devlog), ("PROGRESS", self.progress)):
-            self.assertIn("Д12", text, "%s summary must name the open Ф1 gate as debt Д12" % where)
-
+            self.assertIn("$%.2f" % bench_f1.CEILING, text,
+                          "%s summary must state the raised ceiling" % where)
+            self.assertIn("Д12", text, "%s summary must say what became of debt Д12" % where)
+            self.assertIn(rows[-1]["gate"], text,
+                          "%s summary must carry the Ф1 verdict %s" % (where, rows[-1]["gate"]))
 
 if __name__ == "__main__":
     unittest.main()

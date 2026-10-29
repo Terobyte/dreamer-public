@@ -1419,10 +1419,16 @@ class Sim:
             self.stop_reason = "budget"
         else:
             self.stop_reason = "done"
-        self.director.wait(timeout=max(5.0, self.director.delay + 2.0))
+        # spec 13 / Д7: the last cost row comes after every worker that can still
+        # charge, with no timeout. On Ф1 a 23 s Wonder consult outlived the old 5 s
+        # wait, charged after the row and verify_run killed the run ("actual spent
+        # != journal cost"); the goal judge and a line in flight were never joined
+        self.director.wait(timeout=None)
         self._drain_director()
-        self.memory.wait(timeout=5.0)
-        # spec 13: the last cost row comes after every worker that can still charge
+        self._join_judge(timeout=None)
+        if self._gen_thread is not None:
+            self._gen_thread.join()
+        self.memory.wait(timeout=None)
         self.wait_images()
         if self.logger:
             self.logger.write_event({"t": self.clock.now(), "type": "cost",
