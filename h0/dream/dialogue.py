@@ -55,6 +55,9 @@ def compact_every(n_actors):
 
 _TOUCH = re.compile(r"\[\[\s*TOUCH\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
 _LOOK = re.compile(r"\[\[\s*LOOK\s*:\s*([^\[\]]+?)\s*\]\]", re.I)
+# 3.1b: the whisper tag is read from the raw reply, before sanitize cuts every
+# [[...]] that is not an ACTOR_TAG; <whisper> stays the drama-3 voice tag
+_WHISPER = re.compile(r"\[\[\s*whisper\s+([^\[\]]+?)\s*\]\]", re.I)
 _DOUBLE = re.compile(r"\[\[[^\[\]]*\]\]")
 _REMARK = re.compile(r"\[([^\[\]]+)\]")
 _ANGLE = re.compile(r"<[^<>]*>")
@@ -915,6 +918,18 @@ class Dialogue:
                 % (actor, world.get("place") or "a strange place", self.hero, who,
                    lang.lang_text(ACTOR_RULES), note_text))
 
+    def _whisper_to(self, raw, speaker, world):
+        """3.1b: [[whisper Name]] means the whole line is for that one name. An
+        addressee who is not in this scene is nobody, and the line stays ordinary."""
+        m = _WHISPER.search(raw or "")
+        if not m:
+            return None
+        want = " ".join(m.group(1).split()).lower()
+        for name in [self.hero] + list(world.get("actors") or []):
+            if name != speaker and name.lower() == want:
+                return name
+        return None
+
     def actor_line(self, actor, world, transcript, state, notes=(), events=(), persona=""):
         """state: {build_pct, bridge} (kept for the log; no ladder, no stall: the actor
         may name the door whenever he likes). -> line dict or None."""
@@ -938,6 +953,7 @@ class Dialogue:
         recent = [t for _, t in list(transcript)[-TRANSCRIPT_KEEP:]]
         for attempt in range(2):
             raw = self._call("actor", system, user, who=actor)
+            whisper_to = self._whisper_to(raw, actor, world)
             clean, _ = sanitize(raw, "actor")
             look = None
             m = _LOOK.search(clean)
@@ -962,5 +978,6 @@ class Dialogue:
             if text and not leaks:
                 cuts = self._plan_cuts(actor, text, transcript, objects)
                 return {"who": actor, "role": "actor", "text": text, "look": look,
-                        "remarks": remarks(text), "raw": raw, "cuts": cuts}
+                        "remarks": remarks(text), "raw": raw, "cuts": cuts,
+                        "whisper_to": whisper_to}
         return None

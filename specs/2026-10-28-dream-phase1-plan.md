@@ -263,15 +263,15 @@
 - Адресат-актёр получает текст через `self._pending[to]`, адресат-герой — через `_hero_world`.
 - В `sim.transcript`, `Dialogue.log` и во вход сжатия `scene_mind` идёт только `[Dan whispers to Maya]`.
 
-- [ ] Тест `test_whisper_only_addressee`: roof3, ответ Dan `[[whisper Maya]] it's me` → следующий промпт Maya (`FakeTransport.sent`) содержит `it's me`, промпты neighbor и Max — нет; в `sim.transcript` — `[Dan whispers to Maya]` без текста.
-- [ ] Тест `test_whisper_to_hero`: ответ Dan `[[whisper Max]] look up` → `look up` есть в следующем промпте Max (`FakeTransport.sent`, system героя); в промптах Maya и neighbor — нет. `_hero_world` напрямую не проверять: его обнуляет начало хода героя.
-- [ ] Тест `test_whisper_unknown_addressee`: адресата нет в сцене → строка идёт как обычная, тег снят.
-- [ ] Тест `test_voice_whisper_untouched`: `<whisper>тихо</whisper>` без `[[whisper …]]` остаётся тегом голоса, как в Фазе 1.
-- [ ] Тест `test_whisper_not_in_shared_mind`: при 3 актёрах текст шёпота не попадает во вход compress `scene_mind` (`FakeTransport.sent` для роли compress).
-- [ ] Записки директора: `messages[].to` — строка или список имён актёров. `check_messages` принимает строку или список и проверяет каждое имя (сейчас список всегда даёт `unknown_recipient`); `_deliver_messages` разворачивает список, и у каждой строки лога `message` поле `to` — строка (`Sim._emit` кладёт `_notes` по ключу `to`, список там — TypeError). Обновить `DIRECTOR_SCHEMA`/`LOCKED_SCHEMA` и `notes_given`.
-- [ ] Тест `test_note_to_two_actors`: roof3, `to: ["Dan", "Maya"]` → в `sim._notes` записка ровно один раз у Dan и у Maya, у neighbor её нет. `to: ["Dan", "Max"]` (герой) и `to: ["Dan", "Nobody"]` → `("messages", "unknown_recipient")`.
-- [ ] Тест `test_whisper_not_in_lock_words`: тег `[[whisper …]]` не считается в лимит слов и ремарок замка 1.1.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_whisper_only_addressee`: roof3, ответ Dan `[[whisper Maya]] it's me` → следующий промпт Maya (`FakeTransport.sent`) содержит `it's me`, промпты neighbor и Max — нет; в `sim.transcript` — `[Dan whispers to Maya]` без текста.
+- [x] Тест `test_whisper_to_hero`: ответ Dan `[[whisper Max]] look up` → `look up` есть в следующем промпте Max (`FakeTransport.sent`, system героя); в промптах Maya и neighbor — нет. `_hero_world` напрямую не проверять: его обнуляет начало хода героя.
+- [x] Тест `test_whisper_unknown_addressee`: адресата нет в сцене → строка идёт как обычная, тег снят.
+- [x] Тест `test_voice_whisper_untouched`: `<whisper>тихо</whisper>` без `[[whisper …]]` остаётся тегом голоса, как в Фазе 1.
+- [x] Тест `test_whisper_not_in_shared_mind`: при 3 актёрах текст шёпота не попадает во вход compress `scene_mind` (`FakeTransport.sent` для роли compress).
+- [x] Записки директора: `messages[].to` — строка или список имён актёров. `check_messages` принимает строку или список и проверяет каждое имя (сейчас список всегда даёт `unknown_recipient`); `_deliver_messages` разворачивает список, и у каждой строки лога `message` поле `to` — строка (`Sim._emit` кладёт `_notes` по ключу `to`, список там — TypeError). Обновить `DIRECTOR_SCHEMA`/`LOCKED_SCHEMA` и `notes_given`.
+- [x] Тест `test_note_to_two_actors`: roof3, `to: ["Dan", "Maya"]` → в `sim._notes` записка ровно один раз у Dan и у Maya, у neighbor её нет. `to: ["Dan", "Max"]` (герой) и `to: ["Dan", "Nobody"]` → `("messages", "unknown_recipient")`.
+- [x] Тест `test_whisper_not_in_lock_words`: тег `[[whisper …]]` не считается в лимит слов и ремарок замка 1.1.
+- [x] Все тесты зелёные.
 
 ## 3.2 рассказчик
 

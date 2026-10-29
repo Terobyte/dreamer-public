@@ -167,13 +167,23 @@ def clean_extras(d, hero=None):
     return {"fields": fields, "reason": reason} if fields else None
 
 
+def _note_names(m):
+    """3.1b: `to` is one actor or a list of them -> the list of names it means."""
+    to = m.get("to")
+    return list(to) if isinstance(to, list) else [to]
+
+
 def check_messages(d, actors):
-    """Notes go only to actors of the current scene (spec 8) -> (field, reason) or None."""
+    """Notes go only to actors of the current scene (spec 8) -> (field, reason) or None.
+    3.1b: one note may name several of them at once (`to` as a list)."""
     msgs = d.get("messages") or []
     if not isinstance(msgs, list):
         return "messages", "bad_type"
     for m in msgs:
-        if not isinstance(m, dict) or m.get("to") not in actors:
+        if not isinstance(m, dict):
+            return "messages", "unknown_recipient"
+        names = _note_names(m)
+        if not names or any(n not in actors for n in names):
             return "messages", "unknown_recipient"
     return None
 
@@ -403,8 +413,11 @@ class BuildFSM:
         checked or delivered."""
         if not self.actors:
             return []
-        return [self._e(now, "message", to=m["to"], note=m.get("note"))
-                for m in decision.get("messages") or []]
+        # 3.1b: a note addressed to a list becomes one event per name, so every
+        # `message` event (and Sim._notes, keyed by `to`) still carries one name
+        return [self._e(now, "message", to=n, note=m.get("note"))
+                for m in decision.get("messages") or []
+                for n in dict.fromkeys(_note_names(m))]
 
     def _bad(self, now, ticket, fields, reason):
         ev = [self._e(now, "invalid", fields=fields, reason=reason)]

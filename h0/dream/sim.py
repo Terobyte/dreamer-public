@@ -588,6 +588,13 @@ class Sim:
     def _start_line(self, line, audio_seconds=None):
         """The only playback entry point: timing, journal and memory agree."""
         res = None
+        # 3.1b: a whisper is voiced in full but heard by one name only: the words
+        # go to that recipient's "Just now", everybody else gets the fact of it
+        whisper_to = line.get("whisper_to")
+        if whisper_to:
+            line = dict(line, text="<whisper>%s</whisper>" % line["text"],
+                        said="[%s whispers to %s]" % (line.get("who") or "?", whisper_to),
+                        whispered=line["text"])
         if (self._voice is not None and self.logger is not None and not self.fake
                 and not self.safety_paused and self._budget_ok()):
             self._line_seq += 1
@@ -630,12 +637,17 @@ class Sim:
             self._diagnostic({"type": "tts_fail",
                               "error": str(err.get("error") if isinstance(err, dict) else err)})
         self._emit(event)
-        # 1.2b: only a spoken line moves the pressure state (a human line = the hero's)
+        # 1.2b: only a spoken line moves the pressure state (a human line = the hero's).
+        # 3.1b: a whisper is heard by one name only, so only that recipient can be
+        # addressed by its words; the "who whispers to whom" fact addresses nobody.
         self._note_line(event.get("who") or (self.hero if line["owner"] == "human"
                                              else None),
                         event.get("role") or ("hero" if line["owner"] == "human"
                                               else "actor"),
-                        line["text"])
+                        line["whispered"] if whisper_to else line["text"],
+                        only=None if not whisper_to else
+                        ([whisper_to] if whisper_to in self._cast()
+                         else []))
         # 1.1: the line is really spoken, so now it counts for the speaker's loop
         # state; a generated line dropped on the way (old scene, a human line in
         # between, a reserved turn) leaves no turn, no cut and no loop_cut (F1)
@@ -647,10 +659,20 @@ class Sim:
         # Speech input is remembered on arrival, including while it is queued.
         if line["owner"] == "npc":
             self.memory.add_line(line.get("who") or "npc", line["text"])
+        if whisper_to:
+            # the same queue a scheduled event uses (1.3), so a whisper to someone
+            # who is gone after a transition is dropped, not handed on
+            heard = "%s whispers to you, so only you hear it: %s" % (
+                event.get("who") or "?", line["whispered"])
+            if whisper_to == self.hero:
+                self._hero_world.append(heard)
+            elif whisper_to in self.actors:
+                self._pending.setdefault(whisper_to, []).append(heard)
         if self.dialogue is not None:
-            self.transcript.append((event.get("who") or "?", line["text"]))
+            said = line.get("said") or line["text"]
+            self.transcript.append((event.get("who") or "?", said))
             if hasattr(self.dialogue, "heard"):
-                self.dialogue.heard(event.get("who") or "?", line["text"])
+                self.dialogue.heard(event.get("who") or "?", said)
                 self.dialogue.compact([self.hero] + list(self.actors), seen=len(self.transcript))
         self._count_line()
         self._maybe_check_goals(event.get("who") or None, line["text"])
@@ -986,10 +1008,12 @@ class Sim:
         return {"p": round(p, 3), "addressed": addressed, "event_hit": event_hit,
                 "goal_open": goal_open, "silent": silent, "spoke_last": spoke_last}
 
-    def _note_line(self, who, role, text):
+    def _note_line(self, who, role, text, only=None):
         """A line really spoken moves the pressure state: its author stops being
         silent and becomes `spoke_last`, everyone it names by name is addressed.
-        A human line arrives here as the hero's line (owner/role set in _start_line)."""
+        A human line arrives here as the hero's line (owner/role set in _start_line).
+        `only`: restrict who may be addressed by this line (a whisper's recipient);
+        nobody else is marked, even if named in the words only one ear heard."""
         if not who:
             return
         self._spoke_last = who
@@ -998,7 +1022,8 @@ class Sim:
         self._event_hits.pop(who, None)
         self._actor_streak = self._actor_streak + 1 if role == "actor" else 0
         self._said_count[who] = self._said_count.get(who, 0) + 1
-        for other in self._cast():
+        targets = self._cast() if only is None else [n for n in only if n in self._cast()]
+        for other in targets:
             if other != who and re.search(r"\b%s\b" % re.escape(other), text or "",
                                           re.I):
                 self._addressed[other] = ADDRESS_HOLD

@@ -50,7 +50,8 @@ DIRECTOR_SCHEMA = (
     "\"hero_next\": {\"changes\": false} or {\"changes\": true, "
     "\"description\": the hero's new look, \"voice\": one of "
     "old_woman|old_man|woman|man|child|creature}, "
-    "\"messages\": [{\"to\": an actor on stage, \"note\": a motivation}] (0 to 2), "
+    "\"messages\": [{\"to\": an actor on stage, or a list of actors on stage who all "
+    "get it, \"note\": a motivation}] (0 to 2), "
     "\"facts_update\": [], \"abort_build\": null, "
     "\"wake_up\": null}. A bridge without next_scene is rejected: send both "
     "or neither (bridge null means wait). " + NOTE_RULE + " English.")
@@ -58,7 +59,8 @@ DIRECTOR_SCHEMA = (
 
 LOCKED_SCHEMA = (
     "The build is locked: bridge, destination, next_scene and hero_next can not "
-    "change now. Reply with JSON only: {\"messages\": [{\"to\": an actor on stage, "
+    "change now. Reply with JSON only: {\"messages\": [{\"to\": an actor on stage, or a "
+    "list of actors on stage who all get it, "
     "\"note\": a motivation for that actor, not a script}] (0 to 2 notes), "
     "\"facts_update\": [], \"abort_build\": null or {\"reason\": why}, "
     "\"wake_up\": null}. Notes help the actor lead the hero toward the locked "
@@ -154,7 +156,8 @@ class Director:
         # bank runs: with no names in front of it the director wrote notes to people
         # it made up ("Grandmother", "Little Aisha") and the whole decision was invalid
         if self.actors:
-            base += ("\n[ON STAGE: %s] messages[].to must be exactly one of these names."
+            base += ("\n[ON STAGE: %s] messages[].to must be one of these names, or a "
+                     "list of them."
                      % ", ".join(self.actors))
         meta = ""
         if ticket is not None:
