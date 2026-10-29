@@ -66,11 +66,13 @@ def read_rows(logpath, offset=0):
 
 def fold_snapshot(rows):
     """State for a reconnect mid-build from the log alone (replay / no live sim)."""
-    snap = {"type": "snapshot", "live": False, "build_state": "idle"}
+    snap = {"type": "snapshot", "live": False, "build_state": "idle",
+            "hero_owner": "npc"}
     for r in rows:
         k = r.get("type")
         if k == "snapshot":
-            for key in ("scene", "actors", "place", "hero", "speed", "max_dollars", "profile"):
+            for key in ("scene", "actors", "place", "hero", "speed", "max_dollars",
+                        "profile", "hero_owner"):
                 if key in r:
                     snap[key] = r[key]
         elif k == "build":
@@ -85,6 +87,9 @@ def fold_snapshot(rows):
             snap.update(build_state="idle", bridge=None, destination=None, build_start=None)
         elif k == "cost":
             snap["dollars"] = r.get("dollars")
+        elif k == "pov":
+            if r.get("hero_owner") in ("npc", "human"):
+                snap["hero_owner"] = r["hero_owner"]
         elif k in ("stop", "wake_up"):
             snap["ended"] = k
         if "seq" in r:
@@ -176,6 +181,8 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 return self._send(200, f.read(), "text/html; charset=utf-8")
         if path == "/api/status":
             return self._send(200, {"live": self.viewer.run if self.viewer.sim else None})
+        if path == "/api/hero":
+            return self._hero()
         if path == "/api/runs":
             return self._send(200, {"runs": self._runs()})
         if path == "/events":
@@ -183,6 +190,33 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if path.startswith("/out/"):
             return self._static(path[len("/out/"):])
         return self._not_found()
+
+    def _hero(self):
+        """Spec 9, 2.1: what the hero himself knows, read off the live dream --
+        his diary and the facts not hidden from him. The log would only tell us
+        what has already been said."""
+        sim = self.viewer.sim
+        if sim is None:
+            return self._send(409, {"error": "no live dream"})
+        # 2.1: seq first, owner second (see Sim.status): the owner can then only be
+        # as new as the log at seq or newer, never older, so the viewer's
+        # "apply only seq > last" rule cannot drop the pov row that changed it
+        log = getattr(sim, "logger", None)
+        seq = getattr(log, "seq", 0) or 0
+        owner = getattr(sim, "hero_owner", "npc")
+        prof = getattr(getattr(sim, "dialogue", None), "profile", None)
+        if not prof:
+            from sim import load_profile
+            prof = load_profile(sim.profile)
+        # a scene hero keeps his soul in its own dict (scenes/roof3.json)
+        soul = prof.get("soul") if isinstance(prof.get("soul"), dict) else prof
+        facts = [f.get("text") for f in soul.get("facts") or []
+                 if isinstance(f, dict) and not f.get("hidden_from_hero") and f.get("text")]
+        diary = [soul["diary"]] if soul.get("diary") else []
+        # `seq` is the log position this answer speaks for: the viewer orders it
+        # against snapshot/pov rows by seq, so neither side can overrule a newer one
+        return self._send(200, {"facts": facts, "diary": diary,
+                                "hero_owner": owner, "seq": seq})
 
     def _runs(self):
         out = []
@@ -294,7 +328,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._send(400, {"error": "json object expected"})
         path = urlparse(self.path).path
         sim = self.viewer.sim
-        if path not in ("/say", "/event", "/stop"):
+        if path not in ("/say", "/event", "/pov", "/stop"):
             return self._not_found()
         if sim is None:
             return self._send(409, {"error": "no live dream"})
@@ -306,6 +340,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
             # the sim sanitizes again and logs what it cut (input_rejected, spec 5a)
             sim.submit("say", raw)
             return self._send(200, {"ok": True, "text": text})
+        if path == "/pov":
+            owner = body.get("hero_owner")
+            if owner not in ("npc", "human"):
+                return self._send(400, {"error": "hero_owner must be npc or human"})
+            sim.submit("pov", owner)
+            return self._send(200, {"ok": True, "hero_owner": owner})
         if path == "/event":
             if not body.get("value"):
                 return self._send(400, {"error": "value required"})

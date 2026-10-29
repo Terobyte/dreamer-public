@@ -111,11 +111,13 @@ footer.off { display: none; }
       <div class="row"><span>консультаций</span><span id="nconsults">0</span></div>
     </div>
     <div class="card" id="runscard" hidden><h3>Прогоны</h3><div id="runs"></div></div>
+    <div class="card"><h3>Герой</h3><button id="herobtn">что знает герой</button><div id="herobox"></div></div>
   </aside>
 </main>
 <footer id="footer" class="off">
   <input id="say" placeholder="сказать за героя…" maxlength="400" autocomplete="off">
   <button id="saybtn">сказать</button>
+  <button id="povbtn" disabled>🤖 герой сам</button>
   <button id="stopbtn" class="stop">стоп</button>
 </footer>
 <script>
@@ -227,7 +229,13 @@ function apply(r) {
     case "snapshot":
       if (r.speed) S.speed = r.speed;
       if (r.max_dollars) S.maxD = r.max_dollars;
+      // history row: ordered by its seq, never makes the toggle ready
+      povTake(r.hero_owner, r.seq, false);
       if (r.scene) newScene(r);
+      break;
+    case "pov":
+      // may itself be backlog on reconnect -- same seq rule as everything else
+      if (povTake(r.hero_owner, r.seq, false)) { povPending = false; renderPov(); }
       break;
     case "line": addLine(r); break;
     case "consult": addConsult(r); break;
@@ -433,10 +441,69 @@ async function say() {
 $("saybtn").addEventListener("click", say);
 $("say").addEventListener("keydown", (e) => { if (e.key === "Enter") say(); });
 $("stopbtn").addEventListener("click", () => post("/stop", {}));
+// --- 2.1: whose turn the hero is, and what he knows (spec 9) ----------------------
+// One rule for every source of POV state (log rows, replayed history, /api/hero,
+// the live status snapshot): each carries the log seq it speaks for, and only a
+// seq newer than the last one applied may move the toggle. Arrival order does
+// not matter. Only a live source (/api/hero, live status) makes the toggle
+// clickable; a click locks it until the server's own pov row comes back.
+let povHuman = false;
+let povReady = false;    // a live source has spoken -- before that a click must not fire
+let povSeq = -1;         // seq of the POV state currently shown
+let povPending = false;  // a /pov POST is out -- locked until its row lands or it fails
+function povTake(owner, seq, liveSrc) {
+  if (owner !== "human" && owner !== "npc") return false;
+  if (typeof seq !== "number") return false;  // cannot be ordered -> cannot be trusted
+  const fresh = seq > povSeq;
+  if (fresh) { povSeq = seq; povHuman = owner === "human"; }
+  // a live answer older than what we hold still proves the rows we hold are
+  // the live tail (they came after it), so it may make the toggle ready
+  if (liveSrc) povReady = true;
+  renderPov();
+  return fresh;
+}
+async function setPov(owner) {
+  povPending = true; renderPov();
+  let ok = false;
+  try {
+    const r = await fetch('/pov', {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({hero_owner: owner})});
+    ok = r.ok;
+  } catch (e) { /* the dream goes on without the viewer */ }
+  // no local guess at the new owner: the pov row the server logs is the answer
+  if (!ok) { povPending = false; renderPov(); }
+}
+async function loadHero() {
+  try {
+    const r = await fetch('/api/hero');
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+function renderPov() {
+  const b = $("povbtn");
+  if (b) { b.textContent = povHuman ? "🙋 я говорю за героя" : "🤖 герой сам"; b.disabled = !povReady || povPending; }
+}
+function povClick() {
+  if (!povReady || povPending) return;
+  setPov(povHuman ? "npc" : "human");
+}
+const povbtn = $("povbtn");
+if (povbtn) povbtn.addEventListener("click", povClick);
+const herobtn = $("herobtn");
+if (herobtn) herobtn.addEventListener("click", async () => {
+  const h = await loadHero();
+  const box = $("herobox");
+  if (h && box) box.textContent = (h.diary || []).concat(h.facts || []).join("\n");
+});
 
 // --- live stream ------------------------------------------------------------------
+async function syncPov() {
+  const h = await loadHero();
+  if (h) povTake(h.hero_owner, h.seq, true);
+}
 function startLive() {
   live = true;
+  syncPov();
   $("mode").textContent = "живой"; $("mode").className = "badge live";
   const es = new EventSource("/events?run=" + encodeURIComponent(RUN) + "&from_seq=" + (S.lastSeq + 1));
   es.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (err) { /* half row */ } };
@@ -445,13 +512,15 @@ function startLive() {
     if (s.dollars !== undefined) S.dollars = s.dollars;
     if (s.build_state) S.build = s.build_state;
     if (typeof s.t === "number") { S.lastT = s.t; S.tRecv = performance.now(); }
+    // the live status is a live source too: if /api/hero failed, this enables the toggle
+    if (s.live === true) povTake(s.hero_owner, s.seq, true);
   });
   es.addEventListener("end", () => { es.close(); S.ended = true; render(); });
 }
 
 // --- replay ------------------------------------------------------------------------
 let replayIdx = 0, replayTimer = null;
-function resetView() { strip.innerHTML = ""; S = fresh(); if (audioEl) audioEl.pause(); audioQ.length = 0; }
+function resetView() { strip.innerHTML = ""; S = fresh(); if (!live) { povSeq = -1; povHuman = false; } if (audioEl) audioEl.pause(); audioQ.length = 0; }
 function playFrom(i, fast) {
   clearTimeout(replayTimer);
   resetView();

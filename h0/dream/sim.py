@@ -192,6 +192,8 @@ class Sim:
         if prof.get("hero_look"):
             self._looks[self.hero] = prof["hero_look"]
         self.budget_wake = False
+        # 2.1: who owns the hero's turn -- the loop (npc) or the player (human)
+        self.hero_owner = "npc"
         # live dialogue (spec 6): hero and actors speak through Dialogue; without
         # it (tests, --fake) the loop keeps its numbered placeholder lines
         self.dialogue = dialogue
@@ -289,7 +291,8 @@ class Sim:
                                      "actors": list(self.scene["actors"]),
                                      "place": self.place, "hero": self.hero,
                                       "profile": self.profile, "speed": self.speed,
-                                      "max_dollars": self.max_dollars})
+                                      "max_dollars": self.max_dollars,
+                                      "hero_owner": self.hero_owner})
         self._start_schedule()
         self._load_goals()
 
@@ -931,12 +934,18 @@ class Sim:
         no actor is picked -- their pressure is still counted and written, but only
         the hero (or, from 1.3, an event) breaks through; the hero gets there on the
         silence term alone. Nobody above the threshold -> (None, None) and `silence`."""
+        # 2.1: while the player owns the hero he is not in the cast at all --
+        # neither picked nor written into `pressure`
+        human = self.hero_owner == "human"
         if not self.actors:
+            if human:
+                return None, None
             self._silent_ticks[self.hero] = self._silent_ticks.get(self.hero, 0) + 1
             return self.hero, "hero"
-        for name in self._cast():
+        cast = [n for n in self._cast() if not (human and n == self.hero)]
+        for name in cast:
             self._silent_ticks[name] = self._silent_ticks.get(name, 0) + 1
-        table = {name: self._pressure(name) for name in self._cast()}
+        table = {name: self._pressure(name) for name in cast}
         if self._skip_once in table:
             # 1.1: the lock refused both attempts, so p = 0 for one free tick
             table[self._skip_once]["p"] = 0.0
@@ -967,7 +976,9 @@ class Sim:
         for name, row in order:
             if row["p"] < THRESHOLD:
                 break
-            if blocked and name != self.hero and not row["event_hit"]:
+            if blocked and (human or (name != self.hero and not row["event_hit"])):
+                # 2.1: the actors wait for the player exactly as they waited for
+                # the hero -- an event cannot buy a third line in a row either
                 continue
             return name, ("hero" if name == self.hero else "actor")
         self._diagnostic({"type": "silence", "pressure": table})
@@ -1050,6 +1061,33 @@ class Sim:
         """Thread-safe entry for the server: the main loop applies it on its next tick."""
         self._inbox.put((kind, payload))
 
+    def set_pov(self, owner):
+        """2.1: the player takes the hero's turn, or gives it back. While the
+        player owns him the NPC hero never speaks, so a hero line already in
+        flight or prepared is thrown away the same way a human line throws one
+        away -- by moving the turn on."""
+        owner = "human" if str(owner) == "human" else "npc"
+        self.hero_owner = owner
+        out = []
+        if owner == "human":
+            if (self._gen_who == self.hero
+                    and self._turn_epoch == (self._gen_epoch
+                                             if self._gen_epoch is not None else -1)):
+                self._turn_epoch += 1
+                self._discard_reason = "human"
+            if (self.prepared_npc is not None
+                    and (self._prepared_meta or {}).get("who") == self.hero):
+                out.append({"type": "line_discarded", "turn_owner": "npc",
+                            "text": self.prepared_npc, "who": self.hero,
+                            "reason": "human"})
+                self.prepared_npc = None
+                self._prepared_meta = None
+                self._prepared_audio_seconds = None
+        out.append({"type": "pov", "hero_owner": owner})
+        for e in out:
+            self._emit(e)
+        return out
+
     def _drain_inbox(self):
         while True:
             try:
@@ -1060,6 +1098,8 @@ class Sim:
                 self.human_say(str(payload or ""))
             elif kind == "event":
                 self.post_event(payload if isinstance(payload, dict) else {})
+            elif kind == "pov":
+                self.set_pov(payload)
             elif kind == "stop":
                 self.stop()
 
@@ -1114,6 +1154,12 @@ class Sim:
     def status(self):
         """Live state for the server's 30 s snapshot (spec 11)."""
         now = self.clock.now()
+        # 2.1: seq is read BEFORE hero_owner. set_pov assigns the owner and only
+        # then logs its pov row, so an owner read after seq is never older than
+        # the log at seq -- a pov row the viewer has not seen yet has seq > this
+        # and still lands. Read the other way round, a row could hide behind it.
+        seq = self.logger.seq if self.logger else 0
+        owner = self.hero_owner
         return {"type": "snapshot", "t": now, "live": True,
                 "scene": list(self.scene["objects"]), "actors": list(self.scene["actors"]),
                 "place": self.place, "hero": self.hero, "speed": self.speed,
@@ -1122,7 +1168,8 @@ class Sim:
                 "build_start": self.fsm.build_start,
                 "build_pct": self.fsm.build_pct(now), "dollars": get_spent(),
                 "max_dollars": self.max_dollars,
-                "seq": self.logger.seq if self.logger else 0}
+                "hero_owner": owner,
+                "seq": seq}
 
     def _tick(self):
         now = self.clock.now()
