@@ -325,7 +325,7 @@ class LoopStateOnAcceptTest(unittest.TestCase):
         self.assertEqual(line["cuts"], ["water tower"])
         # the human spoke while this line was in flight: the epoch no longer matches
         with sim._gen_lock:
-            sim._gen_result = (line, sim.n_transitions, sim._human_epoch - 1, "Squidward")
+            sim._gen_result = (line, sim.n_transitions, sim._turn_epoch - 1, "Squidward")
         sim._maybe_generate_line()
         self.assertEqual(dlg._turns.get("Squidward", 0), 0)
         self.assertEqual(dlg._cuts.get("Squidward", {}), {})

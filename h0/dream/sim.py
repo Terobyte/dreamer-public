@@ -15,6 +15,7 @@ import math
 import queue
 
 from clock import Clock
+from dialogue import TICK
 from director import Director
 from fsm import BuildFSM
 from inputs import resolve_touch, sanitize
@@ -194,7 +195,8 @@ class Sim:
         self._gen_thread = None
         self._gen_result = None
         self._gen_lock = threading.Lock()
-        self._human_epoch = 0
+        self._turn_epoch = 0
+        self._last_tick = -1e9
         self._prepared_meta = None
         self._inbox = queue.Queue()
         self.stopped = False
@@ -423,7 +425,8 @@ class Sim:
             self._emit(event)
         else:
             # A generated NPC reply cannot reclaim a turn reserved by the human.
-            event = {"type": "line_discarded", "turn_owner": "npc", "text": line}
+            event = {"type": "line_discarded", "turn_owner": "npc", "text": line,
+                     "who": (meta or {}).get("who"), "reason": "human"}
             self._emit(event)
         return [event]
 
@@ -436,7 +439,7 @@ class Sim:
             self.prepared_npc = None
             self._prepared_meta = None
             self._prepared_audio_seconds = None
-        self._human_epoch += 1
+        self._turn_epoch += 1
         out.append({"type": "line_queued", "turn_owner": "human", "text": clean})
         input_ev = {"type": "input", "source": "speech", "value": clean}
         out.append(input_ev)
@@ -616,6 +619,8 @@ class Sim:
             if self._line_started_at is not None and now - self._line_started_at < self._line_duration:
                 return
             self.active_line = None
+            # 1.2a: the step that ends a line is itself a free tick
+            self._last_tick = now - self.clock.scale(TICK)
         queued = None
         audio_seconds = None
         if self.next_line is not None:
@@ -642,7 +647,7 @@ class Sim:
             self._last_line_gen = now
             self.npc_start("npc line %d" % (self.line_count + 1))
 
-    # --- live dialogue (spec 4-6): one line ahead, in a worker ---------------
+    # --- live dialogue (spec 4-6): free-tick generation, in a worker ---------------
     def _next_speaker(self):
         last = self.transcript[-1][0] if self.transcript else None
         if not self.actors:
@@ -664,25 +669,36 @@ class Sim:
         return who, role
 
     def _dialogue_turn(self):
-        """Pick up a finished line, or start the next one while the current one
-        plays (spec 5: generate one line ahead). A line from an old scene, or
+        """Pick up a finished line, or start one on a free tick (1.2a: nothing
+        playing, nothing queued, no worker running, scale(TICK) since the last
+        start). A line from an old scene, or
         one overtaken by a human line, is dropped."""
         with self._gen_lock:
             res, self._gen_result = self._gen_result, None
         if res is not None:
             line, scene_no, epoch, who = res
-            if line is not None and scene_no == self.n_transitions and epoch == self._human_epoch:
+            if line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
                 self.npc_start(line)
+            elif line is not None and epoch != self._turn_epoch:
+                # 1.2a: the turn moved on while this line was in flight
+                self._emit({"type": "line_discarded", "turn_owner": "npc",
+                            "text": line["text"] if isinstance(line, dict) else line,
+                            "who": who, "reason": "human"})
             elif line is None:
                 self._diagnostic({"type": "turn_skip", "who": who})
-                self._gen_not_before = self.clock.now() + self.clock.scale(4)
+                self._gen_not_before = self.clock.now() + self.clock.scale(TICK)
                 self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
-        if busy or self.prepared_npc is not None or self.next_line is not None:
+        # 1.2a: a free tick -- nothing playing, nothing queued, no worker running
+        if (busy or self.active_line is not None or self.prepared_npc is not None
+                or self.next_line is not None):
             return
         if self.fsm.awake or self.stopped or not self._budget_ok():
             return
         now = self.clock.now()
+        if now - self._last_tick < self.clock.scale(TICK):
+            return
+        self._last_tick = now
         if now < self._gen_not_before:
             return
         who, role = self._next_speaker()
@@ -701,7 +717,7 @@ class Sim:
             args = (who, world, transcript, state, list(self._notes.get(who, [])), events,
                     self._personas.get(who, ""))
             fn = self.dialogue.actor_line
-        scene_no, epoch = self.n_transitions, self._human_epoch
+        scene_no, epoch = self.n_transitions, self._turn_epoch
 
         def work():
             line = None

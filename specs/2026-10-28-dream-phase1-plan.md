@@ -65,11 +65,11 @@
 
 Строка 1.2a таблицы 7.2. Долг: Д3. Шаг только офлайн, бенча нет.
 
-- [ ] Тест `test_no_second_generation_in_flight`: `FakeTransport(gate=…)`, вызов держится дольше `scale(TICK)×6`. Второй генерации нет, пока первый вызов в полёте.
-- [ ] Тест `test_first_free_tick_immediate`: по окончании `active_line` генерация стартует на том же шаге `pump`, далее не чаще `scale(TICK)`.
-- [ ] Тест `test_human_discards_in_flight` (Review Focus 1): `human_say` при генерации в полёте даёт `line_discarded {who, reason: "human"}`, старая строка не попадает в лог `line`.
-- [ ] Реализация по 7.2: `TICK = 4`, свободный такт, `_turn_epoch` вместо `_human_epoch`, `last_tick = now − scale(TICK)`, поля `who, reason` у обоих `line_discarded`.
-- [ ] Все тесты зелёные.
+- [x] Тест `test_no_second_generation_in_flight`: `FakeTransport(gate=…)`, вызов держится дольше `scale(TICK)×6`. Второй генерации нет, пока первый вызов в полёте.
+- [x] Тест `test_first_free_tick_immediate`: по окончании `active_line` генерация стартует на том же шаге `pump`, далее не чаще `scale(TICK)`.
+- [x] Тест `test_human_discards_in_flight` (Review Focus 1): `human_say` при генерации в полёте даёт `line_discarded {who, reason: "human"}`, старая строка не попадает в лог `line`.
+- [x] Реализация по 7.2: `TICK = 4`, свободный такт, `_turn_epoch` вместо `_human_epoch`, `last_tick = now − scale(TICK)`, поля `who, reason` у обоих `line_discarded`.
+- [x] Все тесты зелёные.
 
 ## 1.2b давление и молчание
 
