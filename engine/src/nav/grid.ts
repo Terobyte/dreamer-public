@@ -6,6 +6,7 @@ import type { V2 } from "../geom/vec.js";
 import { obbCorners } from "../geom/obb.js";
 import { beamPolys, closestOnEdge } from "../props/place.js";
 import { cutPath } from "../openings/stage.js";
+import { fixtureGeos, fixtureFootprint } from "../build/fixtures.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import { msg } from "../report/messages.js";
 import { CAPSULE_H, CAPSULE_R, CELL, STEP_MAX, levelY, pointInPoly } from "./floor.js";
@@ -109,6 +110,14 @@ function obstaclesOf(ctx: Ctx, level: string, base: number): Obstacles {
     if (g.y[1] <= base + STEP_MAX || g.y[0] >= base + CAPSULE_H) continue;
     solidProps.push(g);
     polys.push(asPositive(obbCorners(g.obb)));
+  }
+
+  // a fixture is solid for the capsule, exactly like a prop: it blocks only
+  // when its body reaches into the capsule band
+  for (const f of fixtureGeos(ctx)) {
+    if (f.level !== level) continue;
+    if (f.y[1] <= base + STEP_MAX || f.y[0] >= base + CAPSULE_H) continue;
+    polys.push(asPositive(fixtureFootprint(f)));
   }
 
   for (const r of rooms) {

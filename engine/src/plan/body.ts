@@ -142,10 +142,29 @@ export function wallBody(intervals: Interval[]): Path64[] {
   chains.forEach((chain, ci) => {
     if (chain.length < 2) return;
     const closed = chain.length > 2 && key(chain[chain.length - 1]) === key(chain[0]);
-    const pts = closed ? chain.slice(0, -1) : chain;
+    const pts: V2[] = (closed ? chain.slice(0, -1) : chain).map((p) => [p[0], p[1]]);
     const th = chainThickness[ci];
     const delta = Math.round((th / 2) * 1000);
-    const endType = closed ? EndType.Joined : EndType.Square;
+    // A free end is butted at the axis (spec "Модель стены" p. 4), so a wall
+    // ends where it was authored. A chain that merely breaks at a junction or
+    // a thickness change is grown half a thickness past that vertex instead,
+    // which is what EndType.Square used to do for every open chain and what
+    // keeps the two pieces overlapping there rather than leaving a notch.
+    if (!closed) {
+      const grow = (a: V2, b: V2): V2 => {
+        const l = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+        return [a[0] + ((a[0] - b[0]) / l) * (th / 2), a[1] + ((a[1] - b[1]) / l) * (th / 2)];
+      };
+      const free = (p: V2): boolean => (adj.get(key(p)) ?? []).length === 1;
+      const last = pts.length - 1;
+      // both ends are decided from the untouched chain: on a two-point chain
+      // the second grow would otherwise measure against the moved first point
+      const a0 = free(pts[0]) ? null : grow(pts[0], pts[1]);
+      const a1 = free(pts[last]) ? null : grow(pts[last], pts[last - 1]);
+      if (a0) pts[0] = a0;
+      if (a1) pts[last] = a1;
+    }
+    const endType = closed ? EndType.Joined : EndType.Butt;
     // the offset's winding follows the path direction: normalise each piece
     // first, or a negative piece cancels the ones under it in the union below
     pieces.push(...Clipper.union(Clipper.inflatePaths([toPath(pts)], delta, JoinType.Miter, endType, 2), FillRule.NonZero));

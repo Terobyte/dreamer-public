@@ -1,5 +1,6 @@
 import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
+import { FREE } from "../plan/merge.js";
 import type { Interval } from "../plan/merge.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import type { Mesh } from "./geometry.js";
@@ -415,13 +416,16 @@ export function intervalMeshes(iv: Interval, env: WallEnv, next: (key: string) =
     const towardCenter = iv.arc
       ? outward[0] * (iv.arc.c[0] - iv.from[0]) + outward[1] * (iv.arc.c[1] - iv.from[1]) >= 0
       : null;
+    // a free wall has no inside, so both of its faces carry its own material;
+    // only a room's exterior wall tops up to `$exterior` here
+    const free = iv.sides[0].room === FREE;
     out.push(
       ...faceMeshes(
         iv,
         poly,
         outward,
         towardCenter,
-        [{ v: [0, top], kind: "wall", material: EXTERIOR, side: EXTERIOR }],
+        [{ v: [0, top], kind: "wall", material: free ? r.wallMaterial : EXTERIOR, side: free ? r.id : EXTERIOR }],
         holes,
         env.levelY,
         idFor,

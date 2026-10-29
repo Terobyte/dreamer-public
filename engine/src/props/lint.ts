@@ -9,6 +9,8 @@ import { obbCorners, obbIntersects, obbPolyIntersects, rotLocal } from "../geom/
 import type { AuthorEdge } from "./place.js";
 import { beamPolys, closestOnEdge, edgeNormal, edgePoint, nearestEdge, onWallAxis, wallThicknessAt } from "./place.js";
 import { CATS } from "./cats.js";
+import { freeWalls, freeWallPoly } from "../plan/merge.js";
+import { fixtureGeos, fixtureFootprint } from "../build/fixtures.js";
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
 
@@ -21,6 +23,28 @@ const FACE_ROOM_MAX = 1.0;
 const DEFAULT_THICKNESS = 0.12;
 const SIZE_LO = 0.5;
 const SIZE_HI = 1.6;
+
+function toPath(poly: V2[]): Path64 {
+  return poly.map(([x, z]) => ({ x: Math.round(x * 1000), y: Math.round(z * 1000) }));
+}
+
+function midOf(poly: V2[]): V2 {
+  let x = 0;
+  let z = 0;
+  for (const p of poly) {
+    x += p[0];
+    z += p[1];
+  }
+  return [x / poly.length, z / poly.length];
+}
+
+function halfOf(w: { from: V2; to: V2; thickness: number }): [number, number] {
+  return [w.thickness / 2, Math.hypot(w.to[0] - w.from[0], w.to[1] - w.from[1]) / 2];
+}
+
+function yawOf(w: { from: V2; to: V2 }): number {
+  return (Math.atan2(w.to[0] - w.from[0], w.to[1] - w.from[1]) * 180) / Math.PI;
+}
 
 function pointInPoly(p: V2, poly: V2[]): boolean {
   let inside = false;
@@ -111,6 +135,7 @@ export function lintProps(ctx: Ctx): Issue[] {
     const lvl = (scene.levels ?? []).find((l: any) => String(l?.id) === room.level);
     return typeof lvl?.y === "number" ? lvl.y : 0;
   };
+  const free = freeWalls(scene, rooms as never);
   /** wall body met by a prop spanning `y` (absolute): an opening clears the
    *  wall only if it covers that whole span; below a sill the wall stays */
   const wallPolysOf = (room: any, y: [number, number]): V2[][] => {
@@ -124,9 +149,30 @@ export function lintProps(ctx: Ctx): Issue[] {
         ? plan.bodyFull
         : Clipper.difference(plan.bodyFull, clear.flatMap((c) => c.paths), FillRule.NonZero);
     }
+    // the body is flat, but a free wall has its own height: one that the prop
+    // passes over (or under) is no wall at all for that prop
+    const missed = free.filter((w) => w.level === String(room.level) && !yHits(y, w.y));
+    if (missed.length > 0) {
+      body = Clipper.difference(body as Path64[], missed.map((w) => toPath(freeWallPoly(w))), FillRule.NonZero);
+    }
     return (body as Path64[]).map((path) => path.map((pt) => [pt.x / 1000, pt.y / 1000] as V2));
   };
   const beamsOf = (room: any): Array<{ poly: V2[]; h: number }> => beamPolys(rawById.get(room.id));
+  // free walls are what `hitWall` found when no room edge of the box's own
+  // room explains it; they are addressed by `walls#<i>`, not by an edge id
+  const freeWallHit = (g: PropGeo): { id: string; d: number } | null => {
+    for (const w of free) {
+      if (w.level !== String(roomById.get(g.room)?.level)) continue;
+      if (!yHits(g.y, w.y)) continue;
+      const poly = freeWallPoly(w);
+      if (!obbPolyIntersects(g.obb, [poly])) continue;
+      return { id: w.id, d: obbDepth(g.obb, { c: midOf(poly), half: halfOf(w), yaw: yawOf(w) }) };
+    }
+    return null;
+  };
+  // fixtures are solid like props and share their record: the address of the
+  // struck one is `fixture.<i>` (spec "Линтер")
+  const fixtures = fixtureGeos(ctx).map((f) => ({ f, poly: fixtureFootprint(f) }));
 
   const at = (raw: any): V2 | null => (Array.isArray(raw.at) ? [raw.at[0], raw.at[1]] : null);
   const faceCoincident = (ctx as any).propFaceCoincident as Set<number> | undefined;
@@ -325,15 +371,30 @@ export function lintProps(ctx: Ctx): Issue[] {
           near && p0
             ? { at: [round3(p0[0] + near.n[0] * (shift + 0.01)), round3(p0[1] + near.n[1] * (shift + 0.01))] }
             : undefined;
+        // a box standing clear of every edge of its own room met a free wall
+        const hitFree = hitWall && depth <= EPS ? freeWallHit(g) : null;
         add(
           "PROP_HITS_WALL",
-          { edge: near ? near.e.id : room.id, d: String(round3(depth)) },
-          fix,
+          hitFree
+            ? { edge: hitFree.id, d: String(round3(hitFree.d)) }
+            : { edge: near ? near.e.id : room.id, d: String(round3(depth)) },
+          hitFree ? undefined : fix,
         );
         continue;
       }
 
-      // 6. into another solid prop (the record goes to the later one)
+      // 6. into a fixture, or into another solid prop (the record goes to the
+      // later one; a fixture is always "earlier" than any prop)
+      const hitFixture = fixtures.find(
+        (x) => x.f.level === room.level && yHits(g.y, x.f.y) && obbPolyIntersects(g.obb, [x.poly]),
+      );
+      if (hitFixture) {
+        add("PROP_HITS_PROP", {
+          other: hitFixture.f.id,
+          d: String(round3(obbDepth(g.obb, hitFixture.f.obb))),
+        });
+        continue;
+      }
       let bump: { other: PropGeo; d: number } | null = null;
       for (let j = 0; j < gi; j++) {
         const o = geos[j];

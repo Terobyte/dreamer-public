@@ -271,6 +271,19 @@ export function checkRefs(raw: any): Issue[] {
     }
   }
 
+  (raw.walls ?? []).forEach((w: any, i: number) => {
+    if (!w || typeof w !== "object") return;
+    if (typeof w.level === "string") ref(`/walls/${i}/level`, "level", w.level, levelIds);
+    if (typeof w.material === "string") ref(`/walls/${i}/material`, "material", w.material, materialIds);
+  });
+
+  (raw.fixtures ?? []).forEach((f: any, i: number) => {
+    if (!f || typeof f !== "object") return;
+    if (typeof f.room === "string") ref(`/fixtures/${i}/room`, "room", f.room, roomIds);
+    if (typeof f.material === "string") ref(`/fixtures/${i}/material`, "material", f.material, materialIds);
+    if (typeof f.top === "string") ref(`/fixtures/${i}/top`, "material", f.top, materialIds);
+  });
+
   const edgeCount = (room: any): number => (Array.isArray(room?.shape) ? room.shape.length : room?.circle ? 1 : 0);
   const edgeValid = (roomId: string, edge: number): boolean => {
     const room = roomById.get(roomId);

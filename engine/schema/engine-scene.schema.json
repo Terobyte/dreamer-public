@@ -127,6 +127,43 @@
         "allOf": [{ "not": { "required": ["shape", "circle"] } }]
       }
     },
+    "walls": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["level", "from", "to", "material"],
+        "additionalProperties": false,
+        "properties": {
+          "level": { "type": "string" },
+          "from": { "$ref": "#/$defs/point2" },
+          "to": { "$ref": "#/$defs/point2" },
+          "h": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+          "thickness": { "type": "number", "exclusiveMinimum": 0, "default": 0.12 },
+          "material": { "type": "string" },
+          "glass": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["kind", "room", "from", "to", "material"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "enum": ["counter", "shelf", "cabinet-wall"] },
+          "room": { "type": "string" },
+          "from": { "$ref": "#/$defs/point2" },
+          "to": { "$ref": "#/$defs/point2" },
+          "depth": { "type": "number", "exclusiveMinimum": 0 },
+          "h": { "type": "number", "exclusiveMinimum": 0 },
+          "material": { "type": "string" },
+          "top": { "type": "string" }
+        }
+      }
+    },
     "openings": {
       "type": "array",
       "default": [],

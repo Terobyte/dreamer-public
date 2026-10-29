@@ -1,6 +1,7 @@
 import type { Ctx } from "../ctx.js";
 import type { V2 } from "../geom/vec.js";
-import type { Interval, LevelPlan } from "../plan/merge.js";
+import { FREE, freeWalls, resolveGlassIds } from "../plan/merge.js";
+import type { FreeWall, Interval, LevelPlan } from "../plan/merge.js";
 import type { OpeningGeo } from "../openings/resolve.js";
 import { grayOf } from "./color.js";
 import { horizontalFace } from "./floors.js";
@@ -11,12 +12,13 @@ import { meshBBox } from "./mesh.js";
 import { propMeshes } from "./props.js";
 import { decalMeshes } from "./decals.js";
 import { doorMeshes } from "./doors.js";
+import { fixtureMeshes } from "./fixtures.js";
 
 export { meshBBox };
 
 export interface Mesh {
   id: string;
-  kind: "floor" | "ceiling" | "wall" | "band" | "reveal" | "beam" | "prop" | "decal" | "leaf" | "backdrop" | "cap";
+  kind: "floor" | "ceiling" | "wall" | "band" | "reveal" | "beam" | "fixture" | "prop" | "decal" | "leaf" | "backdrop" | "cap";
   material: string;
   positions: number[];
   normals: number[];
@@ -67,8 +69,14 @@ export type AssetFiles = Record<string, string>;
 /** Each object asset's own bound after normalization, keyed by asset id. */
 export type GlbSizes = Record<string, { w: number; d: number; h: number }>;
 
-/** Scene materials, `$exterior` and the asset placeholders, keyed by mesh material id. */
-export function materialTable(scene: any, assetFiles: AssetFiles = {}): Record<string, MaterialDef> {
+/** Scene materials, `$exterior`, the asset placeholders and glass variants of
+ *  free walls, keyed by mesh material id. */
+export function materialTable(
+  scene: any,
+  assetFiles: AssetFiles = {},
+  free: FreeWall[] = [],
+  glassIds: Map<number, string> = new Map(),
+): Record<string, MaterialDef> {
   // a plain object trips on an id literally named "__proto__" (it would set
   // the prototype instead of an own property, F21); Object.create(null)
   // has no such accessor in its chain
@@ -91,6 +99,12 @@ export function materialTable(scene: any, assetFiles: AssetFiles = {}): Record<s
         : { color: grayOf(id) };
   }
   out[EXTERIOR] = { color: String(scene.style?.exterior ?? "#808080") };
+  for (const w of free) {
+    const id = glassIds.get(w.i);
+    if (!id) continue;
+    const base = out[w.material] ?? { color: grayOf(w.material) };
+    out[id] = { ...base, transparent: true };
+  }
   return out;
 }
 
@@ -121,12 +135,23 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   };
   const caps = { k: 0 };
   const openings = (ctx.openings ?? []) as OpeningGeo[];
+  const free = freeWalls(scene, geoRooms);
+  // materialTable also keys entries off scene.assets (F6): a glass variant
+  // id must dodge those too, or it overwrites an asset's own map/color
+  const glassIds = resolveGlassIds(free, [
+    ...Object.keys(scene.materials ?? {}),
+    ...Object.keys(scene.assets ?? {}),
+  ]);
   for (const [levelId, plan] of (ctx.levels ?? new Map<string, LevelPlan>())) {
     const y = levelY.get(String(levelId)) ?? 0;
     (plan.intervals as Interval[]).forEach((iv, n) => {
       const own = openings.filter((o) => o.intervalLevel === levelId && o.intervalIndex === n && !o.error);
       meshes.push(
-        ...intervalMeshes(iv, { levelY: y, openings: own, caps, room: (s) => wallRoom(s, sceneRoom, geoRooms) }, next),
+        ...intervalMeshes(
+          iv,
+          { levelY: y, openings: own, caps, room: (s) => wallRoom(s, sceneRoom, geoRooms, free, glassIds) },
+          next,
+        ),
       );
     });
   }
@@ -144,7 +169,7 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   }
 
   // things: props, decals, door leaves and backdrops
-  meshes.push(...propMeshes(ctx, assetFiles, glbSizes), ...decalMeshes(ctx), ...doorMeshes(ctx));
+  meshes.push(...fixtureMeshes(ctx), ...propMeshes(ctx, assetFiles, glbSizes), ...decalMeshes(ctx), ...doorMeshes(ctx));
 
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
@@ -153,7 +178,7 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     version: 0,
     meshes,
     floors,
-    materials: materialTable(scene, assetFiles),
+    materials: materialTable(scene, assetFiles, free, glassIds),
     lights: (scene.lights ?? []) as Light[],
     cameras: (scene.cameras ?? []) as Camera[],
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },
@@ -161,7 +186,28 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   };
 }
 
-function wallRoom(side: { room: string; edge: number }, sceneRoom: Map<string, any>, geoRooms: any[]): WallRoom {
+function wallRoom(
+  side: { room: string; edge: number },
+  sceneRoom: Map<string, any>,
+  geoRooms: any[],
+  free: FreeWall[],
+  glassIds: Map<number, string>,
+): WallRoom {
+  if (side.room === FREE) {
+    const w = free[side.edge];
+    const dx = w.to[0] - w.from[0];
+    const dz = w.to[1] - w.from[1];
+    const l = Math.hypot(dx, dz) || 1;
+    // a free wall has no inside: either perpendicular will do, the opposite
+    // face is then drawn by the single-side branch of intervalMeshes
+    return {
+      id: w.id,
+      height: w.top,
+      normalIn: [-dz / l, dx / l],
+      wallMaterial: w.glass ? glassIds.get(w.i) ?? w.material : w.material,
+      bands: [],
+    };
+  }
   const src = sceneRoom.get(side.room);
   const geo = geoRooms.find((r) => r.id === side.room);
   const edge = geo.edges.find((e: any) => e.i === side.edge) ?? geo.edges[0];

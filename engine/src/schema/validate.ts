@@ -3,6 +3,7 @@ import type { ErrorObject } from "ajv";
 import schemaJson from "../../schema/engine-scene.schema.json" with { type: "json" };
 import type { Issue, Scene } from "../types.js";
 import { msg, futureHint } from "../report/messages.js";
+import { FIXTURE_KINDS } from "../build/fixtures.js";
 import { checkRefs, escapePtr, sortIssues } from "./refs.js";
 
 const AjvClass = (Ajv2020 as unknown as { default?: new (opts: object) => any }).default ?? (Ajv2020 as unknown as new (opts: object) => any);
@@ -10,8 +11,6 @@ const ajv = new AjvClass({ allErrors: true, strict: false });
 const validateFn = ajv.compile(schemaJson);
 
 const FUTURE_PATTERNS: Array<{ re: RegExp; prefix: string }> = [
-  { re: /^\/walls(\/|$)/, prefix: "/walls" },
-  { re: /^\/fixtures(\/|$)/, prefix: "/fixtures" },
   { re: /^\/stairs(\/|$)/, prefix: "/stairs" },
   { re: /^\/shafts(\/|$)/, prefix: "/shafts" },
   { re: /^\/holes(\/|$)/, prefix: "/holes" },
@@ -366,6 +365,8 @@ export const autoGapHeight = new WeakSet<object>();
 export function applyDefaults(raw: any): Scene {
   const s = deepClone(raw);
   s.openings ??= [];
+  s.walls ??= [];
+  s.fixtures ??= [];
   s.props ??= [];
   s.decals ??= [];
   s.lights ??= [];
@@ -377,6 +378,19 @@ export function applyDefaults(raw: any): Scene {
   s.style.exterior ??= "#808080";
   for (const m of Object.values(s.materials ?? {}) as any[]) {
     if (m && typeof m === "object" && "tile" in m) m.repeat_m ??= 1.0;
+  }
+  for (const w of s.walls as any[]) {
+    if (!w || typeof w !== "object") continue;
+    w.h ??= null;
+    w.thickness ??= 0.12;
+    w.glass ??= false;
+  }
+  for (const f of s.fixtures as any[]) {
+    if (!f || typeof f !== "object") continue;
+    const d = FIXTURE_KINDS[String(f.kind)];
+    if (!d) continue;
+    f.depth ??= d.depth;
+    f.h ??= d.h;
   }
   for (const r of s.rooms as any[]) {
     if (r.walls && typeof r.walls === "object") r.walls.thickness ??= 0.12;

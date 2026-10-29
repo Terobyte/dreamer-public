@@ -23,6 +23,91 @@ export interface LevelPlan {
   body: Path64[];
 }
 
+/** spec "Формат SCENE.json" `walls[]`: the pseudo-room of a free wall side.
+ *  Its interval has no room of its own, so `side.edge` is the index in
+ *  `scene.walls` and `walls#<i>` addresses it in messages and mesh ids. */
+export const FREE = "walls";
+
+export interface FreeWall {
+  i: number;
+  /** `walls#<i>`: the side id, also the mesh id prefix */
+  id: string;
+  level: string;
+  from: V2;
+  to: V2;
+  thickness: number;
+  material: string;
+  glass: boolean;
+  /** height over the level floor; `h: null` takes the tallest room of the level */
+  top: number;
+  /** absolute y span */
+  y: [number, number];
+}
+
+/** The material id for the glass variant of a free wall's own material (both
+ *  faces use it, so it is keyed off the wall, not the base material). */
+export function glassMaterialId(w: FreeWall): string {
+  return `${w.material}$glass:${w.i}`;
+}
+
+/** Glass variant ids, keyed by wall index, deconflicted against every
+ *  authored material id (F5): an author who happens to own the generated id
+ *  keeps their material untouched, and the glass wall gets a further-escaped
+ *  id instead of overwriting it. */
+export function resolveGlassIds(free: FreeWall[], materialIds: Iterable<string>): Map<number, string> {
+  const taken = new Set(materialIds);
+  const out = new Map<number, string>();
+  for (const w of free) {
+    if (!w.glass) continue;
+    let id = glassMaterialId(w);
+    while (taken.has(id)) id += "$";
+    taken.add(id);
+    out.set(w.i, id);
+  }
+  return out;
+}
+
+/** `scene.walls` resolved against the levels and the compiled rooms. */
+export function freeWalls(
+  scene: Record<string, any>,
+  rooms: Array<{ level: string; height: number }>,
+): FreeWall[] {
+  const levels = (scene.levels ?? []) as any[];
+  return ((scene.walls ?? []) as any[]).map((w, i) => {
+    const level = String(w.level);
+    const base = Number(levels.find((l) => String(l?.id) === level)?.y ?? 0);
+    const onLevel = rooms.filter((r) => r.level === level);
+    const top =
+      typeof w.h === "number" ? w.h : onLevel.length > 0 ? Math.max(...onLevel.map((r) => Number(r.height))) : 0;
+    return {
+      i,
+      id: `${FREE}#${i}`,
+      level,
+      from: [Number(w.from[0]), Number(w.from[1])] as V2,
+      to: [Number(w.to[0]), Number(w.to[1])] as V2,
+      thickness: typeof w.thickness === "number" && w.thickness > 0 ? w.thickness : 0.12,
+      material: String(w.material),
+      glass: Boolean(w.glass),
+      top,
+      y: [base, base + top] as [number, number],
+    };
+  });
+}
+
+/** The four corners of a free wall's footprint (its axis offset both ways). */
+export function freeWallPoly(w: FreeWall): V2[] {
+  const dx = w.to[0] - w.from[0];
+  const dz = w.to[1] - w.from[1];
+  const l = Math.hypot(dx, dz) || 1;
+  const n: V2 = [(-dz / l) * (w.thickness / 2), (dx / l) * (w.thickness / 2)];
+  return [
+    [w.from[0] + n[0], w.from[1] + n[1]],
+    [w.to[0] + n[0], w.to[1] + n[1]],
+    [w.to[0] - n[0], w.to[1] - n[1]],
+    [w.from[0] - n[0], w.from[1] - n[1]],
+  ];
+}
+
 interface EdgeLike {
   room: string;
   i: number;
@@ -42,12 +127,29 @@ function thicknessOf(room: Record<string, unknown>): number {
   return 0.12;
 }
 
-export function mergeLevel(roomsIn: Record<string, any>[], level: string): LevelPlan {
+export function mergeLevel(
+  roomsIn: Record<string, any>[],
+  level: string,
+  walls: FreeWall[] = [],
+): LevelPlan {
   const rooms = (roomsIn as Record<string, any>[]).filter((r) => !r.level || r.level === level);
   const edges: EdgeLike[] = [];
   for (const r of rooms) {
     const list = (r.edges ?? []) as EdgeLike[];
     for (const e of list) edges.push(e);
+  }
+  // free walls join the merge as ordinary straight edges of the pseudo-room
+  // `walls`, so they snap, split and share intervals like any room wall; they
+  // come last, which keeps the interval indices of the rooms unchanged
+  for (const w of walls.filter((x) => x.level === level)) {
+    edges.push({
+      room: FREE,
+      i: w.i,
+      from: w.from,
+      to: w.to,
+      arc: null,
+      len: Math.hypot(w.to[0] - w.from[0], w.to[1] - w.from[1]),
+    });
   }
 
   // vertex snapping in order: rooms order, edges order (from, then final to).
@@ -95,6 +197,17 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
 
   const thickByRoom = new Map<string, number>();
   for (const r of rooms) thickByRoom.set(String(r.id), thicknessOf(r));
+  for (const w of walls) thickByRoom.set(w.id, w.thickness);
+  // a side of the pseudo-room `walls` is one wall of `scene.walls`, so its
+  // thickness hangs off the edge index rather than off the room id
+  const thickOf = (s: { room: string; edge: number }): number =>
+    thickByRoom.get(s.room === FREE ? `${FREE}#${s.edge}` : s.room) ?? 0.12;
+  // the pseudo-room has no place in `rooms`: order it after the real ones, so
+  // a shared interval still takes its id and its `m` from the room side
+  const roomOrder = (room: string): number => {
+    const k = rooms.findIndex((r) => String(r.id) === room);
+    return k < 0 ? rooms.length : k;
+  };
 
   const intervals: Interval[] = [];
 
@@ -269,16 +382,10 @@ export function mergeLevel(roomsIn: Record<string, any>[], level: string): Level
         sides.push({ room: e.room, edge: e.i, m: [Math.min(m0, m1), Math.max(m0, m1)] });
       }
       // keep at most 2 sides (shared wall); if more, keep first two in rooms order
-      const ordered = sides
-        .sort((a, b) => {
-          const ia = rooms.findIndex((r) => String(r.id) === a.room);
-          const ib = rooms.findIndex((r) => String(r.id) === b.room);
-          return ia - ib;
-        })
-        .slice(0, 2);
+      const ordered = sides.sort((a, b) => roomOrder(a.room) - roomOrder(b.room)).slice(0, 2);
       const from: V2 = [ref.from[0] + ref.dir[0] * s0, ref.from[1] + ref.dir[1] * s0];
       const to: V2 = [ref.from[0] + ref.dir[0] * s1, ref.from[1] + ref.dir[1] * s1];
-      const th = Math.max(...ordered.map((s) => thickByRoom.get(s.room) ?? 0.12));
+      const th = Math.max(...ordered.map((s) => thickOf(s)));
       intervals.push({ from, to, arc: null, sides: ordered, thickness: th });
     }
   }

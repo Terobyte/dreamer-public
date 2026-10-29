@@ -209,14 +209,14 @@
 - `walls[]` участвуют в слиянии плана уровня как интервалы без своей комнаты; `h` по умолчанию — максимум `height` комнат уровня.
 - `fixtures`: задняя грань по `from → to`, перед — в сторону `room` (по нормали внутрь комнаты); умолчания `depth`/`h` из таблицы спеки; `cabinet-wall` — низ на 1.45 м.
 
-- [ ] `test_free_wall_mesh`: demo-flat + `walls: [{"level":"L0","from":[-1,8],"to":[1,8],"material":"olive"}]` (стена в `hall`, предметов рядом нет) → `check` ok; есть меши с префиксом `walls#0:`; их общий bbox x [−1, 1] (±1e-6, `Butt`), z [7.94, 8.06], y [0, 3.4]
-- [ ] `test_free_wall_default_height`: тот же патч → bbox по y верх = 3.4 — максимум уровня (`living` 3.4), а не своей комнаты (`hall` 3.0)
-- [ ] `test_free_wall_blocks`: тот же патч → `isWalkable(nav, 0, 8)` = false; плюс новый предмет `{"id":"box","asset":"p_table","room":"hall","at":[0,8],"size":{"w":0.5,"d":0.5,"h":0.5},"yaw":0}` → `PROP_HITS_WALL`, в `msg` есть `walls#0`
-- [ ] `test_fixture_counter`: `fixtures: [{"kind":"counter","room":"living","from":[-3.94,-3],"to":[-3.94,-1],"material":"wood"}]` (мимо дивана z [0.5, 2.5]) → `check` ok; меш `fixture.0` bbox x [−3.94, −3.34], z [−3, −1], y [0, 0.9]; меш `fixture.0:top` — 4 вершины на y = 0.9
-- [ ] `test_fixture_cabinet_wall`: `kind` `cabinet-wall` с тем же `from/to` → bbox y [1.45, 2.15], x [−3.94, −3.59], z [−3, −1]
-- [ ] `test_fixture_hits_prop`: counter + предмет `{"id":"crate","asset":"p_vase","room":"living","at":[-3.64,-2],"size":{"w":0.3,"d":0.3,"h":0.3},"yaw":0}` → ошибки ровно `[PROP_HITS_PROP]`, в `msg` `fixture.0` (без counter этот же патч проходит `check` чисто)
-- [ ] `test_future_fields_gone`: `walls` и `fixtures` больше не дают `SCHEMA_FUTURE_FIELD` (про `stairs` тест молчит — его снимает фаза «Лестница: check и паспорт»)
-- [ ] реализовать
+- [x] `test_free_wall_mesh`: demo-flat + `walls: [{"level":"L0","from":[-1,8],"to":[1,8],"material":"olive"}]` (стена в `hall`, предметов рядом нет) → `check` ok; есть меши с префиксом `walls#0:`; их общий bbox x [−1, 1] (±1e-6, `Butt`), z [7.94, 8.06], y [0, 3.4]
+- [x] `test_free_wall_default_height`: тот же патч → bbox по y верх = 3.4 — максимум уровня (`living` 3.4), а не своей комнаты (`hall` 3.0)
+- [x] `test_free_wall_blocks`: тот же патч → `isWalkable(nav, 0, 8)` = false; плюс новый предмет `{"id":"box","asset":"p_table","room":"hall","at":[0,8],"size":{"w":0.5,"d":0.5,"h":0.5},"yaw":0}` → `PROP_HITS_WALL`, в `msg` есть `walls#0`
+- [x] `test_fixture_counter`: `fixtures: [{"kind":"counter","room":"living","from":[-3.94,-3],"to":[-3.94,-1],"material":"wood"}]` (мимо дивана z [0.5, 2.5]) → `check` ok; меш `fixture.0` bbox x [−3.94, −3.34], z [−3, −1], y [0, 0.9]; меш `fixture.0:top` — 4 вершины на y = 0.9
+- [x] `test_fixture_cabinet_wall`: `kind` `cabinet-wall` с тем же `from/to` → bbox y [1.45, 2.15], x [−3.94, −3.59], z [−3, −1]
+- [x] `test_fixture_hits_prop`: counter + предмет `{"id":"crate","asset":"p_vase","room":"living","at":[-3.64,-2],"size":{"w":0.3,"d":0.3,"h":0.3},"yaw":0}` → ошибки ровно `[PROP_HITS_PROP]`, в `msg` `fixture.0` (без counter этот же патч проходит `check` чисто)
+- [x] `test_future_fields_gone`: `walls` и `fixtures` больше не дают `SCHEMA_FUTURE_FIELD` (про `stairs` тест молчит — его снимает фаза «Лестница: check и паспорт»)
+- [x] реализовать
 
 ## Вид сверху в PNG
 

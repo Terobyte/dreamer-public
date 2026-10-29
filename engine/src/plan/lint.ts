@@ -1,9 +1,10 @@
 import type { Ctx } from "../ctx.js";
 import type { Issue } from "../types.js";
 import { compileRooms } from "./rooms.js";
-import { mergeLevel } from "./merge.js";
+import { freeWalls, mergeLevel } from "./merge.js";
 import type { Side } from "./merge.js";
 import { driftIssues } from "./drift.js";
+import { msg } from "../report/messages.js";
 
 export function planStage(ctx: Ctx): Issue[] {
   const { rooms, issues } = compileRooms(ctx.scene);
@@ -21,9 +22,23 @@ export function planStage(ctx: Ctx): Issue[] {
   // merge per level
   const roomsForMerge = rooms.map((r) => ({ ...r, thickness: thicknessOf(r.id) }));
   const levels = new Map<string, ReturnType<typeof mergeLevel>>();
-  const lvlIds = [...new Set(rooms.map((r) => r.level))];
+  const free = freeWalls(ctx.scene as never, rooms as never);
+  // a free wall can be the only thing on its level (F4): take levels from
+  // both rooms and walls, or that level gets no plan and no geometry
+  const lvlIds = [...new Set([...rooms.map((r) => r.level), ...free.map((w) => w.level)])];
+  // a roomless level has no room heights to take a max of (F8): `h: null`
+  // there must not silently fall back to 0 and make the wall vanish
+  const rawWalls: any[] = (ctx.scene as any).walls ?? [];
+  const hRequired: Issue[] = [];
+  free.forEach((w, i) => {
+    const onLevel = rooms.some((r) => r.level === w.level);
+    if (!onLevel && typeof rawWalls[i]?.h !== "number") {
+      const path = `/walls/${i}/h`;
+      hRequired.push({ code: "SCHEMA_REQUIRED", stage: "plan", path, msg: msg("SCHEMA_REQUIRED", { path }) });
+    }
+  });
   for (const lvl of lvlIds) {
-    const plan = mergeLevel(roomsForMerge as never, lvl);
+    const plan = mergeLevel(roomsForMerge as never, lvl, free);
     levels.set(lvl, plan);
   }
   (ctx as any).levels = levels;
@@ -99,5 +114,5 @@ export function planStage(ctx: Ctx): Issue[] {
   }
   ctx.passport.edges = outEdges;
   const drift = driftIssues(rooms, rawRooms);
-  return [...issues, ...drift];
+  return [...issues, ...drift, ...hRequired];
 }
