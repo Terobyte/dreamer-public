@@ -56,11 +56,27 @@ def _contains(room: dict, x: float, z: float) -> bool:
         return False
 
 
+def _is_num(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _on_circle(cx: float, cz: float, radius: float, az) -> tuple:
+    """Point at spec angle `az` (degrees, 0 = +Z, 90 = +X) on a circle."""
+    rad = math.radians(float(az))
+    return (cx + radius * math.sin(rad), cz + radius * math.cos(rad))
+
+
 def _edge_center(room: dict, edge, pos: dict):
     """Center point of an `on` opening on the named room's edge, or None when the
     spec or the edge geometry is malformed (the engine reports that instead) or uses the circle-only `az` form."""
     if not isinstance(edge, int) or isinstance(edge, bool):
         return None
+    circle = room.get("circle") if isinstance(room, dict) else None
+    if isinstance(circle, dict) and edge == 0 and _is_num(pos.get("az")):
+        try:
+            return _on_circle(float(circle["c"][0]), float(circle["c"][1]), float(circle["r"]), pos["az"])
+        except (TypeError, ValueError, KeyError, IndexError):
+            return None
     shape = room.get("shape") if isinstance(room, dict) else None
     if not isinstance(shape, list) or not 0 <= edge < len(shape):
         return None
@@ -91,6 +107,8 @@ def _edge_center(room: dict, edge, pos: dict):
         apex = (math.atan2(mz + uz * sag - oz, mx + ux * sag - ox) - a0) % math.tau
         sweep = span if apex <= span else span - math.tau
         length = radius * abs(sweep)
+    if bulge and _is_num(pos.get("az")):
+        return _on_circle(ox, oz, radius, pos["az"])
     if isinstance(pos.get("t"), (int, float)) and not isinstance(pos.get("t"), bool):
         frac = float(pos["t"])
     elif isinstance(pos.get("m"), (int, float)) and not isinstance(pos.get("m"), bool):
@@ -144,7 +162,10 @@ def skeleton_defects(skeleton, plan) -> list:
     for section in ("props", "decals", "cameras", "fixtures"):
         if skeleton.get(section):
             defects.append({"msg": "skeleton must not contain builder objects", "section": section})
-    if any(isinstance(light, dict) and light.get("kind") != "hemi" for light in skeleton.get("lights", [])):
+    lights = skeleton.get("lights", [])
+    if not isinstance(lights, list):
+        defects.append({"msg": "skeleton lights must be a list"})
+    elif any(isinstance(light, dict) and light.get("kind") != "hemi" for light in lights):
         defects.append({"msg": "skeleton lights must be hemi only"})
     raw_rooms = skeleton.get("rooms")
     raw_openings = skeleton.get("openings")
@@ -181,6 +202,9 @@ def skeleton_defects(skeleton, plan) -> list:
                 or isinstance(budget, bool) or not isinstance(budget, int)):
             defects.append({"msg": "plan room entry lacks refs, max_points, cues",
                             "id": rid})
+    for rid in planned:
+        if rid not in by_id:
+            defects.append({"msg": "plan has entry for unknown room", "id": rid})
     if raw_openings is None:
         openings = []
     elif isinstance(raw_openings, list):
@@ -302,7 +326,7 @@ class Floor:
             plan = json.loads((self.run_dir / "plan.json").read_text())
             defects = skeleton_defects(skeleton, plan)
             if not defects:
-                defects.extend(self._plan_refs(plan))
+                defects.extend(self._plan_refs(plan, skeleton))
             ok = not defects and green(self.deps["engine"].check_full(skeleton, self.run_dir / "work"))
         else:
             skeleton, plan, defects, ok = self._architect()
@@ -395,7 +419,7 @@ class Floor:
             plan = answer.scene.get("plan") or {}
             defects = skeleton_defects(skeleton, plan)
             if not defects:
-                defects.extend(self._plan_refs(plan))
+                defects.extend(self._plan_refs(plan, skeleton))
             if defects:
                 continue
             report = self.deps["engine"].check_full(skeleton, self.run_dir / "work")
@@ -431,11 +455,14 @@ class Floor:
                 and p.suffix.lower() in (".png", ".jpg", ".jpeg")
                 and p.resolve().is_relative_to(refs)]
 
-    def _plan_refs(self, plan):
+    def _plan_refs(self, plan, skeleton):
         """Only task-supplied images may be sent back by the model as refs."""
         root = (self.task_dir / "refs").resolve()
+        room_ids = {r.get("id") for r in skeleton.get("rooms") or [] if isinstance(r, dict)}
         defects = []
         for rid, row in plan["rooms"].items():
+            if rid not in room_ids or not isinstance(row, dict) or not isinstance(row.get("refs"), list):
+                continue
             resolved = []
             for name in row["refs"]:
                 if not isinstance(name, str):

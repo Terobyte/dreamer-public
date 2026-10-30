@@ -13,7 +13,9 @@ def _depends(prop, ids):
     mount = prop.get('mount')
     around = prop.get('around')
     face = prop.get('face')
-    return ((isinstance(mount, dict) and mount.get('top_of') in ids)
+    on = prop.get('on')
+    return ((isinstance(on, dict) and on.get('prop') in ids)
+            or (isinstance(mount, dict) and mount.get('top_of') in ids)
             or (isinstance(around, dict) and around.get('center') in ids)
             or (isinstance(face, str) and face in ids))
 
@@ -37,14 +39,16 @@ def _remove_object(parts, scene, issue, owner):
     removed = [{'room': owner, 'section': section, 'id': selected.get('id')}]
     ids = {selected['id']} if isinstance(selected.get('id'), str) else set()
     while ids:
-        dependent = [p for p in (parts.get(owner) or {}).get('props', []) if _depends(p, ids)]
-        if not dependent:
+        found = [(room, section, obj) for room, part in parts.items()
+                 for section in ('props', 'decals') for obj in (part or {}).get(section, [])
+                 if isinstance(obj, dict) and _depends(obj, ids)]
+        if not found:
             break
-        for prop in dependent:
-            parts[owner]['props'].remove(prop)
-            removed.append({'room': owner, 'section': 'props', 'id': prop.get('id')})
-            if isinstance(prop.get('id'), str):
-                ids.add(prop['id'])
+        for room, section, obj in found:
+            parts[room][section].remove(obj)
+            removed.append({'room': room, 'section': section, 'id': obj.get('id')})
+            if isinstance(obj.get('id'), str):
+                ids.add(obj['id'])
     return removed
 
 

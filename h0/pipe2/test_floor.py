@@ -496,3 +496,37 @@ class TestReferenceBoundary(FloorCase):
         Floor(self.task_dir, self.run_dir, self.deps(spark, FakeEngine())).run()
         call = next(c for c in self.builder_calls(spark) if c['room'] == 'A')
         self.assertTrue(any(part.get('type') == 'image_url' for part in call['messages'][0]['content']))
+
+
+class TestPhase7JudgeFindings(FloorCase):
+    def test_null_lights_is_a_fixable_defect_not_a_crash(self):
+        sk = skeleton(); sk['lights'] = None
+        self.assertTrue(skeleton_defects(sk, plan()))
+        good = answer({'skeleton': skeleton(), 'plan': plan()})
+        spark = FakeSpark({'architect': [answer({'skeleton': sk, 'plan': plan()})],
+                           'architect_fix': [good], 'builder': [answer({'props': []})] * 2})
+        result = Floor(self.task_dir, self.run_dir, self.deps(spark, FakeEngine())).run()
+        self.assertEqual(result.status, 'done')
+        self.assertEqual(len(self.architect_calls(spark)), 2)
+
+    def test_stray_plan_room_entries_are_ignored_not_a_crash(self):
+        p = plan()
+        p['rooms']['Z'] = {}
+        p['rooms']['Y'] = 'junk'
+        p['rooms']['X'] = {'refs': 'nope', 'max_points': 1, 'cues': ''}
+        self.assertTrue(skeleton_defects(skeleton(), p))
+        good = answer({'skeleton': skeleton(), 'plan': plan()})
+        spark = FakeSpark({'architect': [answer({'skeleton': skeleton(), 'plan': p})],
+                           'architect_fix': [good], 'builder': [answer({'props': []})] * 2})
+        result = Floor(self.task_dir, self.run_dir, self.deps(spark, FakeEngine())).run()
+        self.assertEqual(result.status, 'done')
+        self.assertEqual(len(self.architect_calls(spark)), 2)
+
+    def test_curved_shared_wall_az_accepts_both_owners(self):
+        for owner in ('A', 'B'):
+            s = skeleton(('A', 'B'))
+            s['rooms'][0]['shape'] = [[0, 0, {'bulge': .5}], [4, 0], [4, 4], [0, 4]]
+            s['rooms'][1]['shape'] = [[4, 0, {'bulge': -.5}], [0, 0], [0, -4], [4, -4]]
+            s['openings'] = [{'id': 'o0', 'kind': 'door', 'on': {'room': 'A', 'edge': 0, 'az': 180}, 'width': .9}]
+            p = plan(('A', 'B')); p['openings']['o0']['owner'] = owner
+            self.assertEqual(skeleton_defects(s, p), [], owner)
