@@ -156,6 +156,10 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.id}: ${params.tris} треугольников, для его класса не больше ${params.limit}`;
     case "TRI_SCENE_BUDGET":
       return `сцена: ${params.tris} треугольников, бюджет ${params.limit}`;
+    case "CAMERA_NO_REF":
+      return `ни у одной из ${params.n} камер нет ref: сравнивать снимки не с чем`;
+    case "SHOT_MISSING":
+      return `камера ${params.id}: нет снимка ${params.file} в dist/shots`;
     case "POINT_LIGHT_BUDGET":
       return params.room === ""
         ? `сцена: ${params.n} point-ламп, не больше ${params.limit}`

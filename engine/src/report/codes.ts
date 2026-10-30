@@ -48,6 +48,8 @@ export const CODES: Record<Code, { stage: Stage; level: "error" | "warn" }> = {
   ROUTE_BLOCKED: { stage: "routes", level: "error" },
   TRI_PROP_BUDGET: { stage: "routes", level: "warn" },
   TRI_SCENE_BUDGET: { stage: "routes", level: "error" },
+  CAMERA_NO_REF: { stage: "routes", level: "warn" },
+  SHOT_MISSING: { stage: "routes", level: "error" },
   // warn per room, error per scene: the level is picked by the check itself
   POINT_LIGHT_BUDGET: { stage: "routes", level: "warn" },
 };

@@ -60,6 +60,8 @@ export type Code =
   | "ROUTE_BLOCKED"
   | "TRI_PROP_BUDGET"
   | "TRI_SCENE_BUDGET"
+  | "CAMERA_NO_REF"
+  | "SHOT_MISSING"
   | "POINT_LIGHT_BUDGET";
 
 export interface Issue {

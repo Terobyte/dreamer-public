@@ -4,6 +4,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { chromium, type Browser } from "playwright";
 import { mark } from "../report/timing.js";
+import { shotBaseNames } from "./shotnames.js";
+
+function shotFileNames(cameras: GeoCamera[]): string[] {
+  return shotBaseNames(cameras).map((n) => `${n}.png`);
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html",
@@ -81,34 +86,6 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * The contract is `shots/<camera id>.png`, so an id that is already a legal
- * filename is kept verbatim (`front:view` -> `front:view.png`); only what
- * would make the name point somewhere else is replaced: path separators,
- * control characters, and the two names that mean a directory (`.`, `..`).
- * Distinct ids can sanitize to the same string (e.g. `room/left` and
- * `room_left`), so a colliding base gets its index appended; that suffixed
- * name is itself checked against every name already assigned (including
- * another camera's literal id, e.g. `room_left-0`), and grows a further
- * `-<index>` suffix until it is unique. An id with no collision at all keeps
- * its plain name.
- */
-function shotFileNames(cameras: GeoCamera[]): string[] {
-  const base = cameras.map((c) => {
-    const safe = c.id.replace(/[/\\\x00-\x1f]/g, "_");
-    return safe === "" || safe === "." || safe === ".." ? `_${safe}` : safe;
-  });
-  const counts = new Map<string, number>();
-  for (const b of base) counts.set(b, (counts.get(b) ?? 0) + 1);
-  const used = new Set<string>();
-  return base.map((b, i) => {
-    let name = (counts.get(b) ?? 0) > 1 ? `${b}-${i}` : b;
-    while (used.has(name)) name = `${name}-${i}`;
-    used.add(name);
-    return `${name}.png`;
-  });
-}
-
-/**
  * A relative `href` built from a filename that may contain URL-reserved
  * characters (`#`, `%`, `?`, ...) must have each path segment percent-encoded,
  * or the browser mis-parses it before a request is even sent (e.g. `#` starts
@@ -119,24 +96,31 @@ function encodeHrefPath(relPath: string): string {
   return relPath.split("/").map(encodeURIComponent).join("/");
 }
 
-/** One row per camera: the ref on the left, the shot taken just now on the right. */
+/**
+ * One row per camera with a ref: the ref on the left, the shot taken just now
+ * on the right. Cameras without a ref go in a separate list at the bottom.
+ */
 export function sheetHtml(cameras: GeoCamera[], opts: ShotsOptions): string {
   const names = shotFileNames(cameras);
-  const rows = cameras
-    .map((c, i) => {
-      const shotSrc = encodeHrefPath(`shots/${names[i]}`);
-      if (!c.ref) {
-        return (
-          `<div class="row"><div class="cell">` +
-          `<img class="pane" src="${shotSrc}"><div class="cap">нет ref</div></div></div>`
-        );
-      }
-      return (
-        `<div class="row"><div class="cell"><img class="pane" src="${encodeHrefPath(c.ref)}"><div class="cap">ref</div></div>` +
-        `<div class="cell"><img class="pane" src="${shotSrc}"><div class="cap">${escapeHtml(c.id)}</div></div></div>`
+  const paired: string[] = [];
+  const bare: string[] = [];
+  cameras.forEach((c, i) => {
+    const shotSrc = encodeHrefPath(`shots/${names[i]}`);
+    if (!c.ref) {
+      bare.push(
+        `<div class="row"><div class="cell">` +
+          `<img class="pane" src="${shotSrc}"><div class="cap">нет ref</div></div></div>`,
       );
-    })
-    .join("\n");
+      return;
+    }
+    paired.push(
+      `<div class="row"><div class="cell"><img class="pane" src="${encodeHrefPath(c.ref)}"><div class="cap">ref</div></div>` +
+        `<div class="cell"><img class="pane" src="${shotSrc}"><div class="cap">${escapeHtml(c.id)}</div></div></div>`,
+    );
+  });
+  const head = `<div class="cap">${paired.length} из ${cameras.length} камер с референсом</div>`;
+  const tail = bare.length > 0 ? `\n<div class="cap">без референса</div>\n${bare.join("\n")}` : "";
+  const rows = `${head}\n${paired.join("\n")}${tail}`;
   return `<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>sheet</title>
 <link rel="icon" href="data:,">

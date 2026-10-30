@@ -1,5 +1,5 @@
 #!/usr/bin/env node --import tsx
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
 import { parseScene } from "../src/schema/parse.js";
 import { emptyPassport, makeReport } from "../src/report/report.js";
@@ -8,6 +8,7 @@ import type { TriCount } from "../src/budget.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
 import { writeDist } from "../src/build/write.js";
+import { shotBaseNames } from "../src/build/shotnames.js";
 import { runShots, SHOTS_DEFAULTS } from "../src/build/shots.js";
 import { runAssets, missingAssets } from "../src/assets/run.js";
 import { MuseImageProvider } from "../src/assets/providers/muse-image.js";
@@ -130,6 +131,8 @@ async function main(): Promise<number> {
     let builtNav: NavJson | undefined;
     let facts: Record<string, PropFact | null> | undefined;
     let tris: TriCount | undefined;
+    let missingShots: { index: number; id: string; file: string }[] | undefined;
+    let builtCams: { ref?: string | null }[] | undefined;
     if (builtFlag !== undefined) {
       const navPath = join(builtFlag, "nav.json");
       builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
@@ -145,7 +148,39 @@ async function main(): Promise<number> {
         }
       }
     }
-    const { report, ctx } = runCheck(raw, { builtNav, facts, tris });
+    if (builtFlag !== undefined) {
+      missingShots = [];
+      // a directory at the shot path is not a picture
+      const isShotFile = (p: string): boolean => {
+        try {
+          return statSync(p).isFile();
+        } catch {
+          return false;
+        }
+      };
+      // once `shots` has been run, every camera must have its picture;
+      // a missing `shots/` dir means every picture is missing
+      if (existsSync(join(builtFlag, "geometry.json"))) {
+        const cams: { id: string; ref?: string | null }[] = JSON.parse(readFileSync(join(builtFlag, "geometry.json"), "utf-8")).cameras ?? [];
+        builtCams = cams;
+        missingShots = shotBaseNames(cams)
+          .map((n, index) => ({ index, id: cams[index]!.id, file: `${n}.png` }))
+          .filter((m) => !isShotFile(join(builtFlag, "shots", m.file)));
+      } else {
+        // without geometry.json the dist cannot be trusted: every scene
+        // camera counts as missing its shot (builtCams stays undefined so
+        // the CAMERA_NO_REF check falls back to the scene cameras)
+        const sceneCams = ((raw as any)?.cameras ?? []).filter(
+          (c: unknown): c is { id: string } => !!c && typeof c === "object" && typeof (c as { id: unknown }).id === "string",
+        );
+        missingShots = shotBaseNames(sceneCams).map((n, index) => ({
+          index,
+          id: sceneCams[index]!.id,
+          file: `${n}.png`,
+        }));
+      }
+    }
+    const { report, ctx } = runCheck(raw, { builtNav, facts, tris, missingShots, builtCams });
     const sceneName = typeof ctx.scene?.name === "string" ? ctx.scene.name : undefined;
     const rp = reportPath ?? defaultReportPath(scenePath, sceneName);
     printAndDiff(rp, report);

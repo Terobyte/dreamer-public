@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import type { Ctx } from "../ctx.js";
@@ -15,6 +15,7 @@ import { factOf, type PropFact } from "../props/fact.js";
 import type { Geometry } from "./geometry.js";
 import { glbTriangles } from "../assets/tris.js";
 import type { TriCount } from "../budget.js";
+import { shotBaseNames } from "./shotnames.js";
 import { doorDefs, type DoorJson } from "./doors.js";
 
 export interface BuildJson {
@@ -146,6 +147,7 @@ export async function bundleRuntime(outFile: string): Promise<void> {
  */
 function copyRefs(cameras: Camera[], outDir: string, scenePath?: string): string[] {
   const warnings: string[] = [];
+  const shotNames = shotBaseNames(cameras);
   cameras.forEach((cam, i) => {
     const ref = cam.ref;
     if (ref === undefined) return;
@@ -159,6 +161,9 @@ function copyRefs(cameras: Camera[], outDir: string, scenePath?: string): string
     mkdirSync(join(outDir, "refs"), { recursive: true });
     copyFileSync(src, join(outDir, rel));
     cam.ref = rel.split(sep).join("/");
+    // the ref also sits next to the shot it will be compared with
+    mkdirSync(join(outDir, "shots"), { recursive: true });
+    copyFileSync(src, join(outDir, "shots", `${shotNames[i]}.ref${extname(ref).toLowerCase() || ".png"}`));
   });
   return warnings;
 }

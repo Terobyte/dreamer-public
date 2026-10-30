@@ -20,6 +20,8 @@ const OUT_OF_PHASE = new Set<Code>([
   "TRI_PROP_BUDGET",
   "TRI_SCENE_BUDGET",
   "POINT_LIGHT_BUDGET",
+  "SHOT_MISSING",
+  "CAMERA_NO_REF",
 ]);
 
 function codesOfLevel(level: "error" | "warn"): string[] {

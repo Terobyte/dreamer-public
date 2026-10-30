@@ -13,11 +13,12 @@ import type { Ctx } from "./ctx.js";
 import type { PropFact } from "./props/fact.js";
 import type { NavJson, Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
+import { msg } from "./report/messages.js";
 import { budgetIssues, type TriCount } from "./budget.js";
 
 export function runCheck(
   raw: unknown,
-  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null>; tris?: TriCount },
+  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null>; tris?: TriCount; missingShots?: { index: number; id: string; file: string }[]; builtCams?: { ref?: string | null }[] },
 ): { report: Report; ctx: Ctx } {
   const until = opts?.until ?? "nav";
   const untilIdx = STAGES.indexOf(until);
@@ -85,6 +86,32 @@ export function runCheck(
     for (const i of budgetIssues(ctx, opts.tris)) {
       const isErr = i.code === "POINT_LIGHT_BUDGET" ? i.data?.level === "error" : CODES[i.code].level === "error";
       (isErr ? errors : warnings).push(i);
+    }
+  }
+
+  // camera ↔ picture checks need a dist/ on disk: only the CLI passes `missingShots` (an empty list when nothing is missing)
+  if (opts?.missingShots !== undefined && upToProps) {
+    // `ref` is read from the built geometry, not the source scene: a ref
+    // path whose file is missing is `null` in the dist, so there is no pair
+    const built = opts?.builtCams;
+    const cams = built !== undefined
+      ? built
+      : (((scene as any).cameras ?? []) as any[]).filter((c) => c && typeof c === "object");
+    if (cams.length > 0 && !cams.some((c) => typeof c.ref === "string" && c.ref !== "")) {
+      warnings.push({
+        code: "CAMERA_NO_REF",
+        stage: "routes",
+        path: "/cameras",
+        msg: msg("CAMERA_NO_REF", { n: String(cams.length) }),
+      });
+    }
+    for (const m of opts.missingShots) {
+      errors.push({
+        code: "SHOT_MISSING",
+        stage: "routes",
+        path: `/cameras/${m.index}`,
+        msg: msg("SHOT_MISSING", { id: m.id, file: m.file }),
+      });
     }
   }
 
