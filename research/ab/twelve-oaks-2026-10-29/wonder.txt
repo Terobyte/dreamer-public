@@ -1,0 +1,41 @@
+Унесённые ветром — Twelve Oaks
+Вариант: wonder
+Прогон: A/run_0_454707
+Модель диалога: spark-open
+Место: The library and hall at Twelve Oaks plantation in Georgia, on the evening of the barbecue in April 1861.
+
+Ashley Wilkes: [quietly measured] Gentlemen, the North has factories. [pause] We have cotton.
+
+Rhett Butler: [dryly amused, soft] One foundry, gentlemen, against all their factories [scoff]
+
+Scarlett O'Hara: [impatient, hushed whisper] Ashley, stop talkin' war and [pause] <emphasis>come</emphasis> out here!
+
+Charles Hamilton: [pleadingly earnest] Atlanta's raising a troop — any man who can sit a horse can join!
+
+Gerald O'Hara: [blustering, loud] Fort Sumter fallen! Atlanta cries war! [scoff] [hearty, roaring] Come lads — no Wilkes guest out-volunteers <emphasis>O'Hara</emphasis> neighbors!
+
+Ashley Wilkes: [quietly even] Gentlemen, we have cotton — they have factories, railroads [pause] and ships.
+
+Scarlett O'Hara: [hissy, impatient] Ashley, do not stand there actin' [pause] <emphasis>noble</emphasis>!
+
+Rhett Butler: [coolly drawling] Ashley, spare a light [pause] for a fellow by the doorway? [softly amused] My cigar waits by the green velvet curtains.
+
+Charles Hamilton: [eager, breathless] Ashley, [tap] will you step outside and answer before supper? [pleading, earnest] Atlanta wants horsemen — say you'll go!
+
+Gerald O'Hara: [booming loudly] Atlanta says Sumter fallen! [pause] War come at last! [laughing heartily] To supper now! <forceful>No</forceful> Wilkes guest out-volunteers my neighbors!
+
+Ashley Wilkes: [quietly even] Gentlemen, the North has foundries — [pause] we have fields. [softly withdrawing] Excuse me — this decanter belongs on the far shelf.
+
+Scarlett O'Hara: [hushed, urgent] Ashley, please don't leave me here alone [pause] wait.
+
+Rhett Butler: [coolly amused] Ashley, might I trouble you for a light? [pause] [dryly smiling] One foundry won't win a war, gentlemen.
+
+Charles Hamilton: [earnestly pleading] Ashley, step outside with me [newspaper tapping decanter] give your answer before supper!
+
+Gerald O'Hara: [booming jovially] Sumter's fallen! Drink, lads, drink [pause] to Georgia! [herding loudly] Charles, Ashley, Rhett — to supper! That's three already!
+
+Scarlett O'Hara: [urgently soft, trembling] Ashley, don't follow her — I must speak <emphasis>first</emphasis>.
+
+Ashley Wilkes: [quietly tired] Go on to supper, gentlemen [pause] I need a moment here.
+
+Rhett Butler: [coolly drawling] Ashley, ladies are taking seats for supper [pause] shall we join them?

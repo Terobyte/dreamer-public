@@ -1,0 +1,47 @@
+Унесённые ветром — Twelve Oaks
+Вариант: hand
+Прогон: A/run_0_384598
+Модель диалога: spark-open
+Место: the shaded lawn of a Georgia plantation house in April 1861, after a long barbecue lunch, men gathered around a table of half-empty glasses under the oaks
+
+Rhett: [dryly polite] We have cotton [pause] the Yankees have cannon.
+
+Ashley: [softly placating] Gentlemen, please [pause] let us not spoil such fine bourbon with shouting.
+
+Scarlett: [bored drawl, sugary sharp] [scoff] Ashley, this war talk is <emphasis>boring</emphasis> me to death.
+
+Ashley: [quietly earnest] Scarlett, forgive us [pause] may I fetch you more lemonade?
+
+Scarlett: [sweetly impatient] No Ashley [pause] stay with <emphasis>me</emphasis> a moment
+
+Ashley: [warmly indulgent] Of course, Scarlett [pause] walk with me toward the azaleas?
+
+Scarlett: [honeyed, urgent whisper] Ashley, look at <emphasis>me</emphasis>— [pause] not them.
+
+Ashley: [softly grave] Gentlemen, none of us has [pause] and pray we <emphasis>never</emphasis> must.
+
+Gerald: [booming, hot] Pray never? [scoff] We'll give Yankees the <forceful>war</forceful> they begged for!
+
+Scarlett: [petulant, bright] Ashley promised *me* that walk — [scoff] [pause] not all this war talk.
+
+Ashley: [soft, coaxing] Scarlett, the library — quieter there. [tap] [tap] Door's open for you.
+
+Scarlett: [flustered, soft] Green makes my eyes his colour [pause] and he didn't even look.
+
+Stuart: [hot, defiant] [scoff] One battle and Yankees run, [pause] watch us!
+
+old man: [trembling, hoarse] Have you watched boys die crying for water? [pause] [voice breaking] It ain't glory, it's fever and mud and screaming.
+
+Rhett: [coolly polite, quiet] Sir has seen battle. [pause] I've seen their foundries. [dryly amused] Heaven rather favors the larger battalions, I'm told.
+
+Scarlett: [petulant, bright] Oh do hush [pause] Mr Butler [scoff] you love to spoil <emphasis>everything</emphasis>
+
+Gerald: [booming, jovial] War talk's thirsty work, Ashley lad! [pause] Library for cigars, alone, now!
+
+Ashley: [softly urgent] Scarlett, [tap tap] [pause] this way, please After you
+
+Scarlett: [breathless, pleading] Ashley don't leave me with them [pause] stay here
+
+Stuart: [blustering, eager] Gerald, sir, say Yankees break in <emphasis>one</emphasis> battle! [pause] Slip behind me, Scarlett
+
+Gerald: [sharply boisterous] Ashley, library - alone - and be quick about it! [thump]
