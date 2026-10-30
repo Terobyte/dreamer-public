@@ -127,3 +127,65 @@ class FakeEngine:
         finally:
             with self._lock:
                 self._live_shots -= 1
+
+
+class FailedImages:
+    def generate(self, prompt, size):
+        raise RuntimeError('offline image provider')
+
+
+class FailedMeshes:
+    def submit(self, name, png):
+        raise RuntimeError('offline mesh provider')
+
+
+class FakeAutoscaler:
+    def __init__(self):
+        self.calls = []
+
+    def set(self, min_containers, buffer_containers, scaledown_window):
+        self.calls.append((min_containers, buffer_containers, scaledown_window))
+
+
+def synthetic_task():
+    """Two connected empty rooms; generated entirely here, never from hidden runs."""
+    skeleton = {
+        'version': 0, 'name': 'offline-two-rooms', 'levels': [{'id': 'L0', 'y': 0}],
+        'rooms': [{'id': rid, 'level': 'L0', 'height': 3,
+                   'shape': [[x, 0], [x + 4, 0], [x + 4, 4], [x, 4]],
+                   'floor': 'grey', 'ceiling': 'white',
+                   'walls': {'material': 'white', 'thickness': .12}}
+                  for rid, x in [('A', 0), ('B', 4)]],
+        'openings': [{'id': 'door', 'kind': 'door', 'at': [4, 2], 'width': .9, 'height': 2.1, 'sill': 0}],
+        'spawn': {'room': 'A', 'at': [1, 1], 'yaw': 0}, 'style': {'ambient': 1},
+        'materials': {'grey': {'color': '#888888'}, 'white': {'color': '#eeeeee'}},
+        'assets': {}, 'props': [], 'stairs': [], 'routes': [],
+    }
+    plan = {'rooms': {r: {'refs': [], 'max_points': 2, 'cues': ''} for r in ('A', 'B')},
+            'openings': {'door': {'owner': 'A'}}}
+    return skeleton, plan
+
+
+class ScenarioSpark:
+    """Deterministic offline replies using the real ledger and token-cap code."""
+    def __init__(self, ledger):
+        self.ledger = ledger
+        self.calls = []
+
+    def ask(self, role, room, round_no, messages, effort):
+        from pipe2.spark import Spark
+        self.calls.append((role, room))
+        if role in ('architect', 'architect_fix'):
+            skeleton, plan = synthetic_task()
+            scene = {'skeleton': skeleton, 'plan': plan}
+        else:
+            x = 0 if room == 'A' else 4
+            scene = {'props': [{'id': room + '_table', 'room': room, 'asset': room + '_wood',
+                                'cat': 'table', 'at': [x + 2, 2], 'size': {'w': .6, 'd': .6, 'h': .7},
+                                'yaw': 0, 'mount': 'floor', 'solid': True}],
+                     'assets': {room + '_wood': {'kind': 'object', 'prompt': 'small wooden table'}}}
+        class Transport:
+            def post(self, body, timeout):
+                return {'choices': [{'message': {'content': json.dumps(scene)}, 'finish_reason': 'stop'}],
+                        'usage': {'prompt_tokens': 100, 'completion_tokens': 100}}
+        return Spark(Transport(), self.ledger).ask(role, room, round_no, messages, effort)

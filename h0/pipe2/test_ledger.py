@@ -217,3 +217,21 @@ class TestCallCapIsSparkOnly(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ResumeBudgetTest(unittest.TestCase):
+    def test_resume_keeps_spend_calls_and_token_reservations(self):
+        from pathlib import Path
+        root = Path(tempfile.mkdtemp()); path = root / 'events.jsonl'
+        prices = {'image': 1, 'spark': {}}
+        ledger = Ledger(path, prices, 10, 2, 1000)
+        self.assertTrue(ledger.allow('spark', 0, reserve_tokens=100))
+        ledger.settle(100, 40)
+        self.assertTrue(ledger.allow('image', 2)); ledger.charge('image', 1, reserved=2)
+        self.assertTrue(ledger.allow('spark', 0, reserve_tokens=200))
+        ledger.close()
+        resumed = Ledger(path, prices, 10, 2, 1000, resume=True)
+        self.assertEqual(resumed.spent, 1)
+        self.assertEqual(resumed.calls, 2)
+        self.assertEqual(resumed.tokens_used, 40)
+        self.assertEqual(resumed.tokens_reserved, 200)
+        self.assertFalse(resumed.allow('spark', 0))

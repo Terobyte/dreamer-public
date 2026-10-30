@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from pipe2.blame import blame_room
-from pipe2.engine import blocking, green
+from pipe2.engine import blocking, green, shots_retry
 from pipe2.merge import PARTIAL_KEYS, merge
 
 HERE = Path(__file__).parent
@@ -306,6 +306,10 @@ class RoomPipeline:
 
     def _accept(self, role: str, candidate: dict) -> tuple[bool, list]:
         """Merge + check a candidate fragment; keep it only if the room is green."""
+        refs = ((self.ctx.plan.get("rooms") or {}).get(self.room) or {}).get("refs") or []
+        for camera in candidate.get("cameras") or []:
+            if camera.get("ref") and camera["ref"] not in refs:
+                return False, [{"code": "OWN_REF", "msg": "camera ref must be a task-provided room image"}]
         scene, violations, report = self._check(candidate)
         if not green(report):
             return False, self._findings(scene, violations, report)
@@ -412,7 +416,7 @@ class RoomPipeline:
         shutil.rmtree(dist, ignore_errors=True)
         try:
             self.ctx.engine.build(scene, dist, assets, None if assets == "none" else cache)
-            self.ctx.engine.shots(dist)
+            shots_retry(self.ctx.engine, dist)
             # the whole scene's camera list decides our own cameras' filenames
             self._shot_names[stage] = dict(zip(ids, shot_filenames(ids)))
         except Exception as exc:  # the critics can still read the report without shots

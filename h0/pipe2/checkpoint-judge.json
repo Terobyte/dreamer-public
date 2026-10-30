@@ -1,0 +1,21 @@
+{
+  "verdict": "NO_SHIP",
+  "phase": "Архитектор и строители",
+  "findings": [
+    {
+      "file": "h0/pipe2/floor.py",
+      "problem": "lights: null raises TypeError before architect-fix",
+      "level": "major"
+    },
+    {
+      "file": "h0/pipe2/floor.py",
+      "problem": "extra malformed plan.rooms entry raises KeyError in _plan_refs",
+      "level": "major"
+    },
+    {
+      "file": "h0/pipe2/floor.py",
+      "problem": "on.az shared curved opening rejects valid neighbouring owner",
+      "level": "major"
+    }
+  ]
+}

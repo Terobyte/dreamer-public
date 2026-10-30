@@ -73,7 +73,7 @@ class ModalMesh:
         return self._remote
 
     def submit(self, name: str, png: bytes):
-        return ModalHandle(self._run().spawn(name, png))
+        return ModalHandle(self._run().spawn(name, png, with_ply=False))
 
 
 class _Asset:

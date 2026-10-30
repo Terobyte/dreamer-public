@@ -5,6 +5,8 @@ needs: modal secret `huggingface` with HF_TOKEN (access to facebook/sam-3d-objec
 """
 import os
 import sys
+import tempfile
+from pathlib import Path
 
 import modal
 
@@ -68,7 +70,7 @@ def white_bg_mask(rgb):
 
 
 @app.cls(gpu="H100", volumes={CKPT: ckpt_vol}, secrets=[modal.Secret.from_name("huggingface")],
-         timeout=1800, scaledown_window=120)  # no container cap: N objects fan out to N GPUs
+         timeout=1800, scaledown_window=600)  # no container cap: N objects fan out to N GPUs
 class Sam3D:
     @modal.enter()
     def load(self):
@@ -86,7 +88,7 @@ class Sam3D:
         self.inf = Inference(f"{CKPT}/hf/pipeline.yaml", compile=False)
 
     @modal.method()
-    def run(self, name: str, png: bytes) -> dict:
+    def run(self, name: str, png: bytes, with_ply: bool = True) -> dict:
         import io
         import time
 
@@ -110,9 +112,41 @@ class Sam3D:
             print(f"{name}: texture baking failed ({e!r}), retrying with vertex colors")
             baked = False
             out = self.inf._pipeline.run(rgba, None, 42, with_texture_baking=False, use_vertex_color=True, **kw)
-        out["gs"].save_ply("/tmp/o.ply")
-        glb = out["glb"].export(file_type="glb") if out.get("glb") is not None else b""
-        return {"name": name, "glb": glb, "ply": open("/tmp/o.ply", "rb").read(), "sec": round(time.time() - t, 1), "baked": baked}
+        return pack_result(name, out, with_ply, time.time() - t, baked)
+
+
+def pack_result(name, out, with_ply, sec, baked):
+    ply = b""
+    if with_ply:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "o.ply"
+            out["gs"].save_ply(str(path))
+            ply = path.read_bytes()
+    glb = out["glb"].export(file_type="glb") if out.get("glb") is not None else b""
+    return {"name": name, "glb": glb, "ply": ply, "sec": round(sec, 1), "baked": baked}
+
+
+def save_result(out_dir: Path, result: dict):
+    name = result["name"]
+    if not isinstance(name, str) or name in ("", ".", "..") or any(c in name for c in ("/", "\\", "\x00")):
+        raise ValueError("unsafe asset name")
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for ext in ("glb", "ply"):
+        if result.get(ext):
+            (out_dir / (name + "." + ext)).write_bytes(result[ext])
+
+
+heartbeat = modal.Dict.from_name("dreamer-pipe2-heartbeat", create_if_missing=True)
+
+
+@app.function(image=modal.Image.debian_slim(), schedule=modal.Period(minutes=2))
+def watchdog():
+    import time
+    last = heartbeat.get("ts")
+    if last is None or time.time() - last > 300:
+        modal.Cls.from_name("dreamer-sam3d", "Sam3D")().update_autoscaler(
+            min_containers=0, buffer_containers=0, scaledown_window=120)
 
 
 @app.local_entrypoint()
@@ -120,7 +154,5 @@ def main(out: str, pngs: str):
     os.makedirs(out, exist_ok=True)
     jobs = [(os.path.splitext(os.path.basename(p))[0], open(p, "rb").read()) for p in pngs.split(",")]
     for r in Sam3D().run.starmap(jobs):
-        for ext in ("glb", "ply"):
-            if r[ext]:
-                open(f"{out}/{r['name']}.{ext}", "wb").write(r[ext])
+        save_result(Path(out), r)
         print(r["name"], f"{r['sec']}s", f"glb={len(r['glb']) // 1024}KB", f"ply={len(r['ply']) // 1024}KB", "baked" if r["baked"] else "vertex-color")

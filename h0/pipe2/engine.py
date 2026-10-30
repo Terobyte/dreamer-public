@@ -214,7 +214,9 @@ class Gated:
         return self.engine.check(scene, work, built)
 
     def check_full(self, scene, work):
-        return self.engine.check_full(scene, work)
+        # check_full builds internally too; share the same heavy-work slots.
+        with self._slots:
+            return self.engine.check_full(scene, work)
 
     def asset_keys(self, scene):
         return self.engine.asset_keys(scene)
@@ -226,3 +228,13 @@ class Gated:
     def shots(self, dist, size="960x720"):
         with self._slots:
             return self.engine.shots(dist, size)
+
+
+def shots_retry(engine, dist, size="960x720"):
+    """One retry for a CLI usage/runtime failure; leave failure reporting to caller."""
+    for attempt in range(2):
+        try:
+            return engine.shots(dist, size)
+        except EngineError as exc:
+            if exc.code != 2 or attempt:
+                raise

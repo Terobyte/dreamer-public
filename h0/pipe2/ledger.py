@@ -24,7 +24,7 @@ def load_prices(path=PRICES_PATH):
 class Ledger:
     """Append-only event log + budget. One instance per run, shared by every worker."""
 
-    def __init__(self, path, prices, cap_usd, cap_calls, cap_tokens=None, *, clock=time.time):
+    def __init__(self, path, prices, cap_usd, cap_calls, cap_tokens=None, *, clock=time.time, resume=False):
         self.path = Path(path)
         self.prices = prices
         self.cap_usd = cap_usd
@@ -39,8 +39,23 @@ class Ledger:
         self.tokens_used = 0
         self.tokens_reserved = 0
         self.capped = False
+        self.closed = False
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._budget_path = self.path.with_suffix(".budget.json")
+        if resume and self._budget_path.exists():
+            saved = json.loads(self._budget_path.read_text())
+            for key in ("spent", "calls", "calls_by_kind", "tokens_used", "tokens_reserved", "capped"):
+                setattr(self, key, saved[key])
+        elif resume and self.path.exists() and self.path.stat().st_size:
+            raise ValueError("cannot resume an event log without its budget checkpoint")
+        self._save_budget()
+
+    def _save_budget(self):
+        data = {k: getattr(self, k) for k in ("spent", "calls", "calls_by_kind", "tokens_used", "tokens_reserved", "capped")}
+        temporary = self._budget_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(data))
+        temporary.replace(self._budget_path)
 
     def record(self, event):
         with self._lock:
@@ -66,6 +81,7 @@ class Ledger:
         cost = self.cost_of(kind, units)
         with self._lock:
             self.spent += cost - reserved
+            self._save_budget()
         return cost
 
     def allow(self, kind, estimate_usd, reserve_tokens=0):
@@ -77,9 +93,12 @@ class Ledger:
 
         `cap_calls` limits `spark` only; images and GPU seconds are bounded by `cap_usd`."""
         with self._lock:
+            if self.closed:
+                return False
             if self._refused(kind, estimate_usd, reserve_tokens):
                 if not self.capped:
                     self.capped = True
+                    self._save_budget()
                     self.record({"kind": "cap_hit", "role": kind, "cost_usd": self.spent,
                                  "prompt_tokens": self.tokens_used})
                 return False
@@ -88,6 +107,7 @@ class Ledger:
                 self.calls += 1
             self.spent += estimate_usd
             self.tokens_reserved += reserve_tokens
+            self._save_budget()
             return True
 
     def _refused(self, kind, estimate_usd, reserve_tokens):
@@ -105,3 +125,8 @@ class Ledger:
         with self._lock:
             self.tokens_reserved -= reserve_tokens
             self.tokens_used += actual_tokens
+            self._save_budget()
+
+    def close(self):
+        with self._lock:
+            self.closed = True
