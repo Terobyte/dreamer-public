@@ -243,6 +243,7 @@ function apply(r) {
       // history row: ordered by its seq, never makes the toggle ready
       povTake(r.hero_owner, r.seq, false);
       if (r.scene) newScene(r);
+      if (typeof promptTake === "function") promptTake(r);
       break;
     case "pov":
       // may itself be backlog on reconnect -- same seq rule as everything else
@@ -283,6 +284,7 @@ function apply(r) {
     case "safety_pause": sys("⏸ пауза: сон остановлен, нажми «продолжить»", true); setPaused(true); freezeTimer(); stopAudio(); break;
     case "input_dropped": break;
     case "stop": sys("■ стоп"); S.ended = true; break;
+    case "book_end": sys("■ конец главы"); break;
   }
   if (!instant) render();
 }
@@ -313,6 +315,22 @@ function addNarration(r) {
   // 3.2: the narrator is nobody in the scene -- no bubble, no name, its own voice
   feed().appendChild(el("div", "narr", r.text || ""));
   scrollDown();
+}
+
+// K3: the prompter whisper -- the book's line for the human hero, not a spoken line
+let promptEl = null;
+function promptTake(r) {
+  if (r && r.waiting_for === "hero" && r.prompt_text) {
+    if (!promptEl) {
+      promptEl = el("div", "prompt", "");
+      promptEl.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:50;padding:6px 12px;background:rgba(0,0,0,.8);color:#fff;font-style:italic;";
+      document.body.appendChild(promptEl);
+    }
+    promptEl.textContent = "\u{1F92B} суфлёр: " + r.prompt_text;
+    promptEl.style.display = "";
+  } else if (promptEl) {
+    promptEl.style.display = "none";
+  }
 }
 
 function addLine(r) {
@@ -555,6 +573,7 @@ function startLive() {
     if (typeof s.t === "number") { S.lastT = s.t; S.tRecv = performance.now(); }
     // the live status is a live source too: if /api/hero failed, this enables the toggle
     if (s.live === true) povTake(s.hero_owner, s.seq, true);
+    if (typeof promptTake === "function") promptTake(s);
   });
   es.addEventListener("end", () => { es.close(); S.ended = true; render(); });
 }

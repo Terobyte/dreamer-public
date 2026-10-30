@@ -27,6 +27,7 @@ from memory import Memory
 from safety import SOFT_NOTE
 from safety import match as safety_match
 from fake import FakeTransport
+import book as bookmod
 try:
     from llm import get_spent, IMAGE_PER_PIC, set_talk_model, set_cap, talk_model_name
 except ImportError:
@@ -160,6 +161,50 @@ def line_duration(text, audio_seconds=None):
     return len(spoken.split()) / 2.5 + 1.0
 
 
+# --- book mode (block K): the score is played, nothing is generated -----------
+BOOK_PROMPT_WAIT = 12.0  # K3: seconds the prompter waits for the human hero
+
+
+def _load_book_plan(book_dir, scene_ids=None, score=None):
+    """book dir (+ optional hand-edited score file/dict/list) -> {"scenes": [...],
+    "narrator_voice"}; each scene carries its beats and the dict use_scene() takes."""
+    book = bookmod.load_book(book_dir)
+    if not scene_ids:
+        scene_ids = [book["chapters"][0]["scenes"][0]["id"]]
+    scores = {}
+    if score is not None:
+        if isinstance(score, str):
+            with open(score, encoding="utf-8") as f:
+                score = json.load(f)
+        scores = {sc["scene"]: sc for sc in (score if isinstance(score, list) else [score])}
+        if set(scores) != set(scene_ids):
+            raise ValueError("score scene mismatch")
+    for sid in scene_ids:
+        bookmod.find_scene(book, sid)  # a score cannot bring a scene the book lacks
+    cast = book["cast"]
+    scenes = []
+    for sid in scene_ids:
+        sc = scores.get(sid) or bookmod.score_scene(book_dir, sid)
+        speaking = {b["who"] for b in sc["beats"] if b["kind"] == "line" and b.get("who")}
+        actors = [{"name": n, "look": cast[n]["look"], "voice": cast[n]["voice"]}
+                  for n in sc["cast"] if n in speaking]
+        pov = book["pov"]
+        scenes.append({"scene": sid, "place": sc["place"], "beats": list(sc["beats"]),
+                       "actors": actors,
+                       "dict": {"place": sc["place"],
+                                "hero": {"name": pov, "voice": cast[pov]["voice"],
+                                         "look": cast[pov]["look"]},
+                                "actors": actors, "objects": [], "events": [], "soul": {}}})
+    return {"scenes": scenes, "narrator_voice": book.get("narrator_voice") or "old_man"}
+
+
+def _book_seconds(plan, speed):
+    clock = Clock(speed=speed)
+    total = sum(clock.scale(line_duration(b["text"]))
+                for sc in plan["scenes"] for b in sc["beats"])
+    return total * 1.5 + 30.0
+
+
 class Logger:
     def __init__(self, path):
         self.path = path
@@ -184,8 +229,11 @@ class Sim:
 
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
-                 max_dollars=20.0, dialogue=None, first_events=()):
+                 max_dollars=20.0, dialogue=None, first_events=(), book=None,
+                 hero_owner=None):
         self.profile = profile
+        self.book = None  # K2: the score being played (see _book_step)
+        self._book_hold_until = -1e9
         self.speed = speed
         self.fake = fake
         self.max_dollars = float(max_dollars)
@@ -216,7 +264,7 @@ class Sim:
             self._looks[self.hero] = prof["hero_look"]
         self.budget_wake = False
         # 2.1: who owns the hero's turn -- the loop (npc) or the player (human)
-        self.hero_owner = "npc"
+        self.hero_owner = "human" if hero_owner == "human" else "npc"
         # live dialogue (spec 6): hero and actors speak through Dialogue; without
         # it (tests, --fake) the loop keeps its numbered placeholder lines
         self.dialogue = dialogue
@@ -335,6 +383,11 @@ class Sim:
                 row = dict(ev)
                 row.setdefault("t", self.clock.now())
                 self.logger.write_event(row)
+        if book is not None:
+            self.book = {"scenes": book["scenes"], "i": 0, "over": False, "wait_since": None,
+                         "narrator_voice": book.get("narrator_voice"),
+                         "beats": [], "cursor": 0}
+            self._book_open_scene()
         self._start_schedule()
         self._load_goals()
 
@@ -561,6 +614,8 @@ class Sim:
         if self.safety_paused:
             return
         self.line_count += 1
+        if self.book is not None:
+            return
         if (self.line_count % 4 == 0
                 and not self.director.in_flight
                 and (self.fake or self._budget_ok())):
@@ -655,7 +710,7 @@ class Sim:
             who = line.get("who") or (self.hero if line["owner"] == "human" else None)
             event["who"] = who
             event["role"] = line.get("role") or ("hero" if line["owner"] == "human" else "actor")
-            for key in ("remarks", "level", "look", "touch", "impulse"):
+            for key in ("remarks", "level", "look", "touch", "impulse", "source", "para"):
                 if line.get(key) is not None:
                     event[key] = line[key]
         if res is not None and line.get("dur") is not None:
@@ -700,7 +755,8 @@ class Sim:
                 self._hero_world.append(heard)
             elif whisper_to in self.actors:
                 self._pending.setdefault(whisper_to, []).append(heard)
-        if self.dialogue is not None:
+        # a book line has no Dialogue but is still heard, so it joins the transcript
+        if self.dialogue is not None or line.get("source") == "book":
             said = line.get("said") or line["text"]
             self.transcript.append((event.get("who") or "?", said))
             if hasattr(self.dialogue, "heard"):
@@ -778,6 +834,8 @@ class Sim:
         if self._safety_check(clean):
             return []
         out = list(ev)
+        if self.book is not None:
+            return self._book_human_say(clean, out)
         if self.prepared_npc is not None:
             out.append({"type": "turn_replace", "turn_owner": "human", "text": clean,
                         "replaced": self.prepared_npc})
@@ -883,7 +941,7 @@ class Sim:
         the hero has already arrived."""
         if not self._media_live():
             return
-        self._request_background(self.fsm.destination or START_PLACE)
+        self._request_background(self.fsm.destination or (self.place if self.book else START_PLACE))
         if self.n_transitions == 0:
             self._start_scene_portraits()
 
@@ -983,6 +1041,115 @@ class Sim:
                                                           ", ".join(self.scene["objects"]))})
         self._start_schedule()
         self._load_goals()
+
+    # --- book mode (block K) -----------------------------------------------
+    def _book_open_scene(self):
+        bk = self.book
+        sc = bk["scenes"][bk["i"]]
+        bk["beats"] = sc["beats"]
+        bk["cursor"] = 0
+        bk["wait_since"] = None
+        self._diagnostic({"type": "book", "scene": sc["scene"],
+                          "beats": [{"kind": b["kind"], "who": b.get("who"), "text": b["text"]}
+                                    for b in sc["beats"]]})
+
+    def _book_waiting(self):
+        """K3: the prompter is waiting for the human hero (inside the window)."""
+        bk = self.book
+        if bk is None or bk["over"] or bk["wait_since"] is None:
+            return None
+        if self.hero_owner != "human":
+            return None
+        if self.clock.now() - bk["wait_since"] >= self.clock.scale(BOOK_PROMPT_WAIT):
+            return None
+        return bk["beats"][bk["cursor"]] if bk["cursor"] < len(bk["beats"]) else None
+
+    def _book_human_say(self, clean, out):
+        beat = self._book_waiting()
+        if beat is None:
+            input_ev = {"type": "input", "source": "speech", "value": clean, "ignored": "book"}
+            self._emit(input_ev)
+            return out + [input_ev]
+        self.book["cursor"] += 1
+        self.book["wait_since"] = None
+        self._diagnostic(self.status())
+        return out + [self._start_line({"owner": "human", "who": self.hero, "role": "hero",
+                                        "source": "human", "text": clean})]
+
+    def _book_step(self):
+        bk = self.book
+        if bk["over"]:
+            return
+        if (self.active_line is not None or self.next_line is not None
+                or self._gen_thread is not None or self.clock.now() < self._book_hold_until):
+            return
+        if bk["cursor"] >= len(bk["beats"]):
+            self._book_scene_end()
+            return
+        now = self.clock.now()
+        beat = bk["beats"][bk["cursor"]]
+        if (beat["kind"] == "line" and beat.get("who") == self.hero
+                and self.hero_owner == "human"):
+            if bk["wait_since"] is None:
+                bk["wait_since"] = now
+                self._diagnostic(self.status())
+            if now - bk["wait_since"] < self.clock.scale(BOOK_PROMPT_WAIT):
+                return
+        if bk["wait_since"] is not None:
+            bk["wait_since"] = None
+            self._diagnostic(self.status())
+        bk["cursor"] += 1
+        if beat["kind"] == "line" and beat.get("who"):
+            self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
+                            "text": beat["text"], "source": "book", "para": beat.get("para")})
+            return
+        text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]
+        self._diagnostic({"type": "narrator", "cause": "book", "text": text,
+                          "voice": self.book.get("narrator_voice") or "old_man"})
+        self._book_hold_until = now + self.clock.scale(line_duration(text))
+
+    def _book_scene_end(self):
+        bk = self.book
+        cur = bk["scenes"][bk["i"]]
+        if bk["i"] + 1 >= len(bk["scenes"]):
+            self._diagnostic({"type": "book_end", "scene": cur["scene"],
+                              "beats": len(bk["beats"])})
+            bk["over"] = True
+            self.stop(by="book")
+            return
+        bk["i"] += 1
+        nxt = bk["scenes"][bk["i"]]
+        self._diagnostic({"type": "transition", "to": nxt["place"], "scene": nxt["scene"],
+                          "cause": "book"})
+        # the fields _apply_transition refreshes, minus the fsm and the Spark memory merge
+        self.n_transitions += 1
+        self.place = nxt["place"]
+        self.transcript = self.transcript[-2:]
+        self._notes = {}
+        self._notes_seen = {}
+        self._notes_shown = {}
+        self._hero_world = []
+        self._pending = {}
+        self._spoke_last = None
+        self._silent_ticks = {}
+        self._addressed = {}
+        self._event_hits = {}
+        self._actor_streak = 0
+        self._said_count = {}
+        self.scene = {"objects": [], "actors": [a["name"] for a in nxt["actors"]],
+                      "events": [], "goals": []}
+        self.actors = [a["name"] for a in nxt["actors"]]
+        self._actor_voices = {a["name"]: a["voice"] for a in nxt["actors"]}
+        self._looks.update({a["name"]: a["look"] for a in nxt["actors"]})
+        self._personas = {}
+        self.director.actors = self.actors
+        self.director.notes_given = []
+        self.memory.set_scene(self.place, [])
+        if self._media_live():
+            self._request_background(self.place)
+            self._start_scene_portraits()
+        self._diagnostic(self.status())
+        self._book_open_scene()
 
     # --- main loop -----------------------------------------------------------
     def _drain_director(self):
@@ -1262,6 +1429,8 @@ class Sim:
         away -- by moving the turn on."""
         owner = "human" if str(owner) == "human" else "npc"
         self.hero_owner = owner
+        if owner != "human" and self.book is not None:
+            self.book["wait_since"] = None
         out = []
         if owner == "human":
             if (self._gen_who == self.hero
@@ -1314,6 +1483,10 @@ class Sim:
         clean, out = sanitize(str(value or ""), "human")
         for e in out:
             self._emit(e)
+        if self.book is not None:
+            ev = {"type": "input", "source": "click", "value": clean}
+            self._emit(ev)
+            return [ev]
         obj, evs = resolve_touch(clean, self.fsm.objects)
         for e in evs:
             self._emit(e)
@@ -1338,7 +1511,7 @@ class Sim:
             return []
         if outcome and self._safety_check(outcome):
             return []
-        if source == "click":
+        if source == "click" and self.book is None:
             return self.click(value)
         ev = {"type": "input", "source": source, "value": value}
         if outcome_raw is not None:
@@ -1346,7 +1519,8 @@ class Sim:
         for e in rejected:
             self._emit(e)
         self._emit(ev)
-        self.director.consult_async(self.clock.now(), events=[ev])
+        if self.book is None:
+            self.director.consult_async(self.clock.now(), events=[ev])
         return [ev]
 
     def stop(self, by="human"):
@@ -1363,6 +1537,7 @@ class Sim:
         # and still lands. Read the other way round, a row could hide behind it.
         seq = self.logger.seq if self.logger else 0
         owner = self.hero_owner
+        waiting = self._book_waiting()
         return {"type": "snapshot", "t": now, "live": True,
                 "scene": list(self.scene["objects"]), "actors": list(self.scene["actors"]),
                 "place": self.place, "hero": self.hero, "speed": self.speed,
@@ -1372,6 +1547,8 @@ class Sim:
                 "build_pct": self.fsm.build_pct(now), "dollars": get_spent(),
                 "max_dollars": self.max_dollars,
                 "hero_owner": owner,
+                "waiting_for": "hero" if waiting is not None else None,
+                "prompt_text": waiting["text"] if waiting is not None else "",
                 "seq": seq}
 
     def _tick(self):
@@ -1381,6 +1558,11 @@ class Sim:
         # events, pictures. Only the inbox above keeps working, or "continue" could
         # never arrive.
         if self.safety_paused:
+            return []
+        if self.book is not None:
+            self._maybe_start_scene_background()
+            self._cycle_line()
+            self._book_step()
             return []
         self._apply_judge()
         self._fire_due_events()
@@ -1412,9 +1594,11 @@ class Sim:
         start = self.clock.now()
         last_consult = -1e9
         last_cost = -1e9
-        while self.n_transitions < max_transitions and self.clock.now() - start < max_seconds:
+        while ((self.book is not None or self.n_transitions < max_transitions)
+               and self.clock.now() - start < max_seconds):
             self._tick()
-            if self.n_transitions >= max_transitions or self.clock.now() - start >= max_seconds:
+            if ((self.book is None and self.n_transitions >= max_transitions)
+                    or self.clock.now() - start >= max_seconds):
                 break
             if self.stopped or (self.dialogue is not None and self.fsm.awake):
                 break
@@ -1426,12 +1610,13 @@ class Sim:
                     self.logger.write_event({"t": self.clock.now(), "type": "cost",
                                              "dollars": get_spent(),
                                              "max_dollars": self.max_dollars})
-            self._maybe_generate_line()
-            last_consult = self._maybe_consult(last_consult)
+            if self.book is None:
+                self._maybe_generate_line()
+                last_consult = self._maybe_consult(last_consult)
             self.clock.real_sleep(0.01)
         # F7: name why the loop ended while the clock is still at the loop end;
         # a `timeout` row in the log is the only proof the limit was reached.
-        if self.n_transitions >= max_transitions:
+        if self.book is None and self.n_transitions >= max_transitions:
             self.stop_reason = "transitions"
         elif self.clock.now() - start >= max_seconds:
             self.stop_reason = "timeout"
@@ -1466,12 +1651,17 @@ class Sim:
 
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
-        label=None, first_events=()):
+        label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None):
     """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
     the dream then goes on until "stop", the budget or a wake_up.
     max_seconds=None: 90 s, or long enough for one full build (420/speed + 120);
     an explicit value is kept as given (the bench passes 67.5)."""
     random.seed(seed)
+    plan = None
+    if book is not None:
+        plan = _load_book_plan(book, scenes, score)
+        use_scene(plan["scenes"][0]["dict"])
+        profile, label = None, label or "book"
     # 3.3: a seeded dream has no profile, so the run folder is named by `label`
     base = os.path.join(os.path.dirname(__file__), "..", "out", "dream",
                         str(label or profile))
@@ -1487,6 +1677,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             stamp += 1
     if serve is not None:
         max_seconds = float("inf")
+    elif max_seconds is None and plan is not None:
+        max_seconds = _book_seconds(plan, speed)
     elif max_seconds is None:
         # one full build alone takes 420/speed sim-seconds (spec 5); fake or
         # live, the run must at least outlive it plus line playback.
@@ -1495,7 +1687,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             max_seconds = max(max_seconds, 420.0 / max(speed, 0.01) + 120.0)
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
              max_dollars=max_dollars, dialogue=dialogue,
-             first_events=first_events) as sim:
+             first_events=first_events, book=plan, hero_owner=hero_owner,
+             script=[] if plan is not None else None) as sim:
         viewer = None
         if serve is not None:
             from server import Viewer
@@ -1624,6 +1817,7 @@ def verify_run(outdir, logpath, max_dollars, actual_spent=None):
                                   % (float(row["dur"]), real, row["audio"]))
         if row.get("type") == "cost":
             spent = row.get("dollars")
+    issues.extend(_verify_book_rows(rows))
     if spent is not None and max_dollars is not None and spent > max_dollars + 1e-9:
         issues.append("cost $%.4f over --max-dollars $%.4f" % (spent, max_dollars))
     if actual_spent is not None:
@@ -1635,6 +1829,50 @@ def verify_run(outdir, logpath, max_dollars, actual_spent=None):
                           % (actual_spent, max_dollars))
     return {"ok": not issues, "issues": issues, "checked_files": checked,
             "spent": spent}
+
+
+def _verify_book_rows(rows):
+    """K2: every `book` row is the score of its scene; the rows played after it
+    (up to the next `book` row) must be exactly that score."""
+    issues = []
+    marks = [i for i, r in enumerate(rows) if r.get("type") == "book"]
+    for k, i in enumerate(marks):
+        end = marks[k + 1] if k + 1 < len(marks) else len(rows)
+        part = rows[i + 1:end]
+        beats = rows[i].get("beats") or []
+        want = [(b.get("who"), b["text"]) for b in beats if b["kind"] == "line" and b.get("who")]
+        # walk the played rows in log order against the expected beats: a book
+        # row must match the next beat exactly; a human row (K3: the hero
+        # answers the prompter instead of the book playing their beat) fulfills
+        # the next beat when its who is that beat's who -- text may differ.
+        idx, n_book = 0, 0
+        ok = True
+        for h in part:
+            if h.get("type") != "line" or h.get("source") not in ("book", "human"):
+                continue
+            if idx >= len(want):
+                ok = False
+                break
+            if h.get("source") == "book":
+                if (h.get("who"), h.get("text")) != want[idx]:
+                    ok = False
+                    break
+                n_book += 1
+            elif h.get("who") != want[idx][0]:
+                ok = False
+                break
+            idx += 1
+        got = n_book
+        scene = rows[i].get("scene")
+        if not ok or idx != len(want):
+            issues.append("book %s: %d spoken lines played, score has %d (or text/who differ)"
+                          % (scene, got, len(want)))
+        want_n = sum(1 for b in beats if b["kind"] == "narration"
+                     or (b["kind"] == "line" and not b.get("who")))
+        got_n = sum(1 for r in part if r.get("type") == "narrator" and r.get("cause") == "book")
+        if got_n != want_n:
+            issues.append("book %s: %d narrator rows, score has %d" % (scene, got_n, want_n))
+    return issues
 
 
 SEED_TRANSPORT = None  # 3.3: tests patch this; None means the real transport
@@ -1672,7 +1910,8 @@ def main(argv=None):
     ap.add_argument("--max-dollars", type=float, default=20.0)
     ap.add_argument("--serve", action="store_true", help="live comic viewer (spec 11)")
     ap.add_argument("--port", type=int, default=8770)
-    ap.add_argument("--scene", default="start", help="opening scene: scenes/<name>.json")
+    ap.add_argument("--scene", default=None,
+                    help="opening scene: scenes/<name>.json (default start); with --book: scene ids")
     ap.add_argument("--text", action="store_true",
                     help="dialogue only: no Fish voice, no Muse images (scene bank runs)")
     ap.add_argument("--talk", default="spark-open",
@@ -1680,6 +1919,10 @@ def main(argv=None):
     ap.add_argument("--max-seconds", type=float, default=None,
                     help="stop after this many real seconds (bench: 67.5); "
                          "default 420/speed + 120, i.e. one full build")
+    ap.add_argument("--book", default=None, help="K2: play a book dir (books/gwtw); nothing is generated")
+    ap.add_argument("--score", default=None, help="K2: hand-edited score json from book.py --out")
+    ap.add_argument("--hero", default=None, choices=["npc", "human"],
+                    help="K3: human plays the hero, the book prompts")
     ap.add_argument("--lang", default="en", choices=lang.LANGS,
                     help="spike 1.5: ru plays the dream in Russian (7.2 row 1.5)")
     args = ap.parse_args(argv)
@@ -1688,7 +1931,21 @@ def main(argv=None):
     set_cap(args.max_dollars)  # the seed consult is a paid call: cap it first
     first_events = ()
     label = profile = args.profile if args.profile is not None else "A"
-    if args.seed is not None:
+    book_scenes = plan = None
+    if args.book is not None:
+        if args.seed is not None:
+            print("book: --seed is ignored with --book", file=sys.stderr)
+            args.seed = None
+        book_scenes = None if args.scene is None else [x for x in args.scene.split(",") if x]
+        try:
+            plan = _load_book_plan(args.book, book_scenes, args.score)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(2)
+        book_scenes = [sc["scene"] for sc in plan["scenes"]]
+        use_scene(plan["scenes"][0]["dict"])
+        profile, label = None, "book"
+    elif args.seed is not None:
         if args.profile is not None:
             print("seed: --seed builds its own scene, drop --profile", file=sys.stderr)
             sys.exit(2)
@@ -1702,12 +1959,17 @@ def main(argv=None):
         first_events = [row]
         profile, label = None, "seed"
     else:
-        use_scene(args.scene)
+        use_scene(args.scene or "start")
     if args.max_transitions is None:
         args.max_transitions = 10 ** 6 if args.serve else 2
     media = None
     dialogue = None
-    if not args.fake:
+    if plan is not None:
+        # book mode: no Spark, no director, no judge, no Muse Image; only Fish may be paid
+        if not args.fake and not args.text:
+            from voice import Voice, load_pool
+            media = {"voice": Voice(pool={**load_pool(), **START_VOICE_IDS})}
+    elif not args.fake:
         from dialogue import Dialogue
         dialogue = Dialogue(load_profile(profile))
         # live run: real Fish voice (wav, spec 6) and real Muse Image (spec 9);
@@ -1721,7 +1983,9 @@ def main(argv=None):
                            max_transitions=args.max_transitions, media=media,
                            max_dollars=args.max_dollars, dialogue=dialogue,
                            serve=args.port if args.serve else None,
-                           max_seconds=args.max_seconds)
+                           max_seconds=args.max_seconds,
+                           book=args.book, scenes=book_scenes, score=args.score,
+                           hero_owner=args.hero)
     with open(logpath, encoding="utf-8") as f:
         rows = [json.loads(l) for l in f]
     transitions = sum(1 for r in rows if r["type"] == "transition")
@@ -1738,6 +2002,9 @@ def main(argv=None):
     timed_out = (args.max_seconds is not None
                  and any(r.get("type") == "timeout" for r in rows))
     done = transitions >= args.max_transitions or (args.serve and stopped) or timed_out
+    if plan is not None:
+        last = plan["scenes"][-1]["scene"]
+        done = any(r.get("type") == "book_end" and r.get("scene") == last for r in rows)
     sys.exit(0 if done and report["ok"] else 1)
 
 

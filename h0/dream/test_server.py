@@ -181,6 +181,28 @@ class ServerTest(unittest.TestCase):
                     "/out//etc/passwd", "/out/A/run_1/%00"):
             self.assertEqual(self._req("GET", bad)[0], 404, bad)
 
+    def test_book_log_served_without_error(self):
+        # F14: a book-run log (book / source:book / narrator cause:book rows)
+        # is served by the existing endpoints without errors.
+        _write_log(self.log, [
+            {"seq": 6, "t": 2, "type": "book", "scene": "library",
+             "beats": [{"kind": "line", "who": "Ashley Wilkes", "text": "Hello"}]},
+            {"seq": 7, "t": 3, "type": "line", "who": "Ashley Wilkes",
+             "text": "Hello", "source": "book"},
+            {"seq": 8, "t": 4, "type": "narrator", "cause": "book", "text": "Evening fell."},
+            {"seq": 9, "t": 5, "type": "book_end", "scene": "library", "beats": 2},
+        ])
+        st, data = self._req("GET", "/out/A/run_1/log.jsonl")
+        self.assertEqual(st, 200)
+        rows = [json.loads(l) for l in data.decode().splitlines() if l.strip()]
+        self.assertTrue(any(r.get("type") == "book" and r.get("scene") == "library" for r in rows))
+        self.assertTrue(any(r.get("type") == "line" and r.get("source") == "book" for r in rows))
+        self.assertTrue(any(r.get("type") == "narrator" and r.get("cause") == "book" for r in rows))
+        self.viewer.sim = None  # replay: stream ends at EOF
+        st, data = self._req("GET", "/events?run=A/run_1", headers={"Last-Event-ID": "5"})
+        self.assertEqual(st, 200)
+        self.assertIn(b'"book"', data)
+
     def test_no_key_in_any_response(self):
         bodies = [self._req("GET", p)[1] for p in ("/", "/api/status", "/api/runs",
                                                    "/out/A/run_1/log.jsonl")]

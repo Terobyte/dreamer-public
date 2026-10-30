@@ -43,17 +43,17 @@
    Правило 4 ошибается там, где обмен идёт через повествование (145 — Эшли, а правило даёт обмен); это черновик, правда — `--score`.
 - Партитура: `{"book", "chapter", "scene", "place", "cast", "beats", "warnings"}`; `python3 book.py <dir> --scene library --out <путь>` пишет JSON; `--stats` печатает число битов по `kind` и по `who`, долю `unattributed`.
 
-- [ ] тест: сцена `lawn`, абзац 114 `"Gentlemen," said Rhett Butler, in a flat drawl …` → `who: Rhett Butler`, `tag` начинается с `said Rhett Butler`; абзац 117 (без ремарки, 115–116 — повествование без псевдонимов) → `Rhett Butler` (правило 4б), не `Scarlett O'Hara` и не `Stuart Tarleton`; абзац 123 `"Sir," said Stuart heavily` → `Stuart Tarleton`; абзац 125 → один бит `line`, текст содержит `Napoleon` и `strongest battalion`, `who: Rhett Butler` (правило 3)
-- [ ] тест: абзац 107 → один бит `line`, `who: India Wilkes`, текст начинается `War!` и содержит `Yankees`; абзац 100 → бит `line`, `who: Jim Tarleton`, `tag` не содержит `thought`
-- [ ] тест: абзацы 79 и 83 → ни одного `line`, по одному биту `narration`, текст с кавычками как в оригинале
-- [ ] тест: абзац 112 `"Run get your grandpa," hissed one of the old gentleman's daughters …` → `who: null` (не `Mr. McRae`: `gentleman's daughters` — не `'s voice`), `warnings` содержит `unattributed: 112`
-- [ ] тест: абзацы 205–206 (`"Sir, you should have made known your presence."` / `"Indeed?" His white teeth gleamed…`) → 205 `Scarlett O'Hara` или `null`, 206 `Rhett Butler` (правило 3 по `His`)
-- [ ] тест: сцена `library` целиком — ≥ 30 битов `line`; все не-null `who` ⊆ {Scarlett O'Hara, Ashley Wilkes, Rhett Butler}; 144 `said Ashley's voice` → `Ashley Wilkes`; 147 `he said` → `Ashley Wilkes`; 201 `said a voice from the depths of the sofa` → `Rhett Butler`; 203 → `Rhett Butler`; доля `null` ≤ 40 %
-- [ ] тест: сцена `hall`, абзацы 227 и 235 `said Honey …` → `Honey Wilkes`; 248 `he cried` → `Charles Hamilton`; 250 → `Charles Hamilton` (правило 4б: 249 без псевдонимов), не женское имя
-- [ ] тест: реплика с вложенными одинарными кавычками (125: `'God is on the side of the strongest battalion!'`) → один бит, одинарные кавычки остаются в тексте
-- [ ] тест: абзац на 120 слов без кавычек, одно предложение на 60 слов → ≥ 3 `narration`, каждая ≤ 40 слов, конкатенация даёт исходный текст с точностью до пробелов
-- [ ] тест: `book.json` с псевдонимом не из `cast` сцены → `ValueError` с именем псевдонима; пересекающиеся `paras` → `ValueError`; `до > 280` → `ValueError`
-- [ ] `python3 -m unittest -q test_book` зелёный; старые тесты `h0/dream` не тронуты
+- [x] тест: сцена `lawn`, абзац 114 `"Gentlemen," said Rhett Butler, in a flat drawl …` → `who: Rhett Butler`, `tag` начинается с `said Rhett Butler`; абзац 117 (без ремарки, 115–116 — повествование без псевдонимов) → `Rhett Butler` (правило 4б), не `Scarlett O'Hara` и не `Stuart Tarleton`; абзац 123 `"Sir," said Stuart heavily` → `Stuart Tarleton`; абзац 125 → один бит `line`, текст содержит `Napoleon` и `strongest battalion`, `who: Rhett Butler` (правило 3)
+- [x] тест: абзац 107 → один бит `line`, `who: India Wilkes`, текст начинается `War!` и содержит `Yankees`; абзац 100 → бит `line`, `who: Jim Tarleton`, `tag` не содержит `thought`
+- [x] тест: абзацы 79 и 83 → ни одного `line`, по одному биту `narration`, текст с кавычками как в оригинале
+- [x] тест: абзац 112 `"Run get your grandpa," hissed one of the old gentleman's daughters …` → `who: null` (не `Mr. McRae`: `gentleman's daughters` — не `'s voice`), `warnings` содержит `unattributed: 112`
+- [x] тест: абзацы 205–206 (`"Sir, you should have made known your presence."` / `"Indeed?" His white teeth gleamed…`) → 205 `Scarlett O'Hara` или `null`, 206 `Rhett Butler` (правило 3 по `His`)
+- [x] тест: сцена `library` целиком — ≥ 30 битов `line`; все не-null `who` ⊆ {Scarlett O'Hara, Ashley Wilkes, Rhett Butler}; 144 `said Ashley's voice` → `Ashley Wilkes`; 147 `he said` → `Ashley Wilkes`; 201 `said a voice from the depths of the sofa` → `Rhett Butler`; 203 → `Rhett Butler`; доля `null` ≤ 40 %
+- [x] тест: сцена `hall`, абзацы 227 и 235 `said Honey …` → `Honey Wilkes`; 248 `he cried` → `Charles Hamilton`; 250 → `Charles Hamilton` (правило 4б: 249 без псевдонимов), не женское имя
+- [x] тест: реплика с вложенными одинарными кавычками (125: `'God is on the side of the strongest battalion!'`) → один бит, одинарные кавычки остаются в тексте
+- [x] тест: абзац на 120 слов без кавычек, одно предложение на 60 слов → ≥ 3 `narration`, каждая ≤ 40 слов, конкатенация даёт исходный текст с точностью до пробелов
+- [x] тест: `book.json` с псевдонимом не из `cast` сцены → `ValueError` с именем псевдонима; пересекающиеся `paras` → `ValueError`; `до > 280` → `ValueError`
+- [x] `python3 -m unittest -q test_book` зелёный; старые тесты `h0/dream` не тронуты
 
 ### К2. Проигрывание партитуры в симе
 
@@ -69,13 +69,13 @@
 - `verify_run` для лога, где есть ряд `book`: по рядам `book` каждой сцены считает только ряды `type: line` с `source: book` (без `line_queued`/`line_prepared`/`line_discarded`), их число == число битов `line` с `who`, тексты и `who` в том же порядке; рядов `narrator` с `cause: book` == `narration` + `line` с `null`; иначе `FAIL`.
 - Стоимость: `--fake` → `spent` ровно 0; без `--fake` и без `--text` платится только Fish за реплики (ночью не запускать).
 
-- [ ] тест: `run(... book=…, scenes=["library"], fake=True, speed=50)` до `book_end` (без явного `max_seconds` — по формуле выше): ряд `book` со `scene: library` и всеми битами; рядов `line` == битов `line` с `who`, `who`/`text` в порядке партитуры, у каждой `source: "book"`; рядов `narrator` == `narration` + `null`-биты; `prompt`, `consult`, `memory_compact`, `loop_cut`, `pressure`, `event`, `judge` — по нулю; `spent == 0`; ни одного `npc line N`
-- [ ] тест: `--score` с правленым `who` (бит 203 → `Ashley Wilkes` руками) → ряд `line` несёт правленое имя; `--score` другой сцены → exit 2
-- [ ] тест: `scenes=["lawn","library"]` → ровно один ряд `transition` с `cause: book`, после него `place` библиотеки и `snapshot` с `actors` библиотеки; `book_end` со `scene: library`; `hall` не играется
-- [ ] тест: `human_say("hello")` во время проигрывания → один ряд `input` с `ignored: book`, порядок битов не сдвинулся, `consult`/`line_queued` нет
-- [ ] тест: `run(profile="A", fake=True, max_transitions=1)` без `book` (фейковый транспорт, без LLM) не меняется по **инвариантам** (фейковый прогон идёт по настенным часам, точная последовательность недетерминирована — `test_sim.py` поэтому проверяет лишь `any(line)`): есть ряд `line` с текстом `npc line 1`, нет рядов `book`/`book_end`, нет `narrator` с `cause: book`, нет `line` с `source: book`, множество типов рядов ⊆ множеству до К2 (список констант в тесте)
-- [ ] тест: `server.py` отдаёт лог с книгой (`/api/log` или как сейчас) без ошибок — существующий тест сервера на новом логе
-- [ ] `verify_run` зелёный на фейковом прогоне `library`
+- [x] тест: `run(... book=…, scenes=["library"], fake=True, speed=50)` до `book_end` (без явного `max_seconds` — по формуле выше): ряд `book` со `scene: library` и всеми битами; рядов `line` == битов `line` с `who`, `who`/`text` в порядке партитуры, у каждой `source: "book"`; рядов `narrator` == `narration` + `null`-биты; `prompt`, `consult`, `memory_compact`, `loop_cut`, `pressure`, `event`, `judge` — по нулю; `spent == 0`; ни одного `npc line N`
+- [x] тест: `--score` с правленым `who` (бит 203 → `Ashley Wilkes` руками) → ряд `line` несёт правленое имя; `--score` другой сцены → exit 2
+- [x] тест: `scenes=["lawn","library"]` → ровно один ряд `transition` с `cause: book`, после него `place` библиотеки и `snapshot` с `actors` библиотеки; `book_end` со `scene: library`; `hall` не играется
+- [x] тест: `human_say("hello")` во время проигрывания → один ряд `input` с `ignored: book`, порядок битов не сдвинулся, `consult`/`line_queued` нет
+- [x] тест: `run(profile="A", fake=True, max_transitions=1)` без `book` (фейковый транспорт, без LLM) не меняется по **инвариантам** (фейковый прогон идёт по настенным часам, точная последовательность недетерминирована — `test_sim.py` поэтому проверяет лишь `any(line)`): есть ряд `line` с текстом `npc line 1`, нет рядов `book`/`book_end`, нет `narrator` с `cause: book`, нет `line` с `source: book`, множество типов рядов ⊆ множеству до К2 (список констант в тесте)
+- [x] тест: `server.py` отдаёт лог с книгой (`/api/log` или как сейчас) без ошибок — существующий тест сервера на новом логе
+- [x] `verify_run` зелёный на фейковом прогоне `library`
 
 ### К3. Суфлёр: человек играет героя, книга подсказывает (мост к режиму 2)
 
@@ -86,9 +86,9 @@
 - На бите `pov` при `hero_owner == "human"` `_book_step` ставит `waiting_since = clock.now()` и возвращается без блокировки; пока `clock.now() - waiting_since < BOOK_PROMPT_WAIT / speed` (константа 12 с), бит не играется. `human_say` в этом окне → `_start_line` с явными `who: hero`, `role: "hero"`, `source: "human"` (при `dialogue is None` `who` в ряд попадает только если передан) → ряд `line` героя с текстом человека, бит книги пропущен, ожидание снято; истекло — играет текст книги с `source: "book"` (суфлёр). Вне окна `human_say` — как в К2 (`input` с `ignored: book`). Остальные биты — как в К2.
 - `Sim.status()` (идёт в `snapshot` по SSE) получает поля `waiting_for: "hero"` только пока курсор стоит на бите `pov` в окне ожидания, иначе `null`, и `prompt_text` = текст этого бита (иначе `""`); панель показывает его как шёпот суфлёра, не как готовую реплику.
 
-- [ ] тест: `hero_owner="human"`, `human_say` до истечения ожидания → ряд `line` героя `source: human`, следующий бит — следующий по партитуре; `snapshot` перед этим нёс `waiting_for: hero` и `prompt_text` из книги
-- [ ] тест: молчание дольше ожидания → `source: book`, текст из книги
-- [ ] тест: без `--hero human` последовательность `(type, who, text)` та же, что в К2
+- [x] тест: `hero_owner="human"`, `human_say` до истечения ожидания → ряд `line` героя `source: human`, следующий бит — следующий по партитуре; `snapshot` перед этим нёс `waiting_for: hero` и `prompt_text` из книги
+- [x] тест: молчание дольше ожидания → `source: book`, текст из книги
+- [x] тест: без `--hero human` последовательность `(type, who, text)` та же, что в К2
 
 ---
 
