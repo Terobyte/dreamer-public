@@ -1,0 +1,165 @@
+{
+  "title": "Gone with the Wind",
+  "author": "Margaret Mitchell",
+  "year": 1936,
+  "source": "Project Gutenberg Australia 0200161 (see SOURCE.md)",
+  "pov": "Scarlett O'Hara",
+  "cast": {
+    "Scarlett O'Hara": {
+      "sex": "woman",
+      "voice": "scarlett",
+      "look": "Sixteen, small and slender, dark hair piled high, green eyes, in a green sprigged muslin dress with a wide sash, a fan snapping open and shut."
+    },
+    "Ashley Wilkes": {
+      "sex": "man",
+      "voice": "ashley",
+      "look": "Tall, slim, late twenties, pale blond hair and grey eyes, in a grey broadcloth coat; quiet, with a faint smile."
+    },
+    "Rhett Butler": {
+      "sex": "man",
+      "voice": "rhett",
+      "look": "Tall, heavy-shouldered, mid-thirties, black hair, a small black moustache, swarthy, in a black suit; mocking eyes."
+    },
+    "Charles Hamilton": {
+      "sex": "man",
+      "voice": "man",
+      "look": "A shy boy of twenty, brown curls, soft brown eyes, flushed, in a new grey coat too formal for a barbecue."
+    },
+    "Melanie Hamilton": {
+      "sex": "woman",
+      "voice": "woman",
+      "look": "Small and frail, seventeen, heart-shaped face, brown eyes too large for it, dark hair in a net, grey organdie dress."
+    },
+    "Honey Wilkes": {
+      "sex": "woman",
+      "voice": "woman",
+      "look": "A thin blonde girl with lashless pale eyes and a petulant mouth, in pink, talking fast."
+    },
+    "India Wilkes": {
+      "sex": "woman",
+      "voice": "woman",
+      "look": "Plain, colourless, with pale lashes and a set jaw, hair drawn tight, in a dull blue dress."
+    },
+    "Stuart Tarleton": {
+      "sex": "man",
+      "voice": "stuart",
+      "look": "Nineteen, six feet two, red hair, sunburnt, long legs in riding boots, hot-tempered."
+    },
+    "Brent Tarleton": {
+      "sex": "man",
+      "voice": "man",
+      "look": "Stuart's twin, the same red hair and sunburn, a shade quieter, always at his brother's heels."
+    },
+    "Jim Tarleton": {
+      "sex": "man",
+      "voice": "old_man",
+      "look": "A big, loud, red-faced planter in his fifties, the twins' father, whiskey glass in hand."
+    },
+    "Mr. McRae": {
+      "sex": "man",
+      "voice": "old_soldier",
+      "look": "A deaf old gentleman from Fayetteville, white-haired, with a cane, shouting because he cannot hear himself."
+    },
+    "Cathleen Calvert": {
+      "sex": "woman",
+      "voice": "woman",
+      "look": "A pretty, fair, gossipy girl of sixteen in a yellow dress."
+    }
+  },
+  "chapters": [
+    {
+      "n": 6,
+      "file": "ch06.txt",
+      "title": "The barbecue at Twelve Oaks",
+      "scenes": [
+        {
+          "id": "lawn",
+          "paras": [
+            78,
+            137
+          ],
+          "title": "The lawn: Charles proposes, the men talk war, Rhett speaks",
+          "place": "The back lawn of Twelve Oaks under the great oaks, benches and the arbor, the barbecue pits smoking, a warm April noon in 1861.",
+          "cast": [
+            "Scarlett O'Hara",
+            "Charles Hamilton",
+            "Ashley Wilkes",
+            "Rhett Butler",
+            "Stuart Tarleton",
+            "Brent Tarleton",
+            "Jim Tarleton",
+            "India Wilkes",
+            "Mr. McRae",
+            "Melanie Hamilton"
+          ],
+          "aliases": {
+            "Scarlett": "Scarlett O'Hara",
+            "Charles": "Charles Hamilton",
+            "Mr. Hamilton": "Charles Hamilton",
+            "Ashley": "Ashley Wilkes",
+            "Rhett": "Rhett Butler",
+            "Rhett Butler": "Rhett Butler",
+            "Butler": "Rhett Butler",
+            "Stuart": "Stuart Tarleton",
+            "Brent": "Brent Tarleton",
+            "Jim Tarleton": "Jim Tarleton",
+            "India": "India Wilkes",
+            "the deaf old gentleman": "Mr. McRae",
+            "the old gentleman": "Mr. McRae",
+            "Mr. McRae": "Mr. McRae",
+            "Melanie": "Melanie Hamilton"
+          }
+        },
+        {
+          "id": "library",
+          "paras": [
+            137,
+            218
+          ],
+          "title": "The library: Scarlett and Ashley, Rhett on the sofa",
+          "place": "The library at Twelve Oaks in semidarkness, blinds drawn against the sun, tall bookcases, a high-backed sofa, a little table with a china rose-bowl; early afternoon.",
+          "cast": [
+            "Scarlett O'Hara",
+            "Ashley Wilkes",
+            "Rhett Butler"
+          ],
+          "aliases": {
+            "Scarlett": "Scarlett O'Hara",
+            "Ashley": "Ashley Wilkes",
+            "Rhett": "Rhett Butler",
+            "Rhett Butler": "Rhett Butler",
+            "Butler": "Rhett Butler",
+            "a voice from the depths of the sofa": "Rhett Butler"
+          }
+        },
+        {
+          "id": "hall",
+          "paras": [
+            218,
+            280
+          ],
+          "title": "The hall and the bench: the girls upstairs, Charles and the news from Lincoln",
+          "place": "The silent upper hall and front steps of Twelve Oaks in the drowsy afternoon, then a bench on the lawn; a rider has just come up the drive.",
+          "cast": [
+            "Scarlett O'Hara",
+            "Charles Hamilton",
+            "Melanie Hamilton",
+            "Honey Wilkes",
+            "India Wilkes",
+            "Cathleen Calvert"
+          ],
+          "aliases": {
+            "Scarlett": "Scarlett O'Hara",
+            "Miss Scarlett": "Scarlett O'Hara",
+            "Charles": "Charles Hamilton",
+            "Melanie": "Melanie Hamilton",
+            "Melly": "Melanie Hamilton",
+            "Honey": "Honey Wilkes",
+            "India": "India Wilkes",
+            "Cathleen": "Cathleen Calvert"
+          }
+        }
+      ]
+    }
+  ]
+}
