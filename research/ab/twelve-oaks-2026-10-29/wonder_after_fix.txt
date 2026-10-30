@@ -1,0 +1,48 @@
+# Wonder scene, same scene file, engine after dialogue fixes (2026-10-30), text-only, run A/run_0_240507
+# 45 lines (was 18), 28 address someone by name (was 0), 24 times the addressee answers next (was 0), $0.29
+
+Ashley Wilkes: [quietly measured] Gentlemen, the North has factories, we have [pause] cotton and courage. [low, resigned] They <emphasis>will</emphasis> fight, I know them well.
+Rhett Butler: [coolly amused] Gentlemen, we have cotton — they have cannon foundries [scoff]
+Scarlett O'Hara: [laughing nervously, breathless] Oh! [gasp] Forgive me, I didn't mean to—
+Gerald O'Hara: [thumping table, booming] One Georgia horseman whips <forceful>twelve</forceful> Yankee clerks!
+Charles Hamilton: [eagerly pleading] Atlanta wants horsemen now, we can go together! [pause] Home by harvest!
+Scarlett O'Hara: [hurriedly sweet] Mr. Wilkes, might I speak with you [pause] by the curtains a moment
+Ashley Wilkes: [coolly quiet] Gentlemen, the North has factories, we have <emphasis>cotton</emphasis> [pause] Gerald, your glass [pause] Miss O'Hara, not here do you think Yankees won't fight?
+Gerald O'Hara: [blustering, getting louder] Factories won't fight, Ashley! [scoff] That's <forceful>cowardice</forceful> in fine words!
+Scarlett O'Hara: [vexed, whispering sharply] Father please, not now — Ashley don't listen to him!
+Ashley Wilkes: [evenly calm] Gerald, I know them — they <emphasis>will</emphasis> fight. [pause] [quietly distant] Miss Scarlett, not here. Melanie's waiting.
+Gerald O'Hara: [booming hearty] To Sumter! Every man name his day! [pause] [gruffly expectant] Well, who's first to volunteer?
+Scarlett O'Hara: [soft, desperate, clinging] Ashley, you promised — <whisper>please</whisper> talk to me [pause]
+Ashley Wilkes: [coolly polite] Gerald, take the paper for the names. [pause] Who left this fan here?
+Gerald O'Hara: [scoffing loudly] You there, smirking! <forceful>Georgia</forceful> fights — who's man enough to sign?
+Scarlett O'Hara: [voice low, coaxing] Father, not now — let Ashley breathe a moment [pause]
+Ashley Wilkes: [low, guarded] Scarlett, <whisper>please</whisper> not now [pause]
+Scarlett O'Hara: [barely holding steady, soft] Ashley, meet me by those curtains alone
+Ashley Wilkes: [quietly resigned] Sir, no shouting wins a war [pause] let it be
+Rhett Butler: [coolly courteous] Gentlemen, the door stands wide [pause] file out please [sharply amused] Charles, <emphasis>leave</emphasis> that brandy march on
+Scarlett O'Hara: [desperate whisper, breaking] I love you more than Twelve Oaks itself [gasp] truly
+Charles Hamilton: [eagerly earnest, breathless] Yankees'll drop like turkeys, gentlemen! [pause] Atlanta wants horsemen now! [fumbling, pleading] Scarlett— — we'll be home by harvest, I swear!
+Scarlett O'Hara: [sharp, trembling] Ashley, you promised me — [pause] honour it now.
+Ashley Wilkes: [low, steady] Gentlemen, this question is settled. [pause] [thud] Melanie is waiting.
+Gerald O'Hara: [booming, hearty] [thud] Wilkes, Hamilton, <forceful>follow</forceful> me to sign! [pause] Ashley, bring up rear!
+Charles Hamilton: [deflated, earnest] If Ashley says wait, I wait — [pause] Scarlett, do you think that's honourable?
+Scarlett O'Hara: [desperate, brittle] Charles, honour can wait — Ashley cannot leave yet.
+Ashley Wilkes: [quiet, contained] [pause] Father has spoken — <whisper>Melanie</whisper> first, gentlemen, if you please.
+Charles Hamilton: [earnest, breathless] [soft scrape] Pardon — I'll keep this fan safe.
+Scarlett O'Hara: [urgent, hushed] Ashley — <emphasis>you</emphasis> promised — open the door now.
+Ashley Wilkes: [quietly resolute] Scarlett, please — [pause] <emphasis>not</emphasis> now, Melanie waits.
+Scarlett O'Hara: [voice breaking, desperate] Ashley, please — <whisper>stay</whisper> — you swore you would listen!
+Ashley Wilkes: [resigned, quiet] Scarlett, the question is settled — [pause] Melanie waits.
+Scarlett O'Hara: [sharp and trembling] Melanie can wait — hear <emphasis>me</emphasis> first, Ashley!
+Ashley Wilkes: [soft, strained] Let us step back — [pause] Father waits with <emphasis>Melanie</emphasis>.
+Rhett Butler: [coolly amused] Gentlemen, after you — [pause] I'll bring the light.
+Scarlett O'Hara: [breathless, pleading] Ashley, you <emphasis>promised</emphasis> — stay [pause] don't leave me yet!
+Ashley Wilkes: [quietly resigned] The question is settled — [pause] I answer to <emphasis>Melanie</emphasis>.
+Gerald O'Hara: [booming, barring the doorway] Hold — name your enlistment day aloud! [pause] Hesitate and be shamed!
+Scarlett O'Hara: [sharp, desperate] Father, stand aside — [pause] <forceful>Ashley</forceful> still owes me truth!
+Ashley Wilkes: [softly measured] Gentlemen, they have <emphasis>factories</emphasis> [pause] we have only cotton.
+Charles Hamilton: [earnest, hushed] Miss Scarlett, if Ashley says wait — [pause] shall we wait?
+Scarlett O'Hara: [voice shaking, urgent] Charles, honour tomorrow — [pause] I need Ashley now.
+Ashley Wilkes: [quietly resigned] Scarlett, my word is to <emphasis>Melanie</emphasis> [pause] let it be.
+Charles Hamilton: [earnestly pleading] Miss Scarlett, Atlanta takes horsemen — [pause] may I <emphasis>go</emphasis> tomorrow?
+Scarlett O'Hara: [choked, desperate] Charles, ride at dawn — [pause] Ashley promised <emphasis>me</emphasis> now.
