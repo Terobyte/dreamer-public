@@ -79,6 +79,39 @@ export class FakeImageProvider implements ImageProvider {
     this.calls.push({ prompt, size });
     return fakePng(4, 4, this.rgb, true);
   }
+
+  readonly edits: { prompt: string; width: number; height: number }[] = [];
+
+  /** A stand-in painter: every gray (128) pixel becomes a row-wise blend of its nearest non-gray neighbours. */
+  async edit(png: Buffer, prompt: string): Promise<Buffer> {
+    const img = PNG.sync.read(png);
+    const { width: w, height: h } = img;
+    this.edits.push({ prompt, width: w, height: h });
+    const gray = (i: number): boolean => img.data[i] === 128 && img.data[i + 1] === 128 && img.data[i + 2] === 128;
+    for (let y = 0; y < h; y++) {
+      let x = 0;
+      while (x < w) {
+        if (!gray((y * w + x) * 4)) {
+          x++;
+          continue;
+        }
+        let e = x;
+        while (e < w && gray((y * w + e) * 4)) e++;
+        const a = Math.max(0, x - 1);
+        const b = Math.min(w - 1, e);
+        for (let k = x; k < e; k++) {
+          const t = (k - a) / Math.max(1, b - a);
+          for (let c = 0; c < 3; c++) {
+            const va = img.data[(y * w + a) * 4 + c];
+            const vb = img.data[(y * w + b) * 4 + c];
+            img.data[(y * w + k) * 4 + c] = Math.round(va * (1 - t) + vb * t);
+          }
+        }
+        x = e;
+      }
+    }
+    return PNG.sync.write(img);
+  }
 }
 
 export class FakeObjectProvider implements ObjectProvider {

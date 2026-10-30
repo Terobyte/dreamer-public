@@ -81,6 +81,12 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.a} и ${params.b} пересекаются на ${params.S} м²`;
     case "EDGES_DRIFT":
       return `${params.a} и ${params.b} разошлись на ${params.d} м`;
+    case "ROOM_LOOKS_OUTDOOR":
+      return `комната "${params.room}": похоже на улицу: сделай \`open: true\` и \`outdoor.sky\``;
+    case "ASSET_FAILED":
+      return `ассет ${params.id} не годится: ${params.reason}; вместо него заглушка`;
+    case "WALL_HEIGHT_MISMATCH":
+      return `${params.a} и ${params.b}: над ${params.low} ${params.d} м голой стены`;
     case "ROOM_SELF_INTERSECT":
       return `${params.path}: контур комнаты "${params.room ?? "?"}" самопересекается (рёбра ${params.edges ?? "?"})`;
     case "OPENING_NO_WALL":

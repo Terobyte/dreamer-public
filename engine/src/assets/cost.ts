@@ -7,8 +7,9 @@ import type { AssetKind } from "./templates.js";
 export const IMAGE_CENTS = 1;
 export const MESH_CENTS = 15;
 
-/** An object costs its reference image plus the mesh made from it. */
+/** An object costs its reference image plus the mesh made from it; a sky its image plus the seam edit. */
 export function priceCents(kind: AssetKind): number {
+  if (kind === "sky") return 2 * IMAGE_CENTS;
   return kind === "object" ? IMAGE_CENTS + MESH_CENTS : IMAGE_CENTS;
 }
 

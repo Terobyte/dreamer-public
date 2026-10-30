@@ -39,6 +39,24 @@
         "allOf": [{ "not": { "required": ["tile", "color"] } }]
       }
     },
+    "outdoor": {
+      "type": "object",
+      "required": ["sky", "ground"],
+      "additionalProperties": false,
+      "properties": {
+        "sky": { "type": "string" },
+        "ground": {
+          "type": "object",
+          "required": ["material", "radius", "fade"],
+          "additionalProperties": false,
+          "properties": {
+            "material": { "type": "string" },
+            "radius": { "type": "number", "exclusiveMinimum": 0 },
+            "fade": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      }
+    },
     "levels": {
       "type": "array",
       "items": {
@@ -55,11 +73,12 @@
       "type": "array",
       "items": {
         "type": "object",
-          "required": ["id", "level", "height", "walls", "floor", "ceiling"],
+        "required": ["id", "level", "floor"],
         "additionalProperties": false,
         "properties": {
           "id": { "type": "string" },
           "level": { "type": "string" },
+          "open": { "type": "boolean" },
           "height": { "type": "number", "exclusiveMinimum": 0 },
           "shape": {
             "type": "array",
@@ -76,6 +95,17 @@
           },
           "floor": { "type": "string" },
           "ceiling": { "type": "string" },
+          "facade": { "type": "string" },
+          "roof": {
+            "type": "object",
+            "required": ["material", "kind"],
+            "additionalProperties": false,
+            "properties": {
+              "material": { "type": "string" },
+              "kind": { "enum": ["flat", "gable"] },
+              "overhang": { "type": "number", "minimum": 0, "default": 0 }
+            }
+          },
           "walls": {
             "type": "object",
             "required": ["material"],
@@ -124,7 +154,13 @@
             }
           }
         },
-        "allOf": [{ "not": { "required": ["shape", "circle"] } }]
+        "allOf": [
+          { "not": { "required": ["shape", "circle"] } },
+          {
+            "if": { "not": { "required": ["open"], "properties": { "open": { "const": true } } } },
+            "then": { "required": ["height", "walls", "ceiling"] }
+          }
+        ]
       }
     },
     "walls": {
@@ -359,7 +395,7 @@
         "required": ["kind", "prompt"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["tile", "decal", "object"] },
+          "kind": { "enum": ["tile", "decal", "object", "sky"] },
           "prompt": { "type": "string" },
           "aspect": { "type": "string", "default": "1:1" },
           "front_deg": { "type": "number", "default": 0 }

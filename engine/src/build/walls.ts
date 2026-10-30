@@ -16,6 +16,8 @@ export interface WallRoom {
   normalIn: V2;
   wallMaterial: string;
   bands: { to: number; material: string }[];
+  /** outer face material for a wall shared with a yard (`open`), if set */
+  facade?: string;
 }
 
 export interface WallEnv {
@@ -405,7 +407,17 @@ export function intervalMeshes(iv: Interval, env: WallEnv, next: (key: string) =
       : null;
     const pieces = piecesFor(r, edgeMat, r.id);
     if (top - r.height > EPS) {
-      pieces.push({ v: [r.height, top], kind: "wall", material: EXTERIOR, side: EXTERIOR });
+      // a yard side has no height of its own: its full-height face is the
+      // neighbouring house room's outer face — facade if set, else the
+      // room's own walls material (F11); any other mismatch tops up to
+      // $exterior as before
+      const donor =
+        rooms.length > 1
+          ? rooms.find((q) => q !== r && (r.height < EPS || typeof q.facade === "string"))
+          : undefined;
+      const mat =
+        donor?.facade ?? (r.height < EPS && donor && donor.height > EPS ? donor.wallMaterial : EXTERIOR);
+      pieces.push({ v: [r.height, top], kind: "wall", material: mat, side: EXTERIOR });
     }
     out.push(...faceMeshes(iv, poly, r.normalIn, towardCenter, pieces, holes, env.levelY, idFor));
   }
@@ -417,7 +429,7 @@ export function intervalMeshes(iv: Interval, env: WallEnv, next: (key: string) =
       ? outward[0] * (iv.arc.c[0] - iv.from[0]) + outward[1] * (iv.arc.c[1] - iv.from[1]) >= 0
       : null;
     // a free wall has no inside, so both of its faces carry its own material;
-    // only a room's exterior wall tops up to `$exterior` here
+    // only a room's exterior wall tops up to its facade (or `$exterior`) here
     const free = iv.sides[0].room === FREE;
     out.push(
       ...faceMeshes(
@@ -425,7 +437,7 @@ export function intervalMeshes(iv: Interval, env: WallEnv, next: (key: string) =
         poly,
         outward,
         towardCenter,
-        [{ v: [0, top], kind: "wall", material: free ? r.wallMaterial : EXTERIOR, side: free ? r.id : EXTERIOR }],
+        [{ v: [0, top], kind: "wall", material: free ? r.wallMaterial : (r.facade ?? EXTERIOR), side: free ? r.id : EXTERIOR }],
         holes,
         env.levelY,
         idFor,

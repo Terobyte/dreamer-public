@@ -394,7 +394,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
     }
     // a default gap height is the lower ceiling of the sides actually resolved
     if (autoGapHeight.has(o)) {
-      const hs = roomsList.map((r) => roomById.get(r)?.height).filter((h): h is number => typeof h === "number");
+      const hs = roomsList.map((r) => roomById.get(r)?.height).filter((h): h is number => typeof h === "number" && h > 0);
       if (hs.length > 0) height = o.height = Math.min(...hs);
     }
     // canonicalize to the first room in scene order so a shared wall reports
@@ -436,7 +436,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
     }
 
     // too high
-    const ceils = roomsList.map((r) => ({ r, h: roomById.get(r)?.height as number })).filter((x) => typeof x.h === "number");
+    const ceils = roomsList.map((r) => ({ r, h: roomById.get(r)?.height as number })).filter((x) => typeof x.h === "number" && x.h > 0);
     const low = ceils.length > 0 ? ceils.reduce((a, b) => (b.h < a.h ? b : a)) : undefined;
     if (low && sill + height > low.h + EPS) {
       // rounded down so the fix stays under the ceiling; a sill at (or within

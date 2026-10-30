@@ -52,6 +52,7 @@ export function budgetIssues(ctx: Ctx, tris: TriCount): Issue[] {
 
   const points = ((scene.lights ?? []) as any[]).map((l, i) => ({ l, i })).filter((x) => x.l?.kind === "point");
   const perRoom = new Map<string, number>();
+  const open = new Set(((scene.rooms ?? []) as any[]).filter((r) => r?.open === true).map((r) => String(r.id)));
   for (const { l } of points) {
     const pos = l.pos;
     if (!Array.isArray(pos)) continue;
@@ -64,6 +65,8 @@ export function budgetIssues(ctx: Ctx, tris: TriCount): Issue[] {
         ? hits[0]
         : hits.find((r: any) => {
             const base = levelY(ctx, String(r.level));
+            // an open yard has no ceiling: any lamp above its ground is in it
+            if (open.has(String(r.id))) return y + 1e-6 >= base;
             const h = typeof r.height === "number" ? r.height : 0;
             return y + 1e-6 >= base && y - 1e-6 <= base + h;
           });

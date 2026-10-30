@@ -83,4 +83,29 @@ export class MuseImageProvider implements ImageProvider {
     }
     throw new Error("muse-image: response has no image");
   }
+
+  /** `/v1/images/edits`, as `h0/h13_seam.py` calls it for the sky seam band. */
+  async edit(png: Buffer, prompt: string): Promise<Buffer> {
+    const form = new FormData();
+    form.append("model", this.model);
+    form.append("prompt", prompt);
+    form.append("response_format", "b64_json");
+    form.append("image", new Blob([new Uint8Array(png)], { type: "image/png" }), "img.png");
+    const res = await fetch(`${this.baseUrl}/v1/images/edits`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${this.key}` },
+      body: form,
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) {
+      const msg = `muse-image: edit HTTP ${res.status}`;
+      throw res.status === 400 || res.status >= 500 ? new RetryableError(msg) : new Error(msg);
+    }
+    const body = (await res.json()) as { data?: { b64_json?: string }[] };
+    const b64 = body?.data?.[0]?.b64_json;
+    if (b64 === undefined) throw new Error("muse-image: edit response has no image");
+    const buf = Buffer.from(b64, "base64");
+    if (buf.length === 0) throw new Error("muse-image: empty image");
+    return requirePng(buf);
+  }
 }

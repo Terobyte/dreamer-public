@@ -112,6 +112,8 @@ export function checkRefs(raw: any): Issue[] {
     if (typeof r.level === "string") ref(`/rooms/${i}/level`, "level", r.level, levelIds);
     if (typeof r.floor === "string") ref(`/rooms/${i}/floor`, "material", r.floor, materialIds);
     if (typeof r.ceiling === "string") ref(`/rooms/${i}/ceiling`, "material", r.ceiling, materialIds);
+    if (typeof r.facade === "string") ref(`/rooms/${i}/facade`, "material", r.facade, materialIds);
+    if (typeof r.roof?.material === "string") ref(`/rooms/${i}/roof/material`, "material", r.roof.material, materialIds);
     if (r.walls && typeof r.walls.material === "string") ref(`/rooms/${i}/walls/material`, "material", r.walls.material, materialIds);
     if (Array.isArray(r.walls?.bands)) {
       r.walls.bands.forEach(
@@ -193,6 +195,30 @@ export function checkRefs(raw: any): Issue[] {
       }
     }
   });
+
+  const od = raw.outdoor;
+  if (od && typeof od === "object") {
+    if (typeof od.sky === "string") {
+      const k = assetKind.get(od.sky);
+      if (!assetIds.has(od.sky)) ref("/outdoor/sky", "asset", od.sky, assetIds);
+      else if (k !== "sky") out.push({ code: "REF_KIND", stage: "schema", path: "/outdoor/sky", msg: msg("REF_KIND", { path: "/outdoor/sky", v: od.sky, got: k ?? "?", want: "sky" }) });
+    }
+    const g = od.ground;
+    if (g && typeof g === "object") {
+      if (typeof g.material === "string") ref("/outdoor/ground/material", "material", g.material, materialIds);
+      if (typeof g.fade === "number" && typeof g.radius === "number" && g.fade > g.radius) {
+        out.push({ code: "SCHEMA_TYPE", stage: "schema", path: "/outdoor/ground/fade", msg: msg("SCHEMA_TYPE", { path: "/outdoor/ground/fade" }) });
+      }
+    }
+  }
+
+  for (const [k, v] of Object.entries((raw.assets ?? {}) as Record<string, any>)) {
+    // a sky panorama is equirect 2:1; anything else (or missing) breaks the dome
+    if (v?.kind === "sky" && v?.aspect !== "2:1") {
+      const path = `/assets/${escapePtr(k)}/aspect`;
+      out.push({ code: "SCHEMA_TYPE", stage: "schema", path, msg: msg("SCHEMA_TYPE", { path }) });
+    }
+  }
 
   const propById = new Map<string, number>((raw.props ?? []).map((p: any, i: number) => [p?.id, i]));
   (raw.props ?? []).forEach((p: any, i: number) => {

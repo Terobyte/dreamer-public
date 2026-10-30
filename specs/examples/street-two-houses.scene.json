@@ -1,0 +1,274 @@
+{
+  "version": 0,
+  "name": "street-two-houses",
+  "spawn": {
+    "room": "street",
+    "at": [
+      -10,
+      0
+    ],
+    "yaw": 0
+  },
+  "style": {
+    "ambient": 1.0,
+    "exterior": "#9ab8d8"
+  },
+  "materials": {
+    "cobble": {
+      "color": "#8a8478"
+    },
+    "grass": {
+      "color": "#6b8f3a"
+    },
+    "plaster": {
+      "color": "#d8d0b8"
+    },
+    "wood": {
+      "color": "#7a5230"
+    },
+    "white": {
+      "color": "#eeeae0"
+    },
+    "brick": {
+      "color": "#9a4a32"
+    },
+    "stucco": {
+      "color": "#e2d6b0"
+    },
+    "slate": {
+      "color": "#4a5058"
+    },
+    "tiles": {
+      "color": "#a0522d"
+    }
+  },
+  "levels": [
+    {
+      "id": "L0",
+      "y": 0
+    }
+  ],
+  "rooms": [
+    {
+      "id": "street",
+      "level": "L0",
+      "open": true,
+      "shape": [
+        [
+          -20,
+          -6
+        ],
+        [
+          20,
+          -6
+        ],
+        [
+          20,
+          6
+        ],
+        [
+          -20,
+          6
+        ]
+      ],
+      "floor": "cobble"
+    },
+    {
+      "id": "a_front",
+      "level": "L0",
+      "height": 3.0,
+      "shape": [
+        [
+          -4,
+          -10
+        ],
+        [
+          4,
+          -10
+        ],
+        [
+          4,
+          -6
+        ],
+        [
+          -4,
+          -6
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      },
+      "facade": "brick",
+      "roof": {
+        "material": "tiles",
+        "kind": "gable",
+        "overhang": 0.4
+      }
+    },
+    {
+      "id": "a_back",
+      "level": "L0",
+      "height": 3.0,
+      "shape": [
+        [
+          -4,
+          -14
+        ],
+        [
+          4,
+          -14
+        ],
+        [
+          4,
+          -10
+        ],
+        [
+          -4,
+          -10
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      },
+      "facade": "brick",
+      "roof": {
+        "material": "tiles",
+        "kind": "gable",
+        "overhang": 0.4
+      }
+    },
+    {
+      "id": "b_front",
+      "level": "L0",
+      "height": 5.0,
+      "shape": [
+        [
+          -5,
+          6
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          5,
+          10
+        ],
+        [
+          -5,
+          10
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      },
+      "facade": "stucco",
+      "roof": {
+        "material": "slate",
+        "kind": "flat",
+        "overhang": 0.3
+      }
+    },
+    {
+      "id": "b_back",
+      "level": "L0",
+      "height": 5.0,
+      "shape": [
+        [
+          -5,
+          10
+        ],
+        [
+          5,
+          10
+        ],
+        [
+          5,
+          14
+        ],
+        [
+          -5,
+          14
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      },
+      "facade": "stucco",
+      "roof": {
+        "material": "slate",
+        "kind": "flat",
+        "overhang": 0.3
+      }
+    }
+  ],
+  "openings": [
+    {
+      "id": "a_door",
+      "kind": "door",
+      "at": [
+        0,
+        -6
+      ],
+      "width": 1.0,
+      "height": 2.1,
+      "sill": 0
+    },
+    {
+      "id": "a_inner",
+      "kind": "door",
+      "at": [
+        0,
+        -10
+      ],
+      "width": 0.9,
+      "height": 2.1,
+      "sill": 0
+    },
+    {
+      "id": "b_door",
+      "kind": "door",
+      "at": [
+        0,
+        6
+      ],
+      "width": 1.2,
+      "height": 2.4,
+      "sill": 0
+    },
+    {
+      "id": "b_inner",
+      "kind": "door",
+      "at": [
+        0,
+        10
+      ],
+      "width": 0.9,
+      "height": 2.1,
+      "sill": 0
+    }
+  ],
+  "assets": {
+    "s_sky": {
+      "kind": "sky",
+      "aspect": "2:1",
+      "prompt": "clear late-afternoon sky over a small town, a few soft clouds"
+    }
+  },
+  "outdoor": {
+    "sky": "s_sky",
+    "ground": {
+      "material": "grass",
+      "radius": 150,
+      "fade": 40
+    }
+  }
+}

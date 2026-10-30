@@ -17,6 +17,7 @@ import { doorMeshes } from "./doors.js";
 import { fixtureMeshes } from "./fixtures.js";
 import { stairMeshes } from "./stairs.js";
 import { extrudeFace, footprintsOverlap } from "./slab.js";
+import { roofMeshes } from "./roof.js";
 import type { StairGeo } from "../stairs/place.js";
 
 export { meshBBox };
@@ -26,6 +27,7 @@ export interface Mesh {
   kind:
     | "floor"
     | "ceiling"
+    | "roof"
     | "wall"
     | "band"
     | "reveal"
@@ -81,6 +83,55 @@ export interface Geometry {
   cameras: Camera[];
   spawn: { at: V2; y: number; yaw: number };
   style: { ambient: number; exterior: string };
+  /** sky dome + fading ground disc, only for a scene with `outdoor` (В2) */
+  outdoor?: Outdoor;
+}
+
+export interface Outdoor {
+  sky: {
+    asset: string;
+    /** `dist/assets` file of the panorama, null when it is a placeholder */
+    file: string | null;
+    /** dome radius, always past the ground's edge */
+    radius: number;
+    /** vertical gradient stand-in for `--assets none`: zenith → horizon */
+    fallback: { top: string; bottom: string };
+  };
+  ground: { material: string; radius: number; fade: number; y: number };
+}
+
+/** The ground sits this far under the yards' floors so the two never z-fight. */
+const GROUND_DROP = 0.01;
+
+function mixHex(a: string, b: string, t: number): string {
+  const p = (h: string): number[] => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(h);
+    const v = m ? parseInt(m[1], 16) : 0x808080;
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  };
+  const [x, y] = [p(a), p(b)];
+  return `#${x.map((c, i) => Math.round(c * (1 - t) + y[i] * t).toString(16).padStart(2, "0")).join("")}`;
+}
+
+function outdoorOf(scene: any, assetFiles: AssetFiles, levelY: Map<string, number>): Outdoor | undefined {
+  const od = scene.outdoor;
+  if (!od || typeof od !== "object") return undefined;
+  const radius = Number(od.ground?.radius ?? 100);
+  // the ground lies under the lowest yard floor (or level 0 when there is none)
+  const yardYs = ((scene.rooms ?? []) as any[])
+    .filter((r) => r?.open === true)
+    .map((r) => levelY.get(String(r.level)) ?? 0);
+  const floorY = yardYs.length > 0 ? Math.min(...yardYs) : 0;
+  const exterior = String(scene.style?.exterior ?? "#808080");
+  return {
+    sky: {
+      asset: String(od.sky),
+      file: assetFiles[String(od.sky)] ?? null,
+      radius: radius * 1.5,
+      fallback: { top: exterior, bottom: mixHex(exterior, "#ffffff", 0.5) },
+    },
+    ground: { material: String(od.ground?.material), radius, fade: Number(od.ground?.fade ?? 0), y: floorY - GROUND_DROP },
+  };
 }
 
 /** Asset ids that `--assets cache`/`live` resolved, each pointing at its `dist/assets/<id>.*` file. */
@@ -159,9 +210,11 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     const y = levelY.get(String(r.level)) ?? 0;
     floors.push({ room: r.id, level: r.level, y, outline: r.outline });
     meshes.push(horizontalFace(`${r.id}:floor`, "floor", String(src.floor), r.id, r.outline, y, floorCuts.get(r.id) ?? []));
+    if (src.open === true) continue;
     meshes.push(
       horizontalFace(`${r.id}:ceiling`, "ceiling", String(src.ceiling), r.id, r.outline, y + Number(r.height), ceilCuts.get(r.id) ?? []),
     );
+    if (src.roof && typeof src.roof === "object") meshes.push(...roofMeshes(r.id, src.roof, r.outline, y + Number(r.height)));
     // the slab a room on an upper level stands on, between it and the ceiling
     // of the room below: footprint × [y − slab, y] (spec "Уровни"), ends in
     // `exterior`
@@ -194,6 +247,8 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   for (const [levelId, plan] of (ctx.levels ?? new Map<string, LevelPlan>())) {
     const y = levelY.get(String(levelId)) ?? 0;
     (plan.intervals as Interval[]).forEach((iv, n) => {
+      // a yard has no walls: an interval only yards border is not built
+      if (iv.sides.every((s) => sceneRoom.get(s.room)?.open === true)) return;
       const own = openings.filter((o) => o.intervalLevel === levelId && o.intervalIndex === n && !o.error);
       const built = intervalMeshes(
         iv,
@@ -241,6 +296,7 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     cameras: (scene.cameras ?? []) as Camera[],
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },
     style: { ambient: Number(scene.style?.ambient ?? 1.0), exterior: String(scene.style?.exterior ?? "#808080") },
+    ...(scene.outdoor ? { outdoor: outdoorOf(scene, assetFiles, levelY) } : {}),
   };
 }
 
@@ -268,6 +324,10 @@ function wallRoom(
   }
   const src = sceneRoom.get(side.room);
   const geo = geoRooms.find((r) => r.id === side.room);
+  if (src.open === true) {
+    // a yard side of a shared wall: no height of its own, the wall takes the house room's
+    return { id: String(src.id), height: 0, normalIn: geo.edges.find((e: any) => e.i === side.edge)?.normalIn ?? geo.edges[0].normalIn, wallMaterial: EXTERIOR, bands: [] };
+  }
   const edge = geo.edges.find((e: any) => e.i === side.edge) ?? geo.edges[0];
   const override = (src.edges ?? {})[String(side.edge)];
   const bands = ((src.walls?.bands ?? []) as any[]).map((b) => ({ to: Number(b.to), material: String(b.material) }));
@@ -282,6 +342,7 @@ function wallRoom(
     normalIn,
     wallMaterial: String(override?.material ?? src.walls?.material ?? EXTERIOR),
     bands,
+    ...(typeof src.facade === "string" ? { facade: String(src.facade) } : {}),
   };
 }
 

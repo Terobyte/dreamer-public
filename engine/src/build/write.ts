@@ -208,6 +208,8 @@ export async function writeDist(
     warnings: [
       ...assetWarnings,
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
+      // a generated asset its post-step rejected (a sky that is not 2:1)
+      ...(assets.failed ?? []).map((w) => `${w.code}: ${w.msg}`),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
       ...refWarnings,
     ],

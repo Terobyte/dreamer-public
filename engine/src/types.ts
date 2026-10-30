@@ -9,7 +9,8 @@ export type Stage =
   | "decals"
   | "cameras"
   | "nav"
-  | "routes";
+  | "routes"
+  | "assets";
 
 export type Code =
   | "SCHEMA_PARSE"
@@ -26,6 +27,9 @@ export type Code =
   | "ROOM_SELF_INTERSECT"
   | "ROOMS_OVERLAP"
   | "EDGES_DRIFT"
+  | "ROOM_LOOKS_OUTDOOR"
+  | "WALL_HEIGHT_MISMATCH"
+  | "ASSET_FAILED"
   | "OPENING_NO_WALL"
   | "OPENING_OFF_EDGE"
   | "OPENING_OVERLAP"

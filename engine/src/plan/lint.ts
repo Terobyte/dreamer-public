@@ -4,6 +4,7 @@ import { compileRooms } from "./rooms.js";
 import { freeWalls, mergeLevel } from "./merge.js";
 import type { Side } from "./merge.js";
 import { driftIssues } from "./drift.js";
+import { streetHints } from "./street.js";
 import { msg } from "../report/messages.js";
 
 export function planStage(ctx: Ctx): Issue[] {
@@ -114,5 +115,6 @@ export function planStage(ctx: Ctx): Issue[] {
   }
   ctx.passport.edges = outEdges;
   const drift = driftIssues(rooms, rawRooms);
-  return [...issues, ...drift, ...hRequired];
+  const street = streetHints(ctx, rooms as never, rawRooms);
+  return [...issues, ...drift, ...street, ...hRequired];
 }

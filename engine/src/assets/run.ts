@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import type { Scene } from "../types.js";
 import { cachePaths, cacheKey, appendLedger } from "./cache.js";
 import { cutWhite } from "./alpha.js";
+import { inpaintSky, seamSky } from "./sky.js";
+import type { Issue } from "../types.js";
 import { type AssetKind, promptFor, sizeFor } from "./templates.js";
 import { Budget, CapError, IMAGE_CENTS, MESH_CENTS, dollarsToCents } from "./cost.js";
 import { IMAGE_CONCURRENCY, pool } from "./batch.js";
@@ -23,6 +25,8 @@ export interface AssetReport {
   fallback: string[];
   missing: string[];
   cents: number;
+  /** assets generated but rejected by a post-step (a sky that is not 2:1) */
+  failed?: Issue[];
 }
 
 export interface AssetsOpts {
@@ -47,6 +51,7 @@ export function sceneAssets(scene: Scene): AssetRef[] {
   for (const m of Object.values((scene?.materials ?? {}) as Record<string, any>)) want(m?.tile);
   for (const p of (scene?.props ?? []) as any[]) want(p?.asset);
   for (const d of (scene?.decals ?? []) as any[]) want(d?.asset);
+  want((scene as any)?.outdoor?.sky);
   for (const o of (scene?.openings ?? []) as any[]) {
     want(o?.leaf?.decal);
     want(o?.outside?.backdrop);
@@ -82,6 +87,8 @@ export function missingAssets(scene: Scene, cacheDir: string): AssetRef[] {
  * already cached (only its mesh failed before) only costs the mesh.
  */
 function remainingCents(cacheDir: string, ref: AssetRef): number {
+  // a sky may pay a second image call: the edit that paints its seam band
+  if (ref.kind === "sky") return 2 * IMAGE_CENTS;
   if (ref.kind !== "object") return IMAGE_CENTS;
   const hasSrc = existsSync(cachePaths(cacheDir, ref.key).src);
   return (hasSrc ? 0 : IMAGE_CENTS) + MESH_CENTS;
@@ -194,6 +201,7 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   // An asset whose failure is not retryable (a permanent HTTP error, say
   // 401/403) is skipped on the second pass instead of wasting another attempt.
   const noRetry = new Set<string>();
+  const failed: Issue[] = [];
 
   /** The reference image: the asset itself for a tile or decal, the input for an object. */
   const genImage = async (ref: AssetRef): Promise<void> => {
@@ -214,6 +222,28 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
       return;
     }
     log(ref, IMAGE_CENTS);
+    if (ref.kind === "sky") {
+      // a sky that is not 2:1 is never cached: the page falls back to the
+      // gradient stand-in, and a retry would pay for the same wrong canvas
+      let fixed = seamSky(png, ref.id);
+      // the recipe proper: an edit call paints the band; without one (or if it
+      // fails) the model-free cross-fade above stands
+      if (fixed.ok && image.edit !== undefined && budget.take(IMAGE_CENTS)) {
+        const edit = image.edit.bind(image);
+        try {
+          fixed = await inpaintSky(png, edit, ref.id);
+        } catch {
+          // keep the cross-fade: a bad edit must not lose a paid sky
+        }
+        log(ref, IMAGE_CENTS);
+      }
+      if (!fixed.ok) {
+        failed.push(fixed.issue);
+        noRetry.add(ref.id);
+        return;
+      }
+      png = fixed.png;
+    }
     try {
       writeCached(ref.kind === "object" ? p.src : p.png, png);
     } catch {
@@ -270,7 +300,8 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   }
   await Promise.all(retryMeshes);
 
-  return reportFrom(cacheDir, refs, budget.spent);
+  const report = reportFrom(cacheDir, refs, budget.spent);
+  return failed.length > 0 ? { ...report, failed } : report;
 }
 
 function reportFrom(cacheDir: string, refs: AssetRef[], cents: number): AssetReport {

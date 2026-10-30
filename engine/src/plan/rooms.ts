@@ -71,7 +71,7 @@ export function compileRooms(scene: any): { rooms: RoomGeo[]; issues: Issue[] } 
           normalIn: [0, 1],
         },
       ];
-      rooms.push({ id: r.id, level: r.level, height: r.height, edges, outline, closed: true });
+      rooms.push({ id: r.id, level: r.level, height: r.open === true ? 0 : r.height, edges, outline, closed: true });
       return;
     }
     const shape: RawVert[] = r.shape ?? [];
@@ -142,7 +142,7 @@ export function compileRooms(scene: any): { rooms: RoomGeo[]; issues: Issue[] } 
         });
       }
     }
-    rooms.push({ id: r.id, level: r.level, height: r.height, edges, outline, closed: true });
+    rooms.push({ id: r.id, level: r.level, height: r.open === true ? 0 : r.height, edges, outline, closed: true });
     ownersByRoom.set(String(r.id), owners);
   });
 

@@ -1,0 +1,157 @@
+{
+  "version": 0,
+  "name": "yard-house",
+  "spawn": {
+    "room": "yard",
+    "at": [
+      0,
+      -6
+    ],
+    "yaw": 0
+  },
+  "style": {
+    "ambient": 1.0,
+    "exterior": "#9ab8d8"
+  },
+  "materials": {
+    "grass": {
+      "color": "#6b8f3a"
+    },
+    "plaster": {
+      "color": "#d8d0b8"
+    },
+    "wood": {
+      "color": "#7a5230"
+    },
+    "white": {
+      "color": "#eeeae0"
+    }
+  },
+  "levels": [
+    {
+      "id": "L0",
+      "y": 0
+    }
+  ],
+  "rooms": [
+    {
+      "id": "yard",
+      "level": "L0",
+      "open": true,
+      "shape": [
+        [
+          -10,
+          -20
+        ],
+        [
+          10,
+          -20
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          -10,
+          0
+        ]
+      ],
+      "floor": "grass"
+    },
+    {
+      "id": "hall",
+      "level": "L0",
+      "height": 3.0,
+      "shape": [
+        [
+          -4,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          -4,
+          6
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      }
+    },
+    {
+      "id": "study",
+      "level": "L0",
+      "height": 3.0,
+      "shape": [
+        [
+          -4,
+          6
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          4,
+          12
+        ],
+        [
+          -4,
+          12
+        ]
+      ],
+      "floor": "wood",
+      "ceiling": "white",
+      "walls": {
+        "material": "plaster"
+      }
+    }
+  ],
+  "openings": [
+    {
+      "id": "front",
+      "kind": "door",
+      "at": [
+        0,
+        0
+      ],
+      "width": 1.0,
+      "height": 2.1,
+      "sill": 0
+    },
+    {
+      "id": "inner",
+      "kind": "door",
+      "at": [
+        0,
+        6
+      ],
+      "width": 0.9,
+      "height": 2.1,
+      "sill": 0
+    }
+  ],
+  "assets": {
+    "s_sky": {
+      "kind": "sky",
+      "aspect": "2:1",
+      "prompt": "soft blue afternoon sky with light clouds"
+    }
+  },
+  "outdoor": {
+    "sky": "s_sky",
+    "ground": {
+      "material": "grass",
+      "radius": 120,
+      "fade": 30
+    }
+  }
+}

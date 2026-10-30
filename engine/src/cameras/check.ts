@@ -74,6 +74,10 @@ export function checkCameras(ctx: Ctx): Issue[] {
     const l = (scene.levels ?? []).find((x: any) => String(x?.id) === level);
     return typeof l?.y === "number" ? l.y : 0;
   };
+  // an open room (yard) has no ceiling: it never bounds the camera height
+  const isOpen = (id: string): boolean => rawById.get(id)?.open === true;
+  const topOf = (r: { id: string; level: string; height: number }): number =>
+    isOpen(r.id) ? Infinity : levelY(r.level) + r.height;
 
   for (let i = 0; i < list.length; i++) {
     const cam = list[i];
@@ -100,10 +104,10 @@ export function checkCameras(ctx: Ctx): Issue[] {
     const room =
       candidates.find((r) => {
         const b = levelY(r.level);
-        return y >= b - EPS && y <= b + r.height + EPS;
+        return y >= b - EPS && y <= topOf(r) + EPS;
       }) ?? candidates[0];
     const base = levelY(room.level);
-    if (y < base - EPS || y > base + room.height + EPS) {
+    if (y < base - EPS || y > topOf(room) + EPS) {
       fail({
         ...xyz,
         kind: "y",
@@ -130,12 +134,14 @@ export function checkCameras(ctx: Ctx): Issue[] {
       fail({ ...xyz, kind: "in", what: `теле стены ${room.id}` });
       continue;
     }
-    const beam = beamPolys(rawById.get(room.id)).find(
-      (b) =>
-        pointInPoly(p, b.poly) &&
-        y > base + room.height - b.h - EPS &&
-        y < base + room.height + EPS,
-    );
+    const beam = !isOpen(room.id)
+      ? beamPolys(rawById.get(room.id)).find(
+          (b) =>
+            pointInPoly(p, b.poly) &&
+            y > base + room.height - b.h - EPS &&
+            y < base + room.height + EPS,
+        )
+      : undefined;
     if (beam) {
       fail({ ...xyz, kind: "in", what: `балке ${room.id}` });
       continue;

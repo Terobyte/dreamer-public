@@ -28,6 +28,36 @@ export function doorMeshes(ctx: Ctx): Mesh[] {
     const y1 = g.sill + g.height;
 
     const decal = raw.leaf?.decal;
+    if (g.kind === "window" && typeof decal === "string") {
+      // a window has no swing leaf: the decal hangs on both faces of the wall
+      const nIn: V3 = [g.normalIn[0], 0, g.normalIn[1]];
+      const u: V3 = [g.axis[0], 0, g.axis[1]];
+      const cy = g.sill + g.height / 2;
+      const off = g.thickness / 2 + 0.005;
+      const cIn: V3 = [g.center[0] + nIn[0] * off, cy, g.center[1] + nIn[2] * off];
+      out.push(
+        planeMesh(
+          { id: `${g.id}:leaf:in`, kind: "leaf", material: decal, room: String(g.rooms[0]) },
+          cIn,
+          nIn,
+          u,
+          g.width / 2,
+          g.height / 2,
+        ),
+      );
+      const nOut: V3 = [-nIn[0], 0, -nIn[2]];
+      const cOut: V3 = [g.center[0] - nIn[0] * off, cy, g.center[1] - nIn[2] * off];
+      out.push(
+        planeMesh(
+          { id: `${g.id}:leaf:out`, kind: "leaf", material: decal, room: String(g.rooms[1] ?? g.rooms[0]) },
+          cOut,
+          nOut,
+          u,
+          g.width / 2,
+          g.height / 2,
+        ),
+      );
+    }
     if (g.kind === "door" && typeof decal === "string") {
       // open: perpendicular to the wall, from the hinge into the swing room, so
       // the leaf lands exactly on the end of the passport's swing sector.

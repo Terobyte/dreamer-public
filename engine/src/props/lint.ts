@@ -270,8 +270,11 @@ export function lintProps(ctx: Ctx): Issue[] {
     }
 
     // 2. top above the ceiling, or above the bottom of a beam over the footprint
+    // (an open room has no ceiling: nothing to hit above)
     let top = ceilY;
     let topWhat = room.height;
+    const roomOpen = rawById.get(room.id)?.open === true;
+    if (!roomOpen) {
     for (const b of beamsOf(room)) {
       if (obbPolyIntersects(g.obb, [b.poly]) && ceilY - b.h < top) {
         top = ceilY - b.h;
@@ -287,6 +290,7 @@ export function lintProps(ctx: Ctx): Issue[] {
         d: String(round3(g.y[1] - top)),
       });
       continue;
+    }
     }
 
     // 3. hanging too low (clearance measured from the room's own floor, not y = 0)

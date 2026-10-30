@@ -21,6 +21,7 @@ import {
   WebGLRenderer,
 } from "three";
 import { loadGlb, loadMaps } from "./assets.js";
+import { addOutdoor } from "./outdoor.js";
 import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 
@@ -163,6 +164,9 @@ async function start(): Promise<void> {
     }
   }
 
+  // a scene with a street gets its sky dome, ground disc and sun before the
+  // first frame, so __ready never fires on a bare `exterior` background
+  if (geo.outdoor) await addOutdoor(scene, geo.outdoor, material(String(geo.outdoor.ground.material)));
   scene.add(new AmbientLight(0xffffff, 0.4 * Number(geo.style?.ambient ?? 1)));
   for (const l of (geo.lights ?? []) as any[]) {
     if (l.kind === "hemi") {
