@@ -1,0 +1,68 @@
+{
+ "id": "bus",
+ "place": "the last night bus, driving through fog",
+ "hero": {
+  "name": "Tomas",
+  "voice": "man",
+  "look": "a teenage boy in a too-big school blazer, headphones around his neck",
+  "soul": {
+   "diary": "Failed the exam my dad paid a tutor for. Did not go home, rode the bus to the end of the line twice.",
+   "wants": [
+    "his dad to say it is fine",
+    "to be good at one thing"
+   ],
+   "fears": [
+    "that his dad will go quiet",
+    "being ordinary"
+   ],
+   "past_dream": "I dreamed I was on stage and forgot what instrument I was holding.",
+   "facts": [
+    {
+     "text": "He plays drums on any table without noticing.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The stage dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "He has not opened the results letter, only guessed.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up on the back seat of a night bus in thick fog; the bus is not stopping anywhere; the driver keeps looking at you in the mirror",
+ "actors": [
+  {
+   "name": "Driver",
+   "voice": "old_man",
+   "look": "a heavy old bus driver with a grey moustache and a cap",
+   "persona": "The Driver: a grumpy, talkative old man who says this route has no stops until a passenger says where they really want to go. He tells stories about his own son that never quite end. He refuses to be comforting. He is hiding that he never told his own son he was proud of him."
+  }
+ ],
+ "events": [{"t": 240, "what": "something impossible about this place catches everyone's eye beyond the fogged window", "who": "all", "kind": "world"}],
+ "objects": [
+  "stop button",
+  "driver's mirror",
+  "fogged window",
+  "ticket machine",
+  "back seat",
+  "folded letter",
+  "route map",
+  "emergency hammer",
+  "radio",
+  "headlights"
+ ],
+ "hooks": {
+  "A": [
+   "fogged window"
+  ],
+  "B": [
+   "route map"
+  ],
+  "C": [
+   "folded letter"
+  ]
+ }
+}

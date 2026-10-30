@@ -1,0 +1,73 @@
+{
+ "id": "hospital",
+ "place": "a hospital corridor where every door is the same",
+ "hero": {
+  "name": "Max",
+  "voice": "man",
+  "look": "a tired man in his late twenties in a creased work shirt, unshaven",
+  "soul": {
+   "diary": "Visited dad in hospital today, talked about football for an hour and left. He looked small.",
+   "wants": [
+    "to say the real thing to his dad",
+    "to not be the one in charge"
+   ],
+   "fears": [
+    "that there is not much time",
+    "breaking down in front of his dad"
+   ],
+   "past_dream": "I dreamed I was running in a corridor and the floor numbers went backwards.",
+   "facts": [
+    {
+     "text": "His dad taught him to fix bikes.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The corridor dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "He brought a letter for his dad and did not give it.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up on a bench in a long hospital corridor; every door has the same number; two nurses walk up arguing about you",
+ "actors": [
+  {
+   "name": "Nurse Vik",
+   "voice": "woman",
+   "look": "a tall brisk nurse with a clipboard and red sneakers",
+   "persona": "Nurse Vik: fast, practical, wants Max to go into room 12 right now and stop wasting time. She argues with Nurse Oz. She is hiding that she has been told the patient may not wake up tomorrow."
+  },
+  {
+   "name": "Nurse Oz",
+   "voice": "man",
+   "look": "a soft-spoken male nurse with a cardigan over scrubs, tea in hand",
+   "persona": "Nurse Oz: slow, kind, tells Max to sit and have tea first, nothing is urgent. He argues with Nurse Vik and teases her. He is hiding that he lost his own father without saying goodbye."
+  }
+ ],
+ "objects": [
+  "room 12 door",
+  "vending machine",
+  "wheelchair",
+  "clipboard",
+  "flower vase",
+  "window",
+  "tea cart",
+  "elevator",
+  "notice board",
+  "bench"
+ ],
+ "hooks": {
+  "A": [
+   "room 12 door"
+  ],
+  "B": [
+   "tea cart"
+  ],
+  "C": [
+   "elevator"
+  ]
+ }
+}

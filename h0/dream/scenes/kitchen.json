@@ -1,0 +1,67 @@
+{
+ "id": "kitchen",
+ "place": "grandmother's kitchen, but far too big",
+ "hero": {
+  "name": "Aisha",
+  "voice": "woman",
+  "look": "a young woman in a business suit with a lanyard, shoes in her hand",
+  "soul": {
+   "diary": "Got the promotion today. Called no one. Ate cereal standing at the sink and felt like a fraud.",
+   "wants": [
+    "to feel she earned it",
+    "her grandmother's opinion, one more time"
+   ],
+   "fears": [
+    "being found out",
+    "forgetting her grandmother's voice"
+   ],
+   "past_dream": "I dreamed I was baking and the dough kept growing until it filled the house.",
+   "facts": [
+    {
+     "text": "Her grandmother taught her to make bread on Sundays.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The dough dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "She never cried at the funeral.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up on the floor of a huge kitchen that smells like bread; the table is as tall as a house; someone is kneading dough up there",
+ "actors": [
+  {
+   "name": "Nana",
+   "voice": "old_woman",
+   "look": "a sturdy old woman in a flour-covered apron, sleeves rolled up",
+   "persona": "Nana: she talks like Aisha's grandmother but will not admit she is. She is busy baking for a party and makes Aisha work instead of talk. She is sharp, teasing, never sentimental. She is hiding that the party is for Aisha and that she already knows about the promotion."
+  }
+ ],
+ "objects": [
+  "giant table",
+  "dough bowl",
+  "oven",
+  "flour sack",
+  "wooden spoon",
+  "recipe card",
+  "kitchen clock",
+  "window",
+  "pantry door",
+  "radio"
+ ],
+ "hooks": {
+  "A": [
+   "oven"
+  ],
+  "B": [
+   "recipe card"
+  ],
+  "C": [
+   "pantry door"
+  ]
+ }
+}

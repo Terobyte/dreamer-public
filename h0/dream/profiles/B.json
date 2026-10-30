@@ -2,6 +2,7 @@
   "id": "B",
   "hero": "SpongeBob",
   "hero_voice": "spongebob",
+  "hero_look": "a cheerful little yellow porous block-shaped fellow with huge round eyes and a small red tie",
   "diary": "Patrick's rock is empty since he moved to the other side of the ocean. I set two plates for dinner by habit. I watched our old jellyfishing video and did not laugh.",
   "wants": ["to see his friend again", "to be someone's first call"],
   "fears": ["that his friend forgets him", "eating alone forever"],

@@ -23,3 +23,6 @@ h0/out/**/*.mp4
 h0/out/**/*.png
 h0/out/**/*.jpg
 research/video/
+
+# sandbox run journals (scratch)
+h0/out/dream/

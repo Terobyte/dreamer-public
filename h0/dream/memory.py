@@ -7,6 +7,21 @@ import math
 import os
 import re
 import threading
+from functools import wraps
+
+if __package__:
+    from .diagnostics import report
+else:
+    from diagnostics import report
+
+
+def synchronized(method):
+    """Protect in-memory state, never a provider call."""
+    @wraps(method)
+    def guarded(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return guarded
 
 HARD_CAP = 5800
 LAYER_BUDGET = 3200
@@ -66,26 +81,25 @@ def _cap(text, budget):
 
 
 def _llm_module():
-    """Return the llm wrapper regardless of import path (spec section 7).
-
-    memory.py runs both as a top-level script (cwd=h0/dream, where
-    `import llm` resolves) and as a package (h0.dream.memory, where it
-    does not). A bare import alone turns the ImportError into a silently
-    skipped Spark merge/selection, so fall back to the package path.
-    """
-    try:
+    """Resolve in the current namespace, without masking import errors."""
+    if __package__:
+        from . import llm as _m
+    else:
         import llm as _m
-        return _m
-    except ImportError:
-        pass
-    from h0.dream import llm as _m
     return _m
 
 
 class Memory:
     def __init__(self, root, transport=None, llm_transport=None,
-                 fake_transport=None):
+                 fake_transport=None, event_sink=None):
         self.root = root
+        self.event_sink = event_sink
+        self._lock = threading.RLock()
+        self._merge_lock = threading.Lock()
+        self._merge_thread = None
+        self._facts_revision = 0
+        self._order_path = os.path.join(root, "episode_order.json")
+        self._raw_order = []
         self.transport = transport or llm_transport or fake_transport
         self.raw_dir = os.path.join(root, "episodes_raw")
         os.makedirs(self.raw_dir, exist_ok=True)
@@ -107,6 +121,10 @@ class Memory:
         self._merge_groups = None
         self._merge_summaries = {}
         self._archived_count = 0
+        if os.path.exists(self._order_path):
+            with open(self._order_path, encoding="utf-8") as stream:
+                self._raw_order = json.load(stream)
+        self._discover_raws()
         if os.path.exists(self.facts_path):
             with open(self.facts_path, encoding="utf-8") as f:
                 for line in f:
@@ -125,19 +143,28 @@ class Memory:
             self._fact_seq = max([0] + nums)
 
     # --- core / scene / inputs -------------------------------------------
+    @synchronized
     def set_core(self, desire="", anxiety="", scene="", objects=(), bridge=None):
         self.core = {"desire": desire, "anxiety": anxiety, "scene": scene,
                      "objects": list(objects), "bridge": bridge}
 
+    @synchronized
     def set_scene(self, scene, objects):
         self.core["scene"] = scene
         self.core["objects"] = list(objects)
+        self.core["bridge"] = None
         self._scene_epoch += 1
         self._sel_cache = None
 
+    @synchronized
+    def set_bridge(self, bridge):
+        self.core["bridge"] = bridge
+
+    @synchronized
     def add_line(self, who, text):
         self.lines.append({"who": who, "text": text})
 
+    @synchronized
     def add_event(self, ev):
         """Queue an event; on overflow the oldest half goes to episodes_raw/."""
         self.events.append(_ev_text(ev))
@@ -148,6 +175,7 @@ class Memory:
             self._events_archived += n_drop
             del self.events[:n_drop]
 
+    @synchronized
     def record_decision(self, d=None, **kw):
         if d is None:
             d = kw
@@ -162,6 +190,7 @@ class Memory:
             del self.decisions[:-DECISION_KEEP]
 
     # --- episodes ---------------------------------------------------------
+    @synchronized
     def save_episode_raw(self, eid, text):
         if (not isinstance(eid, str) or not eid or eid in (".", "..")
                 or "/" in eid or "\\" in eid or "\x00" in eid
@@ -173,11 +202,19 @@ class Memory:
         with open(path, "w",
                   encoding="utf-8") as f:
             f.write(text)
-        if getattr(self, "_merge_groups", None) is not None:
+        if eid in self._raw_order:
+            # Replacing an original invalidates summaries derived from it.
+            self._merge_groups = None
+            self._merge_summaries = {}
+        if eid not in self._raw_order:
+            self._raw_order.append(eid)
+            self._save_order()
+        if self._merge_groups is not None:
             known = {x for g in self._merge_groups for x in g}
             if eid not in known:
                 self._merge_groups.append([eid])
 
+    @synchronized
     def _archive_working(self, lines):
         """Save lines leaving the working layer into episodes_raw/ first.
 
@@ -193,6 +230,7 @@ class Memory:
                          for l in lines)
         self.save_episode_raw(self._next_archive_id("working_archive"), text)
 
+    @synchronized
     def _next_archive_id(self, prefix):
         """Unique raw episode id; never reuses a file already on disk."""
         while True:
@@ -201,13 +239,40 @@ class Memory:
             if not os.path.exists(os.path.join(self.raw_dir, eid + ".txt")):
                 return eid
 
+    def _save_order(self):
+        # Metadata stays outside episodes_raw/: that directory contains only text.
+        temporary = self._order_path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as stream:
+            json.dump(self._raw_order, stream)
+        os.replace(temporary, self._order_path)
+
+    def _discover_raws(self):
+        files = [f for f in os.listdir(self.raw_dir) if f.endswith(".txt")]
+        # Migrate archives without a manifest using file timestamps. Numeric suffix
+        # breaks timestamp ties across archive types; subsequent writes are explicit.
+        def legacy_order(name):
+            match = re.search(r"_(\d+)\.txt$", name)
+            return (os.stat(os.path.join(self.raw_dir, name)).st_mtime_ns,
+                    int(match[1]) if match else 0, name)
+        discovered = [f[:-4] for f in sorted(files, key=legacy_order)]
+        present = set(discovered)
+        ordered = [eid for eid in self._raw_order if eid in present]
+        ordered += [eid for eid in discovered if eid not in ordered]
+        if ordered != self._raw_order:
+            self._raw_order = ordered
+            self._save_order()
+        nums = [int(m[1]) for eid in ordered
+                if (m := re.search(r"_(\d+)$", eid))]
+        self._archive_seq = max([self._archive_seq] + nums)
+
+    @synchronized
     def _read_raws(self):
+        self._discover_raws()
         raws = []
-        for fname in sorted(os.listdir(self.raw_dir)):
-            if fname.endswith(".txt"):
-                with open(os.path.join(self.raw_dir, fname),
-                          encoding="utf-8") as f:
-                    raws.append({"id": fname[:-4], "text": f.read()})
+        for eid in self._raw_order:
+            with open(os.path.join(self.raw_dir, eid + ".txt"),
+                      encoding="utf-8") as stream:
+                raws.append({"id": eid, "text": stream.read()})
         return raws
 
     def _episodes_from_groups(self, raws):
@@ -223,56 +288,76 @@ class Memory:
                             "raw_ids": list(group)})
         return out
 
-    def merge_from_raw(self, transport=None, background=False):
-        """Merge the two oldest episodes, always from episodes_raw/ texts.
+    def _compress(self, instruction, text, transport=None):
+        # An injected transport is a dependency, not a flag disabling real mode.
+        return _llm_module().call(
+            "compress", instruction, [{"role": "user", "content": text}],
+            max_tokens=300, _transport=transport or self.transport,
+            event_sink=self.event_sink).text
 
-        Each merge consumes the two oldest episode groups and builds the
-        Spark input from their underlying raw files (never from an earlier
-        summary), so repeated merges keep shrinking the episode count.
-        Without a transport no summary is fabricated: raws stay separate.
-        Raw files are never deleted.
+    def merge_from_raw(self, transport=None, background=False):
+        """Serialize merges, snapshot under the state lock, call outside it.
+
+        New inputs remain available while the model works. A result is published
+        only if its source files still match; raw files are never deleted.
         """
         if background:
-            t = threading.Thread(target=self.merge_from_raw,
-                                 kwargs={"transport": transport}, daemon=True)
-            t.start()
-            return t
-        raws = self._read_raws()
-        if not hasattr(self, "_merge_groups") or self._merge_groups is None:
-            self._merge_groups = None
-            self._merge_summaries = {}
-        known = [eid for g in (self._merge_groups or []) for eid in g]
-        if self._merge_groups is None or set(known) != {r["id"] for r in raws}:
-            self._merge_groups = [[r["id"]] for r in raws]
-            self._merge_summaries = {}
-        if len(raws) < 2 or len(self._merge_groups) < 2:
-            self.episodes = self._episodes_from_groups(raws)
-            return self.episodes
-        eff = transport or self.transport
-        if eff is None:
-            self.episodes = self._episodes_from_groups(raws)
-            return self.episodes
-        by_id = {r["id"]: r["text"] for r in raws}
-        group = self._merge_groups[0] + self._merge_groups[1]
-        raw_text = "\n---\n".join(by_id[eid] for eid in group)
-        summary = ""
-        try:
-            summary = _llm_module().call(
-                "compress", MERGE_INSTRUCTION,
-                [{"role": "user", "content": raw_text}],
-                max_tokens=300, fake=True, _transport=eff).text
-        except Exception:
-            summary = ""
-        if not summary or not summary.strip():
-            self.episodes = self._episodes_from_groups(raws)
-            return self.episodes
-        self._merge_summaries[tuple(group)] = summary
-        self._merge_groups = [group] + self._merge_groups[2:]
-        self.episodes = self._episodes_from_groups(raws)
-        return self.episodes
+            with self._lock:
+                if self._merge_thread is not None and self._merge_thread.is_alive():
+                    return self._merge_thread
+                self._merge_thread = threading.Thread(
+                    target=self.merge_from_raw, kwargs={"transport": transport},
+                    daemon=True)
+                self._merge_thread.start()
+                return self._merge_thread
+        with self._merge_lock:
+            with self._lock:
+                raws = self._read_raws()
+                known = [eid for g in (self._merge_groups or []) for eid in g]
+                if self._merge_groups is None or set(known) != {r["id"] for r in raws}:
+                    self._merge_groups = [[r["id"]] for r in raws]
+                    self._merge_summaries = {}
+                self.episodes = self._episodes_from_groups(raws)
+                if len(self._merge_groups) < 2:
+                    return self.episodes
+                group = self._merge_groups[0] + self._merge_groups[1]
+                source = {r["id"]: r["text"] for r in raws if r["id"] in group}
+                raw_text = "\n---\n".join(source[eid] for eid in group)
+            try:
+                summary = self._compress(MERGE_INSTRUCTION, raw_text, transport)
+                if not summary or not summary.strip():
+                    raise ValueError("empty episode summary")
+            except Exception as error:
+                report("memory", "memory_merge_fail", error, self.event_sink)
+                with self._lock:
+                    return self.episodes
+            with self._lock:
+                current = self._read_raws()
+                by_id = {r["id"]: r["text"] for r in current}
+                if any(by_id.get(eid) != text for eid, text in source.items()):
+                    self._merge_groups = [[r["id"]] for r in current]
+                    self._merge_summaries = {}
+                    self.episodes = self._episodes_from_groups(current)
+                    report("memory", "memory_merge_stale", "raw episode changed",
+                           self.event_sink)
+                    return self.episodes
+                if self._merge_groups is None:
+                    self._merge_groups = [[r["id"]] for r in current]
+                    self.episodes = self._episodes_from_groups(current)
+                    return self.episodes
+                self._merge_summaries[tuple(group)] = summary
+                self._merge_groups = [group] + self._merge_groups[2:]
+                self.episodes = self._episodes_from_groups(current)
+                return self.episodes
 
     def merge_background(self, transport=None):
         return self.merge_from_raw(transport=transport, background=True)
+
+    def wait(self, timeout=None):
+        """Join owned workers before the run's storage is released."""
+        for worker in (self._merge_thread, self._sel_thread):
+            if worker is not None:
+                worker.join(timeout)
 
     # --- facts --------------------------------------------------------------
     def _norm_fact(self, src):
@@ -289,9 +374,9 @@ class Memory:
                 "text": norm["text"], "supersedes_id": supersedes_id,
                 "scene_epoch": self._scene_epoch}
 
+    @synchronized
     def apply_facts(self, updates):
-        add_only = bool(updates) and all(
-            (u.get("op") if isinstance(u, dict) else None) == "ADD" for u in updates)
+        self._facts_revision += 1
         added = []
         for u in updates or []:
             op = u.get("op")
@@ -311,10 +396,14 @@ class Memory:
         with open(self.facts_path, "w", encoding="utf-8") as f:
             for fact in self.facts:
                 f.write(json.dumps(fact, ensure_ascii=False) + "\n")
-        if add_only and self._sel_cache and self._sel_cache[0] == self._scene_epoch:
-            self._sel_cache[1].extend(added)
+        if self._sel_cache and self._sel_cache[0] == self._scene_epoch:
+            # keep this scene's pick: drop removed facts, add new ones
+            live = {id(x) for x in self.facts}
+            kept = [x for x in self._sel_cache[1] if id(x) in live]
+            self._sel_cache = (self._scene_epoch, kept + added)
         else:
             self._sel_cache = None
+            self._sel_done_epoch = None
 
     def _fact_layer_text(self, facts):
         """The serialized FACTS layer exactly as it goes into the prompt."""
@@ -346,6 +435,7 @@ class Memory:
         fresh, older = self._split_facts(self._scene_epoch)
         return self._fit_facts(fresh, older)
 
+    @synchronized
     def _facts_for_prompt(self):
         """Cached selection only -- build_prompt never calls an LLM.
         Facts added in this scene are always re-included on top of the
@@ -362,62 +452,60 @@ class Memory:
         return picked
 
     def _select_facts(self):
-        """Background selection: Spark picks older facts by exact ids or
-        titles, once per scene; result is cached under the epoch it was
-        selected for and dropped if the scene changed meanwhile."""
-        epoch = self._scene_epoch
-        if self._sel_done_epoch == epoch:
-            return self._facts_for_prompt()
-        fresh, older = self._split_facts(epoch)
-        if self._facts_cost(self.facts) <= FACT_BUDGET:
-            picked = list(self.facts)
-        elif self.transport is not None and older:
-            chosen = []
+        """Publish a selection only for the scene and fact revision requested."""
+        with self._lock:
+            epoch, revision = self._scene_epoch, self._facts_revision
+            if self._sel_done_epoch == epoch:
+                return self._facts_for_prompt()
+            fresh, older = self._split_facts(epoch)
+            fits = self._facts_cost(self.facts) <= FACT_BUDGET
+            picked = list(self.facts) if fits else self._default_facts()
+        failed = False
+        if not fits and older:
             try:
                 titles = "\n".join("%s: %s" % (x.get("id"), x.get("title", ""))
                                    for x in older)
-                reply = _llm_module().call(
-                    "compress", "Pick the most important fact titles. "
-                    "Reply with their ids/titles only.",
-                    [{"role": "user", "content": titles}],
-                    max_tokens=300, fake=True, _transport=self.transport).text
+                reply = self._compress(
+                    "Pick the most important fact titles. Reply with their ids/titles only.",
+                    titles)
+                if not reply or not reply.strip():
+                    raise ValueError("empty fact selection")
                 ids = set(re.findall(r"\bf\d+\b", reply))
                 chosen = [x for x in older if x.get("id") in ids
                           or (x.get("title") and re.search(
                               r"(?<!\w)%s(?!\w)" % re.escape(x["title"]), reply))]
-            except Exception:
-                chosen = []
-            picked = self._fit_facts(fresh, chosen)
-        else:
-            picked = self._default_facts()
-        if self._scene_epoch != epoch:
-            return self._facts_for_prompt()
-        self._sel_cache = (epoch, list(picked))
-        self._sel_done_epoch = epoch
-        return picked
+                picked = self._fit_facts(fresh, chosen)
+            except Exception as error:
+                failed = True
+                report("memory", "memory_selection_fail", error, self.event_sink)
+        with self._lock:
+            if self._scene_epoch != epoch or self._facts_revision != revision:
+                return self._facts_for_prompt()
+            self._sel_cache = (epoch, list(picked))
+            # Failed calls remain retryable; a temporary outage cannot cache an
+            # empty selection for the entire scene.
+            if not failed:
+                self._sel_done_epoch = epoch
+            return picked
 
     def select_facts_background(self):
-        """Run the per-scene Spark fact selection in a background thread.
+        """One selection per scene; scene changes queue behind the old worker."""
+        with self._lock:
+            epoch = self._scene_epoch
+            prev = self._sel_thread
+            if prev is not None and prev.is_alive() and self._sel_thread_epoch == epoch:
+                return prev
 
-        Same scene: the running thread is reused (selection is once per
-        scene). Scene changed while one runs: a new selection is queued
-        to start after the old thread ends.
-        """
-        epoch = self._scene_epoch
-        prev = self._sel_thread
-        if prev is not None and prev.is_alive() and self._sel_thread_epoch == epoch:
-            return prev
+            def run():
+                if prev is not None:
+                    prev.join()
+                self._select_facts()
 
-        def run():
-            if prev is not None:
-                prev.join()
-            self._select_facts()
-
-        t = threading.Thread(target=run, daemon=True)
-        self._sel_thread = t
-        self._sel_thread_epoch = epoch
-        t.start()
-        return t
+            worker = threading.Thread(target=run, daemon=True)
+            self._sel_thread = worker
+            self._sel_thread_epoch = epoch
+            worker.start()
+            return worker
 
     # --- prompt building ----------------------------------------------------
     def _state_line(self, state):
@@ -521,6 +609,7 @@ class Memory:
         sizes["total"] = tokens(text)
         return text, sizes
 
+    @synchronized
     def build_prompt(self, state=None):
         """Synchronous prompt build; never calls an LLM. Returns (text, sizes).
 

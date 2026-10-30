@@ -47,69 +47,60 @@ def ready_fsm(t0=0.0):
 
 
 class TouchTest(unittest.TestCase):
-    def test_touch_in_building(self):
+    def test_touch_in_building_is_a_closed_door(self):
+        # design doc 2026-10-28, 7.1: no stall, no cooldown, no frozen ladder --
+        # an early touch of the bridge is the world fact "the door is locked"
         f = fsm()
         f.start_build(0, "clarinet", "porch")
         ev = f.touch(30, "clarinet")
-        self.assertEqual(types(ev), ["stall"])
-        self.assertEqual(ev[0]["build_pct"], 7)
-        self.assertTrue(ev[0]["stalled"])
+        self.assertEqual(types(ev), ["door"])
+        self.assertEqual((ev[0]["state"], ev[0]["object"], ev[0]["build_pct"]),
+                         ("closed", "clarinet", 7))
         self.assertEqual(f.state, "building")
-        self.assertEqual(f.hint_level(30), 0)
-        self.assertEqual(f.hint_level(300), 0)  # clock alone would say L2
-        self.assertEqual(types(f.touch(60, "clarinet")), ["touch_ignored"])
-        self.assertEqual(types(f.touch(91, "clarinet")), ["stall"])
+        self.assertEqual(types(f.touch(60, "clarinet")), ["door"])
+        self.assertEqual(types(f.touch(61, "clarinet")), ["door"])
         self.assertEqual(f.state, "building")
-
-    def test_touch_cooldown_boundary(self):
-        f = fsm()
-        f.start_build(0, "clarinet", "porch")
-        self.assertEqual(types(f.touch(30, "clarinet")), ["stall"])
-        self.assertEqual(types(f.touch(90, "clarinet")), ["touch_ignored"])
-        self.assertEqual(types(f.touch(90.1, "clarinet")), ["stall"])
+        self.assertFalse(hasattr(f, "hint_level"))
 
 
 class ReadyTest(unittest.TestCase):
-    def test_ready_l4_auto_touch(self):
+    def test_ready_opens_door_and_waits_for_touch(self):
         f = fsm()
         f.start_build(0, "clarinet", "porch")
         self.assertEqual(f.tick(419), [])
         self.assertEqual(f.state, "building")
-        self.assertIn("ready", types(f.tick(420)))
-        self.assertEqual(f.tick(439), [])
-        ev = f.tick(440)
-        self.assertEqual(types(ev), ["hint"])
-        self.assertEqual(ev[0]["level"], 4)
-        self.assertEqual(f.hint_level(441), 4)
-        ev = f.tick(460)
-        self.assertEqual(types(ev), ["auto_touch", "transition"])
-        self.assertEqual(ev[1]["via"], "auto_touch")
-        self.assertEqual(ev[1]["bridge"], "clarinet")
-        self.assertEqual(f.state, "transition")
+        ev = f.tick(420)
+        self.assertEqual(types(ev), ["ready", "door"])
+        self.assertEqual((ev[1]["state"], ev[1]["object"]), ("open", "clarinet"))
+        for t in (439, 440, 460, 1000, 5000):
+            self.assertEqual(f.tick(t), [], "nothing carries the hero through by itself")
+        self.assertEqual(f.state, "ready")
 
         g = ready_fsm()
         ev = g.touch(430, "clarinet")
         self.assertEqual(types(ev), ["transition"])
         self.assertEqual(ev[0]["via"], "touch")
-        self.assertIsNone(g.ready_deadline)
-        self.assertIsNone(g.l4_at)
+        self.assertEqual(g.state, "transition")
         self.assertEqual(g.tick(445), [])
         self.assertEqual(g.tick(500), [])
 
-    def test_ready_level_max(self):
-        f = fsm()
-        f.start_build(0, "clarinet", "porch")
-        f.touch(10, "clarinet")  # frozen at L0
-        self.assertEqual(f.hint_level(400), 0)
-        f.tick(420)
-        self.assertEqual(f.hint_level(421), 3)
-        g = BuildFSM(OBJECTS, voices=POOL, now=0.0,
-                     params={"ladder": (0, 120, 240, 999)})
-        g.start_build(0, "clarinet", "porch")
-        g.tick(250)
-        g.touch(250, "clarinet")  # frozen at L2, clock at ready says L2 too
-        g.tick(420)
-        self.assertEqual(g.hint_level(421), 2)
+    def test_ready_stale_once_per_ready(self):
+        f = ready_fsm()
+        self.assertIsNone(f.due(1019))
+        self.assertEqual(f.due(1020), "ready_stale")
+        t = f.begin_consult(1020)
+        self.assertEqual((t["label"], t["hint"], t["state"]), ("ready_stale", "ready_stale", "ready"))
+        ev = f.finish_consult(1021, t, {"abort_build": {"reason": "nobody comes"}})
+        self.assertIn("build", types(ev))
+        self.assertEqual(f.state, "idle")
+        self.assertEqual(f.due(1025), "abort")  # the abort asks for a consult first
+        t = f.begin_consult(1025)
+        f.finish_consult(1026, t, {"messages": []})
+        f.start_build(1030, "clarinet", "porch")
+        f.tick(1450)
+        self.assertEqual(f.state, "ready")
+        self.assertIsNone(f.due(2049))
+        self.assertEqual(f.due(2050), "ready_stale", "a new ready gets its own ready_stale")
 
 
 class AbortTest(unittest.TestCase):
@@ -134,8 +125,7 @@ class AbortTest(unittest.TestCase):
         ev = f.abort(725, "changed mind")
         self.assertIn("deadline_cancelled", types(ev))
         self.assertEqual(f.state, "idle")
-        self.assertIsNone(f.ready_deadline)
-        self.assertNotIn("auto_touch", types(f.tick(770)))
+        self.assertEqual(f.tick(770), [])
 
         f.start_build(800, "clarinet", "porch")
         ev = f.abort(810, "again")
@@ -275,8 +265,10 @@ class ClockTest(unittest.TestCase):
         f.start_build(0, "clarinet", "porch")
         self.assertEqual(f.tick(20.9), [])
         self.assertIn("ready", types(f.tick(21.0)))
-        self.assertIn("hint", types(f.tick(22.0)))  # 20 s / 20
-        self.assertIn("transition", types(f.tick(23.0)))  # 40 s / 20
+        self.assertEqual(f.tick(22.0), [])
+        self.assertEqual(f.tick(23.0), [])
+        self.assertIsNone(f.due(21.0 + 29.9))
+        self.assertEqual(f.due(21.0 + 30.0), "ready_stale")  # 600 s / 20
 
         n = 210
         c = Clock(n)
@@ -336,3 +328,17 @@ class PendingWakeupTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherObjectTouchTest(unittest.TestCase):
+    def test_touching_a_non_bridge_object_neither_stalls_nor_transitions(self):
+        f = BuildFSM(["clarinet", "photo album"], speed=1.0, now=0)
+        f.start_build(0, "clarinet", "porch")
+        ev = f.touch(30, "photo album")
+        self.assertEqual([e["type"] for e in ev], ["input"])
+        f.tick(420)
+        self.assertEqual(f.state, "ready")
+        self.assertEqual([e["type"] for e in f.touch(421, "photo album")], ["input"])
+        self.assertEqual(f.state, "ready")
+        self.assertEqual([e["type"] for e in f.touch(422, "clarinet")], ["transition"])
+

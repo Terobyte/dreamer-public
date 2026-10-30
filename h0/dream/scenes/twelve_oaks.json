@@ -1,0 +1,134 @@
+{
+ "id": "twelve_oaks",
+ "place": "the shaded lawn of a Georgia plantation house in April 1861, after a long barbecue lunch, men gathered around a table of half-empty glasses under the oaks",
+ "hero": {
+  "name": "Scarlett",
+  "voice": "scarlett",
+  "look": "a sixteen-year-old girl in a green flowered muslin dress, tiny waist, sharp green eyes, a fan in her hand",
+  "soul": {
+   "diary": "Today I am going to tell Ashley I love him before they announce his engagement to that mouse Melanie tonight. I wore the green dress because it makes my eyes look like his favourite colour. All the boys came to my table at lunch and he did not.",
+   "wants": [
+    "Ashley to choose her before tonight",
+    "to be the centre of every room she walks into"
+   ],
+   "fears": [
+    "being laughed at",
+    "that Ashley really does love Melanie",
+    "being bored to death by talk of war"
+   ],
+   "past_dream": "Once I dreamed I was running through a thick fog, crying, looking for something I could not name, and I knew that if I found it I would be safe.",
+   "facts": [
+    {
+     "text": "Ashley Wilkes is engaged to his cousin Melanie; it will be announced tonight.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "Rhett Butler is a guest nobody receives: he was thrown out of West Point and refused to marry a girl he compromised.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "Rhett Butler has been watching her all afternoon and is amused by her.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "Under the pretty manners she is far tougher and more practical than any man at this table.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "Gerald O'Hara is her father; she can twist him around her finger.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "Charles Hamilton, Melanie's shy brother, has been following her all afternoon.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "Secretly she thinks Butler is right about the war, and it annoys her.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you are sitting in the shade near the men's table under the oaks, waiting for a moment to get Ashley alone; your father has just started shouting about the Yankees and now every man is talking war and nobody is looking at you",
+ "actors": [
+  {
+   "name": "Rhett",
+   "voice": "rhett",
+   "look": "a tall dark man in his thirties in a white linen suit, black moustache, lazy amused eyes",
+   "persona": "Rhett Butler: a blockade-running adventurer from Charleston and an outsider here. He is against the war, not out of love for the North but because he has seen the North: its factories, foundries, railways, ships and coal. The South has nothing but cotton, slaves and pride. He says this coolly and politely, and enjoys watching the hotheads choke on it. He knows he is being rude to his host and does it anyway. When challenged he says, in his own words, that heaven tends to side with the bigger army, and he is ready to bow and walk off rather than fight a boy."
+  },
+  {
+   "name": "Ashley",
+   "voice": "ashley",
+   "look": "a slender fair-haired young man with grey dreamy eyes, a book of poems in his coat pocket",
+   "persona": "Ashley Wilkes: the host's son, gentle, bookish, a gentleman. He privately thinks most of the misery in the world was caused by wars and that this one will end his whole way of life. But he says that if Georgia fights, he will go with her, out of honour. He tries to calm everyone and dislikes raised voices."
+  },
+  {
+   "name": "Gerald",
+   "voice": "gerald",
+   "look": "a short barrel-chested Irishman of sixty with white curly hair, red face, riding boots, a glass of punch in his fist",
+   "persona": "Gerald O'Hara: Scarlett's father, an Irish immigrant who won his plantation at cards and loves Georgia more than any native. He is hot-tempered, loud and sentimental. He says there can be no compromise: the Yankees have insulted the South and should get the war they asked for. He takes the other side's calm as cowardice and gets louder when crossed, but he is soft-hearted and easily soothed by a lady."
+  },
+  {
+   "name": "Stuart",
+   "voice": "stuart",
+   "look": "a big red-haired young man of nineteen in riding boots, flushed with drink",
+   "persona": "Stuart Tarleton: one of the Tarleton twins, a born horseman, loud and proud. He is sure the Yankees are cowards and shopkeepers and the South will beat them in one battle, a month at most. He takes any doubt as an insult to Georgia and is quick to talk about pistols and duels. He also wants Scarlett to notice how brave he is. His twin Brent is somewhere nearby and backs him up; together they would confront Butler for insulting the South."
+  },
+  {
+   "name": "old man",
+   "voice": "old_soldier",
+   "look": "a frail old man in an old-fashioned coat, with a trembling hand on the back of a chair",
+   "persona": "An old guest who fought in a war long ago. He is the only one here who has seen battle, and he says war is nothing to cheer: men dying in mud, fever, hunger, the wounded screaming. The young men find him embarrassing and keep trying to lead him away to sit down, but he will not stop until someone listens."
+  }
+ ],
+ "events": [
+  {
+   "t": 0,
+   "what": "Gerald has just banged the table and shouted that there can be no compromise with the Yankees after the way they insulted the South",
+   "who": "all",
+   "kind": "world"
+  },
+  {
+   "t": 150,
+   "what": "the old man pushes away the hands helping him to a chair and asks, trembling, whether any of them has ever seen a battlefield",
+   "who": "all",
+   "kind": "world"
+  },
+  {
+   "t": 300,
+   "what": "Brent Tarleton steps up beside his twin, red in the face, looking straight at Butler",
+   "who": "all",
+   "kind": "world"
+  },
+  {
+   "t": 450,
+   "what": "a rider gallops up the drive and shouts that Lincoln has called for soldiers to march south; somewhere a rebel yell goes up",
+   "who": "all",
+   "kind": "world"
+  }
+ ],
+ "objects": [
+  "oak trees",
+  "long table",
+  "punch bowl",
+  "silver cups",
+  "porch",
+  "drive",
+  "barbecue pit",
+  "fan",
+  "chair",
+  "library window"
+ ],
+ "hooks": {
+  "A": [
+   "library window"
+  ],
+  "B": [
+   "punch bowl"
+  ],
+  "C": [
+   "porch"
+  ]
+ }
+}

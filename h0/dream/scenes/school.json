@@ -1,0 +1,67 @@
+{
+ "id": "school",
+ "place": "a school gym at night after the dance",
+ "hero": {
+  "name": "Jules",
+  "voice": "child",
+  "look": "a twelve-year-old in a dress shirt with a crooked bow tie",
+  "soul": {
+   "diary": "Moved to a new city this week. Nobody at school knows my name yet. Mom keeps asking if I made friends.",
+   "wants": [
+    "one friend",
+    "to go back to the old city"
+   ],
+   "fears": [
+    "being invisible",
+    "mom being sad because of him"
+   ],
+   "past_dream": "I dreamed I was talking and no sound came out.",
+   "facts": [
+    {
+     "text": "He makes paper airplanes that fly very far.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The no-sound dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "He lied to mom that he has a friend called Sam.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up under the bleachers of an empty school gym; streamers on the floor; a kid with a broom says the dance is over and you missed everything",
+ "actors": [
+  {
+   "name": "Sam",
+   "voice": "child",
+   "look": "a scrappy kid in a janitor's coat three sizes too big, pushing a broom",
+   "persona": "Sam: a bossy, funny kid who says he is the night janitor and Jules must help clean before anyone can leave. He knows Jules's lie to his mom and keeps almost saying it. He is hiding that he is lonely too and invented himself so Jules would have someone."
+  }
+ ],
+ "objects": [
+  "bleachers",
+  "broom",
+  "disco ball",
+  "basketball hoop",
+  "streamers",
+  "lost-and-found box",
+  "scoreboard",
+  "paper airplane",
+  "gym doors",
+  "stage curtain"
+ ],
+ "hooks": {
+  "A": [
+   "disco ball"
+  ],
+  "B": [
+   "lost-and-found box"
+  ],
+  "C": [
+   "paper airplane"
+  ]
+ }
+}

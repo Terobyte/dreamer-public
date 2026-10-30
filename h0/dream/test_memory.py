@@ -7,13 +7,15 @@ import math
 import os
 import tempfile
 import unittest
+from unittest import mock
 
+import llm
 from fake import FakeTransport
-from memory import HARD_CAP, Memory
+from memory import EVENT_KEEP, FACT_BUDGET, HARD_CAP, Memory
 
 
 def make_mem():
-    m = Memory(root=tempfile.mkdtemp())
+    m = Memory(root=tempfile.mkdtemp(), transport=FakeTransport())
     m.set_core(desire="wants quiet after the fight",
                anxiety="fears the boss shouting again",
                scene="squidward living room",
@@ -168,6 +170,216 @@ class FactsContractTest(unittest.TestCase):
         self.assertIn("fresh", after)
         for title in picked:
             self.assertIn(title, after)
+
+
+class MemoryOpenBugsTest(unittest.TestCase):
+    """B1/B6/B7/B8: offline regressions for memory integration and archives."""
+
+    def setUp(self):
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        self.root = root.name
+        guard = mock.patch.object(llm.urllib.request, "urlopen",
+                                  side_effect=AssertionError("network forbidden"))
+        guard.start()
+        self.addCleanup(guard.stop)
+
+    def _episodes(self, transport=None):
+        memory = Memory(self.root, transport=transport)
+        memory.save_episode_raw("ep1", "first episode")
+        memory.save_episode_raw("ep2", "second episode")
+        return memory
+
+    def _overflow_facts(self, transport=None):
+        memory = Memory(self.root, transport=transport)
+        memory.apply_facts([
+            {"op": "ADD", "fact": {"title": "fact%d" % i, "text": "x" * 800}}
+            for i in range(6)
+        ])
+        memory.set_scene("new scene", ["radio"])
+        self.assertGreater(memory._facts_cost(memory.facts), FACT_BUDGET)
+        return memory
+
+    def test_b1_background_merge_uses_real_wrapper_without_injected_transport(self):
+        memory = self._episodes()
+        reply = llm.LlmResult("merged episodes", {}, 0, 0)
+        with mock.patch.object(llm, "call", return_value=reply) as call:
+            worker = memory.merge_background()
+            worker.join(timeout=1)
+            self.assertFalse(worker.is_alive())
+        call.assert_called_once()
+        self.assertFalse(call.call_args.kwargs.get("fake", False))
+        self.assertEqual(memory.episodes[0]["text"], "merged episodes")
+
+    def test_b1_background_fact_selection_uses_real_wrapper_without_transport(self):
+        memory = self._overflow_facts()
+        reply = llm.LlmResult("f6", {}, 0, 0)
+        with mock.patch.object(llm, "call", return_value=reply) as call:
+            worker = memory.select_facts_background()
+            worker.join(timeout=1)
+            self.assertFalse(worker.is_alive())
+        call.assert_called_once()
+        self.assertFalse(call.call_args.kwargs.get("fake", False))
+        self.assertEqual([f["id"] for f in memory._facts_for_prompt()], ["f6"])
+
+    def test_b6_failed_merge_is_logged_and_keeps_raw_episodes(self):
+        memory = self._episodes(FakeTransport())
+        with mock.patch.object(llm, "call", side_effect=OSError("merge unavailable")):
+            with self.assertLogs(level="WARNING") as captured:
+                memory.merge_from_raw()
+        self.assertIn("merge unavailable", "\n".join(captured.output))
+        self.assertEqual([e["text"] for e in memory.episodes],
+                         ["first episode", "second episode"])
+
+    def test_b6_failed_fact_selection_is_logged(self):
+        memory = self._overflow_facts(FakeTransport())
+        with mock.patch.object(llm, "call", side_effect=OSError("selection unavailable")):
+            with self.assertLogs(level="WARNING") as captured:
+                memory._select_facts()
+        self.assertIn("selection unavailable", "\n".join(captured.output))
+        self.assertEqual(len(memory.facts), 6)
+
+    def test_b7_all_memory_state_exists_before_first_operation(self):
+        memory = Memory(self.root)
+        initial_fields = set(vars(memory))
+        self.assertIn("_merge_groups", initial_fields)
+        self.assertIn("_merge_summaries", initial_fields)
+        memory.save_episode_raw("ep1", "first episode")
+        memory.merge_from_raw()
+        memory.set_scene("porch", ["chair"])
+        memory.apply_facts([{"op": "ADD", "fact": "fresh fact"}])
+        memory._select_facts()
+        memory.add_line("hero", "hello")
+        memory.add_event("door opens")
+        memory.record_decision({"bridge": "chair"})
+        memory.build_prompt({})
+        self.assertEqual(set(vars(memory)), initial_fields,
+                         "Memory created state outside __init__")
+
+    def test_b8_merge_uses_two_oldest_archives_in_chronological_order(self):
+        transport = FakeTransport(["merged oldest episodes"])
+        memory = Memory(self.root, transport=transport)
+        memory._archive_working([{"who": "hero", "text": "OLDEST dialogue"}])
+        for i in range(2 * EVENT_KEEP + 1):
+            memory.add_event("NEWER event %d" % i)
+        self.assertGreaterEqual(len(memory._read_raws()), 3)
+        memory.merge_from_raw()
+        self.assertEqual(transport.calls, 1)
+        self.assertEqual(memory.episodes[0]["raw_ids"],
+                         ["working_archive_001", "events_archive_002"])
+        self.assertTrue(transport.sent[0]["messages"][0]["content"].startswith(
+            "hero: OLDEST dialogue"))
+
+
+class MemoryConcurrencyTest(unittest.TestCase):
+    def setUp(self):
+        self.root = self.enterContext(tempfile.TemporaryDirectory())
+        self.enterContext(mock.patch('urllib.request.urlopen', side_effect=AssertionError('network forbidden')))
+
+    def test_archive_order_and_sequence_survive_reload(self):
+        first = Memory(self.root, transport=FakeTransport(['summary']))
+        first._archive_working([{'who': 'hero', 'text': 'first'}])
+        first.save_episode_raw(first._next_archive_id('events_archive'), 'second')
+        # Filename timestamps cannot change an explicitly saved chronology.
+        os.utime(os.path.join(first.raw_dir, 'working_archive_001.txt'), (100, 100))
+        os.utime(os.path.join(first.raw_dir, 'events_archive_002.txt'), (0, 0))
+        restored = Memory(self.root, transport=FakeTransport(['summary']))
+        self.assertEqual([r['id'] for r in restored._read_raws()],
+                         ['working_archive_001', 'events_archive_002'])
+        self.assertEqual(restored._next_archive_id('working_archive'), 'working_archive_003')
+        restored.merge_from_raw()
+        self.assertEqual(restored.episodes[0]['raw_ids'],
+                         ['working_archive_001', 'events_archive_002'])
+
+    def test_slow_merge_does_not_block_inputs_or_lose_appended_archives(self):
+        import threading
+        entered, release, written = threading.Event(), threading.Event(), threading.Event()
+
+        class Slow(FakeTransport):
+            def complete(self, **kwargs):
+                entered.set()
+                if not release.wait(2):
+                    raise TimeoutError('test did not release provider')
+                return super().complete(**kwargs)
+
+        memory = Memory(self.root, transport=Slow(['summary']))
+        memory.save_episode_raw('a', 'oldest')
+        memory.save_episode_raw('b', 'second')
+        worker = memory.merge_background()
+        self.addCleanup(worker.join, 2)
+        self.addCleanup(release.set)
+        self.assertTrue(entered.wait(1))
+        self.assertIs(memory.merge_background(), worker)
+
+        def write():
+            memory.add_line('human', 'input during compression')
+            memory.save_episode_raw('c', 'newest')
+            memory.build_prompt({})
+            written.set()
+
+        writer = threading.Thread(target=write)
+        writer.start()
+        try:
+            self.assertTrue(written.wait(1), 'provider call held the memory state lock')
+        finally:
+            release.set()
+            writer.join(2)
+            worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual([e['raw_ids'] for e in memory.episodes], [['a', 'b'], ['c']])
+        self.assertIn('input during compression', memory.build_prompt({})[0])
+
+    def test_changed_raw_rejects_in_flight_summary(self):
+        events = []
+        memory = Memory(self.root, event_sink=events.append)
+
+        class Replacing(FakeTransport):
+            def complete(self, **kwargs):
+                memory.save_episode_raw('a', 'updated original')
+                return super().complete(**kwargs)
+
+        memory.transport = Replacing(['obsolete summary'])
+        memory.save_episode_raw('a', 'original')
+        memory.save_episode_raw('b', 'second')
+        with self.assertLogs('memory', level='WARNING'):
+            memory.merge_from_raw()
+        self.assertEqual(events[-1]['type'], 'memory_merge_stale')
+        memory.transport = FakeTransport(['updated summary'])
+        memory.merge_from_raw()
+        self.assertIn('updated original', memory.transport.sent[0]['messages'][0]['content'])
+        self.assertEqual(memory.episodes[0]['text'], 'updated summary')
+
+    def test_fact_edit_during_selection_cannot_restore_deleted_fact(self):
+        memory = Memory(self.root)
+        memory.apply_facts([{'op': 'ADD', 'fact': {'title': 'old%d' % i, 'text': 'x' * 800}}
+                            for i in range(6)])
+        memory.set_scene('next', [])
+
+        class Editing(FakeTransport):
+            def complete(self, **kwargs):
+                memory.apply_facts([{'op': 'DELETE', 'id': 'f1'},
+                                    {'op': 'ADD', 'fact': 'new fact during request'}])
+                return super().complete(**kwargs)
+
+        memory.transport = Editing(['f1'])
+        memory._select_facts()
+        text, _ = memory.build_prompt({})
+        self.assertNotIn('old0', text)
+        self.assertIn('new fact during request', text)
+        self.assertNotEqual(memory._sel_done_epoch, memory._scene_epoch)
+
+    def test_failed_selection_retains_facts_and_can_retry_same_scene(self):
+        memory = Memory(self.root)
+        memory.apply_facts([{'op': 'ADD', 'fact': {'title': 'old%d' % i, 'text': 'x' * 800}}
+                            for i in range(6)])
+        memory.set_scene('next', [])
+        with mock.patch.object(llm, 'call', side_effect=OSError('temporary outage')):
+            with self.assertLogs('memory', level='WARNING'):
+                memory._select_facts()
+        self.assertTrue(memory._facts_for_prompt())
+        memory.transport = FakeTransport(['f6'])
+        memory.select_facts_background().join(1)
+        self.assertEqual([f['id'] for f in memory._facts_for_prompt()], ['f6'])
 
 
 if __name__ == "__main__":

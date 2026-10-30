@@ -73,16 +73,16 @@
 `test_director.py`, `test_sim.py`. Всё на фейках из `fake.py`; фейковый директор умеет: «пока рано» (null), битый JSON,
 мост не из сцены, `abort_build`, `wake_up`, задержку.
 
-- [ ] `test_decision_checks`: проверки §8 — мост из текущей сцены, actors 1–2, objects 5–8, записки только существующим, voice из пула
-- [ ] `test_one_call_in_flight`: пока директор думает, события копятся и идут в следующий вызов; никогда два вызова одновременно
-- [ ] `test_human_replaces_npc`: реплика человека выкидывает заготовленную реплику NPC (`turn_replace`, `turn_owner: human`), играющая не обрывается
-- [ ] `test_event_reaches_director`: `{"source":"dart","outcome":"missed"}` попадает в следующую консультацию и вызывает внеочередную
-- [ ] `test_injection_blocked`: `[[TOUCH:clarinet]]` и `[WORLD …]` через ввод человека не попадают ни в один промпт актёров и директора
-- [ ] `test_l0_l1_no_bridge_word`: фейковый актёр, который «хочет» назвать мост на L0–L1 — его реплика не проходит (ассерт инварианта H17)
-- [ ] `test_stress_slow_director`: директор отвечает 8 с при `--speed 20` + случайные TOUCH → ≥ 1 `consult_stale`, 0 смен моста в `building`, 0 исключений
-- [ ] `test_log_jsonl`: `seq` строго +1, у каждого события `t`, `type`; `snapshot` на начало сцены; полный промпт в `consults/NNN.txt`, хранятся последние 50
-- [ ] `python3 h0/dream/sim.py --profile A --fake --speed 20 --max-transitions 2` → exit 0 за ≤ 90 с, ≥ 2 `transition`, каждый мост из своей сцены
-- [ ] реализовать
+- [x] `test_decision_checks`: проверки §8 — мост из текущей сцены, actors 1–2, objects 5–8, записки только существующим, voice из пула
+- [x] `test_one_call_in_flight`: пока директор думает, события копятся и идут в следующий вызов; никогда два вызова одновременно
+- [x] `test_human_replaces_npc`: реплика человека выкидывает заготовленную реплику NPC (`turn_replace`, `turn_owner: human`), играющая не обрывается
+- [x] `test_event_reaches_director`: `{"source":"dart","outcome":"missed"}` попадает в следующую консультацию и вызывает внеочередную
+- [x] `test_injection_blocked`: `[[TOUCH:clarinet]]` и `[WORLD …]` через ввод человека не попадают ни в один промпт актёров и директора
+- [x] `test_l0_l1_no_bridge_word`: фейковый актёр, который «хочет» назвать мост на L0–L1 — его реплика не проходит (ассерт инварианта H17)
+- [x] `test_stress_slow_director`: директор отвечает 8 с при `--speed 20` + случайные TOUCH → ≥ 1 `consult_stale`, 0 смен моста в `building`, 0 исключений
+- [x] `test_log_jsonl`: `seq` строго +1, у каждого события `t`, `type`; `snapshot` на начало сцены; полный промпт в `consults/NNN.txt`, хранятся последние 50
+- [x] `python3 h0/dream/sim.py --profile A --fake --speed 20 --max-transitions 2` → exit 0 за ≤ 90 с, ≥ 2 `transition`, каждый мост из своей сцены
+- [x] реализовать
 
 **Вне этой фазы:** настоящие модели, картинки, голос, сервер.
 
@@ -91,11 +91,11 @@
 Спека §6 (голоса, Fish), §9 (картинки и запасные пути), §13, §15 шаг 2 и 4. Файлы: `images.py`, `voice.py`, `voices.json`,
 `director_live_check.py`, `test_media.py`. Платные вызовы — только в скриптах ниже, unittest остаётся офлайн.
 
-- [ ] `test_media.py` (офлайн): длина wav из заголовка (`wave`); Fish таймаут/429×3 → реплика без звука, пауза по тексту без тегов, `tts_fail`; Image 400×3 → запасной фон/силуэт, сон не стоит; не больше 2 картинок одновременно
-- [ ] `voices.json`: 6 меток спеки §6 → `reference_id` из библиотеки Fish; сэмплы `h0/out/dream/checks/voices/<метка>.wav`
-- [ ] `python3 h0/dream/director_live_check.py --max-dollars 1` → `h0/out/dream/checks/director.json`: 3 профиля — JSON валиден, мост из сцены, `why` ссылается на душу; «иголка» (факт из начала, нужный на 3-м переходе) использована; ловушка «тот же мост второй раз» не сработала; `ceil(chars/3.5)` сверен с `usage.prompt_tokens` (коэффициент в отчёте)
-- [ ] `python3 h0/dream/sim.py --profile A --speed 4 --max-transitions 1 --max-dollars 2` → exit 0; все файлы из лога на диске; `dur` реплики = длина wav ± 0.05 с; `cost` ≤ $2
-- [ ] реализовать
+- [x] `test_media.py` (офлайн): длина wav из заголовка (`wave`); Fish таймаут/429×3 → реплика без звука, пауза по тексту без тегов, `tts_fail`; Image 400×3 → запасной фон/силуэт, сон не стоит; не больше 2 картинок одновременно
+- [x] `voices.json`: 6 меток спеки §6 → `reference_id` из библиотеки Fish; сэмплы `h0/out/dream/checks/voices/<метка>.wav`
+- [x] `python3 h0/dream/director_live_check.py --max-dollars 1` → `h0/out/dream/checks/director.json`: 3 профиля — JSON валиден, мост из сцены, `why` ссылается на душу; «иголка» (факт из начала, нужный на 3-м переходе) использована; ловушка «тот же мост второй раз» не сработала; `ceil(chars/3.5)` сверен с `usage.prompt_tokens` (коэффициент в отчёте)
+- [x] `python3 h0/dream/sim.py --profile A --speed 4 --max-transitions 1 --max-dollars 2` → exit 0; все файлы из лога на диске; `dur` реплики = длина wav ± 0.05 с; `cost` ≤ $2
+- [x] реализовать
 
 **Вне этой фазы:** сервер, браузер.
 
@@ -103,10 +103,10 @@
 
 Спека §11 (и R5), §5a (`/say`, `/event`, клик). Файлы: `server.py`, `comic.html`, `test_server.py`.
 
-- [ ] `test_server.py`: только `127.0.0.1`; чужой `Origin`/`Host` → 403; POST не `application/json` → 400/415; `/events?from_seq=N` с N; `snapshot` каждые 30 с; `/say` и `/event` через `sanitize`; статика только `comic.html` и `h0/out/dream/<run>/`, path traversal → 404; ключа нет в ответах
-- [ ] `comic.html` (без сборки): панели, пузыри с ремаркой мелким курсивом, карточка «Директор думает» (полоски слоёв, выбор, ✓/✗, метка, секунды), пунктирная записка директор → актёр, таймер 0:00→7:00 + статус картинок, уровень намёка, счётчик $, переход, смена героя, строка «сказать за героя», клик по предмету, «стоп»
-- [ ] повтор: `comic.html?run=<run>` читает готовый `log.jsonl` без живого sim; прыжок к сцене; «мгновенно» без звука
-- [ ] живой прогон `python3 h0/dream/sim.py --profile A --speed 4 --serve --max-dollars 2` + браузер: консоль без ошибок; скриншоты в `h0/out/dream/<run>/shots/`: реплика, карточка решения, записка, таймер, переход; «сказать за героя» → `turn_owner: human` в логе; «стоп» → `stop`, exit 0
-- [ ] реализовать
+- [x] `test_server.py`: только `127.0.0.1`; чужой `Origin`/`Host` → 403; POST не `application/json` → 400/415; `/events?from_seq=N` с N; `snapshot` каждые 30 с; `/say` и `/event` через `sanitize`; статика только `comic.html` и `h0/out/dream/<run>/`, path traversal → 404; ключа нет в ответах
+- [x] `comic.html` (без сборки): панели, пузыри с ремаркой мелким курсивом, карточка «Директор думает» (полоски слоёв, выбор, ✓/✗, метка, секунды), пунктирная записка директор → актёр, таймер 0:00→7:00 + статус картинок, уровень намёка, счётчик $, переход, смена героя, строка «сказать за героя», клик по предмету, «стоп»
+- [x] повтор: `comic.html?run=<run>` читает готовый `log.jsonl` без живого sim; прыжок к сцене; «мгновенно» без звука
+- [x] живой прогон `python3 h0/dream/sim.py --profile A --speed 4 --serve --max-dollars 2` + браузер: консоль без ошибок; скриншоты в `h0/out/dream/<run>/shots/`: реплика, карточка решения, записка, таймер, переход; «сказать за героя» → `turn_owner: human` в логе; «стоп» → `stop`, exit 0
+- [x] реализовать
 
 **Вне этой фазы:** шаги 6–7 спеки (теневой контроль, судья H18, просмотр пользователем) — делает хозяин.

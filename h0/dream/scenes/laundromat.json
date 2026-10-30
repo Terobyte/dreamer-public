@@ -1,0 +1,67 @@
+{
+ "id": "laundromat",
+ "place": "an empty all-night laundromat at 3 a.m.",
+ "hero": {
+  "name": "Lena",
+  "voice": "woman",
+  "look": "a woman in her thirties in a nurse's scrubs under a big coat, hair in a messy knot",
+  "soul": {
+   "diary": "Third night shift in a row. A patient I liked died at the end of it and I smiled at his son like nothing. Came home and could not sleep.",
+   "wants": [
+    "to cry once without anyone fixing it",
+    "a day off that is really off"
+   ],
+   "fears": [
+    "that she has stopped feeling anything",
+    "making a mistake at work"
+   ],
+   "past_dream": "I dreamed my hands were full of keys and none of them fit my own door.",
+   "facts": [
+    {
+     "text": "Her mother ran a laundromat and Lena did homework on the folding table.",
+     "hidden_from_hero": false
+    },
+    {
+     "text": "The keys dream.",
+     "hidden_from_hero": true
+    },
+    {
+     "text": "She hums when she is about to cry.",
+     "hidden_from_hero": true
+    }
+   ]
+  }
+ },
+ "situation_hero": "you just woke up sitting on a plastic chair in an empty laundromat; one dryer is spinning; an old woman is folding clothes that look exactly like yours",
+ "actors": [
+  {
+   "name": "Rosa",
+   "voice": "old_woman",
+   "look": "a small old woman in a cardigan with reading glasses on a chain",
+   "persona": "Rosa: she runs this laundromat and acts like she has known Lena forever. She folds Lena's clothes and refuses to give them back until Lena tells her one true thing about tonight. She is bossy, funny and secretly very tired herself; she is hiding that this is her last night before the place closes."
+  }
+ ],
+ "objects": [
+  "spinning dryer",
+  "folding table",
+  "change machine",
+  "lost sock basket",
+  "vending machine",
+  "old radio",
+  "bulletin board",
+  "laundry cart",
+  "flickering sign",
+  "back door"
+ ],
+ "hooks": {
+  "A": [
+   "spinning dryer"
+  ],
+  "B": [
+   "lost sock basket"
+  ],
+  "C": [
+   "bulletin board"
+  ]
+ }
+}

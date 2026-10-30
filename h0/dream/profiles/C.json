@@ -2,6 +2,7 @@
   "id": "C",
   "hero": "SpongeBob",
   "hero_voice": "spongebob",
+  "hero_look": "a cheerful little yellow porous block-shaped fellow with huge round eyes and a small red tie",
   "diary": "Tomorrow I fly to see the coral festival! I packed and repacked the suitcase four times. The plane looked so small on the ticket picture.",
   "wants": ["the trip to go perfectly", "to see the festival lights"],
   "fears": ["the plane falling", "missing the flight"],

@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Comic</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #f4efe6; --ink: #2b2620; --muted: #8a8174; --panel: #fffdf8; --line: #d9cfbf;
+  --dir: #e9f0ff; --dir-ink: #2c4a8a; --ok: #2f8a4c; --bad: #b23b3b; --note: #7a4fb0;
+  --accent: #e07a3f; --bubble: #ffffff; --hero: #fff6c9;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.4 "Comic Neue", "Chalkboard SE", "Trebuchet MS", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center;
+  flex-wrap: wrap; padding: 8px 16px; background: var(--panel); border-bottom: 2px solid var(--ink); }
+header h1 { font-size: 18px; margin: 0; }
+.badge { padding: 2px 8px; border: 1.5px solid var(--ink); border-radius: 10px; font-size: 12px; }
+.badge.live { background: #ffdede; } .badge.replay { background: #e4f0e4; }
+header .grow { flex: 1; }
+button, select, input { font: inherit; }
+button { border: 1.5px solid var(--ink); background: #fff; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+button:hover { background: #fff3e0; } button.stop { background: #ffd9d9; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; padding: 16px; max-width: 1280px; margin: 0 auto; }
+@media (max-width: 820px) { main { grid-template-columns: 1fr; } aside { order: -1; } }
+#strip { display: flex; flex-direction: column; gap: 14px; padding-bottom: 90px; }
+.scene { background: var(--panel); border: 3px solid var(--ink); border-radius: 4px; overflow: hidden; }
+.stage { position: relative; height: 300px; background: #cfd8dc center/cover no-repeat; }
+.stage .place { position: absolute; left: 8px; top: 8px; background: #fffdf8e0; border: 1.5px solid var(--ink);
+  padding: 1px 8px; font-weight: bold; }
+.cast { position: absolute; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; align-items: flex-end; }
+.who { text-align: center; }
+.who img { height: 150px; mix-blend-mode: multiply; display: block; margin: 0 auto; }
+.who span { background: #fffdf8e0; border: 1px solid var(--ink); padding: 0 6px; font-size: 12px; }
+.objects { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border-top: 2px dashed var(--line); }
+.obj { font-size: 12px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--line); background: #faf6ee; }
+body.can-click .obj { cursor: pointer; } body.can-click .obj:hover { border-color: var(--accent); }
+.obj.cand { outline: 2px solid var(--accent); } .obj.bridge { border-color: var(--accent); }
+.feed { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.bubble { position: relative; max-width: 80%; background: var(--bubble); border: 2px solid var(--ink);
+  border-radius: 14px; padding: 6px 12px; align-self: flex-start; }
+.bubble.hero { align-self: flex-end; background: var(--hero); }
+.bubble.human { border-style: dashed; }
+.bubble .name { font-size: 11px; font-weight: bold; text-transform: uppercase; color: var(--muted); }
+.bubble .remark { font-size: 11px; font-style: italic; color: var(--muted); }
+.bubble .tag { font-size: 11px; color: var(--accent); margin-left: 6px; }
+.bubble.silent::after { content: "без звука"; font-size: 10px; color: var(--muted); margin-left: 6px; }
+.dir { align-self: stretch; background: var(--dir); color: var(--dir-ink); border: 2px solid var(--dir-ink);
+  border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+.dir .head { font-weight: bold; display: flex; gap: 8px; flex-wrap: wrap; }
+.dir .ok { color: var(--ok); } .dir .bad { color: var(--bad); }
+.dir details summary { cursor: pointer; }
+.bars { display: grid; grid-template-columns: 70px 1fr 64px; gap: 2px 6px; font-size: 11px; margin: 4px 0; }
+.bar { height: 8px; background: #fff; border: 1px solid var(--dir-ink); align-self: center; }
+.bar i { display: block; height: 100%; background: var(--dir-ink); }
+.note { align-self: center; color: var(--note); font-size: 13px; border: 2px dashed var(--note);
+  border-radius: 6px; padding: 4px 10px; background: #f7f0ff; }
+.sys { align-self: center; font-size: 12px; color: var(--muted); }
+.narr { align-self: stretch; margin: 6px 12px; font-style: italic; letter-spacing: .3px; color: var(--muted); text-align: center; }
+.sys.warn { color: var(--bad); }
+.transition { background: var(--panel); border: 3px solid var(--ink); padding: 10px; text-align: center; }
+.fade { position: relative; height: 180px; margin-bottom: 6px; }
+.fade div { position: absolute; inset: 0; background: #cfd8dc center/cover no-repeat; }
+.fade .to { animation: dissolve 4s ease-in-out forwards; opacity: 0; }
+@keyframes dissolve { to { opacity: 1; } }
+.caption { font-weight: bold; }
+.herochange { display: none; justify-content: center; gap: 12px; align-items: center; margin-top: 6px; }
+.herochange.on { display: flex; }
+.herochange img { height: 100px; mix-blend-mode: multiply; }
+aside { position: sticky; top: 60px; align-self: start; display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--panel); border: 2px solid var(--ink); border-radius: 6px; padding: 10px; }
+.card h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; color: var(--muted); }
+#panelbox { font-size: 12px; } #panelbox > div { margin-bottom: 4px; word-break: break-word; }
+#panelbox span { color: var(--muted); }
+.big { font-size: 26px; font-weight: bold; font-variant-numeric: tabular-nums; }
+.progress { height: 10px; border: 1.5px solid var(--ink); background: #fff; margin: 4px 0; }
+.progress i { display: block; height: 100%; background: var(--accent); width: 0; }
+.row { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; background: var(--panel); border-top: 2px solid var(--ink);
+  padding: 8px 16px; display: flex; gap: 8px; z-index: 5; }
+footer input { flex: 1; min-width: 0; padding: 4px 8px; border: 1.5px solid var(--ink); border-radius: 6px; }
+footer.off { display: none; }
+/* blind A/B (ab.html): the strip alone, no side cards, no footer -- in a narrow
+   iframe the sticky aside would otherwise cover the whole frame */
+body.blind main { grid-template-columns: 1fr; padding: 8px; }
+body.blind aside, body.blind footer { display: none; }
+body.blind #strip { padding-bottom: 16px; }
+#runs a { display: block; padding: 2px 0; color: var(--dir-ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Сон</h1>
+  <span id="mode" class="badge">…</span>
+  <span id="runname" class="badge"></span>
+  <span class="grow"></span>
+  <span id="replayctl" hidden>
+    <button id="play1">▶ ×1 со звуком</button>
+    <button id="pausebtn" disabled>⏸ пауза</button>
+    <button id="playfast">⏩ мгновенно</button>
+    <select id="scenesel" title="прыжок к сцене"></select>
+  </span>
+  <button id="soundbtn">🔇 звук выкл</button>
+</header>
+<main>
+  <section id="strip"></section>
+  <aside>
+    <div class="card"><h3>Сборка</h3>
+      <div class="row"><span id="bstate">idle</span><span id="bridge"></span></div>
+      <div class="big" id="timer">0:00 / 7:00</div>
+      <div class="progress"><i id="prog"></i></div>
+      <div class="row"><span>картинки</span><span id="imgstate">—</span></div>
+    </div>
+    <div class="card"><h3>Расход</h3>
+      <div class="big" id="dollars">$0.00</div>
+      <div class="row"><span>лимит</span><span id="maxd">—</span></div>
+      <div class="row"><span>реплик</span><span id="nlines">0</span></div>
+      <div class="row"><span>консультаций</span><span id="nconsults">0</span></div>
+    </div>
+    <div class="card" id="runscard" hidden><h3>Прогоны</h3><div id="runs"></div></div>
+    <div class="card"><h3>Герой</h3><button id="herobtn">что знает герой</button><div id="herobox"></div></div>
+    <div class="card" id="panelcard" hidden><h3>Панель директора</h3><div id="panelbox"></div></div>
+  </aside>
+</main>
+<footer id="footer" class="off">
+  <input id="say" placeholder="сказать за героя…" maxlength="400" autocomplete="off">
+  <button id="saybtn">сказать</button>
+  <button id="povbtn" disabled>🤖 герой сам</button>
+  <button id="contbtn" hidden>продолжить</button>
+  <button id="stopbtn" class="stop">стоп</button>
+</footer>
+<script>
+"use strict";
+const Q = new URLSearchParams(location.search);
+let RUN = Q.get("run");
+const $ = (id) => document.getElementById(id);
+const strip = $("strip");
+const BUILD_S = 420;
+const BUDGETS = {core: 600, working: 1000, episodes: 900, facts: 600, decisions: 400, tail: 700};
+const OK_VERDICTS = new Set(["build", "ok", "wake_up", "abort"]);
+
+let S, rows = [], live = false, sound = false, instant = false;
+const audioQ = [];
+let audioEl = null;
+
+function fresh() {
+  return {speed: 1, place: "", hero: "", heroDesc: "", objects: [], actors: [], build: "idle",
+    bridge: null, dest: null, buildStart: null, lastT: 0, tRecv: performance.now(),
+    dollars: 0, maxD: null, portraits: {}, bg: {}, bgFallback: {}, scene: null,
+    trans: null, lines: 0, consults: 0, lastSeq: 0, ended: false, prevHeroSrc: null};
+}
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function src(rel) { return rel ? "/out/" + RUN + "/" + rel.split("/").map(encodeURIComponent).join("/") : ""; }
+function fmt(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); }
+function feed() { if (!S.scene) newScene({}); return S.scene.querySelector(".feed"); }
+// follow the newest panel only while the reader is at the bottom
+let follow = true;
+window.addEventListener("scroll", () => {
+  follow = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+});
+function scrollDown() { if (!instant && follow) window.scrollTo({top: document.body.scrollHeight}); }
+
+// --- scene panels ------------------------------------------------------------
+function newScene(r) {
+  S.place = r.place || S.dest || S.place || "dream";
+  S.objects = r.scene || S.objects;
+  S.actors = r.actors || S.actors;
+  if (r.hero) S.hero = r.hero;
+  const sc = el("div", "scene");
+  sc.dataset.seq = r.seq || 0;
+  const stage = el("div", "stage");
+  stage.dataset.place = S.place;
+  if (S.bg[S.place]) stage.style.backgroundImage = "url(" + JSON.stringify(S.bg[S.place]) + ")";
+  stage.appendChild(el("div", "place", S.place));
+  const cast = el("div", "cast");
+  for (const name of [S.hero, ...S.actors.map((a) => (typeof a === "string" ? a : a.name))]) {
+    if (!name) continue;
+    const w = el("div", "who");
+    w.dataset.who = name;
+    const img = el("img");
+    img.alt = name;
+    if (S.portraits[name]) img.src = S.portraits[name]; else img.hidden = true;
+    w.appendChild(img);
+    w.appendChild(el("span", "", name));
+    cast.appendChild(w);
+  }
+  stage.appendChild(cast);
+  sc.appendChild(stage);
+  const objs = el("div", "objects");
+  for (const o of S.objects) {
+    const b = el("span", "obj", o);
+    b.dataset.obj = o;
+    b.addEventListener("click", () => clickObject(o));
+    objs.appendChild(b);
+  }
+  sc.appendChild(objs);
+  sc.appendChild(el("div", "feed"));
+  strip.appendChild(sc);
+  S.scene = sc;
+  if (r.hero_desc && r.hero_desc !== S.heroDesc && S.trans) {
+    S.trans.querySelector(".herochange").classList.add("on");
+  }
+  if (r.hero_desc !== undefined) S.heroDesc = r.hero_desc;
+}
+
+function setBackground(place, url) {
+  S.bg[place] = url;
+  document.querySelectorAll("[data-place]").forEach((n) => {
+    if (n.dataset.place === place) n.style.backgroundImage = "url(" + JSON.stringify(url) + ")";
+  });
+}
+
+function setPortrait(who, url) {
+  const old = S.portraits[who];
+  S.portraits[who] = url;
+  const hc = S.trans && S.trans.querySelector(".herochange");
+  if (who === S.hero && old && old !== url && hc) {
+    hc.querySelector(".old").src = old;
+    hc.querySelector(".new").src = url;
+  }
+  const scope = S.scene || document;
+  scope.querySelectorAll(".who").forEach((w) => {
+    if (w.dataset.who === who) { const i = w.querySelector("img"); i.src = url; i.hidden = false; }
+  });
+}
+
+// --- one log row ----------------------------------------------------------------
+function apply(r) {
+  if (typeof r.seq === "number") S.lastSeq = Math.max(S.lastSeq, r.seq);
+  if (typeof r.t === "number" && r.t > S.lastT) { S.lastT = r.t; S.tRecv = performance.now(); }
+  switch (r.type) {
+    case "snapshot":
+      if (r.speed) S.speed = r.speed;
+      if (r.max_dollars) S.maxD = r.max_dollars;
+      // history row: ordered by its seq, never makes the toggle ready
+      povTake(r.hero_owner, r.seq, false);
+      if (r.scene) newScene(r);
+      break;
+    case "pov":
+      // may itself be backlog on reconnect -- same seq rule as everything else
+      if (povTake(r.hero_owner, r.seq, false)) { povPending = false; renderPov(); }
+      break;
+    case "line": addLine(r); break;
+    case "narrator": addNarration(r); break;
+    case "consult": addConsult(r); break;
+    case "message": {
+      const n = el("div", "note", "директор ⇢ " + (r.to || "?") + ": " + (r.note || ""));
+      feed().appendChild(n);
+      break;
+    }
+    case "build":
+      if (r.phase === "start") {
+        S.build = "building"; S.bridge = r.bridge; S.dest = r.destination; S.buildStart = r.t;
+        sys("🔨 сборка: " + r.bridge + " → " + r.destination);
+        markBridge();
+      } else if (r.phase === "abort") {
+        S.build = "idle"; S.bridge = S.dest = S.buildStart = null;
+        sys("✗ сборка отменена: " + (r.reason || ""), true);
+      }
+      break;
+    case "ready": S.build = "ready"; sys("✓ мост готов"); break;
+    case "door": sys(r.state === "open" ? "🚪 " + (r.object || S.bridge || "мост") + " открылась" : "🔒 заперто: " + (r.object || "") + (r.build_pct !== undefined ? " (" + r.build_pct + "%)" : "")); break;
+    case "touch_ambiguous": highlight(r.candidates || []); sys("? неоднозначно: " + (r.candidates || []).join(", ")); break;
+    case "touch_rejected": sys("· нет такого предмета: " + r.value); break;
+    case "input": if (r.source !== "speech") sys("⇢ " + r.source + ": " + r.value + (r.outcome ? " (" + r.outcome + ")" : "")); break;
+    case "transition": addTransition(r); break;
+    case "image": addImage(r); break;
+    case "cost": S.dollars = r.dollars || 0; if (r.max_dollars) S.maxD = r.max_dollars; break;
+    case "tts_fail": break;
+    case "invalid": sys("✗ директор: " + (r.reason || "") + " " + (r.fields || []).join(","), true); break;
+    case "director_fail": sys("✗ director_fail" + (r.fail_streak ? " ×" + r.fail_streak : ""), true); break;
+    case "director_nudge": sys("· подсказка директору (2:00)"); break;
+    case "director_force": sys("! требование моста (5:00)", true); break;
+    case "wake_up": sys("☀ пробуждение: " + r.reason, true); S.ended = true; break;
+    case "safety_pause": sys("⏸ пауза: сон остановлен, нажми «продолжить»", true); setPaused(true); freezeTimer(); stopAudio(); break;
+    case "input_dropped": break;
+    case "stop": sys("■ стоп"); S.ended = true; break;
+  }
+  if (!instant) render();
+}
+
+// 2.2: a safety pause holds the dream; only this button lets it go on.
+let paused = false, frozenT = 0;
+function setPaused(on) {
+  const b = $("contbtn");
+  if (b) { b.hidden = !on || !live; b.disabled = false; }
+  if (on) { paused = true; frozenT = S.lastT; }
+}
+function freezeTimer() { paused = true; frozenT = S.lastT; }
+function stopAudio() { if (audioEl) { try { audioEl.pause(); } catch (e) {} audioEl = null; } audioQ.length = 0; }
+async function sendContinue() {
+  const b = $("contbtn");
+  if (b) b.disabled = true;
+  try {
+    await fetch('/continue', {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    setPaused(false);
+    paused = false; S.tRecv = performance.now(); S.lastT = frozenT;
+  } catch (e) { if (b) b.disabled = false; }
+}
+const contbtn = $("contbtn");
+if (contbtn) contbtn.addEventListener("click", sendContinue);
+function sys(text, warn) { feed().appendChild(el("div", "sys" + (warn ? " warn" : ""), text)); scrollDown(); }
+
+function addNarration(r) {
+  // 3.2: the narrator is nobody in the scene -- no bubble, no name, its own voice
+  feed().appendChild(el("div", "narr", r.text || ""));
+  scrollDown();
+}
+
+function addLine(r) {
+  S.lines++;
+  const role = r.turn_owner === "human" ? "hero" : (r.role || "actor");
+  const b = el("div", "bubble " + role + (r.turn_owner === "human" ? " human" : "") + (r.silent ? " silent" : ""));
+  b.appendChild(el("div", "name", (r.who || (role === "hero" ? S.hero : "npc")) + (r.turn_owner === "human" ? " (ты)" : "")));
+  const text = r.text || "";
+  const remarks = r.remarks || [...text.matchAll(/\[([^\[\]]+)\]/g)].map((m) => m[1]);
+  if (remarks.length) b.appendChild(el("div", "remark", remarks.map((x) => "[" + x + "]").join(" ")));
+  const body = el("div", "", text.replace(/\[[^\[\]]*\]/g, " ").replace(/<[^<>]*>/g, "").replace(/\s+/g, " ").trim());
+  if (r.look) body.appendChild(el("span", "tag", "👀 " + r.look));
+  if (r.touch) body.appendChild(el("span", "tag", "✋ " + r.touch));
+  b.appendChild(body);
+  feed().appendChild(b);
+  if (r.audio && sound && !instant) queueAudio(src(r.audio));
+  scrollDown();
+}
+
+function addConsult(r) {
+  S.consults++;
+  const d = r.decision || {};
+  const card = el("div", "dir");
+  const head = el("div", "head");
+  head.appendChild(el("span", "", "🎬 Директор думает"));
+  head.appendChild(el("span", "", r.label + (r.nudged_before ? " (после подсказки)" : "")));
+  const secs = (typeof r.t_applied === "number" && typeof r.t_call === "number") ? (r.t_applied - r.t_call) : null;
+  if (secs !== null) head.appendChild(el("span", "", secs.toFixed(1) + " с"));
+  const ok = OK_VERDICTS.has(r.verdict);
+  head.appendChild(el("span", ok ? "ok" : "bad", (ok ? "✓ " : "✗ ") + r.verdict));
+  card.appendChild(head);
+  if (r.mem_sizes) {
+    const bars = el("div", "bars");
+    for (const [k, v] of Object.entries(r.mem_sizes)) {
+      if (k === "total") continue;
+      const cap = BUDGETS[k] || 400;
+      bars.appendChild(el("span", "", k));
+      const bar = el("div", "bar");
+      const fill = el("i");
+      fill.style.width = Math.min(100, (100 * v) / cap) + "%";
+      bar.appendChild(fill);
+      bars.appendChild(bar);
+      bars.appendChild(el("span", "", v + "/" + cap));
+    }
+    card.appendChild(bars);
+  }
+  if (d.bridge) card.appendChild(el("div", "", "выбрал: " + d.bridge + " → " + (d.destination || "?")));
+  else if (r.verdict === "stale") card.appendChild(el("div", "", "ответ устарел, отброшен"));
+  else if (r.verdict === "ok") {
+    const n = (d.messages || []).length;
+    const locked = S.build === "building" || S.build === "ready";
+    card.appendChild(el("div", "", (locked ? "сборка заперта — только записки" : "пока без моста")
+      + (n ? " · записок: " + n : "")));
+  }
+  if (d.why) card.appendChild(el("div", "", "почему: " + d.why));
+  if (d.hero_next && d.hero_next.changes) card.appendChild(el("div", "", "герой станет: " + (d.hero_next.description || "?")));
+  if (d.wake_up) card.appendChild(el("div", "bad", "wake_up: " + d.wake_up));
+  feed().appendChild(card);
+  scrollDown();
+}
+
+function addTransition(r) {
+  const t = el("div", "transition");
+  const fade = el("div", "fade");
+  const from = el("div", "from");
+  if (S.bg[S.place]) from.style.backgroundImage = "url(" + JSON.stringify(S.bg[S.place]) + ")";
+  const to = el("div", "to");
+  to.dataset.place = r.destination || "";
+  if (S.bg[r.destination]) to.style.backgroundImage = "url(" + JSON.stringify(S.bg[r.destination]) + ")";
+  fade.appendChild(from); fade.appendChild(to);
+  t.appendChild(fade);
+  t.appendChild(el("div", "caption", "через " + (r.bridge || "?") + " → " + (r.destination || "?")
+    + (r.via === "auto_touch" ? " (сам)" : "")));
+  const hc = el("div", "herochange");
+  const o = el("img", "old"); o.alt = "был";
+  const n = el("img", "new"); n.alt = "стал";
+  if (S.portraits[S.hero]) o.src = S.portraits[S.hero];
+  hc.appendChild(o); hc.appendChild(el("span", "", "→")); hc.appendChild(n);
+  t.appendChild(hc);
+  strip.appendChild(t);
+  S.trans = t;
+  S.dest = r.destination;
+  S.build = "idle"; S.bridge = null; S.buildStart = null;
+  scrollDown();
+}
+
+function addImage(r) {
+  const url = src(r.fallback || r.path);
+  if (r.kind === "background") {
+    const place = r.name || S.place;
+    if (r.fallback) S.bgFallback[place] = true;
+    setBackground(place, url);
+  } else if (r.kind === "portrait" && r.who) {
+    setPortrait(r.who, url);
+  }
+}
+
+function markBridge() {
+  if (!S.scene) return;
+  S.scene.querySelectorAll(".obj").forEach((o) => o.classList.toggle("bridge", o.dataset.obj === S.bridge));
+}
+function highlight(cands) {
+  if (!S.scene) return;
+  S.scene.querySelectorAll(".obj").forEach((o) => o.classList.toggle("cand", cands.includes(o.dataset.obj)));
+  setTimeout(() => S.scene && S.scene.querySelectorAll(".obj.cand").forEach((o) => o.classList.remove("cand")), 4000);
+}
+
+// --- sidebar ---------------------------------------------------------------------
+function nowT() { if (paused) return frozenT; return S.lastT + (live && !S.ended ? (performance.now() - S.tRecv) / 1000 : 0); }
+function render() {
+  $("bstate").textContent = S.ended ? "сон окончен" : S.build;
+  $("bridge").textContent = S.bridge ? S.bridge + " → " + S.dest : "";
+  let el7 = 0;
+  if (S.build === "building" && S.buildStart !== null) el7 = (nowT() - S.buildStart) * S.speed;
+  else if (S.build === "ready") el7 = BUILD_S;
+  el7 = Math.min(BUILD_S, el7);
+  $("timer").textContent = fmt(el7) + " / 7:00" + (S.speed !== 1 ? "  ×" + S.speed : "");
+  $("prog").style.width = (100 * el7) / BUILD_S + "%";
+  let img = "—";
+  if (S.dest && S.build !== "idle") img = S.bg[S.dest] ? (S.bgFallback[S.dest] ? "запасной фон" : "фон готов") : "рисуется…";
+  else if (S.bg[S.place]) img = S.bgFallback[S.place] ? "запасной фон" : "фон готов";
+  $("imgstate").textContent = img;
+  $("dollars").textContent = "$" + (S.dollars || 0).toFixed(2);
+  $("maxd").textContent = S.maxD ? "$" + S.maxD : "—";
+  $("nlines").textContent = S.lines;
+  $("nconsults").textContent = S.consults;
+  $("footer").classList.toggle("off", !live || S.ended);
+  document.body.classList.toggle("can-click", live && !S.ended);
+}
+setInterval(() => { if (S) render(); }, 250);
+
+// --- audio --------------------------------------------------------------------
+function queueAudio(url) {
+  if (paused) return;
+  audioQ.push(url);
+  while (audioQ.length > 2) audioQ.shift();
+  if (!audioEl || audioEl.ended || audioEl.paused) nextAudio();
+}
+function nextAudio() {
+  const url = audioQ.shift();
+  if (!url) return;
+  audioEl = new Audio(url);
+  audioEl.addEventListener("ended", nextAudio);
+  audioEl.addEventListener("error", nextAudio);
+  audioEl.play().catch(() => {});
+}
+$("soundbtn").addEventListener("click", () => {
+  sound = !sound;
+  $("soundbtn").textContent = sound ? "🔊 звук вкл" : "🔇 звук выкл";
+  if (!sound && audioEl) { audioEl.pause(); audioQ.length = 0; }
+});
+
+// --- live input -------------------------------------------------------------------
+async function post(path, body) {
+  try {
+    const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    return r.ok;
+  } catch (e) { return false; }
+}
+function clickObject(o) { if (live && !S.ended) post("/event", {source: "click", value: o}); }
+async function say() {
+  const v = $("say").value.trim();
+  if (!v) return;
+  $("say").value = "";
+  await post("/say", {text: v});
+}
+$("saybtn").addEventListener("click", say);
+$("say").addEventListener("keydown", (e) => { if (e.key === "Enter") say(); });
+$("stopbtn").addEventListener("click", () => post("/stop", {}));
+// --- 2.1: whose turn the hero is, and what he knows (spec 9) ----------------------
+// One rule for every source of POV state (log rows, replayed history, /api/hero,
+// the live status snapshot): each carries the log seq it speaks for, and only a
+// seq newer than the last one applied may move the toggle. Arrival order does
+// not matter. Only a live source (/api/hero, live status) makes the toggle
+// clickable; a click locks it until the server's own pov row comes back.
+let povHuman = false;
+let povReady = false;    // a live source has spoken -- before that a click must not fire
+let povSeq = -1;         // seq of the POV state currently shown
+let povPending = false;  // a /pov POST is out -- locked until its row lands or it fails
+function povTake(owner, seq, liveSrc) {
+  if (owner !== "human" && owner !== "npc") return false;
+  if (typeof seq !== "number") return false;  // cannot be ordered -> cannot be trusted
+  const fresh = seq > povSeq;
+  if (fresh) { povSeq = seq; povHuman = owner === "human"; }
+  // a live answer older than what we hold still proves the rows we hold are
+  // the live tail (they came after it), so it may make the toggle ready
+  if (liveSrc) povReady = true;
+  renderPov();
+  return fresh;
+}
+async function setPov(owner) {
+  povPending = true; renderPov();
+  let ok = false;
+  try {
+    const r = await fetch('/pov', {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({hero_owner: owner})});
+    ok = r.ok;
+  } catch (e) { /* the dream goes on without the viewer */ }
+  // no local guess at the new owner: the pov row the server logs is the answer
+  if (!ok) { povPending = false; renderPov(); }
+}
+async function loadHero() {
+  try {
+    const r = await fetch('/api/hero');
+    if (!r.ok) return null;
+    return await r.json();
+  } catch (e) { return null; }
+}
+function renderPov() {
+  const b = $("povbtn");
+  if (b) { b.textContent = povHuman ? "🙋 я говорю за героя" : "🤖 герой сам"; b.disabled = !povReady || povPending; }
+}
+function povClick() {
+  if (!povReady || povPending) return;
+  setPov(povHuman ? "npc" : "human");
+}
+const povbtn = $("povbtn");
+if (povbtn) povbtn.addEventListener("click", povClick);
+const herobtn = $("herobtn");
+if (herobtn) herobtn.addEventListener("click", async () => {
+  const h = await loadHero();
+  const box = $("herobox");
+  if (h && box) box.textContent = (h.diary || []).concat(h.facts || []).join("\n");
+});
+
+// --- live stream ------------------------------------------------------------------
+async function syncPov() {
+  const h = await loadHero();
+  if (h) povTake(h.hero_owner, h.seq, true);
+}
+function startLive() {
+  live = true;
+  syncPov();
+  $("mode").textContent = "живой"; $("mode").className = "badge live";
+  const es = new EventSource("/events?run=" + encodeURIComponent(RUN) + "&from_seq=" + (S.lastSeq + 1));
+  es.onmessage = (e) => { try { apply(JSON.parse(e.data)); } catch (err) { /* half row */ } };
+  es.addEventListener("snapshot", (e) => {
+    const s = JSON.parse(e.data);
+    if (s.dollars !== undefined) S.dollars = s.dollars;
+    if (s.build_state) S.build = s.build_state;
+    if (typeof s.t === "number") { S.lastT = s.t; S.tRecv = performance.now(); }
+    // the live status is a live source too: if /api/hero failed, this enables the toggle
+    if (s.live === true) povTake(s.hero_owner, s.seq, true);
+  });
+  es.addEventListener("end", () => { es.close(); S.ended = true; render(); });
+}
+
+// --- replay ------------------------------------------------------------------------
+let replayIdx = 0, replayTimer = null;
+// pause holds the replay clock and the voice; play resumes from the same line
+let replayDue = 0, replayLeft = 0, replayHeld = false, replayRunning = false;
+function resetView() { strip.innerHTML = ""; S = fresh(); if (!live) { povSeq = -1; povHuman = false; } if (audioEl) audioEl.pause(); audioQ.length = 0; }
+function playFrom(i, fast) {
+  clearTimeout(replayTimer);
+  replayHeld = false; replayRunning = !fast;
+  resetView();
+  instant = true;
+  for (let k = 0; k <= i && k < rows.length; k++) apply(rows[k]);
+  replayIdx = i + 1;
+  if (fast) { for (; replayIdx < rows.length; replayIdx++) apply(rows[replayIdx]); }
+  instant = false;
+  render();
+  if (S.scene) S.scene.scrollIntoView();
+  if (!fast) step();
+  renderPause();
+}
+function step() {
+  if (replayIdx >= rows.length) { replayRunning = false; renderPause(); return; }
+  const r = rows[replayIdx++];
+  apply(r);
+  const nx = rows[replayIdx];
+  if (!nx) { replayRunning = false; renderPause(); return; }
+  let dt = Math.min(Math.max(0, (nx.t || 0) - (r.t || 0)) * 1000, 8000);
+  // a run voiced after the fact logs lines faster than they sound: with sound on,
+  // the next row waits for this voice, or the 2-deep audio queue drops lines
+  if (sound && r.type === "line" && r.audio && r.dur) dt = Math.max(dt, r.dur * 1000 + 300);
+  replayDue = performance.now() + dt;
+  replayTimer = setTimeout(step, dt);
+}
+function renderPause() {
+  const b = $("pausebtn");
+  b.disabled = !replayRunning;
+  b.textContent = replayHeld ? "▶ дальше" : "⏸ пауза";
+}
+function togglePause() {
+  if (!replayRunning) return;
+  if (!replayHeld) {
+    clearTimeout(replayTimer);
+    replayLeft = Math.max(0, replayDue - performance.now());
+    if (audioEl) audioEl.pause();
+    replayHeld = true;
+  } else {
+    replayHeld = false;
+    if (audioEl && !audioEl.ended && sound) audioEl.play().catch(() => {});
+    replayDue = performance.now() + replayLeft;
+    replayTimer = setTimeout(step, replayLeft);
+  }
+  renderPause();
+}
+async function startReplay() {
+  $("mode").textContent = "повтор"; $("mode").className = "badge replay";
+  $("replayctl").hidden = false;
+  const txt = await (await fetch(src("log.jsonl"))).text();
+  rows = txt.split("\n").filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
+    .filter(Boolean);
+  const sel = $("scenesel");
+  let n = 0;
+  rows.forEach((r, i) => {
+    if (r.type === "snapshot" && r.scene) {
+      const o = el("option", "", "сцена " + (++n) + ": " + (r.place || "?"));
+      o.value = i;
+      sel.appendChild(o);
+    }
+  });
+  sel.addEventListener("change", () => playFrom(+sel.value, false));
+  $("play1").addEventListener("click", () => {
+    if (!sound) $("soundbtn").click();
+    playFrom(+sel.value || 0, false);
+  });
+  $("pausebtn").addEventListener("click", togglePause);
+  $("playfast").addEventListener("click", () => { if (sound) $("soundbtn").click(); playFrom(0, true); });
+  playFrom(0, true);
+}
+
+async function showRuns() {
+  $("runscard").hidden = false;
+  const data = await (await fetch("/api/runs")).json();
+  for (const r of data.runs) {
+    const a = el("a", "", r);
+    a.href = "?run=" + encodeURIComponent(r);
+    $("runs").appendChild(a);
+  }
+}
+
+// Панель директора (2.3): всё считает Python в /api/panel, страница только рисует.
+const PANEL_URL = '/api/panel';
+const PANEL_TITLES = {schedule: "расписание", fired: "сработало", pressure: "давление",
+  goals: "цели", pov: "POV", lock: "замок", notes: "записки", safety: "стоп-кран"};
+
+function drawPanel(panel) {
+  const box = $("panelbox");
+  box.textContent = "";
+  for (const key of ["schedule", "fired", "pressure", "goals", "pov", "lock", "notes", "safety"]) {
+    if (!(key in panel)) continue;
+    const v = panel[key];
+    const empty = v == null || (Array.isArray(v) ? !v.length
+      : typeof v === "object" ? !Object.keys(v).length : false);
+    if (empty) continue;
+    const row = el("div", "", PANEL_TITLES[key] + ": ");
+    row.appendChild(el("span", "", typeof v === "string" ? v : JSON.stringify(v)));
+    box.appendChild(row);
+  }
+  $("panelcard").hidden = !box.childElementCount;
+}
+
+async function pollPanel() {
+  if (!RUN) return;
+  try {
+    const url = PANEL_URL + "?run=" + encodeURIComponent(RUN);
+    drawPanel(await (await fetch(url)).json());
+  } catch (e) { /* панель не ломает просмотр */ }
+}
+setInterval(pollPanel, 1000);
+
+(async function boot() {
+  S = fresh();
+  let status = {live: null};
+  try { status = await (await fetch("/api/status")).json(); } catch (e) { /* static open */ }
+  if (!RUN && status.live) RUN = status.live;
+  render();
+  if (!RUN) { $("mode").textContent = "выбери прогон"; return showRuns(); }
+  // blind A/B (ab.html): no run name, no run list, nothing that says which version this is
+  const blind = !!Q.get("blind");
+  if (blind) document.body.classList.add("blind");
+  $("runname").textContent = blind ? "" : RUN;
+  if (status.live && status.live === RUN) startLive(); else { startReplay(); if (!blind) showRuns(); }
+})();
+</script>
+</body>
+</html>

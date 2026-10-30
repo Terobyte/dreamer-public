@@ -5,6 +5,7 @@ usage: cd h0/dream && python3 -m unittest test_contract_blocking -q
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import llm
 from fake import FakeTransport
@@ -21,12 +22,14 @@ def make_mem(**kw):
 
 class BlockingTest(unittest.TestCase):
     def test_model_ids_and_prices(self):
-        self.assertEqual(llm.resolve("hero")[0], "muse-spark-1.3")
+        self.assertEqual(llm.resolve("hero")[0], "meta-models/muse-spark-open-1026")  # owner 2026-10-27: Baseten primary
         self.assertEqual(llm.resolve("director")[0], "muse-wonder-1.0")
         self.assertEqual((llm.SPARK_IN_PER_M, llm.SPARK_OUT_PER_M), (1.25, 4.25))
         self.assertEqual((llm.WONDER_IN_PER_M, llm.WONDER_OUT_PER_M), (4.0, 20.0))
         self.assertEqual(llm.IMAGE_PER_PIC, 0.01)
-        for v in llm.PRICE_SOURCES.values():
+        for k, v in llm.PRICE_SOURCES.items():
+            if k in llm.CLAUDE_CLI_MODELS:
+                continue  # bench r2 probe on the owner's subscription: no price page to cite
             self.assertIn("2026-10-27", v)
             self.assertIn("http", v)
 
@@ -71,7 +74,7 @@ class BlockingTest(unittest.TestCase):
         m.save_episode_raw("c", "C raw")
         m.merge_from_raw()
         self.assertEqual(fake.calls, 1)
-        self.assertEqual(fake.sent[0]["model"], "muse-spark-1.3")
+        self.assertEqual(fake.sent[0]["model"], "meta-models/muse-spark-open-1026")
         self.assertEqual(len(m.episodes), 2)
         m.merge_from_raw()
         self.assertEqual(len(m.episodes), 1)
@@ -83,11 +86,13 @@ class BlockingTest(unittest.TestCase):
         for eid in ("a", "b", "c"):
             self.assertTrue(os.path.exists(os.path.join(m.raw_dir, eid + ".txt")))
 
-    def test_merge_without_transport_is_not_fake_summary(self):
+    def test_failed_real_merge_preserves_raw_episodes(self):
         m = make_mem()
         m.save_episode_raw("a", "A raw")
         m.save_episode_raw("b", "B raw")
-        m.merge_from_raw()
+        with mock.patch.object(llm, "call", side_effect=OSError("provider unavailable")):
+            with self.assertLogs("memory", level="WARNING"):
+                m.merge_from_raw()
         self.assertEqual(len(m.episodes), 2)
 
     def test_facts_background_selection_then_prompt_no_llm(self):
