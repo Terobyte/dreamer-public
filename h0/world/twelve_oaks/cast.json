@@ -1,0 +1,65 @@
+[
+ {
+  "name": "gerald",
+  "clip": "idle",
+  "at": [
+   7,
+   0.8
+  ],
+  "yaw": 0
+ },
+ {
+  "name": "stuart",
+  "clip": "idle",
+  "at": [
+   8.9,
+   1.0
+  ],
+  "yaw": 325
+ },
+ {
+  "name": "rhett",
+  "clip": "idle",
+  "at": [
+   7.2,
+   3.4
+  ],
+  "yaw": 180
+ },
+ {
+  "name": "oldman",
+  "clip": "idle",
+  "at": [
+   4.9,
+   2.1
+  ],
+  "yaw": 90
+ },
+ {
+  "name": "ashley",
+  "clip": "idle",
+  "at": [
+   9.2,
+   2.9
+  ],
+  "yaw": 270
+ },
+ {
+  "name": "scarlett",
+  "clip": "idle",
+  "at": [
+   12,
+   7
+  ],
+  "yaw": 225
+ },
+ {
+  "name": "melanie",
+  "clip": "idle",
+  "at": [
+   -23.5,
+   -6
+  ],
+  "yaw": 270
+ }
+]

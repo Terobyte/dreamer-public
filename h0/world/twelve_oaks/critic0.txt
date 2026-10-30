@@ -1,0 +1,3057 @@
+```json
+{
+ "version": 0,
+ "name": "twelve_oaks",
+ "spawn": {
+  "room": "lawn",
+  "at": [
+   0,
+   -30
+  ],
+  "yaw": 0
+ },
+ "style": {
+  "ambient": 1.2,
+  "exterior": "#bcd3e6"
+ },
+ "materials": {
+  "grass": {
+   "tile": "t_grass",
+   "repeat_m": 6.0
+  },
+  "horizon": {
+   "tile": "t_horizon",
+   "repeat_m": 24.0
+  },
+  "sky": {
+   "color": "#bcd3e6"
+  },
+  "facade": {
+   "color": "#f2ede0"
+  },
+  "boards": {
+   "tile": "t_boards",
+   "repeat_m": 3.0
+  },
+  "damask": {
+   "tile": "t_damask",
+   "repeat_m": 1.6
+  },
+  "plaster_hall": {
+   "color": "#efe6d2"
+  },
+  "wainscot": {
+   "color": "#5a3a22"
+  },
+  "library_panel": {
+   "color": "#4a2e1c"
+  },
+  "ceiling_white": {
+   "color": "#f4f1ea"
+  }
+ },
+ "levels": [
+  {
+   "id": "L0",
+   "y": 0
+  }
+ ],
+ "rooms": [
+  {
+   "id": "lawn",
+   "level": "L0",
+   "height": 30,
+   "shape": [
+    [
+     -15,
+     -40
+    ],
+    [
+     15,
+     -40
+    ],
+    [
+     42,
+     -40
+    ],
+    [
+     42,
+     40,
+     {
+      "bulge": 0.15
+     }
+    ],
+    [
+     -42,
+     40
+    ],
+    [
+     -42,
+     -40
+    ]
+   ],
+   "floor": "grass",
+   "ceiling": "sky",
+   "walls": {
+    "material": "horizon",
+    "thickness": 0.2
+   },
+   "edges": {
+    "0": {
+     "material": "facade"
+    }
+   }
+  },
+  {
+   "id": "hall",
+   "level": "L0",
+   "height": 5,
+   "shape": [
+    [
+     -5,
+     -52
+    ],
+    [
+     5,
+     -52
+    ],
+    [
+     5,
+     -40
+    ],
+    [
+     -5,
+     -40
+    ]
+   ],
+   "floor": "boards",
+   "ceiling": "ceiling_white",
+   "walls": {
+    "material": "plaster_hall",
+    "thickness": 0.3,
+    "bands": [
+     {
+      "to": 0.9,
+      "material": "wainscot"
+     }
+    ]
+   }
+  },
+  {
+   "id": "dining",
+   "level": "L0",
+   "height": 5,
+   "shape": [
+    [
+     5,
+     -52
+    ],
+    [
+     15,
+     -52
+    ],
+    [
+     15,
+     -40
+    ],
+    [
+     5,
+     -40
+    ]
+   ],
+   "floor": "boards",
+   "ceiling": "ceiling_white",
+   "walls": {
+    "material": "damask",
+    "thickness": 0.3,
+    "bands": [
+     {
+      "to": 0.9,
+      "material": "wainscot"
+     }
+    ]
+   }
+  },
+  {
+   "id": "library",
+   "level": "L0",
+   "height": 5,
+   "shape": [
+    [
+     -15,
+     -52
+    ],
+    [
+     -5,
+     -52
+    ],
+    [
+     -5,
+     -40
+    ],
+    [
+     -15,
+     -40
+    ]
+   ],
+   "floor": "boards",
+   "ceiling": "ceiling_white",
+   "walls": {
+    "material": "library_panel",
+    "thickness": 0.3
+   }
+  }
+ ],
+ "openings": [
+  {
+   "id": "back_door",
+   "kind": "door",
+   "at": [
+    0,
+    -40
+   ],
+   "width": 1.8,
+   "height": 3.2,
+   "sill": 0,
+   "leaf": {
+    "decal": "d_door",
+    "open": true
+   }
+  },
+  {
+   "id": "dining_door",
+   "kind": "door",
+   "at": [
+    8,
+    -40
+   ],
+   "width": 1.6,
+   "height": 3.0,
+   "sill": 0,
+   "leaf": {
+    "decal": "d_door",
+    "open": true
+   }
+  },
+  {
+   "id": "library_window",
+   "kind": "window",
+   "at": [
+    -12,
+    -40
+   ],
+   "width": 1.4,
+   "height": 2.4,
+   "sill": 0.8
+  },
+  {
+   "id": "library_door",
+   "kind": "door",
+   "at": [
+    -5,
+    -46
+   ],
+   "width": 1.2,
+   "height": 2.8,
+   "sill": 0,
+   "leaf": {
+    "decal": "d_door",
+    "open": true
+   }
+  },
+  {
+   "id": "front_door",
+   "kind": "door",
+   "at": [
+    0,
+    -52
+   ],
+   "width": 1.8,
+   "height": 3.2,
+   "sill": 0,
+   "leaf": {
+    "decal": "d_door",
+    "open": true
+   },
+   "outside": {
+    "backdrop": "d_drive"
+   }
+  }
+ ],
+ "props": [
+  {
+   "id": "porch",
+   "asset": "p_porch",
+   "room": "lawn",
+   "at": [
+    0,
+    -37.7
+   ],
+   "size": {
+    "w": 29.8,
+    "d": 4.2,
+    "h": 0.15
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "porch_roof",
+   "asset": "p_roof",
+   "room": "lawn",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "t": 0.5
+   },
+   "size": {
+    "w": 29.6,
+    "d": 4.2,
+    "h": 0.4
+   },
+   "mount": "wall",
+   "y": 8.65,
+   "solid": false
+  },
+  {
+   "id": "col_1",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    -14,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_2",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    -10,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_3",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    -6,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_4",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    -2,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_5",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    2,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_6",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    6,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_7",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    10,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "col_8",
+   "asset": "p_column",
+   "room": "lawn",
+   "at": [
+    14,
+    -37
+   ],
+   "size": {
+    "w": 0.9,
+    "d": 0.9,
+    "h": 8.5
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "rocker_1",
+   "asset": "p_rocker",
+   "room": "lawn",
+   "at": [
+    -8,
+    -38.6
+   ],
+   "size": {
+    "w": 0.65,
+    "d": 0.9,
+    "h": 1.05
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "rocker_2",
+   "asset": "p_rocker",
+   "room": "lawn",
+   "at": [
+    4,
+    -38.6
+   ],
+   "size": {
+    "w": 0.65,
+    "d": 0.9,
+    "h": 1.05
+   },
+   "mount": {
+    "top_of": "porch"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "drive",
+   "asset": "p_path",
+   "room": "lawn",
+   "at": [
+    0,
+    2
+   ],
+   "size": {
+    "w": 3.5,
+    "d": 75,
+    "h": 0.03
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "oak_1",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -18,
+    -14
+   ],
+   "size": {
+    "w": 10,
+    "d": 10,
+    "h": 9
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "oak_2",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    12,
+    -16
+   ],
+   "size": {
+    "w": 10,
+    "d": 10,
+    "h": 9
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": false
+  },
+  {
+   "id": "oak_3",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -20,
+    6
+   ],
+   "size": {
+    "w": 11,
+    "d": 11,
+    "h": 10
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": false
+  },
+  {
+   "id": "oak_4",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    20,
+    12
+   ],
+   "size": {
+    "w": 11,
+    "d": 11,
+    "h": 10
+   },
+   "mount": "floor",
+   "yaw": 270,
+   "solid": false
+  },
+  {
+   "id": "oak_5",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -6,
+    16
+   ],
+   "size": {
+    "w": 9,
+    "d": 9,
+    "h": 8
+   },
+   "mount": "floor",
+   "yaw": 45,
+   "solid": false
+  },
+  {
+   "id": "oak_6",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -30,
+    -24
+   ],
+   "size": {
+    "w": 9,
+    "d": 9,
+    "h": 8
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": false
+  },
+  {
+   "id": "oak_7",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    28,
+    -10
+   ],
+   "size": {
+    "w": 10,
+    "d": 10,
+    "h": 9
+   },
+   "mount": "floor",
+   "yaw": 135,
+   "solid": false
+  },
+  {
+   "id": "oak_8",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -32,
+    20
+   ],
+   "size": {
+    "w": 9,
+    "d": 9,
+    "h": 8
+   },
+   "mount": "floor",
+   "yaw": 270,
+   "solid": false
+  },
+  {
+   "id": "oak_9",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    -33,
+    0
+   ],
+   "size": {
+    "w": 9,
+    "d": 9,
+    "h": 8
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "oak_10",
+   "asset": "oak",
+   "room": "lawn",
+   "at": [
+    16,
+    -28
+   ],
+   "size": {
+    "w": 8,
+    "d": 8,
+    "h": 7.5
+   },
+   "mount": "floor",
+   "yaw": 45,
+   "solid": false
+  },
+  {
+   "id": "table_1",
+   "asset": "p_trestle",
+   "room": "lawn",
+   "at": [
+    -8,
+    -7
+   ],
+   "size": {
+    "w": 6,
+    "d": 1.0,
+    "h": 0.76
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "table_2",
+   "asset": "p_trestle",
+   "room": "lawn",
+   "at": [
+    -8,
+    -1
+   ],
+   "size": {
+    "w": 6,
+    "d": 1.0,
+    "h": 0.76
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "table_3",
+   "asset": "p_trestle",
+   "room": "lawn",
+   "at": [
+    -8,
+    5
+   ],
+   "size": {
+    "w": 6,
+    "d": 1.0,
+    "h": 0.76
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "settings_1",
+   "asset": "p_settings",
+   "room": "lawn",
+   "size": {
+    "w": 5.6,
+    "d": 0.8,
+    "h": 0.25
+   },
+   "mount": {
+    "top_of": "table_1"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "settings_2",
+   "asset": "p_settings",
+   "room": "lawn",
+   "size": {
+    "w": 5.6,
+    "d": 0.8,
+    "h": 0.25
+   },
+   "mount": {
+    "top_of": "table_2"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "settings_3",
+   "asset": "p_settings",
+   "room": "lawn",
+   "size": {
+    "w": 5.6,
+    "d": 0.8,
+    "h": 0.25
+   },
+   "mount": {
+    "top_of": "table_3"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "bench_1a",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    -7.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_1b",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    -7.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_1c",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    -6.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "bench_1d",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    -6.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "bench_2a",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    -1.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_2b",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    -1.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_2c",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    -0.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "bench_2d",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    -0.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "bench_3a",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    4.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_3b",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    4.05
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bench_3c",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -9.55,
+    5.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "bench_3d",
+   "asset": "plankbench",
+   "room": "lawn",
+   "at": [
+    -6.45,
+    5.95
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.4,
+    "h": 0.45
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "table_men",
+   "asset": "p_trestle",
+   "room": "lawn",
+   "at": [
+    7,
+    2
+   ],
+   "size": {
+    "w": 3.0,
+    "d": 1.0,
+    "h": 0.76
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "punch_bowl",
+   "asset": "p_punchbowl",
+   "room": "lawn",
+   "at": [
+    7,
+    2
+   ],
+   "size": {
+    "w": 0.45,
+    "d": 0.45,
+    "h": 0.3
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "glass_1",
+   "asset": "p_glass",
+   "room": "lawn",
+   "at": [
+    5.8,
+    1.7
+   ],
+   "size": {
+    "w": 0.08,
+    "d": 0.08,
+    "h": 0.15
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "glass_2",
+   "asset": "p_glass",
+   "room": "lawn",
+   "at": [
+    6.3,
+    2.3
+   ],
+   "size": {
+    "w": 0.08,
+    "d": 0.08,
+    "h": 0.15
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "glass_3",
+   "asset": "p_glass",
+   "room": "lawn",
+   "at": [
+    7.7,
+    1.7
+   ],
+   "size": {
+    "w": 0.08,
+    "d": 0.08,
+    "h": 0.15
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "glass_4",
+   "asset": "p_glass",
+   "room": "lawn",
+   "at": [
+    8.2,
+    2.3
+   ],
+   "size": {
+    "w": 0.08,
+    "d": 0.08,
+    "h": 0.15
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "glass_5",
+   "asset": "p_glass",
+   "room": "lawn",
+   "at": [
+    7.6,
+    2.3
+   ],
+   "size": {
+    "w": 0.08,
+    "d": 0.08,
+    "h": 0.15
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "silver_cups",
+   "asset": "p_cups",
+   "room": "lawn",
+   "at": [
+    8.15,
+    1.75
+   ],
+   "size": {
+    "w": 0.4,
+    "d": 0.3,
+    "h": 0.12
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "plate_1",
+   "asset": "p_plate",
+   "room": "lawn",
+   "at": [
+    5.85,
+    2.25
+   ],
+   "size": {
+    "w": 0.26,
+    "d": 0.26,
+    "h": 0.04
+   },
+   "mount": {
+    "top_of": "table_men"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "oldman_chair",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    4.6,
+    2.8
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "table_men",
+   "solid": true
+  },
+  {
+   "id": "ottoman",
+   "asset": "p_ottoman",
+   "room": "lawn",
+   "at": [
+    12,
+    7
+   ],
+   "size": {
+    "w": 0.7,
+    "d": 0.7,
+    "h": 0.55
+   },
+   "mount": "floor",
+   "face": "table_men",
+   "solid": true
+  },
+  {
+   "id": "chair_s1",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    10.4,
+    8.6
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "ottoman",
+   "solid": true
+  },
+  {
+   "id": "chair_s2",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    13.6,
+    9.0
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "ottoman",
+   "solid": true
+  },
+  {
+   "id": "chair_s3",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    14.2,
+    6.0
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "ottoman",
+   "solid": true
+  },
+  {
+   "id": "hassock_1",
+   "asset": "p_hassock",
+   "room": "lawn",
+   "at": [
+    11.0,
+    5.0
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "hassock_2",
+   "asset": "p_hassock",
+   "room": "lawn",
+   "at": [
+    12.6,
+    10.2
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "hassock_3",
+   "asset": "p_hassock",
+   "room": "lawn",
+   "at": [
+    3,
+    10
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "cushion_1",
+   "asset": "p_cushion",
+   "room": "lawn",
+   "at": [
+    10.6,
+    6.4
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.15
+   },
+   "mount": "floor",
+   "yaw": 20,
+   "solid": false
+  },
+  {
+   "id": "cushion_2",
+   "asset": "p_cushion",
+   "room": "lawn",
+   "at": [
+    13.0,
+    5.2
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.15
+   },
+   "mount": "floor",
+   "yaw": 340,
+   "solid": false
+  },
+  {
+   "id": "cushion_3",
+   "asset": "p_cushion",
+   "room": "lawn",
+   "at": [
+    -3,
+    9.5
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.15
+   },
+   "mount": "floor",
+   "yaw": 15,
+   "solid": false
+  },
+  {
+   "id": "cushion_4",
+   "asset": "p_cushion",
+   "room": "lawn",
+   "at": [
+    -3.8,
+    10.8
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.15
+   },
+   "mount": "floor",
+   "yaw": 60,
+   "solid": false
+  },
+  {
+   "id": "chair_g1",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    2.5,
+    -2
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "yaw": 45,
+   "solid": true
+  },
+  {
+   "id": "chair_g2",
+   "asset": "p_chair",
+   "room": "lawn",
+   "at": [
+    -3.5,
+    -4
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "yaw": 270,
+   "solid": true
+  },
+  {
+   "id": "pit_1",
+   "asset": "p_pit",
+   "room": "lawn",
+   "at": [
+    31,
+    -26
+   ],
+   "size": {
+    "w": 6,
+    "d": 1.2,
+    "h": 0.6
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "pit_2",
+   "asset": "p_pit",
+   "room": "lawn",
+   "at": [
+    31,
+    -21
+   ],
+   "size": {
+    "w": 6,
+    "d": 1.2,
+    "h": 0.6
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "spit_1",
+   "asset": "p_spit",
+   "room": "lawn",
+   "size": {
+    "w": 5.6,
+    "d": 0.3,
+    "h": 0.5
+   },
+   "mount": {
+    "top_of": "pit_1"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "spit_2",
+   "asset": "p_spit",
+   "room": "lawn",
+   "size": {
+    "w": 5.6,
+    "d": 0.3,
+    "h": 0.5
+   },
+   "mount": {
+    "top_of": "pit_2"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "washpot_1",
+   "asset": "p_washpot",
+   "room": "lawn",
+   "at": [
+    26,
+    -28.5
+   ],
+   "size": {
+    "w": 1.1,
+    "d": 1.1,
+    "h": 0.8
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "washpot_2",
+   "asset": "p_washpot",
+   "room": "lawn",
+   "at": [
+    26,
+    -25
+   ],
+   "size": {
+    "w": 1.1,
+    "d": 1.1,
+    "h": 0.8
+   },
+   "mount": "floor",
+   "yaw": 120,
+   "solid": true
+  },
+  {
+   "id": "washpot_3",
+   "asset": "p_washpot",
+   "room": "lawn",
+   "at": [
+    26,
+    -21.5
+   ],
+   "size": {
+    "w": 1.1,
+    "d": 1.1,
+    "h": 0.8
+   },
+   "mount": "floor",
+   "yaw": 240,
+   "solid": true
+  },
+  {
+   "id": "mound",
+   "asset": "p_mound",
+   "room": "lawn",
+   "at": [
+    30,
+    26
+   ],
+   "size": {
+    "w": 10,
+    "d": 10,
+    "h": 0.8
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "rotunda",
+   "asset": "rotunda",
+   "room": "lawn",
+   "at": [
+    30,
+    26
+   ],
+   "size": {
+    "w": 5,
+    "d": 5,
+    "h": 6
+   },
+   "mount": {
+    "top_of": "mound"
+   },
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "rot_bench_1",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    23.5,
+    24.5
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "face": "rotunda",
+   "solid": true
+  },
+  {
+   "id": "rot_bench_2",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    23.5,
+    27.5
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "face": "rotunda",
+   "solid": true
+  },
+  {
+   "id": "arbor",
+   "asset": "p_arbor",
+   "room": "lawn",
+   "at": [
+    -26,
+    -6
+   ],
+   "size": {
+    "w": 5,
+    "d": 3,
+    "h": 3
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": false
+  },
+  {
+   "id": "arbor_bench_1",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    -26.6,
+    -7.0
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": true
+  },
+  {
+   "id": "arbor_bench_2",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    -26.6,
+    -5.0
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": true
+  },
+  {
+   "id": "bal_1",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    -21.2,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bal_2",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    -13.7,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bal_3",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    -6.2,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bal_4",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    6.2,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bal_5",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    13.7,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "bal_6",
+   "asset": "p_balustrade",
+   "room": "lawn",
+   "at": [
+    21.2,
+    34
+   ],
+   "size": {
+    "w": 7.4,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "pillar_l",
+   "asset": "p_pillar",
+   "room": "lawn",
+   "at": [
+    -2,
+    34
+   ],
+   "size": {
+    "w": 0.8,
+    "d": 0.8,
+    "h": 2.2
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "pillar_r",
+   "asset": "p_pillar",
+   "room": "lawn",
+   "at": [
+    2,
+    34
+   ],
+   "size": {
+    "w": 0.8,
+    "d": 0.8,
+    "h": 2.2
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "urn_l",
+   "asset": "p_urn",
+   "room": "lawn",
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.6
+   },
+   "mount": {
+    "top_of": "pillar_l"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "urn_r",
+   "asset": "p_urn",
+   "room": "lawn",
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.6
+   },
+   "mount": {
+    "top_of": "pillar_r"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "shrub_1",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    -22,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "shrub_2",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    -16,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 30,
+   "solid": true
+  },
+  {
+   "id": "shrub_3",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    -10,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 60,
+   "solid": true
+  },
+  {
+   "id": "shrub_4",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    -5,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "shrub_5",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    5,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "shrub_6",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    10,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 60,
+   "solid": true
+  },
+  {
+   "id": "shrub_7",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    16,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 30,
+   "solid": true
+  },
+  {
+   "id": "shrub_8",
+   "asset": "p_shrub",
+   "room": "lawn",
+   "at": [
+    22,
+    31.5
+   ],
+   "size": {
+    "w": 1.6,
+    "d": 1.6,
+    "h": 1.4
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "garden_bench_1",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    -12,
+    28.8
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "garden_bench_2",
+   "asset": "ironbench",
+   "room": "lawn",
+   "at": [
+    12,
+    28.8
+   ],
+   "size": {
+    "w": 1.5,
+    "d": 0.6,
+    "h": 0.9
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "rose_1",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    -24,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "rose_2",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    -19,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 45,
+   "solid": true
+  },
+  {
+   "id": "rose_3",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    -14,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": true
+  },
+  {
+   "id": "rose_4",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    -9.5,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 135,
+   "solid": true
+  },
+  {
+   "id": "rose_5",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    -3.5,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "rose_6",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    3.5,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "rose_7",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    9.5,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 45,
+   "solid": true
+  },
+  {
+   "id": "rose_8",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    14,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": true
+  },
+  {
+   "id": "rose_9",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    19,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 135,
+   "solid": true
+  },
+  {
+   "id": "rose_10",
+   "asset": "p_rose",
+   "room": "lawn",
+   "at": [
+    24,
+    38
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 1.1
+   },
+   "mount": "floor",
+   "yaw": 180,
+   "solid": true
+  },
+  {
+   "id": "hall_table",
+   "asset": "p_halltable",
+   "room": "hall",
+   "at": [
+    0,
+    -46
+   ],
+   "size": {
+    "w": 1.2,
+    "d": 1.2,
+    "h": 0.78
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "hall_chair_1",
+   "asset": "p_chair",
+   "room": "hall",
+   "at": [
+    -4.4,
+    -44
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "room",
+   "solid": true
+  },
+  {
+   "id": "hall_chair_2",
+   "asset": "p_chair",
+   "room": "hall",
+   "at": [
+    4.4,
+    -44
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "room",
+   "solid": true
+  },
+  {
+   "id": "bookcase",
+   "asset": "p_bookcase",
+   "room": "library",
+   "at": [
+    -14.5,
+    -46
+   ],
+   "size": {
+    "w": 3,
+    "d": 0.45,
+    "h": 2.4
+   },
+   "mount": "floor",
+   "face": "room",
+   "solid": true
+  },
+  {
+   "id": "desk",
+   "asset": "p_desk",
+   "room": "library",
+   "at": [
+    -9,
+    -48
+   ],
+   "size": {
+    "w": 1.4,
+    "d": 0.7,
+    "h": 0.78
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "armchair",
+   "asset": "p_armchair",
+   "room": "library",
+   "at": [
+    -11.5,
+    -43.5
+   ],
+   "size": {
+    "w": 0.85,
+    "d": 0.85,
+    "h": 1.05
+   },
+   "mount": "floor",
+   "yaw": 0,
+   "solid": true
+  },
+  {
+   "id": "dtable",
+   "asset": "p_dtable",
+   "room": "dining",
+   "at": [
+    10,
+    -46
+   ],
+   "size": {
+    "w": 4,
+    "d": 1.3,
+    "h": 0.76
+   },
+   "mount": "floor",
+   "yaw": 90,
+   "solid": true
+  },
+  {
+   "id": "dchair_1",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    8.85,
+    -47.2
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "dchair_2",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    8.85,
+    -46
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "dchair_3",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    8.85,
+    -44.8
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "dchair_4",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    11.15,
+    -47.2
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "dchair_5",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    11.15,
+    -46
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "dchair_6",
+   "asset": "p_chair",
+   "room": "dining",
+   "at": [
+    11.15,
+    -44.8
+   ],
+   "size": {
+    "w": 0.5,
+    "d": 0.5,
+    "h": 0.95
+   },
+   "mount": "floor",
+   "face": "dtable",
+   "solid": true
+  },
+  {
+   "id": "brandy",
+   "asset": "p_decanter",
+   "room": "dining",
+   "at": [
+    10,
+    -46.5
+   ],
+   "size": {
+    "w": 0.15,
+    "d": 0.15,
+    "h": 0.32
+   },
+   "mount": {
+    "top_of": "dtable"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "cigar_box",
+   "asset": "p_cigarbox",
+   "room": "dining",
+   "at": [
+    10,
+    -45.2
+   ],
+   "size": {
+    "w": 0.3,
+    "d": 0.2,
+    "h": 0.08
+   },
+   "mount": {
+    "top_of": "dtable"
+   },
+   "yaw": 0,
+   "solid": false
+  },
+  {
+   "id": "sideboard",
+   "asset": "p_sideboard",
+   "room": "dining",
+   "at": [
+    14.6,
+    -46
+   ],
+   "size": {
+    "w": 2.2,
+    "d": 0.5,
+    "h": 1.0
+   },
+   "mount": "floor",
+   "face": "room",
+   "solid": true
+  },
+  {
+   "id": "candelabra",
+   "asset": "p_candelabra",
+   "room": "dining",
+   "size": {
+    "w": 0.4,
+    "d": 0.4,
+    "h": 0.6
+   },
+   "mount": {
+    "top_of": "sideboard"
+   },
+   "yaw": 270,
+   "solid": false
+  }
+ ],
+ "decals": [
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 7
+   },
+   "y": 2.0,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 11.5
+   },
+   "y": 2.0,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 18.5
+   },
+   "y": 2.0,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 27
+   },
+   "y": 2.0,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 3
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 7
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 11.5
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 15
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 18.5
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 23
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_window",
+   "on": {
+    "room": "lawn",
+    "edge": 0,
+    "m": 27
+   },
+   "y": 6.5,
+   "size": {
+    "w": 1.4,
+    "h": 2.2
+   }
+  },
+  {
+   "asset": "d_portrait",
+   "on": {
+    "room": "hall",
+    "edge": 1,
+    "t": 0.3
+   },
+   "y": 2.2,
+   "size": {
+    "w": 1.0,
+    "h": 1.2
+   }
+  }
+ ],
+ "lights": [
+  {
+   "kind": "hemi",
+   "color": "#fff2d8",
+   "power": 1.1
+  },
+  {
+   "kind": "point",
+   "pos": [
+    -8,
+    12,
+    -1
+   ],
+   "color": "#ffd9a0",
+   "power": 1.5
+  },
+  {
+   "kind": "point",
+   "pos": [
+    9,
+    12,
+    4
+   ],
+   "color": "#ffd9a0",
+   "power": 1.5
+  },
+  {
+   "kind": "point",
+   "pos": [
+    30,
+    6,
+    -23
+   ],
+   "color": "#ff9a6a",
+   "power": 1.0
+  },
+  {
+   "kind": "point",
+   "pos": [
+    0,
+    12,
+    30
+   ],
+   "color": "#ffe4b8",
+   "power": 1.2
+  },
+  {
+   "kind": "point",
+   "pos": [
+    10,
+    4,
+    -46
+   ],
+   "color": "#ffc890",
+   "power": 0.8
+  },
+  {
+   "kind": "point",
+   "pos": [
+    0,
+    4,
+    -46
+   ],
+   "color": "#ffe0b0",
+   "power": 0.6
+  },
+  {
+   "kind": "point",
+   "pos": [
+    -10,
+    4,
+    -46
+   ],
+   "color": "#ffd0a0",
+   "power": 0.6
+  }
+ ],
+ "assets": {
+  "t_grass": {
+   "kind": "tile",
+   "prompt": "lush green spring lawn grass with dappled leaf shadows, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "t_horizon": {
+   "kind": "tile",
+   "prompt": "distant north Georgia piedmont countryside panorama, pine woods, white dogwoods, rolling hills, red clay fields, pale blue sky above treeline, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "4:1"
+  },
+  "t_facade": {
+   "kind": "tile",
+   "prompt": "one bay of white painted clapboard Greek Revival house facade with tall shuttered window, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "1:2"
+  },
+  "t_boards": {
+   "kind": "tile",
+   "prompt": "polished heart pine floorboards, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "t_damask": {
+   "kind": "tile",
+   "prompt": "deep red damask wallpaper, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "d_door": {
+   "kind": "decal",
+   "prompt": "tall white paneled double door with fanlight, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "1:2"
+  },
+  "d_drive": {
+   "kind": "decal",
+   "prompt": "red clay drive between cedars leading to the river, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "1:1"
+  },
+  "d_window": {
+   "kind": "decal",
+   "prompt": "tall sash window with green louvered shutters on white clapboard, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "2:3"
+  },
+  "d_portrait": {
+   "kind": "decal",
+   "prompt": "oil portrait of a southern gentleman in a gilt frame, photorealistic, 1860s Georgia plantation, warm afternoon",
+   "aspect": "5:6"
+  },
+  "p_porch": {
+   "kind": "object",
+   "prompt": "long low white painted wooden veranda floor platform, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_roof": {
+   "kind": "object",
+   "prompt": "long white wooden veranda roof entablature with cornice, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_column": {
+   "kind": "object",
+   "prompt": "tall white fluted Doric column, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_rocker": {
+   "kind": "object",
+   "prompt": "white wooden rocking chair, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_path": {
+   "kind": "object",
+   "prompt": "flat strip of red clay path, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "oak": {
+   "kind": "object",
+   "prompt": "majestic live Southern live oak with thick gnarled trunk, wide spreading branches, dense lush green canopy with Spanish moss, summer foliage, photorealistic game asset, centered, isolated",
+   "reissue": true
+  },
+  "rotunda": {
+   "kind": "object",
+   "prompt": "READY rotunda"
+  },
+  "ironbench": {
+   "kind": "object",
+   "prompt": "READY ironbench"
+  },
+  "plankbench": {
+   "kind": "object",
+   "prompt": "READY plankbench"
+  },
+  "p_trestle": {
+   "kind": "object",
+   "prompt": "long wooden trestle table covered in white linen tablecloth, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_settings": {
+   "kind": "object",
+   "prompt": "row of china plates, platters of barbecue, glasses and silverware on white linen, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_punchbowl": {
+   "kind": "object",
+   "prompt": "large cut glass punch bowl with ladle, half full, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_glass": {
+   "kind": "object",
+   "prompt": "half-empty crystal wine glass, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_cups": {
+   "kind": "object",
+   "prompt": "group of silver julep cups, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_plate": {
+   "kind": "object",
+   "prompt": "white china plate with leftover food, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_chair": {
+   "kind": "object",
+   "prompt": "mahogany dining chair with upholstered seat, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_ottoman": {
+   "kind": "object",
+   "prompt": "high rosewood ottoman with tufted velvet top, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_hassock": {
+   "kind": "object",
+   "prompt": "round tapestry hassock footstool, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_cushion": {
+   "kind": "object",
+   "prompt": "embroidered silk floor cushion, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_pit": {
+   "kind": "object",
+   "prompt": "long earthen barbecue trough of glowing rose-red embers, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_spit": {
+   "kind": "object",
+   "prompt": "row of iron spits with roasting meat, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_washpot": {
+   "kind": "object",
+   "prompt": "huge black iron wash-pot of stew on three legs, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_mound": {
+   "kind": "object",
+   "prompt": "low gentle grassy hillock, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_arbor": {
+   "kind": "object",
+   "prompt": "white wooden garden arbor covered in climbing wisteria and roses, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_balustrade": {
+   "kind": "object",
+   "prompt": "long weathered stone balustrade with turned balusters, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_pillar": {
+   "kind": "object",
+   "prompt": "square stone gate pillar, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_urn": {
+   "kind": "object",
+   "prompt": "white stone garden urn finial, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_shrub": {
+   "kind": "object",
+   "prompt": "clipped round boxwood shrub, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_rose": {
+   "kind": "object",
+   "prompt": "blooming pink and red rose bush, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_halltable": {
+   "kind": "object",
+   "prompt": "round mahogany center table with vase of flowers, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_bookcase": {
+   "kind": "object",
+   "prompt": "tall mahogany glass-front bookcase full of leather books, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_desk": {
+   "kind": "object",
+   "prompt": "mahogany writing desk, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_armchair": {
+   "kind": "object",
+   "prompt": "leather wingback armchair, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_dtable": {
+   "kind": "object",
+   "prompt": "long polished mahogany dining table, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_decanter": {
+   "kind": "object",
+   "prompt": "crystal brandy decanter, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_cigarbox": {
+   "kind": "object",
+   "prompt": "open cedar cigar box, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_sideboard": {
+   "kind": "object",
+   "prompt": "mahogany sideboard buffet, photorealistic, 1860s Georgia plantation, warm afternoon"
+  },
+  "p_candelabra": {
+   "kind": "object",
+   "prompt": "silver five-arm candelabra, photorealistic, 1860s Georgia plantation, warm afternoon"
+  }
+ },
+ "cameras": [
+  {
+   "id": "avenue",
+   "pos": [
+    0,
+    1.7,
+    30
+   ],
+   "look": [
+    0,
+    4,
+    -40
+   ],
+   "fov": 55
+  },
+  {
+   "id": "scarlett_court",
+   "pos": [
+    9.5,
+    1.5,
+    4.0
+   ],
+   "look": [
+    13,
+    1.0,
+    8.2
+   ],
+   "fov": 55
+  },
+  {
+   "id": "scarlett_wide",
+   "pos": [
+    9.0,
+    1.7,
+    3.6
+   ],
+   "look": [
+    14,
+    1.4,
+    9.5
+   ],
+   "fov": 65
+  },
+  {
+   "id": "veranda",
+   "pos": [
+    3,
+    2.0,
+    -36.5
+   ],
+   "look": [
+    -4,
+    1.0,
+    -15
+   ],
+   "fov": 60
+  },
+  {
+   "id": "establishing",
+   "pos": [
+    -35,
+    12,
+    -35
+   ],
+   "look": [
+    10,
+    0,
+    10
+   ],
+   "fov": 70
+  },
+  {
+   "id": "brandy_room",
+   "pos": [
+    6,
+    1.6,
+    -41
+   ],
+   "look": [
+    10,
+    1.2,
+    -46
+   ],
+   "fov": 70
+  }
+ ],
+ "routes": [
+  {
+   "id": "to_hall",
+   "path": [
+    "spawn",
+    "back_door",
+    {
+     "room": "hall",
+     "at": [
+      0,
+      -44
+     ]
+    }
+   ]
+  },
+  {
+   "id": "to_dining",
+   "path": [
+    "spawn",
+    "dining_door",
+    {
+     "room": "dining",
+     "at": [
+      7,
+      -42
+     ]
+    }
+   ]
+  },
+  {
+   "id": "to_ottoman",
+   "path": [
+    "spawn",
+    "table_men",
+    "ottoman"
+   ]
+  }
+ ],
+ "cast": [
+  {
+   "name": "gerald",
+   "clip": "idle",
+   "at": [
+    7,
+    0.8
+   ],
+   "yaw": 0
+  },
+  {
+   "name": "stuart",
+   "clip": "idle",
+   "at": [
+    8.9,
+    1.0
+   ],
+   "yaw": 325
+  },
+  {
+   "name": "rhett",
+   "clip": "idle",
+   "at": [
+    7.2,
+    3.4
+   ],
+   "yaw": 180
+  },
+  {
+   "name": "oldman",
+   "clip": "idle",
+   "at": [
+    4.9,
+    2.1
+   ],
+   "yaw": 90
+  },
+  {
+   "name": "ashley",
+   "clip": "idle",
+   "at": [
+    9.2,
+    2.9
+   ],
+   "yaw": 270
+  },
+  {
+   "name": "scarlett",
+   "clip": "idle",
+   "at": [
+    12,
+    7
+   ],
+   "yaw": 225
+  },
+  {
+   "name": "melanie",
+   "clip": "idle",
+   "at": [
+    -23.5,
+    -6
+   ],
+   "yaw": 270
+  }
+ ]
+}
+```
