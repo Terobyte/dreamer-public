@@ -24,10 +24,27 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CRAFT_PATH = os.path.join(HERE, "craft", "scene_writing.md")
-with open(CRAFT_PATH, encoding="utf-8") as _f:
-    CRAFT = _f.read()
+
+
+def craft_file(craft=None):
+    """The method file for a version: None -> the default scene_writing.md, "r2" ->
+    scene_writing_r2.md (0.5: a new method lives beside the old one, never replaces
+    it; the default stays what the A/B of Oct 29 kept)."""
+    return "scene_writing.md" if not craft else "scene_writing_%s.md" % craft
+
+
+def load_craft(craft=None):
+    with open(os.path.join(HERE, "craft", craft_file(craft)), encoding="utf-8") as f:
+        return f.read()
+
+
+def craft_version(craft=None):
+    return hashlib.sha1(load_craft(craft).encode("utf-8")).hexdigest()[:8]
+
+
+CRAFT = load_craft()
 # a run records which method wrote its scene, like dialogue.PROMPT_VERSION for lines
-CRAFT_VERSION = hashlib.sha1(CRAFT.encode("utf-8")).hexdigest()[:8]
+CRAFT_VERSION = craft_version()
 
 VOICE_POOL = ("old_woman", "old_man", "woman", "man", "child", "creature")
 _PERSON = ("\"name\", \"look\", \"voice\": {\"sound\": how they sound, \"search\": 2 or 3 "
@@ -101,14 +118,16 @@ def check_authored(d):
     return _check_events(d.get("events"), set(names), hero["name"])
 
 
-def write_scene(text, source=None, transport=None):
-    """Up to ATTEMPTS asks for the scene, each checked -> Wonder's dict or None."""
+def write_scene(text, source=None, transport=None, craft=None):
+    """Up to ATTEMPTS asks for the scene, each checked -> Wonder's dict or None.
+    `craft`: the method version (None = default, see craft_file)."""
+    method = CRAFT if not craft else load_craft(craft)
     ask = "The idea of the dream:\n" + str(text or "").strip()
     if source:
         ask += "\n\nSource text, take everything from it:\n" + str(source).strip()
     for _ in range(ATTEMPTS):
         try:
-            res = llm_call("director", CRAFT, [{"role": "user", "content":
+            res = llm_call("director", method, [{"role": "user", "content":
                                                 ask + "\n\n" + AUTHOR_SCHEMA}],
                            max_tokens=5000, _transport=transport)
             d = _json(res.text)
@@ -188,7 +207,7 @@ def _label(name):
     return "cast_" + (re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "x")
 
 
-def to_scene(d, picks, text, scene_id, cast_note=None):
+def to_scene(d, picks, text, scene_id, cast_note=None, craft=None):
     """Wonder's dict -> the scenes/*.json shape; a picked voice goes in as a label
     of the scene's own voice_ids, so voice.py never gets a raw id from a reply."""
     voice_ids = {}
@@ -213,19 +232,21 @@ def to_scene(d, picks, text, scene_id, cast_note=None):
         "objects": d["objects"],
     }
     scene["voice_ids"] = voice_ids
-    scene["author"] = {"by": "wonder", "craft": CRAFT_VERSION, "idea": text,
+    scene["author"] = {"by": "wonder", "craft": craft_version(craft),
+                       "craft_file": craft_file(craft), "idea": text,
                        "question": d.get("question"), "cast": cast_note,
                        "voices": {p["name"]: p["voice"] for p in [h] + d["actors"]}}
     return scene
 
 
-def author_scene(text, source=None, transport=None, search=fish_search, scene_id="authored"):
+def author_scene(text, source=None, transport=None, search=fish_search, scene_id="authored",
+                 craft=None):
     """The whole step: scene, then casting -> a scene dict, or None when Wonder failed."""
-    d = write_scene(text, source, transport)
+    d = write_scene(text, source, transport, craft)
     if d is None:
         return None
     picks, note = cast(d, search, transport)
-    return to_scene(d, picks, text, scene_id, note)
+    return to_scene(d, picks, text, scene_id, note, craft)
 
 
 def main(argv=None):
@@ -234,13 +255,15 @@ def main(argv=None):
     ap.add_argument("--source", default=None, help="a text file with the source excerpt")
     ap.add_argument("--out", default=None,
                     help="default h0/out/dream/scenes/<slug>.json")
+    ap.add_argument("--craft", default=None,
+                    help="method version: r2 = craft/scene_writing_r2.md (default: scene_writing.md)")
     args = ap.parse_args(argv)
     source = None
     if args.source:
         with open(args.source, encoding="utf-8") as f:
             source = f.read()
     slug = re.sub(r"[^a-z0-9]+", "_", args.idea.lower()).strip("_")[:40] or "scene"
-    scene = author_scene(args.idea, source, scene_id=slug)
+    scene = author_scene(args.idea, source, scene_id=slug, craft=args.craft)
     if scene is None:
         print("author: wonder failed", file=sys.stderr)
         return 2

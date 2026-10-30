@@ -17,7 +17,7 @@ import queue
 import lang
 from clock import Clock
 from dialogue import PROMPT_VERSION
-from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP,
+from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, names_in,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
                       W_SILENT, W_SPOKE_LAST)
 from director import Director, seed_scene
@@ -247,6 +247,10 @@ class Sim:
         self.place = START_PLACE
         self.transcript = []
         self._notes = {}
+        # 0.3: how many of an actor's notes he has already played (spoken after),
+        # and how many his prompt in flight was built with
+        self._notes_seen = {}
+        self._notes_shown = {}
         # 1.3: "Just now" is a queue per recipient -- the hero's is _hero_world,
         # every actor has his own, and a queue nobody owns reaches nobody
         self._hero_world = []
@@ -925,6 +929,8 @@ class Sim:
         self.place = self.fsm.destination or "scene %d" % self.n_transitions
         self.transcript = self.transcript[-2:]
         self._notes = {}
+        self._notes_seen = {}
+        self._notes_shown = {}
         self._hero_world = ["you have just arrived in %s" % self.place]
         if ns:
             # 1.4b: the director's reason for the hero to be here is not a start
@@ -1060,11 +1066,22 @@ class Sim:
         self._event_hits.pop(who, None)
         self._actor_streak = self._actor_streak + 1 if role == "actor" else 0
         self._said_count[who] = self._said_count.get(who, 0) + 1
+        if role == "actor":
+            # 0.3: the notes his prompt was built with are now played; a note that
+            # landed while the line was being written stays for his next prompt
+            self._notes_seen[who] = self._notes_shown.pop(who, len(self._notes.get(who, [])))
         targets = self._cast() if only is None else [n for n in only if n in self._cast()]
-        for other in targets:
-            if other != who and re.search(r"\b%s\b" % re.escape(other), text or "",
-                                          re.I):
+        # 0.1: a part of a name ("Ashley" of "Ashley Wilkes") addresses too, see names_in
+        for other in names_in(text, targets):
+            if other != who:
                 self._addressed[other] = ADDRESS_HOLD
+
+    def _notes_for(self, who):
+        """The director's notes an actor still has to play: the last one not yet
+        followed by a line of his (0.3: played notes left the prompt, and the
+        prompt holds one note, not the whole history)."""
+        notes = self._notes.get(who, [])
+        return list(notes[self._notes_seen.get(who, 0):][-1:])
 
     def _pick_speaker(self):
         """One free tick: silence grows for everyone, pressure is logged, and the
@@ -1212,7 +1229,8 @@ class Sim:
             state = {"build_pct": self.fsm.build_pct(now),
                      "bridge": self.fsm.bridge if locked else None}
             events = self._pending.pop(who, [])
-            args = (who, world, transcript, state, list(self._notes.get(who, [])), events,
+            self._notes_shown[who] = len(self._notes.get(who, []))
+            args = (who, world, transcript, state, self._notes_for(who), events,
                     self._personas.get(who, ""))
             fn = self.dialogue.actor_line
         scene_no, epoch = self.n_transitions, self._turn_epoch

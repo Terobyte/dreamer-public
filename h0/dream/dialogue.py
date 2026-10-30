@@ -447,11 +447,32 @@ _NAME_STOP = {"i", "i'm", "i'll", "i've", "i'd", "ok", "god", "mom", "dad",
               "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
               "january", "february", "march", "april", "may", "june", "july", "august",
               "september", "october", "november", "december"}
+# 0.2 (A/B Twelve Oaks): names of peoples, sides and places' folk are not invented
+# people -- "one Georgian whips twelve Yankee clerks" was refused as a name
+_PEOPLE_WORDS = set("""yankee yank southerner northerner georgian virginian carolinian
+    texan american confederate federal union rebel irish english french german scottish
+    scots scotch welsh dutch spanish italian mexican russian indian cherokee creek
+    african negro christian catholic protestant baptist methodist jew jewish gentile
+    democrat republican whig tory northern southern eastern western european asian""".split())
 # words that never count as a loop in a remark: every example of VOICE_RULES plus
 # the sounds of the voice itself
 _LOOP_STOP = {w for r in _REMARK.findall(VOICE_RULES) for w in re.findall(r"[a-z]+", r.lower())}
 _LOOP_STOP |= set("pause gasp scoff sigh laugh laughing voice breath breathing inhale "
                   "exhale whisper quiet soft flat muttering".split())
+# 0.4: spoken words of LOOP_WORD_MIN+ letters count too; the everyday ones never
+LOOP_WORD_MIN = 5
+_LOOP_STOP |= set("""about above after again against alone along already always among
+    another anything anyway around because before behind being believe better between
+    cannot could course doesn either enough every everything first going great happen
+    happened having heard herself himself itself indeed inside instead known leave least
+    little longer maybe might minute moment myself never nobody nothing often other
+    others ought outside perhaps please pretty quite rather really right round should
+    since somebody someone something sometimes still their there these thing things
+    think those though thought three through today together tonight toward under until
+    until under where whether which while whole whose without woman would wouldn yours
+    yourself ladies madam mister missus sorry thank thanks hello excuse
+    certainly surely shall whatever whenever wherever anybody everybody everyone
+    speak spoken speaking saying talking telling listen hardly nearly almost""".split())
 
 
 def _spoken(text):
@@ -495,12 +516,40 @@ def _name_words(sources):
 
 def _known(word, allowed):
     w = word.lower()
-    if w in _NAME_STOP or w in allowed:
+    if w in _NAME_STOP or w in _PEOPLE_WORDS or w in allowed:
         return True
     for stem in (w[:-2] if w.endswith("'s") else None, w[:-1] if w.endswith("s") else None):
-        if stem and (stem in _NAME_STOP or stem in allowed):
+        if stem and (stem in _NAME_STOP or stem in _PEOPLE_WORDS or stem in allowed):
             return True
     return False
+
+
+NAME_PART_MIN = 3       # letters a part of a name needs to address its owner
+
+
+def _name_parts(cast):
+    """Name -> the words of it that address him: the whole name and every part of
+    NAME_PART_MIN+ letters that no other name in the cast shares (0.1: a cast of
+    full names, "Ashley Wilkes", is still called "Ashley"; "O'Hara" is two people)."""
+    parts = {n: [w for w in _WORD.findall(n) if len(w) >= NAME_PART_MIN] for n in cast}
+    counts = {}
+    for words in parts.values():
+        for w in set(x.lower() for x in words):
+            counts[w] = counts.get(w, 0) + 1
+    return {n: [n] + [w for w in parts[n] if counts[w.lower()] == 1] for n in cast}
+
+
+def names_in(text, cast):
+    """Who of `cast` is named in `text`: by full name or by a unique part of it, as a
+    whole word, any case. -> set of cast names."""
+    text = text or ""
+    out = set()
+    for name, words in _name_parts(list(cast or ())).items():
+        for w in words:
+            if re.search(r"(?<![A-Za-z'])%s(?![A-Za-z])" % re.escape(w), text, re.I):
+                out.add(name)
+                break
+    return out
 
 
 def _proper_nouns(text):
@@ -556,13 +605,22 @@ def lock_line(text, objects, names):
     return text, None
 
 
-def loop_items(text, objects):
+def loop_items(text, objects, names=(), spoken=False):
     """The set X of a line (7.2 row 1.1): objects named as whole phrases in the
     spoken text or in any remark; in the remarks after the first (the first is
     voice direction) an alias = the unique last word of an object, and any other
-    word of 4+ letters not in the stop list."""
+    word of 4+ letters not in the stop list. 0.4: spoken words of LOOP_WORD_MIN+
+    letters too when `spoken` (the live cut does this; the offline metric
+    action_loops keeps the old set so r1 scores stay comparable), except the
+    everyday stop list and the words of `names` (the cast: calling Ashley by name
+    three times is address, not a loop)."""
     objects = list(objects or [])
-    items, _ = find_objects(_spoken(text), objects)
+    items, rest = find_objects(_spoken(text), objects)
+    if spoken:
+        skip = _name_words(names) | _LOOP_STOP
+        for w in re.findall(r"[a-z]+", rest.lower()):
+            if len(w) >= LOOP_WORD_MIN and w not in skip:
+                items.add(w)
     rems = _REMARK.findall(text or "")
     for i, r in enumerate(rems):
         found, rest = find_objects(r, objects)
@@ -693,13 +751,14 @@ class Dialogue:
         out["objects"] = [o for o in world.get("objects") or [] if o not in banned]
         return out
 
-    def _plan_cuts(self, who, text, transcript, objects):
+    def _plan_cuts(self, who, text, transcript, objects, names=()):
         """Loops over the speaker's last LOOP_WINDOW lines (this candidate included),
         minus what is already cut. Pure: nothing is remembered until accept() -- the
         sim may still throw the line away (F1). -> items to cut."""
         own = _own_lines(transcript, who)[-(LOOP_WINDOW - 1):] + [text]
         banned = self._banned(who, self._turns.get(who, 0) + 1)
-        return [x for x in sorted(loops_in([loop_items(t, objects) for t in own]))
+        return [x for x in sorted(loops_in([loop_items(t, objects, names, spoken=True)
+                                            for t in own]))
                 if x not in banned]
 
     def accept(self, line):
@@ -916,7 +975,8 @@ class Dialogue:
                      "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
         if not text:
             return None
-        cuts = self._plan_cuts(self.hero, text, transcript, objects)
+        cuts = self._plan_cuts(self.hero, text, transcript, objects,
+                               [self.hero] + list(world.get("actors") or []))
         self._hero_turns += 1
         touch = None
         m = _TOUCH.search(raw)
@@ -934,7 +994,7 @@ class Dialogue:
         note_text = ""
         if notes:
             note_text = ("\nWhat is on your mind right now (play it your way):\n"
-                         + "\n".join("- " + n for n in notes[-3:]))
+                         + "\n".join("- " + n for n in notes[-1:]))
         who = persona or "Play who you are in this place, with wants of your own."
         return ("You are %s, in %s. %s is here with you.\n%s\n%s%s"
                 % (actor, world.get("place") or "a strange place", self.hero, who,
@@ -998,7 +1058,8 @@ class Dialogue:
                 user += "\n(Name the thing itself.)"
                 continue
             if text and not leaks:
-                cuts = self._plan_cuts(actor, text, transcript, objects)
+                cuts = self._plan_cuts(actor, text, transcript, objects,
+                                       [self.hero] + list(world.get("actors") or []))
                 return {"who": actor, "role": "actor", "text": text, "look": look,
                         "remarks": remarks(text), "raw": raw, "cuts": cuts,
                         "whisper_to": whisper_to}
