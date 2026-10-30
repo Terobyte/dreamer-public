@@ -86,6 +86,8 @@ describe("В1 yard: open rooms + outdoor", () => {
     expect(reveals.length).toBeGreaterThan(0);
   });
 
+  // the golden hashes were re-taken after block Г (live door leaves, handle);
+  // the outdoor blocks must not move them
   it("old examples keep the same geometry.json hash", () => {
     for (const [f, h] of Object.entries(hashes)) {
       const { ctx } = runCheck(load(f));

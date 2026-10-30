@@ -398,7 +398,8 @@
           "kind": { "enum": ["tile", "decal", "object", "sky"] },
           "prompt": { "type": "string" },
           "aspect": { "type": "string", "default": "1:1" },
-          "front_deg": { "type": "number", "default": 0 }
+          "front_deg": { "type": "number", "default": 0 },
+          "foliage": { "type": "boolean", "default": false, "description": "an object whose leaves are an opaque JPEG with no alpha (a Tripo tree): normalization cuts them out with MASK" }
         }
       }
     },

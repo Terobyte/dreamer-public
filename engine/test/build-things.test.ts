@@ -94,8 +94,10 @@ describe("props, decals and door leaves", () => {
   it("test_door_leaf_closed", () => {
     const closed = built(patched([{ op: "replace", path: "/openings/0/leaf/open", value: false }]));
     const b = meshBBox(byId(closed, "front:leaf"));
-    expect(b.min[2]).toBeCloseTo(3.98, 6);
-    expect(b.max[2]).toBeCloseTo(4.02, 6);
+    // centred on the swing room's face of the wall (z=3.94, leaf 4 cm): the
+    // plane the runtime turns it about — not in the middle of the wall
+    expect(b.min[2]).toBeCloseTo(3.92, 6);
+    expect(b.max[2]).toBeCloseTo(3.96, 6);
     expect(b.min[0]).toBeCloseTo(-0.45, 6);
     expect(b.max[0]).toBeCloseTo(0.45, 6);
   });

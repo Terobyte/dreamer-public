@@ -11,6 +11,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fakeShots } from "./fake-shots.js";
 
 const built = (tris: { total: number; by_prop: Record<string, number> }, raw: unknown = demoFlat()) => {
   const { report } = runCheck(raw, { tris });
@@ -196,6 +197,9 @@ describe("built dist end-to-end (F5–F7)", () => {
     const { ctx } = runCheck(raw);
     writeFileSync(join(dir, "nav.json"), JSON.stringify((ctx as any).nav ?? {}));
     writeFileSync(join(dir, "build.json"), JSON.stringify({ tris, props: {} }));
+    // check --built reads the cameras from geometry.json and wants a shot each
+    writeFileSync(join(dir, "geometry.json"), JSON.stringify({ cameras: (raw as any).cameras ?? [] }));
+    fakeShots(dir);
     return dir;
   };
   const sceneFile = (raw: unknown): string => {

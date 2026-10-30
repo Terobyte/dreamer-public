@@ -32,7 +32,7 @@ const KNOWN_FIELDS = (
   "levels id y rooms level height shape circle c r floor ceiling walls material thickness bands to edges " +
   "beams from w h openings kind width on edge t m az height sill leaf decal open swing hinge glass " +
   "outside backdrop props asset cat size d mount top_of face around center n start solid decals lights " +
-  "pos power assets prompt aspect front_deg cameras ref look fov routes path " +
+  "pos power assets prompt aspect front_deg foliage cameras ref look fov routes path " +
   "stairs dir rise going rail"
 ).split(" ");
 

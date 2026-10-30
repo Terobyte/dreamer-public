@@ -96,7 +96,9 @@ export function placeAssets(scene: Scene, cacheDir: string, used: string[], outD
       // of killing the build: one bad mesh must not cost the whole world
       let out;
       try {
-        out = normalizeGlb(readFileSync(r.path), Number(declared[r.id]?.front_deg ?? 0));
+        out = normalizeGlb(readFileSync(r.path), Number(declared[r.id]?.front_deg ?? 0), {
+          foliage: declared[r.id]?.foliage === true,
+        });
       } catch {
         warnings.push(`ASSET_GLB_BROKEN ${r.id}`);
         continue;

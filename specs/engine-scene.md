@@ -110,7 +110,7 @@
   }],
   "decals":  [{"asset": "<asset>", "on": {...} | "at": [x,z], "room": id, "y": 1.6, "size": {"w","h"}}],
   "lights":  [{"kind": "point" | "hemi", "pos": [x,y,z], "color": "#ffe8c0", "power": 1.0}],
-  "assets":  {"<id>": {"kind": "tile" | "decal" | "object", "prompt": "...", "aspect": "1:1", "front_deg": 0}},
+  "assets":  {"<id>": {"kind": "tile" | "decal" | "object", "prompt": "...", "aspect": "1:1", "front_deg": 0, "foliage": false}},
   "cameras": [{"id": "ref1", "ref": "refs/ref1.jpg", "pos": [x,y,z], "look": [x,y,z], "fov": 60}],
   "routes":  [{"id": "r1", "path": ["spawn", "<opening|prop|stair id>", {"room": id, "at": [x,z]}]}]
 }
@@ -157,6 +157,7 @@
 | `light.power` | нет | 1.0 — множитель к базовой яркости движка (point: 15 кд, hemi: 1.0) |
 | `assets.*.aspect` | нет | `1:1` |
 | `assets.*.front_deg` | нет | 0 |
+| `assets.*.foliage` | нет | false — `true` у дерева/куста: листья из JPEG без альфы режутся MASK |
 | `cameras[].ref` | нет | без `ref` камера снимается, но в лист идёт без пары |
 | `cat` | нет | без `cat` проверка правдоподобного размера пропускается |
 | прочие поля примера | да | кроме: `style`, `room.walls.bands`, `room.edges`, `room.beams`, `opening.leaf`, `opening.outside` (его проверяет `OPENING_NO_OUTSIDE`), `prop.at` (при `around` / `top_of` / `on`), `face`/`yaw` (проверяет `PROP_NO_FACING`), `cameras[].look`, `leaf.swing`, `leaf.hinge` |

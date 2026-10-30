@@ -10,7 +10,9 @@ const CHUNK_JSON = 0x4e4f534a;
 const CHUNK_BIN = 0x004e4942;
 
 export interface GltfMaterial {
-  pbrMetallicRoughness?: { metallicFactor?: number; [k: string]: unknown };
+  pbrMetallicRoughness?: { metallicFactor?: number; baseColorTexture?: unknown; [k: string]: unknown };
+  alphaMode?: string;
+  alphaCutoff?: number;
   [k: string]: unknown;
 }
 
@@ -228,6 +230,72 @@ function deMetal(json: GltfJson): void {
 }
 
 /**
+ * Cause: Tripo bakes foliage as loose double-sided shards textured from an
+ * opaque JPEG with no alpha channel, so a material left at the default
+ * OPAQUE (unset or spelled out) draws the leaves as black flakes. Only
+ * explicitly identified foliage goes to MASK — anything else stays OPAQUE,
+ * or `cutDarkTexels` (runtime/assets) would punch holes in normal props.
+ * Identification is explicit: the asset is declared foliage (`foliage: true`
+ * in the scene's asset entry — the oak fixture's material is just
+ * `tripo_material_<uuid>`, so a provider name proves nothing, F10/F13/F15)
+ * or the material is named foliage/leaf/leaves/canopy. Even then the
+ * material must be double-sided, UV-mapped and carry a real embedded
+ * baseColor JPEG (at least 1K, starting with the SOI marker): a stub or
+ * filler image has no leaf texels and UV-less geometry cannot sample them.
+ * Authored MASK/BLEND is kept. The `extras` tag marks the materials the
+ * page may synthesize an alpha cutout for.
+ */
+function maskFoliage(json: GltfJson, bin: Buffer | null, assetFoliage: boolean): void {
+  const texIndex = (mat: GltfMaterial): number | undefined => {
+    const t = mat.pbrMetallicRoughness?.baseColorTexture as { index?: unknown } | undefined;
+    return typeof t?.index === "number" ? t.index : undefined;
+  };
+  const textures = (json.textures ?? []) as { source?: unknown }[];
+  const images = (json.images ?? []) as { mimeType?: unknown; bufferView?: unknown }[];
+  const bufferViews = (json.bufferViews ?? []) as { byteOffset?: unknown; byteLength?: unknown }[];
+  // Materials sampled with UVs: only those can use a cutout texture.
+  const hasUv = new Set<number>();
+  for (const mesh of json.meshes ?? []) {
+    for (const prim of mesh.primitives) {
+      if (typeof prim.material === "number" && prim.attributes?.["TEXCOORD_0"] !== undefined) {
+        hasUv.add(prim.material);
+      }
+    }
+  }
+  // Offset and length of the material's JPEG in the BIN chunk; undefined
+  // unless the bytes are really there with a JPEG SOI marker.
+  const jpegRange = (ti: number | undefined): { off: number; len: number } | undefined => {
+    if (ti === undefined || bin === null) return undefined;
+    const src = textures[ti]?.source;
+    if (typeof src !== "number") return undefined;
+    const img = images[src];
+    if (img?.mimeType !== "image/jpeg" || typeof img.bufferView !== "number") return undefined;
+    const bv = bufferViews[img.bufferView];
+    const len = bv?.byteLength;
+    const off = bv?.byteOffset ?? 0;
+    if (typeof len !== "number" || typeof off !== "number") return undefined;
+    if (len < 1024 || off + 2 > bin.length) return undefined;
+    if (bin[off] !== 0xff || bin[off + 1] !== 0xd8) return undefined;
+    return { off, len };
+  };
+  const isFoliage = (mat: GltfMaterial): boolean =>
+    assetFoliage || /foliage|leaf|leaves|canopy/i.test(typeof mat.name === "string" ? mat.name : "");
+  const materials = json.materials ?? [];
+  for (let mi = 0; mi < materials.length; mi++) {
+    const mat = materials[mi];
+    if ((mat.alphaMode ?? "OPAQUE") !== "OPAQUE" || texIndex(mat) === undefined) continue;
+    // A stub JPEG (test fixtures, placeholders) or filler bytes (F13) carry
+    // no leaf-cutout texels, and UV-less geometry cannot sample them, so
+    // neither is ever foliage no matter what the material is named.
+    if (mat.doubleSided !== true || !hasUv.has(mi) || jpegRange(texIndex(mat)) === undefined) continue;
+    if (!isFoliage(mat)) continue;
+    mat.alphaMode = "MASK";
+    mat.alphaCutoff = 0.5;
+    mat.extras = { ...((mat.extras as Record<string, unknown> | undefined) ?? {}), foliageCutout: true };
+  }
+}
+
+/**
  * Turns the asset's front (which points at `frontDeg` by the angle table)
  * towards +Z, drops its bottom onto y = 0 and centres its footprint on the
  * origin. `size` is the bound after that rotation, before the page's scale.
@@ -235,6 +303,7 @@ function deMetal(json: GltfJson): void {
 export function normalizeGlb(
   buf: Buffer,
   frontDeg: number,
+  opts: { foliage?: boolean } = {},
 ): { glb: Buffer; size: { w: number; d: number; h: number } } {
   const { json, bin } = readGlb(buf);
   const sceneIndex = json.scene ?? 0;
@@ -262,6 +331,7 @@ export function normalizeGlb(
   nodes.push({ children: [...scene.nodes], matrix: mul(shift, rot) });
   scene.nodes = [nodes.length - 1];
   deMetal(json);
+  maskFoliage(json, bin, opts.foliage === true);
 
   return { glb: writeGlb(json, bin), size };
 }

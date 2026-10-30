@@ -4,7 +4,7 @@
  * is not computed here — `build` already baked `scale`, `glbPos` and `glbYaw`
  * into geometry.json; the page only applies them.
  */
-import { Box3, Group, Texture, TextureLoader, Vector3 } from "three";
+import { Box3, CanvasTexture, Group, Material, Mesh, MeshStandardMaterial, Texture, TextureLoader, Vector3 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 export interface MaterialDef {
@@ -58,6 +58,49 @@ export function fitGlb(glbScene: Group, box: { min: Vector3; max: Vector3 }): vo
   glbScene.position.set(boxCenter.x - glbCenter.x, box.min.y - glbMinY, boxCenter.z - glbCenter.z);
 }
 
+/** A texel darker than this (mean of r, g, b) is a leaf shard, not bark. */
+const LEAF_DARK = 60;
+
+/**
+ * The GLB's JPEG has no alpha channel, so MASK alone cuts nothing. Only a
+ * foliage material (tagged `foliageCutout` by `maskFoliage` in assets/glb)
+ * with a colour map gets its dark texels written into a copy of the map's
+ * alpha; the material's `alphaTest` then discards them. Anything else —
+ * including an unmarked double-sided MASK prop — is left alone so no holes
+ * get punched in ordinary props.
+ */
+export function cutDarkTexels(root: Group): void {
+  const done = new Map<Material, true>();
+  root.traverse((obj) => {
+    const mats = (obj as Mesh).material;
+    for (const mat of Array.isArray(mats) ? mats : mats ? [mats] : []) {
+      if (done.has(mat)) continue;
+      done.set(mat, true);
+      const std = mat as MeshStandardMaterial;
+      if ((std.userData?.["foliageCutout"] as unknown) !== true) continue;
+      const image = std.map?.image as CanvasImageSource & { width: number; height: number } | undefined;
+      if (std.alphaTest <= 0 || !image) continue;
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(image, 0, 0);
+      const px = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < px.data.length; i += 4) {
+        if (px.data[i] + px.data[i + 1] + px.data[i + 2] < LEAF_DARK * 3) px.data[i + 3] = 0;
+      }
+      ctx.putImageData(px, 0, 0);
+      const cut = new CanvasTexture(canvas);
+      cut.colorSpace = std.map!.colorSpace;
+      cut.flipY = std.map!.flipY;
+      cut.wrapS = std.map!.wrapS;
+      cut.wrapT = std.map!.wrapT;
+      std.map = cut;
+      std.needsUpdate = true;
+    }
+  });
+}
+
 /**
  * The prop's model, placed. The normalized GLB stands on y = 0 with its
  * footprint centred and its front at +Z, so the whole placement is one
@@ -66,6 +109,7 @@ export function fitGlb(glbScene: Group, box: { min: Vector3; max: Vector3 }): vo
 export async function loadGlb(src: GlbSrc, box: { min: Vector3; max: Vector3 }): Promise<Group> {
   const gltf = await new GLTFLoader().loadAsync(src.glb);
   const root = gltf.scene;
+  cutDarkTexels(root);
   if (typeof src.scale === "number" && src.glbPos) {
     root.scale.setScalar(src.scale);
     root.rotation.y = Number(src.glbYaw ?? 0);

@@ -10,6 +10,7 @@ import { demoFlat } from "./helpers/scene.js";
 import { sceneAssets, type AssetRef } from "../src/assets/run.js";
 import { fakePng } from "../src/assets/providers/fake.js";
 import type { Report } from "../src/types.js";
+import { fakeShots } from "./fake-shots.js";
 
 const ENGINE = fileURLToPath(new URL("..", import.meta.url));
 const DEMO = "../specs/examples/demo-flat.scene.json";
@@ -134,6 +135,7 @@ function build(mode: "cache" | "none", fakes: Fakes = {}): Built {
 }
 
 function checkBuilt(dist: string): Report {
+  fakeShots(dist);
   const report = join(tmp(), "r.json");
   const r = spawnSync(
     "node",

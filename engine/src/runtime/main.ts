@@ -257,10 +257,14 @@ async function start(): Promise<void> {
 
   let last = performance.now();
   const frame = (now: number): void => {
-    const dt = Math.min((now - last) / 1000, 0.1);
+    const real = Math.max(0, (now - last) / 1000);
+    // the walk is clamped so a stalled frame cannot tunnel through a wall; a
+    // door is pure kinematics and follows the wall clock (0.6 s is 0.6 s even
+    // at 2 fps), so a slow page still lands it on its stop in time
+    const dt = Math.min(real, 0.1);
     last = now;
     for (const d of doors.values()) {
-      d.update(dt);
+      d.update(real);
       turnLeaf(d);
     }
     if (walking) {

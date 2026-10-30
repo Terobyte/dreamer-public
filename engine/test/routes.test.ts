@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { findRoute, gridOf, walkable, cellOf } from "../src/routes/astar.js";
 import { CELL } from "../src/nav/floor.js";
 import { demoFlat, patched } from "./helpers/scene.js";
+import { fakeShots } from "./fake-shots.js";
 
 const ENGINE = fileURLToPath(new URL("..", import.meta.url));
 const DEMO = "../specs/examples/demo-flat.scene.json";
@@ -38,6 +39,7 @@ function buildAndCheck(scene: unknown, extra: string[] = []): any {
   const out = join(dir, "dist");
   const b = cli(["build", scenePath, "--out", out, "--assets", "none", "--cache", tmp()]);
   expect([b.status, b.stderr]).toEqual([0, ""]);
+  fakeShots(out);
   const report = join(dir, "r.json");
   const c = cli(["check", scenePath, "--report", report, "--built", out, ...extra]);
   expect(c.stderr).toBe("");
@@ -50,6 +52,7 @@ describe("routes stage", () => {
     const out = join(dir, "dist");
     const b = cli(["build", DEMO, "--out", out, "--assets", "none", "--cache", tmp()]);
     expect([b.status, b.stderr]).toEqual([0, ""]);
+    fakeShots(out);
     const report = join(dir, "r.json");
     const c = cli(["check", DEMO, "--report", report, "--built", out]);
     expect([c.status, c.stderr]).toEqual([0, ""]);
