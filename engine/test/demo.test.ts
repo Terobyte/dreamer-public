@@ -9,8 +9,16 @@ import { caseNames, runCase } from "./helpers/broken.js";
 
 const goldenUrl = new URL("./golden/demo-flat.check.json", import.meta.url);
 
-// phase 1 does not emit these, so no case scene can exist for them
-const OUT_OF_PHASE = new Set<Code>(["STAIR_EXIT_OUTSIDE", "STAIR_HEADROOM", "ROUTE_BLOCKED"]);
+// phase 1 does not emit these, so no case scene can exist for them;
+// budget codes only fire with `--built` tris from a dist/, which runCase never passes
+const OUT_OF_PHASE = new Set<Code>([
+  "STAIR_EXIT_OUTSIDE",
+  "STAIR_HEADROOM",
+  "ROUTE_BLOCKED",
+  "TRI_PROP_BUDGET",
+  "TRI_SCENE_BUDGET",
+  "POINT_LIGHT_BUDGET",
+]);
 
 function codesOfLevel(level: "error" | "warn"): string[] {
   return (Object.keys(CODES) as Code[])

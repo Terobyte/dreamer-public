@@ -146,6 +146,14 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `decal.${params.i} на ${params.edge}: закрыта предметом ${params.id} в ${params.d} м от грани (нужно ≥ 0.15)`;
     case "ROUTE_BLOCKED":
       return `${params.route}: застрял в (${params.x}, ${params.z}) по пути к ${params.target}; мешает ${params.what}`;
+    case "TRI_PROP_BUDGET":
+      return `${params.id}: ${params.tris} треугольников, для его класса не больше ${params.limit}`;
+    case "TRI_SCENE_BUDGET":
+      return `сцена: ${params.tris} треугольников, бюджет ${params.limit}`;
+    case "POINT_LIGHT_BUDGET":
+      return params.room === ""
+        ? `сцена: ${params.n} point-ламп, не больше ${params.limit}`
+        : `${params.room}: ${params.n} point-ламп в комнате, не больше ${params.limit}`;
     case "NAV_SPAWN_BLOCKED":
       return `spawn в ${params.what}`;
     case "NAV_ROOM_CUT":

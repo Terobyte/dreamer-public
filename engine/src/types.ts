@@ -53,7 +53,10 @@ export type Code =
   | "CAMERA_OUTSIDE"
   | "NAV_SPAWN_BLOCKED"
   | "NAV_ROOM_CUT"
-  | "ROUTE_BLOCKED";
+  | "ROUTE_BLOCKED"
+  | "TRI_PROP_BUDGET"
+  | "TRI_SCENE_BUDGET"
+  | "POINT_LIGHT_BUDGET";
 
 export interface Issue {
   code: Code;
@@ -62,6 +65,8 @@ export interface Issue {
   msg: string;
   copy?: number;
   fix?: Record<string, unknown>;
+  /** numbers behind the message (budget checks) */
+  data?: Record<string, unknown>;
 }
 
 export interface StageStatus {

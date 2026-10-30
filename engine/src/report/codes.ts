@@ -43,4 +43,8 @@ export const CODES: Record<Code, { stage: Stage; level: "error" | "warn" }> = {
   NAV_SPAWN_BLOCKED: { stage: "nav", level: "error" },
   NAV_ROOM_CUT: { stage: "nav", level: "warn" },
   ROUTE_BLOCKED: { stage: "routes", level: "error" },
+  TRI_PROP_BUDGET: { stage: "routes", level: "warn" },
+  TRI_SCENE_BUDGET: { stage: "routes", level: "error" },
+  // warn per room, error per scene: the level is picked by the check itself
+  POINT_LIGHT_BUDGET: { stage: "routes", level: "warn" },
 };

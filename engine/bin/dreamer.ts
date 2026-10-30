@@ -4,6 +4,7 @@ import { dirname, join, basename } from "node:path";
 import { parseScene } from "../src/schema/parse.js";
 import { emptyPassport, makeReport } from "../src/report/report.js";
 import { runCheck } from "../src/check.js";
+import type { TriCount } from "../src/budget.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
 import { writeDist } from "../src/build/write.js";
@@ -128,6 +129,7 @@ async function main(): Promise<number> {
     }
     let builtNav: NavJson | undefined;
     let facts: Record<string, PropFact | null> | undefined;
+    let tris: TriCount | undefined;
     if (builtFlag !== undefined) {
       const navPath = join(builtFlag, "nav.json");
       builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
@@ -135,15 +137,15 @@ async function main(): Promise<number> {
       // `--built` checks the props by fact instead of the author's `size`
       const buildPath = join(builtFlag, "build.json");
       if (existsSync(buildPath)) {
-        const props = JSON.parse(readFileSync(buildPath, "utf-8")).props as
-          | Record<string, { fact: PropFact | null }>
-          | undefined;
+        const buildJson = JSON.parse(readFileSync(buildPath, "utf-8"));
+        tris = buildJson.tris;
+        const props = buildJson.props as Record<string, { fact: PropFact | null }> | undefined;
         if (props) {
           facts = Object.fromEntries(Object.entries(props).map(([id, p]) => [id, p?.fact ?? null]));
         }
       }
     }
-    const { report, ctx } = runCheck(raw, { builtNav, facts });
+    const { report, ctx } = runCheck(raw, { builtNav, facts, tris });
     const sceneName = typeof ctx.scene?.name === "string" ? ctx.scene.name : undefined;
     const rp = reportPath ?? defaultReportPath(scenePath, sceneName);
     printAndDiff(rp, report);

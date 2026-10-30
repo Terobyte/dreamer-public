@@ -13,10 +13,11 @@ import type { Ctx } from "./ctx.js";
 import type { PropFact } from "./props/fact.js";
 import type { NavJson, Report, Stage, Issue } from "./types.js";
 import { CODES } from "./report/codes.js";
+import { budgetIssues, type TriCount } from "./budget.js";
 
 export function runCheck(
   raw: unknown,
-  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null> },
+  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null>; tris?: TriCount },
 ): { report: Report; ctx: Ctx } {
   const until = opts?.until ?? "nav";
   const untilIdx = STAGES.indexOf(until);
@@ -79,6 +80,13 @@ export function runCheck(
   const built = opts?.builtNav;
   const runRoutes = built !== undefined && upToProps && !decalsFailed && !camerasFailed && !navFailed;
   if (runRoutes) push(routesStage(ctx, built));
+  // budgets read the built dist/ and never gate a stage: they only add findings
+  if (opts?.tris !== undefined) {
+    for (const i of budgetIssues(ctx, opts.tris)) {
+      const isErr = i.code === "POINT_LIGHT_BUDGET" ? i.data?.level === "error" : CODES[i.code].level === "error";
+      (isErr ? errors : warnings).push(i);
+    }
+  }
 
   const failedAt = new Set<Stage>(errors.map((e) => e.stage));
   const stages = STAGES.map((s, i) => {
@@ -92,7 +100,7 @@ export function runCheck(
     return { stage: s, status: "pass" as const };
   });
   if (built !== undefined) {
-    const status = !runRoutes ? "skipped" : failedAt.has("routes") ? "fail" : "pass";
+    const status = failedAt.has("routes") ? "fail" : !runRoutes ? "skipped" : "pass";
     stages.push({ stage: "routes", status: status as never });
   }
   const report = makeReport(stages, passport, errors, warnings);

@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,8 @@ import { runAssets, type AssetReport } from "../assets/run.js";
 import { placeAssets, type GlbSize } from "./materials.js";
 import { factOf, type PropFact } from "../props/fact.js";
 import type { Geometry } from "./geometry.js";
+import { glbTriangles } from "../assets/tris.js";
+import type { TriCount } from "../budget.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -21,6 +23,8 @@ export interface BuildJson {
   /** what each prop's model really measures, so `check --built` can use it */
   props: Record<string, { fact: PropFact | null }>;
   warnings: string[];
+  /** triangles of the built scene: engine geometry plus every placed model */
+  tris: TriCount;
 }
 
 /**
@@ -30,14 +34,32 @@ export interface BuildJson {
  * `size`. Copies of an `around` prop share one asset and one size, so the
  * first mesh of the group answers for the whole prop.
  */
+/**
+ * A built mesh id is either the prop's own id or an `around` copy (`<id>.<k>`):
+ * match it back to the author's id, so a dotted id like `vase.small` survives
+ * instead of being cut to `vase` (F6). Without a known id only a trailing
+ * numeric copy suffix is stripped.
+ */
+function rawPropId(meshId: string, propIds: Set<string>): string {
+  if (propIds.has(meshId)) return meshId;
+  let best: string | null = null;
+  for (const id of propIds) {
+    if (meshId.startsWith(`${id}.`) && (best === null || id.length > best.length)) best = id;
+  }
+  if (best !== null) return best;
+  return meshId.replace(/\.\d+$/, "");
+}
+
 function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbSize>): BuildJson["props"] {
+  const propIds = new Set(((scene?.props ?? []) as any[]).map((r) => String(r?.id)));
   const scaleOf = new Map<string, number>();
   for (const m of geometry.meshes as any[]) {
     if (m.kind !== "prop" || m.glb === undefined || typeof m.scale !== "number") continue;
-    const id = String(m.id).split(".")[0];
+    const id = rawPropId(String(m.id), propIds);
     if (!scaleOf.has(id)) scaleOf.set(id, m.scale);
   }
-  const out: BuildJson["props"] = {};
+  // no prototype: an id literally named "__proto__" must stay an own key
+  const out: BuildJson["props"] = Object.create(null);
   for (const raw of (scene?.props ?? []) as any[]) {
     const id = String(raw?.id);
     const glb = glbSizes[String(raw?.asset)];
@@ -45,6 +67,41 @@ function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbS
     out[id] = { fact: glb !== undefined && scale !== undefined ? factOf(glb, scale) : null };
   }
   return out;
+}
+
+/**
+ * Triangles of the dist/: engine meshes by their index count, a prop mesh with
+ * a model by that model's own count (once per copy). `by_prop` is one copy.
+ */
+export function countTris(geometry: Geometry, outDir: string, propIds?: Iterable<string>): TriCount {
+  const perFile = new Map<string, number>();
+  const modelTris = (rel: string): number => {
+    let n = perFile.get(rel);
+    if (n === undefined) {
+      try {
+        n = glbTriangles(readFileSync(join(outDir, decodeURIComponent(rel))));
+      } catch {
+        n = 0;
+      }
+      perFile.set(rel, n);
+    }
+    return n;
+  };
+  let total = 0;
+  // no prototype: an id literally named "__proto__" must stay an own key (F7)
+  const by_prop: Record<string, number> = Object.create(null);
+  const ids = new Set(propIds ?? []);
+  for (const m of geometry.meshes) {
+    if (m.kind === "prop" && m.glb !== undefined) {
+      const n = modelTris(m.glb);
+      total += n;
+      const key = rawPropId(String(m.id), ids);
+      if (!Object.prototype.hasOwnProperty.call(by_prop, key)) by_prop[key] = n;
+    } else {
+      total += Math.floor(m.indices.length / 3);
+    }
+  }
+  return { total, by_prop };
 }
 
 const RUNTIME_ENTRY = fileURLToPath(new URL("../runtime/main.ts", import.meta.url));
@@ -143,6 +200,11 @@ export async function writeDist(
     seconds: (Date.now() - opts.startedAt) / 1000,
     assets: { used: assets.used, fallback: assets.fallback, missing: assets.missing },
     props: propFacts(ctx.scene, geometry, glbSizes),
+    tris: countTris(
+      geometry,
+      outDir,
+      ((ctx.scene as any)?.props ?? []).map((r: any) => String(r?.id)),
+    ),
     warnings: [
       ...assetWarnings,
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
