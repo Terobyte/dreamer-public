@@ -90,6 +90,7 @@ export interface Keys {
   dir(yaw: number, dt: number): [number, number];
   yaw(): number;
   pitch(): number;
+  setYaw(deg: number): void;
 }
 
 export const PITCH_MAX = 85;
@@ -113,6 +114,9 @@ export function controls(dom: HTMLElement, yaw0: number): Keys {
   });
   return {
     yaw: () => yaw,
+    setYaw: (deg: number) => {
+      yaw = deg;
+    },
     pitch: () => pitch,
     dir(y: number, dt: number): [number, number] {
       const f = (down.has("KeyW") ? 1 : 0) - (down.has("KeyS") ? 1 : 0);

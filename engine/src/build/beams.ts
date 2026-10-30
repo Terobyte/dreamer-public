@@ -14,6 +14,7 @@ export function boxMesh(
   w: number,
   y0: number,
   y1: number,
+  uv: "meters" | "unit" = "meters",
 ): Mesh {
   const d: V2 = [to[0] - from[0], to[1] - from[1]];
   const l = Math.hypot(d[0], d[1]) || 1;
@@ -38,44 +39,29 @@ export function boxMesh(
     uvs: [[number, number], [number, number], [number, number], [number, number]],
   ): void => mb.quad(a, b, c, e, n, uvs[0], uvs[1], uvs[2], uvs[3]);
   const yh = y1 - y0;
+  // "unit": one image across the face (door leaf decals); "meters": tile by size
+  const q = (u1: number, v1: number): [[number, number], [number, number], [number, number], [number, number]] =>
+    uv === "unit"
+      ? [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ]
+      : [
+          [0, 0],
+          [u1, 0],
+          [u1, v1],
+          [0, v1],
+        ];
   // top, bottom: u along length, v across width
-  face(corner(0, -1, y1), corner(1, -1, y1), corner(1, 1, y1), corner(0, 1, y1), [0, 1, 0], [
-    [0, 0],
-    [l, 0],
-    [l, w],
-    [0, w],
-  ]);
-  face(corner(0, -1, y0), corner(1, -1, y0), corner(1, 1, y0), corner(0, 1, y0), [0, -1, 0], [
-    [0, 0],
-    [l, 0],
-    [l, w],
-    [0, w],
-  ]);
+  face(corner(0, -1, y1), corner(1, -1, y1), corner(1, 1, y1), corner(0, 1, y1), [0, 1, 0], q(l, w));
+  face(corner(0, -1, y0), corner(1, -1, y0), corner(1, 1, y0), corner(0, 1, y0), [0, -1, 0], q(l, w));
   // long sides: u along length, v along height
-  face(corner(0, 1, y0), corner(1, 1, y0), corner(1, 1, y1), corner(0, 1, y1), [pr[0], 0, pr[1]], [
-    [0, 0],
-    [l, 0],
-    [l, yh],
-    [0, yh],
-  ]);
-  face(corner(0, -1, y0), corner(1, -1, y0), corner(1, -1, y1), corner(0, -1, y1), [-pr[0], 0, -pr[1]], [
-    [0, 0],
-    [l, 0],
-    [l, yh],
-    [0, yh],
-  ]);
+  face(corner(0, 1, y0), corner(1, 1, y0), corner(1, 1, y1), corner(0, 1, y1), [pr[0], 0, pr[1]], q(l, yh));
+  face(corner(0, -1, y0), corner(1, -1, y0), corner(1, -1, y1), corner(0, -1, y1), [-pr[0], 0, -pr[1]], q(l, yh));
   // ends: u across width, v along height
-  face(corner(1, -1, y0), corner(1, 1, y0), corner(1, 1, y1), corner(1, -1, y1), [ax[0], 0, ax[1]], [
-    [0, 0],
-    [w, 0],
-    [w, yh],
-    [0, yh],
-  ]);
-  face(corner(0, -1, y0), corner(0, 1, y0), corner(0, 1, y1), corner(0, -1, y1), [-ax[0], 0, -ax[1]], [
-    [0, 0],
-    [w, 0],
-    [w, yh],
-    [0, yh],
-  ]);
+  face(corner(1, -1, y0), corner(1, 1, y0), corner(1, 1, y1), corner(1, -1, y1), [ax[0], 0, ax[1]], q(w, yh));
+  face(corner(0, -1, y0), corner(0, 1, y0), corner(0, 1, y1), corner(0, -1, y1), [-ax[0], 0, -ax[1]], q(w, yh));
   return mb.finish({ id, kind, material, room });
 }

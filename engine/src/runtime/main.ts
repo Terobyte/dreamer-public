@@ -24,6 +24,8 @@ import { loadGlb, loadMaps } from "./assets.js";
 import { addOutdoor } from "./outdoor.js";
 import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
+import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
+import { connectSim, createBridge, simPost } from "./bridge.js";
 
 import type { MaterialDef } from "./assets.js";
 
@@ -115,9 +117,12 @@ async function start(): Promise<void> {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  const [geo, nav] = await Promise.all([
+  const [geo, nav, built] = await Promise.all([
     fetch("geometry.json").then((r) => r.json()),
     fetch("nav.json").then((r) => r.json()),
+    fetch("build.json")
+      .then((r) => r.json())
+      .catch(() => ({})),
   ]);
 
   const scene = new Scene();
@@ -190,6 +195,52 @@ async function start(): Promise<void> {
 
   const camera = setup.camera;
   const keys = controls(renderer.domElement, Number(geo.spawn.yaw ?? 0));
+
+  // doors: the leaf mesh turns about the hinge; the door's nav cells follow
+  // its state in the same bitmap the walker reads
+  const doors = new Map<string, Door>();
+  const bitsOfLevel = (level: string): Uint8Array | undefined => all.find((a: any) => a.layer.level === level)?.bits;
+  for (const def of (built.doors ?? []) as DoorDef[]) {
+    const cells = (nav.doors ?? {})[def.id] as { level: string; cells: number[] } | undefined;
+    doors.set(
+      def.id,
+      makeDoor(def, (blocked) => {
+        const bits = cells ? bitsOfLevel(cells.level) : undefined;
+        if (bits && cells) setCells(bits, cells.cells, !blocked);
+      }),
+    );
+  }
+  const turnLeaf = (door: Door): void => {
+    const th = door.meshTurn();
+    const [ox, oz] = pivotOffset(door.def.hinge_at, th);
+    // the handle rides the leaf: same turn about the hinge, or it stays
+    // behind in the doorway while the leaf swings away
+    for (const name of [`${door.def.id}:leaf`, `${door.def.id}:handle`]) {
+      const leaf = objects.get(name) as any;
+      if (!leaf) continue;
+      leaf.rotation.y = th;
+      leaf.position.x = ox;
+      leaf.position.z = oz;
+    }
+  };
+  const sim = params.get("sim");
+  const bridge = createBridge(
+    { door: (id) => doors.get(id) ?? null },
+    {
+      post: sim ? simPost(sim) : () => undefined,
+      warn: (m) => console.warn(`bridge: ${m}`),
+    },
+  );
+  if (sim) connectSim(sim, bridge, (m) => console.warn(`bridge: ${m}`));
+  let touching: string | null = null;
+  addEventListener("keydown", (e) => {
+    if (sim || e.code !== "KeyE") return;
+    // debug without a sim: E flips the door in front of the player
+    const p = walker.pos();
+    const id = touchTarget([...doors.values()], [p[0], p[2]], keys.yaw(), keys.pitch(), p[1]);
+    const d = id ? doors.get(id) : undefined;
+    if (d) d.state() === "open" ? d.close() : d.open();
+  });
   const walking = setup.mode === "walk";
   if (setup.error) {
     console.error(setup.error);
@@ -208,10 +259,22 @@ async function start(): Promise<void> {
   const frame = (now: number): void => {
     const dt = Math.min((now - last) / 1000, 0.1);
     last = now;
+    for (const d of doors.values()) {
+      d.update(dt);
+      turnLeaf(d);
+    }
     if (walking) {
       const [dx, dz] = keys.dir(keys.yaw(), dt);
       if (dx !== 0 || dz !== 0) walker.tryMove(dx, dz);
       syncCamera();
+      // touch is an event for the sim to decide on; the door does not move itself
+      const p = walker.pos();
+      const hit = touchTarget([...doors.values()], [p[0], p[2]], keys.yaw(), keys.pitch(), p[1]);
+      if (hit && hit !== touching) {
+        window.dispatchEvent(new CustomEvent("door_touch", { detail: { id: hit } }));
+        if (sim) bridge.touch(hit);
+      }
+      touching = hit;
     }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
@@ -243,6 +306,20 @@ async function start(): Promise<void> {
         fov: (camera as any).isPerspectiveCamera ? (camera as any).fov : 0,
       };
     },
+    door: (id: string) => {
+      const d = doors.get(id);
+      if (!d) return null;
+      return {
+        open: () => d.open(),
+        close: () => d.close(),
+        lock: () => d.lock(),
+        unlock: () => d.unlock(),
+        state: () => d.state(),
+        angle: () => d.angle(),
+        sweepDeg: () => d.sweepDeg(),
+      };
+    },
+    look: (yaw: number): void => keys.setYaw(yaw),
     meshCount: (): number => meshTotal,
     inspect: (
       id: string,

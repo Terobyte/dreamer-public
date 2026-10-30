@@ -43,6 +43,26 @@ function isWalkThrough(g: OpeningGeo): boolean {
   return g.leafOpen !== false && g.sill <= STEP_MAX && g.sill + g.height >= CAPSULE_H;
 }
 
+/**
+ * `scene` follows each leaf's `open`; `open` / `closed` force every door that
+ * has a leaf, which is how the runtime masks are made.
+ */
+type DoorMode = "scene" | "open" | "closed";
+
+/** Ids of the doors the page can move: a door opening with a `leaf`. */
+function leafDoorIds(ctx: Ctx): Set<string> {
+  const out = new Set<string>();
+  for (const o of ((ctx.scene as any).openings ?? []) as any[]) {
+    if (o?.kind === "door" && o.leaf) out.add(String(o.id));
+  }
+  return out;
+}
+
+function passes(g: OpeningGeo, mode: DoorMode, leafed: Set<string>): boolean {
+  if (mode === "scene" || !leafed.has(g.id)) return isWalkThrough(g);
+  return mode === "open" && g.sill <= STEP_MAX && g.sill + g.height >= CAPSULE_H;
+}
+
 /** Horizontal crossings of a set of polygons with the line z = const. */
 function crossings(polys: V2[][], z: number): Array<{ x: number; dir: number }> {
   const out: Array<{ x: number; dir: number }> = [];
@@ -153,7 +173,7 @@ interface Obstacles {
   body: V2[][];
 }
 
-function obstaclesOf(ctx: Ctx, level: string, base: number): Obstacles {
+function obstaclesOf(ctx: Ctx, level: string, base: number, mode: DoorMode = "scene"): Obstacles {
   const rooms = ((ctx.rooms ?? []) as RoomRec[]).filter((r) => r.level === level);
   const rawById = new Map<string, any>((((ctx.scene as any).rooms ?? []) as any[]).map((r) => [String(r.id), r]));
   const openings = ((ctx.openings ?? []) as OpeningGeo[]).filter((g) => !g.error && g.intervalLevel === level);
@@ -164,7 +184,8 @@ function obstaclesOf(ctx: Ctx, level: string, base: number): Obstacles {
   const plan = ctx.levels?.get(level) as any;
   let body: Path64[] = plan?.body ?? [];
   if (plan?.bodyFull) {
-    const walk = new Set(openings.filter(isWalkThrough).map((g) => g.id));
+    const leafed = leafDoorIds(ctx);
+    const walk = new Set(openings.filter((g) => passes(g, mode, leafed)).map((g) => g.id));
     const cuts = ((plan.cuts ?? []) as Array<{ id: string; paths: Path64[] }>).filter((c) => walk.has(c.id));
     body = cuts.length === 0 ? plan.bodyFull : Clipper.difference(plan.bodyFull, cuts.flatMap((c) => c.paths), FillRule.NonZero);
   }
@@ -285,7 +306,7 @@ interface Layer {
   rooms: RoomRec[];
 }
 
-function buildLayer(ctx: Ctx, level: string): Layer | null {
+function buildLayer(ctx: Ctx, level: string, mode: DoorMode = "scene"): Layer | null {
   const rooms = ((ctx.rooms ?? []) as RoomRec[]).filter((r) => r.level === level);
   if (rooms.length === 0) return null;
   const base = levelY(ctx, level);
@@ -307,7 +328,7 @@ function buildLayer(ctx: Ctx, level: string): Layer | null {
   const w = Math.round((snapUp(maxX + CELL) - x0) / CELL);
   const h = Math.round((snapUp(maxZ + CELL) - z0) / CELL);
 
-  const blocked = blockedRegion(obstaclesOf(ctx, level, base));
+  const blocked = blockedRegion(obstaclesOf(ctx, level, base, mode));
   const walk = new Uint8Array(w * h);
   const roomOf = new Int16Array(w * h).fill(-1);
   for (let j = 0; j < h; j++) {
@@ -359,19 +380,68 @@ function buildLayers(ctx: Ctx): Layer[] {
   return levels.map((l) => buildLayer(ctx, l)).filter((l): l is Layer => l !== null);
 }
 
+/**
+ * Per level with a door the page can move: the whole layer with every such
+ * door open and with every one closed, and for each door the cells that differ
+ * (a cell goes to the nearest door), so the page flips one door's cells in the
+ * bitmap without a rebuild.
+ */
+function doorMasks(ctx: Ctx, layers: Layer[]): {
+  masks: Map<string, { open: string; closed: string }>;
+  doors: Record<string, { level: string; cells: number[] }>;
+} {
+  const leafed = leafDoorIds(ctx);
+  const masks = new Map<string, { open: string; closed: string }>();
+  const doors: Record<string, { level: string; cells: number[] }> = {};
+  for (const layer of layers) {
+    const mine = ((ctx.openings ?? []) as OpeningGeo[]).filter(
+      (g) => !g.error && g.intervalLevel === layer.level && leafed.has(g.id),
+    );
+    if (mine.length === 0) continue;
+    const open = buildLayer(ctx, layer.level, "open");
+    const closed = buildLayer(ctx, layer.level, "closed");
+    if (!open || !closed) continue;
+    masks.set(layer.level, { open: packBits(open), closed: packBits(closed) });
+    for (const g of mine) doors[g.id] = { level: layer.level, cells: [] };
+    for (let n = 0; n < open.w * open.h; n++) {
+      if (!open.walk[n] || closed.walk[n]) continue;
+      const x = open.origin[0] + ((n % open.w) + 0.5) * CELL;
+      const z = open.origin[1] + (Math.floor(n / open.w) + 0.5) * CELL;
+      let best = mine[0];
+      let bd = Infinity;
+      for (const g of mine) {
+        const d = Math.hypot(g.center[0] - x, g.center[1] - z);
+        if (d < bd) {
+          bd = d;
+          best = g;
+        }
+      }
+      doors[best.id].cells.push(n);
+    }
+  }
+  return { masks, doors };
+}
+
 export function buildNav(ctx: Ctx): NavJson {
   const navs = stairNavs(ctx);
+  const layers = buildLayers(ctx);
+  const dm = doorMasks(ctx, layers);
   return {
     cell: CELL,
     capsule: { r: CAPSULE_R, h: CAPSULE_H, step_max: STEP_MAX },
-    layers: buildLayers(ctx).map((layer) => ({
-      level: layer.level,
-      y: layer.y,
-      origin: [layer.origin[0], layer.origin[1]],
-      w: layer.w,
-      h: layer.h,
-      bits: packBits(layer),
-    })),
+    layers: layers.map((layer) => {
+      const bits = packBits(layer);
+      return {
+        level: layer.level,
+        y: layer.y,
+        origin: [layer.origin[0], layer.origin[1]],
+        w: layer.w,
+        h: layer.h,
+        bits,
+        masks: dm.masks.get(layer.level) ?? { open: bits, closed: bits },
+      };
+    }),
+    doors: dm.doors,
     ramps: navs.map((n) => n.ramp),
     links: navs.map((n) => ({ from: n.fromLevel, to: n.toLevel, via: n.geo.id })),
   };
@@ -422,6 +492,18 @@ export function isWalkable(nav: NavJson, x: number, z: number, level = "L0"): bo
   if (i < 0 || j < 0 || i >= layer.w || j >= layer.h) return false;
   const n = j * layer.w + i;
   const bytes = Buffer.from(layer.bits as string, "base64");
+  return ((bytes[n >> 3] >> (n & 7)) & 1) === 1;
+}
+
+/** Like `isWalkable`, on the layer with every movable door `open` or `closed`. */
+export function isWalkableMask(nav: NavJson, x: number, z: number, mask: "open" | "closed", level = "L0"): boolean {
+  const layer = (nav.layers as any[]).find((l) => l.level === level);
+  if (!layer) return false;
+  const i = Math.floor((x - layer.origin[0]) / CELL + 1e-9);
+  const j = Math.floor((z - layer.origin[1]) / CELL + 1e-9);
+  if (i < 0 || j < 0 || i >= layer.w || j >= layer.h) return false;
+  const n = j * layer.w + i;
+  const bytes = Buffer.from(layer.masks[mask] as string, "base64");
   return ((bytes[n >> 3] >> (n & 7)) & 1) === 1;
 }
 

@@ -150,16 +150,35 @@ class ViewerHandler(BaseHTTPRequestHandler):
         pass
 
     # --- guards ----------------------------------------------------------
+    def _engine_origin(self, origin):
+        """The 3D engine page runs on another loopback port (?sim=...), so a
+        local engine origin is one of us; anything off-loopback is foreign."""
+        if not origin:
+            return False
+        u = urlparse(origin)
+        return (u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost")
+                and u.port is not None and not u.path and not u.query)
+
     def _guard(self):
         """Spec 11: only our own address; a foreign tab must not spend credits."""
         host = self.headers.get("Host", "")
         origin = self.headers.get("Origin")
         ok = host in self.viewer.allowed_hosts()
         if origin is not None:
-            ok = ok and origin in {"http://" + h for h in self.viewer.allowed_hosts()}
+            ok = ok and (origin in {"http://" + h for h in self.viewer.allowed_hosts()}
+                         or self._engine_origin(origin))
         if not ok:
             self._send(403, {"error": "forbidden"})
         return ok
+
+    def _cors(self):
+        """Echo an allowed engine origin so the page on another loopback port
+        can read SSE and POST; foreign origins never reach here (_guard)."""
+        origin = self.headers.get("Origin")
+        if origin is not None and (origin in {"http://" + h for h in self.viewer.allowed_hosts()}
+                                    or self._engine_origin(origin)):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -168,6 +187,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self._cors()
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(data)
@@ -352,6 +372,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "close")
+        self._cors()
         self.end_headers()
         self.close_connection = True
         offset, seen = 0, []
@@ -393,6 +414,26 @@ class ViewerHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
     # --- POST --------------------------------------------------------------
+    def do_OPTIONS(self):
+        """Preflight for the engine's JSON POSTs from another loopback port."""
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin")
+        if host not in self.viewer.allowed_hosts():
+            return self._send(403, {"error": "forbidden"})
+        if origin is None or not (origin in {"http://" + h for h in self.viewer.allowed_hosts()}
+                                   or self._engine_origin(origin)):
+            return self._send(403, {"error": "forbidden"})
+        if urlparse(self.path).path not in ("/say", "/event", "/pov", "/continue", "/stop", "/api/ab"):
+            return self._not_found()
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "content-type")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_POST(self):
         if not self._guard():
             return
@@ -438,6 +479,14 @@ class ViewerHandler(BaseHTTPRequestHandler):
             sim.submit("continue")
             return self._send(200, {"ok": True})
         if path == "/event":
+            # the 3D engine's door_touch (phase G2): the hero touches a door,
+            # which the sim reads as an input event naming the door
+            if body.get("type") == "touch" and body.get("object"):
+                ev = {"source": "touch", "value": str(body.get("object"))[:200]}
+                if body.get("outcome") is not None:
+                    ev["outcome"] = body.get("outcome")
+                sim.submit("event", ev)
+                return self._send(200, {"ok": True})
             if not body.get("value"):
                 return self._send(400, {"error": "value required"})
             ev = {k: body.get(k) for k in ("source", "value", "outcome") if body.get(k) is not None}

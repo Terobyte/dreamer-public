@@ -15,6 +15,7 @@ import { factOf, type PropFact } from "../props/fact.js";
 import type { Geometry } from "./geometry.js";
 import { glbTriangles } from "../assets/tris.js";
 import type { TriCount } from "../budget.js";
+import { doorDefs, type DoorJson } from "./doors.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -25,6 +26,8 @@ export interface BuildJson {
   warnings: string[];
   /** triangles of the built scene: engine geometry plus every placed model */
   tris: TriCount;
+  /** door openings with a leaf: the page turns them around `hinge_at` */
+  doors: DoorJson[];
 }
 
 /**
@@ -200,6 +203,7 @@ export async function writeDist(
     seconds: (Date.now() - opts.startedAt) / 1000,
     assets: { used: assets.used, fallback: assets.fallback, missing: assets.missing },
     props: propFacts(ctx.scene, geometry, glbSizes),
+    doors: doorDefs(ctx),
     tris: countTris(
       geometry,
       outDir,
