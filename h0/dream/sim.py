@@ -62,6 +62,7 @@ def use_scene(name="start"):
     """Pick the opening scene before a Sim is built (--scene): a name in scenes/,
     a path to a json file, or a scene dict."""
     global START, START_SCENE, START_VOICES, START_LOOKS, START_PERSONAS, START_PLACE
+    global START_VOICE_IDS
     START = _load_start(name)
     # 1.3: the hero's reason to be here is not a start value but the first event of
     # the schedule, so it reaches him the same way everything else in the world does
@@ -83,6 +84,10 @@ def use_scene(name="start"):
     START_LOOKS = {a["name"]: a["look"] for a in START["actors"] if a.get("look")}
     START_PERSONAS = {a["name"]: a["persona"] for a in START["actors"] if a.get("persona")}
     START_PLACE = START["place"]
+    # a scene written by author.py brings voices of its own: {label: Fish id}; only
+    # well-formed ids get in, a label never turns into a raw id from a reply
+    START_VOICE_IDS = {k: v for k, v in (START.get("voice_ids") or {}).items()
+                       if isinstance(v, str) and re.fullmatch(r"[0-9a-f]{32}", v)}
 
 
 use_scene("start")
@@ -1689,9 +1694,10 @@ def main(argv=None):
         dialogue = Dialogue(load_profile(profile))
         # live run: real Fish voice (wav, spec 6) and real Muse Image (spec 9);
         # media failures fall back per module, never stop the dream.
-        from voice import Voice
+        from voice import Voice, load_pool
         from images import Images
-        media = {} if args.text else {"voice": Voice(), "images": Images()}
+        media = {} if args.text else {
+            "voice": Voice(pool={**load_pool(), **START_VOICE_IDS}), "images": Images()}
     outdir, logpath = run(profile=profile, label=label, first_events=first_events,
                            fake=args.fake, speed=args.speed,
                            max_transitions=args.max_transitions, media=media,
