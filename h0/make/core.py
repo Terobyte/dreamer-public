@@ -116,11 +116,56 @@ def _run_brief(ctx):
     return 0.0
 
 
+def _run_refs(ctx):
+    """Stage `refs`: brief.json -> refs/refs.json, cues.md, <slot>/<n>.png|jpg."""
+    from . import refs as _refs
+    from .refs import fake as _fake
+    brief = json.loads((ctx.run_dir / 'brief' / 'brief.json').read_text())
+    pick = ctx.opts.get('pick') or 'first'
+    if ctx.params.get('fake'):
+        providers, loader, ask = _fake.providers(), _fake.image, _fake.vision_ask
+    else:
+        from .refs import commons, fandom, openverse, tavily
+        providers = {'commons': commons.search, 'openverse': openverse.search, 'tavily': tavily.search,
+                     'fandom': fandom.search}
+
+        def loader(url):
+            import urllib.request
+            req = urllib.request.Request(url, headers={'User-Agent': 'dreamer-make/0.6 (refs)'})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read()
+        ask = None
+        if pick == 'vision':
+            import base64
+            import sys
+            h0 = str(Path(__file__).resolve().parents[1])
+            if h0 not in sys.path:
+                sys.path.insert(0, h0)
+            from pipe2.ledger import Ledger, load_prices
+            from pipe2.spark import Spark
+            ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 64)
+            spark = Spark(_spark_transport(), ledger)
+
+            def ask(slot, images):
+                parts = [{'type': 'text', 'text': 'Pick the images that show this place; answer JSON '
+                          '{"keep": [indexes], "cues": "visible features"}. Slot: ' + slot}]
+                for c in images:
+                    mime = 'png' if c['_ext'] == 'png' else 'jpeg'
+                    b64 = base64.b64encode(c['_bytes']).decode()
+                    parts.append({'type': 'image_url', 'image_url': {'url': f'data:image/{mime};base64,{b64}'}})
+                ans = spark.ask('refs', 'refs', 0, [{'role': 'user', 'content': parts}], 'medium')
+                ctx.usd = ledger.spent
+                return json.dumps(ans.scene) if ans.valid and ans.scene is not None else '{}'
+    _refs.run_refs(brief, ctx.out, providers=providers, loader=loader, pick=pick, ask=ask)
+    (ctx.out / 'marker.txt').write_text(json.dumps({'start': time.time(), 'end': time.time()}))
+    return 0.0
+
+
 def default_stages():
     S = Stage
     return {s.id: s for s in (
         S("brief", (), 3, _run_brief, ("fake", "prompt", "book", "scene")),
-        S("refs", ("brief",), 1, _fast_stub, ("fake", "pick")),
+        S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
         S("world", ("refs",), 1, _slow_stub, ("fake", "effort", "cap")),
         S("cast", ("refs",), 1, _slow_stub, ("fake", "cap")),
         S("story", ("refs",), 1, _slow_stub, ("fake", "cap")),

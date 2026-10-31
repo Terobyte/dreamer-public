@@ -49,10 +49,10 @@
 
 Спека: «`refs` — найти и отобрать картинки», «Фейки».
 
-- [ ] провайдеры `commons`, `fandom`, `openverse`, `tavily` в `h0/make/refs/` на stdlib, один интерфейс `search(query, n)`; тесты на записанных JSON в `h0/make/testdata/refs/`
-- [ ] лицензии: Commons `CC BY-SA 4.0` → `usable_for_submission: true`, `Fair use` → `false`; fandom и tavily всегда `false`; без `TAVILY_API_KEY` tavily не вызывается
-- [ ] скачивание параллельно (фейковый загрузчик), фильтр: короткая сторона ≥ 512, PNG/JPEG по сигнатуре; WebP/SVG/GIF отброшены
-- [ ] `--pick first` детерминирован; `--pick vision` на сценарном фейке; `refs.json` со всеми кандидатами и `kept`; `cues.md`
+- [x] провайдеры `commons`, `fandom`, `openverse`, `tavily` в `h0/make/refs/` на stdlib, один интерфейс `search(query, n)`; тесты на записанных JSON в `h0/make/testdata/refs/`
+- [x] лицензии: Commons `CC BY-SA 4.0` → `usable_for_submission: true`, `Fair use` → `false`; fandom и tavily всегда `false`; без `TAVILY_API_KEY` tavily не вызывается
+- [x] скачивание параллельно (фейковый загрузчик), фильтр: короткая сторона ≥ 512, PNG/JPEG по сигнатуре; WebP/SVG/GIF отброшены
+- [x] `--pick first` детерминирован; `--pick vision` на сценарном фейке; `refs.json` со всеми кандидатами и `kept`; `cues.md`
 
 ## М3. world + story + Джейн Эйр
 

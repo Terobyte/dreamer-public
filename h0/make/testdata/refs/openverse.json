@@ -1,0 +1,4 @@
+{"results": [
+ {"url": "https://ov.example/c.png", "foreign_landing_url": "https://ov.example/c", "title": "Attic C", "width": 900, "height": 700, "license": "by", "license_version": "4.0", "license_url": "https://creativecommons.org/licenses/by/4.0", "creator": "Cy"},
+ {"url": "https://ov.example/d.jpg", "foreign_landing_url": "https://ov.example/d", "title": "Attic D", "width": 700, "height": 700, "license": "by-nc", "license_version": "2.0", "license_url": "https://creativecommons.org/licenses/by-nc/2.0", "creator": "Di"}
+]}
