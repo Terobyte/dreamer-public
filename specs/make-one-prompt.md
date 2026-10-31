@@ -68,12 +68,12 @@
 
 Спека: «`stage` — банк мест», «`play`» (часть «Сим»), «Фейки». Фикстура `h0/make/testdata/world_run/` собирается `build_world_run.sh` реальным билдом движка с `fakeGlb`/`fakePng`.
 
-- [ ] фикстура `world_run/` (2 комнаты, дверь со створкой, ≥ 5 предметов: диван, кресло, стол, лампа `on` стол, ковёр `solid:false`) и `cast/` (cast.json + 2 GLB от `fakeGlb`)
-- [ ] `places.json`: позиции из `geometry.json` (GLB: `glbYaw` радианы → градусы; плейсхолдер: центр AABB + yaw из scene.json; тест «GLB = плейсхолдер» ± 1° / ± 0.05 м), размер из `size`, диван/кресло → `sit`, `on`-лампа и ковёр без места и препятствия, копии `around`, имена с повторами, точка двери по числовому примеру, предмет без клетки nav → предупреждение
-- [ ] `h0/make/testdata/expect_touch.json` — 4 случая с заранее посчитанными числами (спека, «Фиксированные ожидания»)
-- [ ] `stage.json` по схеме спеки
-- [ ] `sim.run(plan=…)`, `no_build=True` (`start_build` → `invalid`, `reason: "no_build"`), `sim.seed_start(text, transport, objects)`; `test_phase3_seed`, `test_freestyle`, `test_book_play` и `test_bugs_*` зелёные без правок
-- [ ] `h0/make/play.py --fake` в `book` и `seed` (и `book --freestyle`) пишет `log.jsonl` по критерию сквозного теста; `duo.py` не изменён
+- [x] фикстура `world_run/` (2 комнаты, дверь со створкой, ≥ 5 предметов: диван, кресло, стол, лампа `on` стол, ковёр `solid:false`) и `cast/` (cast.json + 2 GLB от `fakeGlb`)
+- [x] `places.json`: позиции из `geometry.json` (GLB: `glbYaw` радианы → градусы; плейсхолдер: центр AABB + yaw из scene.json; тест «GLB = плейсхолдер» ± 1° / ± 0.05 м), размер из `size`, диван/кресло → `sit`, `on`-лампа и ковёр без места и препятствия, копии `around`, имена с повторами, точка двери по числовому примеру, предмет без клетки nav → предупреждение
+- [x] `h0/make/testdata/expect_touch.json` — 4 случая с заранее посчитанными числами (спека, «Фиксированные ожидания»)
+- [x] `stage.json` по схеме спеки
+- [x] `sim.run(plan=…)`, `no_build=True` (`start_build` → `invalid`, `reason: "no_build"`), `sim.seed_start(text, transport, objects)`; `test_phase3_seed`, `test_freestyle`, `test_book_play` и `test_bugs_*` зелёные без правок
+- [x] `h0/make/play.py --fake` в `book` и `seed` (и `book --freestyle`) пишет `log.jsonl` по критерию сквозного теста; `duo.py` не изменён
 
 ## М5. Сцена в рантайме движка
 

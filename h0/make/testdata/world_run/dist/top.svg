@@ -1,52 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-180 -244 360 744" width="360" height="744">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 460 240" width="460" height="240">
 <g class="floors" fill="#e8e4d8" stroke="#b0aca0" stroke-width="0.5">
-<polygon class="floor" data-id="living" points="-160,160 -160,-160 -152.756,-166.612 -145.24,-172.913 -137.463,-178.89 -129.442,-184.533 -121.188,-189.832 -112.719,-194.777 -104.047,-199.36 -95.19,-203.572 -86.163,-207.407 -76.981,-210.856 -67.662,-213.914 -58.223,-216.575 -48.679,-218.836 -39.048,-220.69 -29.347,-222.136 -19.594,-223.171 -9.806,-223.793 0,-224 9.806,-223.793 19.594,-223.171 29.347,-222.136 39.048,-220.69 48.679,-218.836 58.223,-216.575 67.662,-213.914 76.981,-210.856 86.163,-207.407 95.19,-203.572 104.047,-199.36 112.719,-194.777 121.188,-189.832 129.442,-184.533 137.463,-178.89 145.24,-172.913 152.756,-166.612 160,-160 160,160"/>
-<polygon class="floor" data-id="hall" points="-80,160 80,160 80,480 -80,480"/>
+<polygon class="floor" data-id="living" points="0,200 0,0 240,0 240,200"/>
+<polygon class="floor" data-id="kitchen" points="240,200 240,0 420,0 420,200"/>
 </g>
 <g class="body" fill="#6b6b60" stroke="none">
-<path class="body" data-id="L0.wall" fill-rule="nonzero" d="M-32,-219.4 L-32,-219.28 L-38.6,-218.32 L-48.24,-216.48 L-57.6,-214.24 L-67.04,-211.6 L-76.24,-208.56 L-85.32,-205.16 L-94.16,-201.4 L-103,-197.2 L-111.52,-192.68 L-120,-187.76 L-128.12,-182.52 L-136,-176.96 L-143.76,-171 L-151.2,-164.76 L-157.6,-158.96 L-157.6,157.6 L-82.4,157.6 L-77.6,157.6 L-18,157.6 L-18,162.4 L-77.6,162.4 L-77.6,477.6 L77.6,477.6 L77.6,162.4 L18,162.4 L18,157.6 L82.4,157.6 L157.6,157.6 L157.6,-158.96 L151.2,-164.76 L143.76,-171 L136,-176.96 L128.12,-182.52 L120,-187.76 L111.52,-192.68 L103,-197.2 L94.16,-201.4 L85.32,-205.16 L76.24,-208.56 L67.04,-211.6 L57.6,-214.24 L48.24,-216.48 L38.6,-218.32 L32,-219.28 L32,-224.16 L39.44,-223.04 L49.2,-221.2 L58.84,-218.88 L68.4,-216.2 L77.8,-213.12 L87.04,-209.64 L96.2,-205.76 L105.12,-201.52 L113.88,-196.84 L122.44,-191.88 L130.8,-186.52 L138.92,-180.8 L146.76,-174.8 L154.36,-168.4 L162.4,-161.04 L162.4,162.4 L82.4,162.4 L82.4,482.4 L-82.4,482.4 L-82.4,162.4 L-162.4,162.4 L-162.4,-161.04 L-154.36,-168.4 L-146.76,-174.8 L-138.92,-180.8 L-130.8,-186.52 L-122.44,-191.88 L-113.88,-196.84 L-105.12,-201.52 L-96.2,-205.76 L-87.04,-209.64 L-77.8,-213.12 L-68.4,-216.2 L-58.84,-218.88 L-49.2,-221.2 L-39.44,-223.04 L-32,-224.16 Z"/>
+<path class="body" data-id="L0.wall" fill-rule="nonzero" d="M422.4,202.4 L242.4,202.4 L237.6,202.4 L-2.4,202.4 L-2.4,-2.4 L242.4,-2.4 L422.4,-2.4 Z M2.4,197.6 L237.6,197.6 L237.6,118 L242.4,118 L242.4,197.6 L417.6,197.6 L417.6,2.4 L242.4,2.4 L242.4,82 L237.6,82 L237.6,2.4 L2.4,2.4 Z"/>
 </g>
 <g class="openings" fill="none" stroke="#2b7fd4" stroke-width="1">
-<polygon class="corridor" data-id="front" points="-18,192 18,192 18,128 -18,128"/>
-<polygon class="sector" data-id="front" points="18,157.6 -18,157.6 -17.803,153.837 -17.213,150.115 -16.238,146.475 -14.888,142.957 -13.177,139.6 -11.125,136.44 -8.753,133.511 -6.089,130.847 -3.16,128.475 0,126.423 3.357,124.712 6.875,123.362 10.515,122.387 14.237,121.797 18,121.6"/>
-<polygon class="corridor" data-id="sea" points="32,-253.783 -32,-253.783 -32,-189.783 32,-189.783"/>
+<polygon class="corridor" data-id="door1" points="272,118 272,82 208,82 208,118"/>
+<polygon class="sector" data-id="door1" points="242.4,118 242.4,82 246.163,82.197 249.885,82.787 253.525,83.762 257.043,85.112 260.4,86.823 263.56,88.875 266.489,91.247 269.153,93.911 271.525,96.84 273.577,100 275.288,103.357 276.638,106.875 277.613,110.515 278.203,114.237 278.4,118"/>
 </g>
 <g class="props" fill="none" stroke="#b03a2e" stroke-width="1">
-<polygon class="prop" data-id="table" points="-22,-22 22,-22 22,22 -22,22"/>
-<polygon class="prop" data-id="chairs.0" points="10,46 -10,46 -10,26 10,26"/>
-<polygon class="prop" data-id="chairs.1" points="46,-10 46,10 26,10 26,-10"/>
-<polygon class="prop" data-id="chairs.2" points="-10,-46 10,-46 10,-26 -10,-26"/>
-<polygon class="prop" data-id="chairs.3" points="-46,10 -46,-10 -26,-10 -26,10"/>
-<polygon class="prop" data-id="sofa" points="-156,100 -156,20 -120,20 -120,100"/>
-<polygon class="prop" data-id="vase" points="-5,-5 5,-5 5,5 -5,5"/>
-<polygon class="prop" data-id="lamp" points="-10,-70 10,-70 10,-50 -10,-50"/>
+<polygon class="prop" data-id="living_sofa" points="62,196 62,116 98,116 98,196"/>
+<polygon class="prop" data-id="living_armchair" points="186,178 150,178 150,142 186,142"/>
+<polygon class="prop" data-id="living_rug" points="60,52 140,52 140,108 60,108"/>
+<polygon class="prop" data-id="kitchen_table" points="292,82 348,82 348,118 292,118"/>
+<polygon class="prop" data-id="kitchen_lamp" points="315,95 325,95 325,105 315,105"/>
+<polygon class="prop" data-id="kitchen_stool.0" points="328,144 312,144 312,128 328,128"/>
+<polygon class="prop" data-id="kitchen_stool.1" points="312,56 328,56 328,72 312,72"/>
 </g>
 <g class="decals" stroke="#7b2fbe" stroke-width="2">
-<line class="decal" data-id="decal.0" x1="156.8" y1="-52" x2="156.8" y2="-76"/>
 </g>
 <g class="cameras" fill="#1d7a46" stroke="none">
-<circle class="camera" data-id="door" cx="0" cy="184" r="4"/>
+<circle class="camera" data-id="door" cx="40" cy="40" r="4"/>
 </g>
 <g class="labels" font-family="monospace" font-size="10" fill="#202020">
-<text class="room" data-id="living" x="0" y="-182.557">living</text>
-<text class="room" data-id="hall" x="0" y="320">hall</text>
-<text class="edge" data-id="living#0" x="-146" y="0">living#0</text>
-<text class="edge" data-id="living#1" x="0" y="-210">living#1</text>
-<text class="edge" data-id="living#2" x="146" y="0">living#2</text>
-<text class="edge" data-id="living#3" x="0" y="146">living#3</text>
-<text class="edge" data-id="hall#0" x="0" y="174">hall#0</text>
-<text class="edge" data-id="hall#1" x="66" y="320">hall#1</text>
-<text class="edge" data-id="hall#2" x="0" y="466">hall#2</text>
-<text class="edge" data-id="hall#3" x="-66" y="320">hall#3</text>
-<text class="opening" data-id="front" x="0" y="160">front</text>
-<text class="opening" data-id="sea" x="0" y="-224">sea</text>
-<text class="prop" data-id="table" x="0" y="0">table</text>
-<text class="prop" data-id="chairs.0" x="0" y="36">chairs.0</text>
-<text class="prop" data-id="chairs.1" x="36" y="0">chairs.1</text>
-<text class="prop" data-id="chairs.2" x="0" y="-36">chairs.2</text>
-<text class="prop" data-id="chairs.3" x="-36" y="0">chairs.3</text>
-<text class="prop" data-id="sofa" x="-138" y="60">sofa</text>
-<text class="prop" data-id="vase" x="0" y="0">vase</text>
-<text class="prop" data-id="lamp" x="0" y="-60">lamp</text>
+<text class="room" data-id="living" x="120" y="100">living</text>
+<text class="room" data-id="kitchen" x="330" y="100">kitchen</text>
+<text class="edge" data-id="living#0" x="14" y="100">living#0</text>
+<text class="edge" data-id="living#1" x="120" y="14">living#1</text>
+<text class="edge" data-id="living#2" x="226" y="100">living#2</text>
+<text class="edge" data-id="living#3" x="120" y="186">living#3</text>
+<text class="edge" data-id="kitchen#0" x="254" y="100">kitchen#0</text>
+<text class="edge" data-id="kitchen#1" x="330" y="14">kitchen#1</text>
+<text class="edge" data-id="kitchen#2" x="406" y="100">kitchen#2</text>
+<text class="edge" data-id="kitchen#3" x="330" y="186">kitchen#3</text>
+<text class="opening" data-id="door1" x="240" y="100">door1</text>
+<text class="prop" data-id="living_sofa" x="80" y="156">living_sofa</text>
+<text class="prop" data-id="living_armchair" x="168" y="160">living_armchair</text>
+<text class="prop" data-id="living_rug" x="100" y="80">living_rug</text>
+<text class="prop" data-id="kitchen_table" x="320" y="100">kitchen_table</text>
+<text class="prop" data-id="kitchen_lamp" x="320" y="100">kitchen_lamp</text>
+<text class="prop" data-id="kitchen_stool.0" x="320" y="136">kitchen_stool.0</text>
+<text class="prop" data-id="kitchen_stool.1" x="320" y="64">kitchen_stool.1</text>
 </g>
 </svg>

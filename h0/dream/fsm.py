@@ -190,7 +190,8 @@ def check_messages(d, actors):
 
 class BuildFSM:
     def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None, actors=(),
-                 hero=None):
+                 hero=None, no_build=False):
+        self.no_build = no_build  # make/play.py: one world, the dream never leaves it
         p = dict(DEFAULTS, **(params or {}))
         self.p = {k: (tuple(x / speed for x in v) if isinstance(v, tuple) else v / speed)
                   for k, v in p.items()}
@@ -225,6 +226,8 @@ class BuildFSM:
         self.consult_requested = False
 
     def start_build(self, now, bridge, destination, next_scene=None, hero_next=None):
+        if self.no_build:
+            return [self._e(now, "invalid", fields=["start_build"], reason="no_build")]
         self.state = "building"
         self.build_epoch += 1
         self.bridge, self.destination = bridge, destination

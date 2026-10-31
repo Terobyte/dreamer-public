@@ -55,6 +55,10 @@ def run_stage(ctx):
             pass
     elif (rd / "story" / "seed.txt").is_file():
         sj["seed"] = (rd / "story" / "seed.txt").read_text().strip()
+    if (rd / "world" / "run" / "dist" / "geometry.json").is_file():
+        from . import stage as _stage
+        extra = _stage.write_stage(rd, ctx.out, brief=brief, freestyle=sj["freestyle"])
+        sj.update({k: extra[k] for k in ("objects", "voices", "start")})
     (ctx.out / "stage.json").write_text(json.dumps(sj, ensure_ascii=False, indent=2))
     (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time()}))
     return 0.0

@@ -236,7 +236,7 @@ class Sim:
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
                  max_dollars=20.0, dialogue=None, first_events=(), book=None,
-                 hero_owner=None):
+                 hero_owner=None, no_build=False):
         self.profile = profile
         self.book = None  # K2: the score being played (see _book_step)
         self._book_hold_until = -1e9
@@ -339,7 +339,7 @@ class Sim:
         self._load_goals(emit=False)
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
                              now=self.clock.now(), params=fsm_params,
-                             actors=list(self.actors), hero=self.hero)
+                             actors=list(self.actors), hero=self.hero, no_build=no_build)
         self.script = script if script is not None else _scripted_decisions(profile, 8)
         self.outdir = outdir
         if outdir:
@@ -1839,15 +1839,17 @@ class Sim:
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
         label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
-        freestyle=False):
-    """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
+        freestyle=False, plan=None, no_build=False):
+    """plan: a ready book plan (make/play.py), run() does not load the book itself;
+    no_build: the world is one, the director may not send the dream anywhere else.
+    serve=port (0 = any) starts the comic viewer on the live run (spec 11);
     the dream then goes on until "stop", the budget or a wake_up.
     max_seconds=None: 90 s, or long enough for one full build (420/speed + 120);
     an explicit value is kept as given (the bench passes 67.5)."""
     random.seed(seed)
-    plan = None
-    if book is not None:
+    if plan is None and book is not None:
         plan = _load_book_plan(book, scenes, score)
+    if plan is not None:
         use_scene(plan["scenes"][0]["dict"])
         profile, label = None, label or "book"
     # 3.3: a seeded dream has no profile, so the run folder is named by `label`
@@ -1876,7 +1878,7 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
              max_dollars=max_dollars, dialogue=dialogue,
              first_events=first_events, book=plan, hero_owner=hero_owner,
-             script=[] if plan is not None else None) as sim:
+             no_build=no_build, script=[] if plan is not None else None) as sim:
         viewer = None
         if serve is not None:
             from server import Viewer
@@ -2068,23 +2070,33 @@ def _verify_book_rows(rows):
 SEED_TRANSPORT = None  # 3.3: tests patch this; None means the real transport
 
 
-def _seed_first_scene(text, transport):
+def seed_start(text, transport, objects=None):
     """3.3: ask the director for the opening scene and make it the start scene.
-    -> the row that goes first into the log, or None when the director failed."""
+    -> (scene_dict, [the row that goes first into the log]); ValueError when the director
+    failed. `objects` (make/play.py: the places of the built world) replace the director's."""
     decision = seed_scene(text, transport)
     if decision is None:
-        return None
+        raise ValueError("seed: director failed")
     ns = decision["next_scene"]
     place = str(decision.get("destination") or "").strip()
     if not place:  # guarded by seed_scene, never silently "somewhere"
-        return None
+        raise ValueError("seed: director gave no place")
     # a seeded scene starts bare: no schedule, the director fills it on the first
     # consult (3.1a/1.3), so `events` stays empty here
-    use_scene({"place": place, "objects": list(ns["objects"]),
-               "actors": list(ns["actors"]), "events": [],
-               "goals": list(ns.get("goals") or [])})
-    return {"type": "consult", "label": "seed", "text": text, "place": place,
-            "why": decision.get("why")}
+    scene = {"place": place, "objects": list(ns["objects"] if objects is None else objects),
+             "actors": list(ns["actors"]), "events": [],
+             "goals": list(ns.get("goals") or [])}
+    use_scene(scene)
+    return scene, [{"type": "consult", "label": "seed", "text": text, "place": place,
+                    "why": decision.get("why")}]
+
+
+def _seed_first_scene(text, transport):
+    """-> the row that goes first into the log, or None when the director failed."""
+    try:
+        return seed_start(text, transport)[1][0]
+    except ValueError:
+        return None
 
 
 def main(argv=None):
