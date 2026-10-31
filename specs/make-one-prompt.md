@@ -29,13 +29,13 @@
 
 Пакет `make` в `h0/make/` (`cd h0 && python3 -m make`), стадии — заглушки, пишущие файл-маркер. Спека: «Принципы», «DAG», «Манифест, хэш, публикация», «Деньги», «Папка прогона», «CLI».
 
-- [ ] `make.json`, `input_hash` по формуле спеки (`stage, version, params, inputs`), пропуск при совпадении, перезапуск при изменении входного файла, `STAGE_VERSION` или `params` (в т.ч. `--fake`)
-- [ ] падение стадии → `<stage>.tmp/` и `status: failed`, повтор удаляет `.tmp/` (кроме `world`: остаётся для `--resume`); `--from X` перезапускает X и потомков, предков не трогает; `--fresh`
-- [ ] `--only stage` без `world/` → `missing input: world/…`, ничего не запущено
-- [ ] три заглушки `world`/`cast`/`story` по 0.3 с пересекаются по времени (параллельно)
-- [ ] лок `.lock` (O_EXCL + pid): второй процесс → ошибка; лок мёртвого pid снимается
-- [ ] `--max-dollars` + `--split`: фиксированные доли, стоп новых стадий при сумме трат ≥ D (`failed`, причина `budget`)
-- [ ] `runs/` в `.gitignore`; `!h0/make/testdata/**/dist/` исключение
+- [x] `make.json`, `input_hash` по формуле спеки (`stage, version, params, inputs`), пропуск при совпадении, перезапуск при изменении входного файла, `STAGE_VERSION` или `params` (в т.ч. `--fake`)
+- [x] падение стадии → `<stage>.tmp/` и `status: failed`, повтор удаляет `.tmp/` (кроме `world`: остаётся для `--resume`); `--from X` перезапускает X и потомков, предков не трогает; `--fresh`
+- [x] `--only stage` без `world/` → `missing input: world/…`, ничего не запущено
+- [x] три заглушки `world`/`cast`/`story` по 0.3 с пересекаются по времени (параллельно)
+- [x] лок `.lock` (O_EXCL + pid): второй процесс → ошибка; лок мёртвого pid снимается
+- [x] `--max-dollars` + `--split`: фиксированные доли, стоп новых стадий при сумме трат ≥ D (`failed`, причина `budget`)
+- [x] `runs/` в `.gitignore`; `!h0/make/testdata/**/dist/` исключение
 
 ## М1. brief
 

@@ -29,3 +29,7 @@ h0/out/dream/
 
 # squid_live tts cache (regenerable)
 h0/squid_live/cache/
+
+# make runs
+runs/
+!h0/make/testdata/**/dist/
