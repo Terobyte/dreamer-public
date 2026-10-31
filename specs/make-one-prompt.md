@@ -79,12 +79,12 @@
 
 Спека: «Сцена в рантайме движка», «Контракт `touch`», «Проверки».
 
-- [ ] `engine/src/runtime/stage/places.ts` (`resolveTouch`, `stageRegex`) — vitest на 4 случаях `expect_touch.json`, числа из файла, не из `resolveTouch`
-- [ ] `path.ts` (BFS по `nav.json` с дверями и `obstacle`), `camera.ts` (в контуре комнаты с отступом 0.3, ниже `height − 0.3`) — vitest
-- [ ] `actors.ts` (GLB, рост по `height_m`, процедурная ходьба/кивок, `sit` = −0.45 м), `subs.ts` (строки `line`/`narrator`, `Audio` по `r.audio`)
-- [ ] книга → фристайл в режиме сцены как в `duo.html`: кнопка «⚡ Фристайл [G]» шлёт `POST <sim>/freestyle`, событие `mode: freestyle` переключает её, `story` — бегущая строка; без `?stage=` кнопки нет
-- [ ] мост: `createBridge` получает обработчики `line`, `narrator`, `touch`, `mode`, `story`; прочие — как сейчас
-- [ ] браузерный тест в `engine/test/browser/` по спеке (фейковый SSE из `log.jsonl`, 4 случая, актёр ≤ 0.3 м / ± 10°, камера внутри комнаты); без `?stage=` прежние браузерные тесты зелёные
+- [x] `engine/src/runtime/stage/places.ts` (`resolveTouch`, `stageRegex`) — vitest на 4 случаях `expect_touch.json`, числа из файла, не из `resolveTouch`
+- [x] `path.ts` (BFS по `nav.json` с дверями и `obstacle`), `camera.ts` (в контуре комнаты с отступом 0.3, ниже `height − 0.3`) — vitest
+- [x] `actors.ts` (GLB, рост по `height_m`, процедурная ходьба/кивок, `sit` = −0.45 м), `subs.ts` (строки `line`/`narrator`, `Audio` по `r.audio`)
+- [x] книга → фристайл в режиме сцены как в `duo.html`: кнопка «⚡ Фристайл [G]» шлёт `POST <sim>/freestyle`, событие `mode: freestyle` переключает её, `story` — бегущая строка; без `?stage=` кнопки нет
+- [x] мост: `createBridge` получает обработчики `line`, `narrator`, `touch`, `mode`, `story`; прочие — как сейчас
+- [x] браузерный тест в `engine/test/browser/` по спеке (фейковый SSE из `log.jsonl`, 4 случая, актёр ≤ 0.3 м / ± 10°, камера внутри комнаты); без `?stage=` прежние браузерные тесты зелёные
 
 ## М6. cast путь A + сквозной `--fake`
 

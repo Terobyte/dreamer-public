@@ -20,12 +20,31 @@ export interface Bridge {
   touch(id: string): void;
 }
 
-export function createBridge(engine: BridgeEngine, io: BridgeIO): Bridge {
+/** Stage mode (`?stage=`): the sim's lines, remarks, touches, mode switch and story pieces. */
+export type StageEvent = { type: string; [k: string]: unknown };
+export interface StageHandlers {
+  line?(e: StageEvent): void;
+  narrator?(e: StageEvent): void;
+  touch?(e: StageEvent): void;
+  mode?(e: StageEvent): void;
+  story?(e: StageEvent): void;
+}
+const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story"] as const;
+/** the sim's own names for what the stage calls `mode` / `story` (snapshot carries the mode; schedule and story events the pieces) */
+const ALIAS: Record<string, (typeof STAGE_TYPES)[number]> = { snapshot: "mode", schedule: "story", event: "story" };
+
+export function createBridge(engine: BridgeEngine, io: BridgeIO, stage: StageHandlers = {}): Bridge {
   return {
     handle(ev: unknown): void {
       const e = ev as { type?: unknown; object?: unknown; state?: unknown } | null;
       if (!e || typeof e !== "object" || typeof e.type !== "string") {
         io.warn(`sim event without a type: ${JSON.stringify(ev)}`);
+        return;
+      }
+      const key = ALIAS[e.type] ?? e.type;
+      const h = (STAGE_TYPES as readonly string[]).includes(key) ? stage[key as (typeof STAGE_TYPES)[number]] : undefined;
+      if (h) {
+        h(e as StageEvent);
         return;
       }
       if (e.type !== "door") {

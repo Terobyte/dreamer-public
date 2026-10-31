@@ -13,3 +13,8 @@
 Гейт зелёный (vitest 44/44 файлов, 489 тестов), make-тесты OK. Открыто 2 находки судьи:
 - Фикстура `h0/make/testdata/world_run`: `scene.json` (living/kitchen, door1, sofa/armchair/fireplace…) и `dist/` (сборка `demo-flat.scene.json`: living/hall, front, table/chairs…) — два разных мира. `--fake` отдаёт их вместе, следующие стадии получают несогласованные scene/geometry/nav. Чинить: `build_world_run.sh` должен собирать `dist/` из того же `scene.json`, который пишет (или копировать demo-flat в scene.json).
 - `world.build_task_md` вставляет `brief.style` как есть, и стиль-бренд («Studio Ghibli») попадает в TASK.md, хотя ниже запрещены названия брендов. Чинить в brief: style — только визуальные признаки (валидатор/инструкция Spark), либо фильтр в `build_task_md`.
+
+## М5 (фаза 6, ship на фьюзе после 8 раундов)
+
+- Единственная открытая находка судьи раунда 8 (`floorAt` выбирал комнату по AABB контура: L-комната «съедала» комнату в своей впадине) починена хозяином: `engine/src/runtime/stage/places.ts` теперь решает по `pointInPoly` контура, AABB — только запасной вариант для точки ровно на линии стены; регрессия `engine/test/stage-floor-notch.test.ts`. Engine vitest без `bugs-*`: 56/56 файлов, 528 тестов.
+- Долга по М5 не осталось. Замечено попутно (не М5): `npx tsc --noEmit` в engine красный на старом коде (`build/write.ts`, `runtime/assets.ts`, `test/doors.test.ts`) — гейт tsc не гоняет.

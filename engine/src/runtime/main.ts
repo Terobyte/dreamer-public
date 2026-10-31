@@ -25,7 +25,8 @@ import { addOutdoor } from "./outdoor.js";
 import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
-import { connectSim, createBridge, simPost } from "./bridge.js";
+import { connectSim, createBridge, simPost, type StageHandlers } from "./bridge.js";
+import { startStage, type Stage } from "./stage/index.js";
 
 import type { MaterialDef } from "./assets.js";
 
@@ -224,13 +225,33 @@ async function start(): Promise<void> {
     }
   };
   const sim = params.get("sim");
+  // `?stage=` turns the page into a stage: the cast plays, the camera is directed, the player does not walk
+  const stageHandlers: StageHandlers = {};
   const bridge = createBridge(
     { door: (id) => doors.get(id) ?? null },
     {
       post: sim ? simPost(sim) : () => undefined,
       warn: (m) => console.warn(`bridge: ${m}`),
     },
+    stageHandlers,
   );
+  const stageUrl = params.get("stage");
+  let stage: Stage | null = null;
+  if (stageUrl) {
+    stage = await startStage({
+      scene,
+      camera: setup.camera as any,
+      stageUrl,
+      sim,
+      geo,
+      nav,
+      layers: all,
+      doorOpen: (id) => doors.get(id)?.state() === "open",
+    });
+    Object.assign(stageHandlers, stage.handlers);
+    // place the directed camera before the first render: the first frame is already inside the room (F36)
+    stage.update(0, performance.now() / 1000);
+  }
   if (sim) connectSim(sim, bridge, (m) => console.warn(`bridge: ${m}`));
   let touching: string | null = null;
   addEventListener("keydown", (e) => {
@@ -241,7 +262,7 @@ async function start(): Promise<void> {
     const d = id ? doors.get(id) : undefined;
     if (d) d.state() === "open" ? d.close() : d.open();
   });
-  const walking = setup.mode === "walk";
+  const walking = setup.mode === "walk" && !stage;
   if (setup.error) {
     console.error(setup.error);
     say(setup.error);
@@ -267,6 +288,7 @@ async function start(): Promise<void> {
       d.update(real);
       turnLeaf(d);
     }
+    stage?.update(dt, now / 1000);
     if (walking) {
       const [dx, dz] = keys.dir(keys.yaw(), dt);
       if (dx !== 0 || dz !== 0) walker.tryMove(dx, dz);
@@ -324,6 +346,7 @@ async function start(): Promise<void> {
       };
     },
     look: (yaw: number): void => keys.setYaw(yaw),
+    stage: stage ? stage.api : null,
     meshCount: (): number => meshTotal,
     inspect: (
       id: string,

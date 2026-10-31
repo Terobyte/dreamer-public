@@ -3,8 +3,8 @@
   "actors_start": {"Edward Rochester": [5.0, 2.0], "Jane Eyre": [3.0, 2.0]},
   "cases": [
     {"n": 1, "who": "Edward Rochester", "line": "[[TOUCH:armchair]]", "place": "armchair", "target": [4.22, 3.26], "yaw": 180, "act": "sit"},
-    {"n": 2, "who": "Jane Eyre", "line": "[[TOUCH:armchair]]", "place": "armchair", "target": [3.42, 3.26], "act": "idle", "holder": "Edward Rochester"},
-    {"n": 3, "narrator": "Mr. Rochester rose and went to the window", "who": "Edward Rochester", "place": "window"},
+    {"n": 2, "who": "Jane Eyre", "line": "[[TOUCH:armchair]]", "place": "armchair", "target": [3.42, 3.26], "yaw": 180, "act": "idle", "holder": "Edward Rochester"},
+    {"n": 3, "narrator": "Mr. Rochester rose and went to the window", "who": "Edward Rochester", "place": "window", "target": [2.0, 1.0], "yaw": 180},
     {"n": 4, "who": "Jane Eyre", "line": "[[TOUCH:piano]]", "skip": "unknown", "moved": false}
   ]
 }
