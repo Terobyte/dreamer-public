@@ -165,5 +165,10 @@ class TestBudgetSpent(Base):
         del orig_put
 
 
+
+from make.testkit import offline_spark_module  # noqa: E402
+offline_spark_module(globals())
+
 if __name__ == "__main__":
     unittest.main()
+

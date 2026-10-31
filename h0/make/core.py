@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
+OPTIONAL_PARAMS = {"book", "scene"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -62,10 +63,63 @@ def _fast_stub(ctx):
     return 0.0
 
 
+def _seed_brief(prompt):
+    """Minimal valid seed brief from the prompt (offline; live Spark wiring is 11-01)."""
+    title = (prompt or 'untitled').strip().splitlines()[0][:80] if (prompt or '').strip() else 'untitled'
+    want = (prompt or '').strip() or 'look around'
+    return {'title': title, 'mode': 'seed', 'book': None, 'style': 'warm gouache',
+            'places': [{'id': 'room1', 'type': 'room', 'size_m': [5, 4], 'level': 0, 'next_to': [],
+                        'query': title, 'provider_hint': 'commons', 'fandom_wiki': None}],
+            'cast': [{'who': 'Anna', 'sex': 'female', 'age': 'adult', 'look': 'tall',
+                      'voice': 'woman', 'query': 'woman'}],
+            'scene': {'where': 'room1', 'who': ['Anna'], 'want': want}}
+
+
+def _spark_transport():
+    """Live Spark transport (pipe2). Tests patch this; nothing here reads the key."""
+    from pipe2.spark import HttpTransport
+    return HttpTransport()
+
+
+def _run_brief(ctx):
+    """Stage `brief`: prompt (+ book scene) -> brief/brief.json. One Spark call via pipe2 in
+    JSON mode, checked against make/schema/brief.json; scripted Spark when --fake."""
+    from . import brief as _brief
+    prompt = (ctx.opts.get('prompt') or '').strip()
+    if not prompt:
+        raise _brief.BriefFailed('brief needs a prompt (make.json.prompt is empty)')
+    book, scene = ctx.opts.get('book'), ctx.opts.get('scene')
+    if bool(book) != bool(scene):
+        raise _brief.BriefFailed('--book and --scene go together')
+    note = _brief.book_context(book, scene) if book else None
+    expect = {'dir': str(book), 'scene': scene} if book else None
+    if ctx.params.get('fake'):
+        seed = _brief.seed_from_book(prompt, book, scene) if book else _seed_brief(prompt)
+        b = _brief.make_brief(prompt, _brief.ScenarioBrief([json.dumps(seed)]), note, expect)
+    else:
+        import sys
+        h0 = str(Path(__file__).resolve().parents[1])
+        if h0 not in sys.path:
+            sys.path.insert(0, h0)
+        from pipe2.ledger import Ledger, load_prices
+        from pipe2.spark import Spark
+        # two calls max (answer + one retry); the stage share is enforced by run_make after the
+        # fact - Spark's worst-case reserve (64k out tokens) is bigger than 2 % of a small budget
+        ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 2)
+        ask = _brief.spark_ask(Spark(_spark_transport(), ledger), ctx.opts.get('effort') or 'medium')
+        try:
+            b = _brief.make_brief(prompt, ask, note, expect)
+        finally:
+            ctx.spend(ledger.spent)
+    (ctx.out / 'brief.json').write_text(json.dumps(b, ensure_ascii=False, indent=2))
+    (ctx.out / 'marker.txt').write_text(json.dumps({'start': time.time(), 'end': time.time()}))
+    return 0.0
+
+
 def default_stages():
     S = Stage
     return {s.id: s for s in (
-        S("brief", (), 1, _fast_stub, ("fake", "prompt")),
+        S("brief", (), 3, _run_brief, ("fake", "prompt", "book", "scene")),
         S("refs", ("brief",), 1, _fast_stub, ("fake", "pick")),
         S("world", ("refs",), 1, _slow_stub, ("fake", "effort", "cap")),
         S("cast", ("refs",), 1, _slow_stub, ("fake", "cap")),
@@ -265,7 +319,7 @@ def _publish(run_dir, sid, tmp):
 
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
              fresh=False, fake=False, check=False, max_dollars=None, split=None,
-             effort=None, pick="first"):
+             effort=None, pick="first", book=None, scene=None):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
     run_dir = Path(run_dir)
@@ -279,7 +333,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
             raise ValueError(f"invalid max_dollars: {max_dollars!r}")
         if not _finite:
             raise ValueError(f"invalid max_dollars: {max_dollars!r}")
-    opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort}
+    opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort,
+            "book": str(book) if book else None, "scene": scene}
 
     enabled = {k for k, s in stages.items() if not s.optional or check}
     forced = set()
@@ -321,7 +376,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
             if max_dollars is not None:
                 cap = max_dollars * shares.get(sid, 0) / 100
             o = dict(opts, cap=cap)
-            params = {k: o.get(k) for k in st.params}
+            params = {k: o.get(k) for k in st.params
+                      if k not in OPTIONAL_PARAMS or o.get(k) is not None}
             if max_dollars is not None and "cap" not in params:
                 params["cap"] = cap
             h = input_hash(sid, st.version, params, inputs)

@@ -1,0 +1,196 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "title",
+    "mode",
+    "book",
+    "style",
+    "places",
+    "cast",
+    "scene"
+  ],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "book",
+        "seed"
+      ]
+    },
+    "book": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "dir",
+        "scene"
+      ],
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "scene": {
+          "type": "string"
+        }
+      }
+    },
+    "style": {
+      "type": "string",
+      "minLength": 1
+    },
+    "places": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "size_m",
+          "level",
+          "next_to",
+          "query",
+          "provider_hint",
+          "fandom_wiki"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+$"
+          },
+          "type": {
+            "enum": [
+              "room",
+              "yard"
+            ]
+          },
+          "size_m": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "level": {
+            "type": "integer"
+          },
+          "next_to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1
+          },
+          "provider_hint": {
+            "enum": [
+              "commons",
+              "fandom",
+              "any"
+            ]
+          },
+          "fandom_wiki": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "cast": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "who",
+          "sex",
+          "age",
+          "look",
+          "voice",
+          "query"
+        ],
+        "properties": {
+          "who": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sex": {
+            "enum": [
+              "male",
+              "female"
+            ]
+          },
+          "age": {
+            "enum": [
+              "child",
+              "adult",
+              "old"
+            ]
+          },
+          "look": {
+            "type": "string"
+          },
+          "voice": {
+            "enum": [
+              "old_woman",
+              "old_man",
+              "woman",
+              "man",
+              "child",
+              "creature",
+              "scarlett",
+              "rhett",
+              "ashley",
+              "gerald",
+              "stuart",
+              "old_soldier"
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "where",
+        "who",
+        "want"
+      ],
+      "properties": {
+        "where": {
+          "type": "string"
+        },
+        "who": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "want": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

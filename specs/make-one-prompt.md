@@ -41,9 +41,9 @@
 
 Спека: «`brief` — промпт → план».
 
-- [ ] схема `h0/make/schema/brief.json`, проверка кодом; enum `voice` = ключи `h0/dream/voices.json`
-- [ ] сценарный Spark-фейк (по образцу `ScenarioSpark`, `pipe2/fakes.py`); невалидный ответ → один повтор с текстом ошибки → `failed`
-- [ ] слияние с `book.json` (тест на `h0/dream/books/gwtw`): имена и пол из книги, конфликт имени/пола → ошибка схемы
+- [x] схема `h0/make/schema/brief.json`, проверка кодом; enum `voice` = ключи `h0/dream/voices.json`
+- [x] сценарный Spark-фейк (по образцу `ScenarioSpark`, `pipe2/fakes.py`); невалидный ответ → один повтор с текстом ошибки → `failed`
+- [x] слияние с `book.json` (тест на `h0/dream/books/gwtw`): имена и пол из книги, конфликт имени/пола → ошибка схемы
 
 ## М2. refs
 

@@ -18,5 +18,10 @@ class TestSplitGuard(unittest.TestCase):
             core.parse_split("nope=0")
 
 
+
+from make.testkit import offline_spark_module  # noqa: E402
+offline_spark_module(globals())
+
 if __name__ == "__main__":
     unittest.main()
+

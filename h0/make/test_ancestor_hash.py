@@ -16,5 +16,10 @@ class TestAncestorHash(unittest.TestCase):
             self.assertEqual(r["stage"], "ran")
 
 
+
+from make.testkit import offline_spark_module  # noqa: E402
+offline_spark_module(globals())
+
 if __name__ == "__main__":
     unittest.main()
+
