@@ -1,0 +1,243 @@
+{
+  "rooms": [
+    {
+      "id": "living",
+      "size_m": [
+        6,
+        5
+      ],
+      "height": 2.7
+    },
+    {
+      "id": "kitchen",
+      "size_m": [
+        4.5,
+        4
+      ],
+      "height": 2.7
+    }
+  ],
+  "doors": [
+    {
+      "id": "door1",
+      "from": "living",
+      "to": "kitchen",
+      "width_m": 0.9,
+      "hinge": [
+        6.0,
+        2.05
+      ],
+      "opening": [
+        2.05,
+        2.95
+      ],
+      "leaf": {
+        "width_m": 0.9,
+        "height_m": 2.0,
+        "hinge": "left",
+        "swing": "living"
+      }
+    }
+  ],
+  "props": [
+    {
+      "id": "sofa",
+      "cat": "sofa",
+      "room": "living",
+      "size_m": [
+        2.0,
+        0.9,
+        0.9
+      ],
+      "pos": [
+        2.0,
+        4.0
+      ],
+      "rel": "against north wall",
+      "size": {
+        "w": 2.0,
+        "h": 0.9,
+        "d": 0.9
+      },
+      "at": [
+        2.0,
+        4.0
+      ],
+      "solid": true
+    },
+    {
+      "id": "armchair",
+      "cat": "chair",
+      "room": "living",
+      "size_m": [
+        0.9,
+        0.9,
+        0.9
+      ],
+      "pos": [
+        4.2,
+        4.0
+      ],
+      "rel": "near sofa",
+      "size": {
+        "w": 0.9,
+        "h": 0.9,
+        "d": 0.9
+      },
+      "at": [
+        4.2,
+        4.0
+      ],
+      "solid": true
+    },
+    {
+      "id": "fireplace",
+      "cat": "fireplace",
+      "room": "living",
+      "size_m": [
+        1.2,
+        1.3,
+        0.5
+      ],
+      "pos": [
+        3.0,
+        0.35
+      ],
+      "rel": "against south wall",
+      "size": {
+        "w": 1.2,
+        "h": 1.3,
+        "d": 0.5
+      },
+      "at": [
+        3.0,
+        0.35
+      ],
+      "solid": true
+    },
+    {
+      "id": "table",
+      "cat": "table",
+      "room": "kitchen",
+      "size_m": [
+        1.4,
+        0.75,
+        0.9
+      ],
+      "pos": [
+        8.0,
+        2.5
+      ],
+      "rel": "middle of kitchen",
+      "size": {
+        "w": 1.4,
+        "h": 0.75,
+        "d": 0.9
+      },
+      "at": [
+        8.0,
+        2.5
+      ],
+      "solid": true
+    },
+    {
+      "id": "cupboard",
+      "cat": "cupboard",
+      "room": "kitchen",
+      "size_m": [
+        1.0,
+        2.0,
+        0.5
+      ],
+      "pos": [
+        10.1,
+        1.0
+      ],
+      "rel": "against east wall",
+      "size": {
+        "w": 1.0,
+        "h": 2.0,
+        "d": 0.5
+      },
+      "at": [
+        10.1,
+        1.0
+      ],
+      "solid": true
+    },
+    {
+      "id": "stove",
+      "cat": "stove",
+      "room": "kitchen",
+      "size_m": [
+        0.8,
+        0.9,
+        0.7
+      ],
+      "pos": [
+        6.6,
+        4.0
+      ],
+      "rel": "against north wall",
+      "size": {
+        "w": 0.8,
+        "h": 0.9,
+        "d": 0.7
+      },
+      "at": [
+        6.6,
+        4.0
+      ],
+      "solid": true
+    },
+    {
+      "id": "lamp",
+      "cat": "lamp",
+      "room": "kitchen",
+      "size_m": [
+        0.25,
+        0.45,
+        0.25
+      ],
+      "pos": [
+        8.0,
+        2.5
+      ],
+      "rel": "on table",
+      "size": {
+        "w": 0.25,
+        "h": 0.45,
+        "d": 0.25
+      },
+      "mount": {
+        "top_of": "table"
+      },
+      "solid": true
+    },
+    {
+      "id": "rug",
+      "cat": "rug",
+      "room": "living",
+      "size_m": [
+        2.0,
+        0.02,
+        1.4
+      ],
+      "pos": [
+        2.5,
+        2.0
+      ],
+      "rel": "on floor",
+      "size": {
+        "w": 2.0,
+        "h": 0.02,
+        "d": 1.4
+      },
+      "at": [
+        2.5,
+        2.0
+      ],
+      "solid": false
+    }
+  ]
+}

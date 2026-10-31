@@ -1,0 +1,67 @@
+{
+  "title": "Jane Eyre",
+  "author": "Charlotte Brontë",
+  "year": 1847,
+  "source": "Project Gutenberg (see SOURCE.md)",
+  "pov": "Jane Eyre",
+  "narrator_voice": "woman",
+  "cast": {
+    "Jane Eyre": {
+      "sex": "female",
+      "voice": "woman",
+      "look": "Eighteen, small and slight, plain pale face, dark hair smoothed flat, in a plain dove-grey silk dress with a single pearl brooch; quiet, watchful."
+    },
+    "Edward Rochester": {
+      "sex": "male",
+      "voice": "man",
+      "look": "Mid-thirties, broad-chested, dark hair, a heavy dark face with a square forehead and black brows, resting on a couch with a bandaged ankle."
+    },
+    "Mrs. Fairfax": {
+      "sex": "female",
+      "voice": "old_woman",
+      "look": "A elderly widow in a black gown, white cap and apron, small and kind, knitting."
+    },
+    "Adèle": {
+      "sex": "female",
+      "voice": "child",
+      "look": "A French girl of about eight, curly dark ringlets, a rose-coloured silk frock, a little white sash, bright and talkative."
+    }
+  },
+  "chapters": [
+    {
+      "n": 13,
+      "file": "ch13.txt",
+      "title": "Tea with Mr. Rochester",
+      "scenes": [
+        {
+          "id": "tea",
+          "paras": [
+            7,
+            121
+          ],
+          "title": "Tea in the drawing-room: Rochester questions Jane",
+          "place": "The drawing-room at Thornfield Hall on a snowy winter evening: a bright fire, a lit chandelier, a couch by the hearth where Mr. Rochester reclines, a tea-table and a small table with a portfolio.",
+          "cast": [
+            "Jane Eyre",
+            "Edward Rochester",
+            "Mrs. Fairfax",
+            "Adèle"
+          ],
+          "aliases": {
+            "I": "Jane Eyre",
+            "me": "Jane Eyre",
+            "Jane": "Jane Eyre",
+            "Miss Eyre": "Jane Eyre",
+            "Mr. Rochester": "Edward Rochester",
+            "Rochester": "Edward Rochester",
+            "the master": "Edward Rochester",
+            "he": "Edward Rochester",
+            "Mrs. Fairfax": "Mrs. Fairfax",
+            "Adèle": "Adèle",
+            "Adele": "Adèle"
+          }
+        }
+      ]
+    }
+  ]
+}

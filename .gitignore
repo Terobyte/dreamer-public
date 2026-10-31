@@ -33,3 +33,6 @@ h0/squid_live/cache/
 # make runs
 runs/
 !h0/make/testdata/**/dist/
+
+# make fixture dist is committed
+!h0/make/testdata/**/dist/

@@ -25,6 +25,7 @@ def main(argv=None):
     ap.add_argument("--pick", default="first", choices=["first", "vision"])
     ap.add_argument("--book", help="book dir with book.json, e.g. dream/books/gwtw")
     ap.add_argument("--scene", help="scene id in book.json")
+    ap.add_argument("--freestyle", action="store_true", help="book -> improvised scene (sim freestyle)")
     a = ap.parse_args(argv)
     run = Path(a.run) if a.run else RUNS / time.strftime("%Y%m%d-%H%M%S")
     try:
@@ -32,7 +33,7 @@ def main(argv=None):
                             fresh=a.fresh, fake=a.fake, check=a.check,
                             max_dollars=a.max_dollars, split=a.split,
                             effort=a.effort, pick=a.pick,
-                            book=a.book, scene=a.scene)
+                            book=a.book, scene=a.scene, freestyle=a.freestyle, live=True)
     except (core.MissingInput, core.LockError) as e:
         print(e, file=sys.stderr)
         return 1

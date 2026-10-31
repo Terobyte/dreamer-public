@@ -58,11 +58,11 @@
 
 Спека: «`world`», «`story`».
 
-- [ ] адаптер `brief + refs → world/task/TASK.md` (тест-снимок, по шаблону `anymove/runs/pineapple/task/TASK.md`, правило «без имён»)
-- [ ] argv `pipe2 run` со всеми тремя `--cap-*` и `--effort` (тест на argv, без запуска); `--fake` копирует фикстуру `world_run/`; упавший `world` продолжает с `--resume`, `--from world --fresh` начинает заново
-- [ ] `story`: `book` через `book.score_scene` (с `score.edited.json` и без; другая `scene` → ошибка), `seed` → `seed.txt`; флаг `--freestyle` записывается в `stage.json` и доходит до `sim.run(freestyle=True)`
-- [ ] `h0/dream/books/jane-eyre/book.json` на главу XIII: каст и голоса по спеке, `aliases` с `I`/`me` → `Jane Eyre`, `narrator_voice: "woman"`; `python3 book.py books/jane-eyre --scene <id> --stats` даёт ≥ 20 битов `line`, `unattributed` ≤ 40 %; тест на это
-- [ ] `narrator_voice` читается симом; книги без поля — прежний голос рассказчика
+- [x] адаптер `brief + refs → world/task/TASK.md` (тест-снимок, по шаблону `anymove/runs/pineapple/task/TASK.md`, правило «без имён»)
+- [x] argv `pipe2 run` со всеми тремя `--cap-*` и `--effort` (тест на argv, без запуска); `--fake` копирует фикстуру `world_run/`; упавший `world` продолжает с `--resume`, `--from world --fresh` начинает заново
+- [x] `story`: `book` через `book.score_scene` (с `score.edited.json` и без; другая `scene` → ошибка), `seed` → `seed.txt`; флаг `--freestyle` записывается в `stage.json` и доходит до `sim.run(freestyle=True)`
+- [x] `h0/dream/books/jane-eyre/book.json` на главу XIII: каст и голоса по спеке, `aliases` с `I`/`me` → `Jane Eyre`, `narrator_voice: "woman"`; `python3 book.py books/jane-eyre --scene <id> --stats` даёт ≥ 20 битов `line`, `unattributed` ≤ 40 %; тест на это
+- [x] `narrator_voice` читается симом; книги без поля — прежний голос рассказчика
 
 ## М4. stage (банк мест) + сим
 

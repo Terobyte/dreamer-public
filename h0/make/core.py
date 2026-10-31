@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
-OPTIONAL_PARAMS = {"book", "scene"}  # в хэше только если заданы
+OPTIONAL_PARAMS = {"book", "scene", "freestyle"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -161,15 +161,36 @@ def _run_refs(ctx):
     return 0.0
 
 
+def _run_world(ctx):
+    if not (ctx.params.get("fake") or ctx.opts.get("live")):
+        return _slow_stub(ctx)  # offline default: no live pipe2 from tests
+    from . import world
+    return world.run_world(ctx)
+
+
+def _run_story(ctx):
+    if not (ctx.params.get("fake") or ctx.opts.get("live")):
+        return _slow_stub(ctx)  # offline default: no live pipe2 from tests
+    from . import story
+    return story.run_story(ctx)
+
+
+def _run_stage(ctx):
+    if not (ctx.params.get("fake") or ctx.opts.get("live")):
+        return _fast_stub(ctx)  # offline default: no live pipe2 from tests
+    from . import story
+    return story.run_stage(ctx)
+
+
 def default_stages():
     S = Stage
     return {s.id: s for s in (
         S("brief", (), 3, _run_brief, ("fake", "prompt", "book", "scene")),
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
-        S("world", ("refs",), 1, _slow_stub, ("fake", "effort", "cap")),
+        S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap")),
         S("cast", ("refs",), 1, _slow_stub, ("fake", "cap")),
-        S("story", ("refs",), 1, _slow_stub, ("fake", "cap")),
-        S("stage", ("world", "cast", "story"), 1, _fast_stub),
+        S("story", ("refs",), 2, _run_story, ("fake", "cap")),
+        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle")),
         S("check", ("world", "refs"), 1, _fast_stub, optional=True),
     )}
 
@@ -364,7 +385,7 @@ def _publish(run_dir, sid, tmp):
 
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
              fresh=False, fake=False, check=False, max_dollars=None, split=None,
-             effort=None, pick="first", book=None, scene=None):
+             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
     run_dir = Path(run_dir)
@@ -379,7 +400,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
         if not _finite:
             raise ValueError(f"invalid max_dollars: {max_dollars!r}")
     opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort,
-            "book": str(book) if book else None, "scene": scene}
+            "book": str(book) if book else None, "scene": scene,
+            "freestyle": True if freestyle else None, "live": bool(live)}
 
     enabled = {k for k, s in stages.items() if not s.optional or check}
     forced = set()
@@ -417,6 +439,38 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
                 for p in sorted(base.rglob("*")):
                     if p.is_file():
                         inputs.append([p.relative_to(run_dir).as_posix(), _sha_file(p)])
+            if sid == "story":
+                # прямые входы story вне предков: score.edited.json и файлы книги
+                ed = run_dir / "story" / "score.edited.json"
+                if ed.is_file():
+                    inputs.append([ed.relative_to(run_dir).as_posix(), _sha_file(ed)])
+                try:
+                    _bp = run_dir / "brief" / "brief.json"
+                    _bdir = (json.loads(_bp.read_text()).get("book") or {}).get("dir") \
+                        if _bp.is_file() else None
+                except (OSError, ValueError):
+                    _bdir = None
+                if _bdir:
+                    _bd = Path(_bdir)
+                    _extra = set()
+                    try:
+                        _bj = json.loads((_bd / "book.json").read_text())
+                        for _ch in _bj.get("chapters", []) or []:
+                            if _ch.get("file"):
+                                _extra.add(_bd / _ch["file"])
+                            for _sc in _ch.get("scenes", []) or []:
+                                if isinstance(_sc, dict) and _sc.get("file"):
+                                    _extra.add(_bd / _sc["file"])
+                    except (OSError, ValueError):
+                        pass
+                    for _p in sorted(set(_bd.rglob("*.json")) | set(_bd.rglob("*.txt")) | _extra):
+                        if _p.is_file():
+                            try:
+                                _rel = _p.relative_to(_bd).as_posix()
+                            except ValueError:
+                                _rel = _p.name
+                            inputs.append([_rel, _sha_file(_p)])
+                inputs = sorted(inputs)
             cap = None
             if max_dollars is not None:
                 cap = max_dollars * shares.get(sid, 0) / 100
@@ -438,7 +492,7 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
                 return "failed"
             resume = False
             if tmp.exists():
-                if sid in KEEP_TMP and not fresh:
+                if sid in KEEP_TMP and not (fresh and from_ == sid):
                     resume = True
                 else:
                     shutil.rmtree(tmp)
