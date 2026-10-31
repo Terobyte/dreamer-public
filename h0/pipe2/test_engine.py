@@ -130,6 +130,19 @@ class EngineTest(unittest.TestCase):
         self.assertIn("NAV_ROOM_CUT", codes(blocking(full)))
         self.assertIn("ROUTE_BLOCKED", codes(blocking(full)))
 
+    def test_check_full_without_shots_is_not_shot_missing(self):
+        # check --built wants a picture per camera (engine block E); a run that does not shoot must not
+        # blame every room with a camera for it (Oct 30: all rooms ended empty on SHOT_MISSING)
+        full = self.engine.check_full(example("demo-flat.scene.json"), self.work)
+        self.assertNotIn("SHOT_MISSING", codes(full["errors"] + full["warnings"]))
+        self.assertTrue(green(full), full["errors"])
+
+    def test_check_full_shoots_before_check_built(self):
+        if not self._has_chromium():
+            self.skipTest("no engine Chromium in this environment")
+        full = Engine(ENGINE).check_full(example("demo-flat.scene.json"), self.work)
+        self.assertNotIn("SHOT_MISSING", codes(full["errors"] + full["warnings"]))
+
     def test_harmless_warnings_stay_green(self):
         report = {"code": 0, "errors": [], "warnings": [{"code": "PROP_TINY", "path": "/props/0"}], "raw": ""}
         self.assertEqual([], blocking(report))

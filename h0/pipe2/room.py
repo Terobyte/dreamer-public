@@ -229,6 +229,18 @@ def _prompt(name: str, **fields) -> str:
     return text
 
 
+def _plan_ref(ref, refs: list):
+    """The plan's absolute path for a camera ref, or None. Builders copy the architect's spelling
+    (`refs/living.png`) while the plan holds resolved paths, so a ref matches by whole path suffix."""
+    if not isinstance(ref, str) or not ref:
+        return None
+    if ref in refs:
+        return ref
+    tail = "/" + ref.lstrip("./")
+    hits = [r for r in refs if r.endswith(tail)]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _ref_cameras(room: str, n_refs: int) -> str:
     """One camera id per attached reference, so every ref gets its own screenshot back."""
     names = ["`%s_ref%d`" % (room, i + 1) for i in range(max(n_refs, 1))]
@@ -308,8 +320,11 @@ class RoomPipeline:
         """Merge + check a candidate fragment; keep it only if the room is green."""
         refs = ((self.ctx.plan.get("rooms") or {}).get(self.room) or {}).get("refs") or []
         for camera in candidate.get("cameras") or []:
-            if camera.get("ref") and camera["ref"] not in refs:
-                return False, [{"code": "OWN_REF", "msg": "camera ref must be a task-provided room image"}]
+            if camera.get("ref"):
+                path = _plan_ref(camera["ref"], refs)
+                if path is None:
+                    return False, [{"code": "OWN_REF", "msg": "camera ref must be a task-provided room image"}]
+                camera["ref"] = path
         scene, violations, report = self._check(candidate)
         if not green(report):
             return False, self._findings(scene, violations, report)

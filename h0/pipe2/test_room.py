@@ -481,3 +481,32 @@ class TestRoom(RoomCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCameraRef(RoomCase):
+    """The architect names refs relative to the task (`refs/a.png`), the plan resolves them to absolute
+    paths; a builder copying the architect's spelling must not lose a whole round to OWN_REF (Oct 30)."""
+
+    def with_refs(self, ref):
+        import copy
+        global PLAN
+        saved = PLAN
+        PLAN = copy.deepcopy(PLAN)
+        PLAN["rooms"]["A"]["refs"] = ["/task/refs/a.png"]
+        try:
+            cand = partial()
+            cand["cameras"][0]["ref"] = ref
+            ctx = self.ctx({"builder": [answer(cand)], "fix": [answer(cand), answer(cand)]},
+                           reports=[GREEN, GREEN, GREEN, GREEN])
+            return RoomPipeline("A", ctx).run()
+        finally:
+            PLAN = saved
+
+    def test_relative_spelling_is_accepted_and_resolved(self):
+        for ref in ("refs/a.png", "a.png", "/task/refs/a.png"):
+            result = self.with_refs(ref)
+            self.assertNotEqual("empty", result.status, ref)
+            self.assertEqual("/task/refs/a.png", result.partial["cameras"][0]["ref"], ref)
+
+    def test_unknown_ref_is_still_refused(self):
+        self.assertEqual("empty", self.with_refs("refs/zzz.png").status)

@@ -1,0 +1,311 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Squid live</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font:15px/1.4 system-ui,sans-serif;color:#fff}
+#hint{position:fixed;top:12px;left:12px;background:#0009;padding:8px 12px;border-radius:8px;max-width:340px}
+#status{position:fixed;top:12px;right:12px;background:#0009;padding:6px 10px;border-radius:8px}
+#subs{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);width:min(820px,90vw);text-align:center}
+#subs div{background:#000b;display:inline-block;padding:6px 12px;border-radius:8px;margin:3px}
+#subs .sq{color:#c9f0c4} #subs .me{color:#ffe873}
+#say{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);width:min(640px,86vw);padding:10px 14px;
+  border-radius:10px;border:0;background:#000c;color:#fff;font:inherit;outline:1px solid #fff4}
+#cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#fff8}
+</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script></head><body>
+<div id="hint"><b>Ты Спанч Боб.</b> Клик — мышь смотрит, WASD — ходить, Esc — отпустить мышь.<br>
+Держи <b>T</b> — говоришь в микрофон (англ.), или <b>Enter</b> — набрать текст.</div>
+<div id="status">загрузка…</div><div id="subs"></div><div id="cross"></div>
+<input id="say" placeholder="Say something to Squidward… (Enter)" autocomplete="off">
+<script type="module">
+// Squid live (test-only): SpongeBob's POV in Squidward's round living room. The room is the H16 sq2 build
+// (code = space, Muse = tiles/decals, SAM3D = props); Squidward is the anymove rig with its captured clips,
+// steered by a small state machine; his lines come from Muse Spark via server.py, voiced by Fish.
+// ?sqyo= front offset of the rig in degrees, ?yo= front offset of the SAM3D props (as in round.html).
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search), n = (k, v) => +(q.get(k) ?? v);
+const [R, H, EYE, SQ_H] = [4.2, 3.6, 1.0, 1.85];  // SpongeBob's eyes are low, Squidward stands a head taller
+const $ = (id) => document.getElementById(id), status = (t) => { $('status').textContent = t; };
+
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 100);
+cam.rotation.order = 'YXZ';
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });
+
+// ---- room: same build as h0/out/h16/round.html ----
+const load = (f) => new Promise((ok) => new THREE.TextureLoader().load('/room/' + f + '.png', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; ok(t); }));
+const T = Object.fromEntries(await Promise.all(['t_wall', 't_floor', 't_ceiling', 't_beam', 'd_door', 'd_portrait', 'd_window'].map(async (f) => [f, await load(f)])));
+const tiled = (t, rx, ry, side = THREE.FrontSide) => { t = t.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.needsUpdate = true;
+  return new THREE.MeshLambertMaterial({map: t, side}); };
+const add = (geo, mat, pos = [0, 0, 0], rot = [0, 0, 0]) => { const m = new THREE.Mesh(geo, mat); m.position.set(...pos); m.rotation.set(...rot); scene.add(m); return m; };
+add(new THREE.CylinderGeometry(R, R, H, 96, 1, true), tiled(T.t_wall, 2 * Math.PI * R / 2, H / 2, THREE.BackSide), [0, H / 2, 0]);
+add(new THREE.CircleGeometry(R, 96), tiled(T.t_floor, R, R), [0, 0, 0], [-Math.PI / 2, 0, 0]).receiveShadow = true;
+add(new THREE.CircleGeometry(R, 96), tiled(T.t_ceiling, R / 1.5, R / 1.5), [0, H, 0], [Math.PI / 2, 0, 0]);
+for (const a of [0, 60, 120]) add(new THREE.BoxGeometry(0.22, 0.3, 2 * R), tiled(T.t_beam, 1, 4), [0, H - 0.15, 0], [0, a * Math.PI / 180, 0]);
+const seen = [];  // objects the crosshair ray can name (userData.seen; GLTFLoader already fills userData.name)
+const decal = (t, w, h, th, y, name) => { const a = th * Math.PI / 180, d = Math.sqrt(R * R - (w / 2) ** 2) - 0.02;
+  const m = add(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({map: t, transparent: true, alphaTest: 0.5}), [d * Math.sin(a), y, -d * Math.cos(a)], [0, -a, 0]);
+  if (name) { m.userData.seen = name; seen.push(m); } };
+decal(T.d_window, 2.8, 1.4, 15, 1.9, 'your porthole window'); decal(T.d_portrait, 1.1, 1.1, -58, 2.1, 'your big self-portrait'); decal(T.d_portrait, 1.0, 1.0, -38, 2.05, 'your smaller self-portrait');
+decal(T.d_door, 0.95, 2.3, 75, 1.15, 'a bamboo door'); decal(T.d_door, 0.95, 2.3, -110, 1.15, 'your front door');
+const blobTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(0,0,0,0.85)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
+const blob = (x, z, w) => { const m = add(new THREE.PlaneGeometry(w, w), new THREE.MeshBasicMaterial({map: blobTex, transparent: true, depthWrite: false}), [x, 0.004, z], [-Math.PI / 2, 0, 0]); m.renderOrder = 1; return m; };
+const polar = (th, r) => [r * Math.sin(th * Math.PI / 180), -r * Math.cos(th * Math.PI / 180)];
+// name: what Squidward is told SpongeBob stands next to
+const PROPS = [
+  {file: 'p_sofa', name: 'your sofa', height: 1.0, at: polar(45, 3.1), face: 'c'},
+  {file: 'p_armchair', name: 'your armchair', height: 1.35, at: polar(95, 3.0), face: 'c'},
+  {file: 'p_table', name: 'your table', height: 0.85, at: [-1.3, 0.9], yaw: 0},
+  ...[[0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9]].map(([dx, dz]) => ({file: 'p_chair', height: 1.5, at: [-1.3 + dx, 0.9 + dz], face: [-1.3, 0.9]})),
+  {file: 'p_easel', name: 'your easel with the unfinished painting', height: 1.75, at: polar(160, 3.0), face: 'c'},
+  {file: 'p_vase', name: 'your vase', height: 0.75, at: polar(-80, 3.7), face: 'c'},
+  {file: 'p_coral', name: 'your potted coral', height: 0.9, at: polar(-140, 3.5), face: 'c'},
+  {file: 'p_stand', name: 'your clarinet on its stand', height: 1.1, at: polar(-20, 2.9), face: 'c'},
+  {file: 'p_lamp', height: 0.7, at: [0, 0], yaw: 0, top: H},
+];
+const gltf = new GLTFLoader(), yo = n('yo', 30);
+await Promise.all(PROPS.map(async (p) => {
+  const g = (await gltf.loadAsync('/room/' + p.file + '.glb').catch(() => null))?.scene;
+  if (!g) return;
+  const holder = new THREE.Group(); holder.add(g);
+  let b = new THREE.Box3().setFromObject(holder);
+  holder.scale.setScalar(p.height / b.getSize(new THREE.Vector3()).y);
+  b = new THREE.Box3().setFromObject(holder); const c = b.getCenter(new THREE.Vector3());
+  g.position.sub(new THREE.Vector3(c.x, b.min.y, c.z).divideScalar(holder.scale.x));
+  const [x, z] = p.at, tgt = p.face === 'c' ? [0, 0] : p.face;
+  const yaw = tgt ? Math.atan2(tgt[0] - x, tgt[1] - z) * 180 / Math.PI : p.yaw;
+  holder.position.set(x, p.top ? p.top - p.height : 0, z); holder.rotation.y = (yaw + yo) * Math.PI / 180;
+  scene.add(holder);
+  holder.userData.seen = p.name ?? (p.file === 'p_chair' ? 'one of your dining chairs' : 'your shell lamp'); seen.push(holder);
+  if (!p.top) { g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    const s = b.getSize(new THREE.Vector3()); blob(x, z, Math.max(s.x, s.z) * 1.4); }
+}));
+scene.add(new THREE.HemisphereLight(0xfff6e0, 0x553344, 2.0));
+const lamp = new THREE.PointLight(0xffe2c0, 8, 0, 1.2); lamp.position.set(0, H - 0.9, 0); scene.add(lamp);
+const spot = new THREE.SpotLight(0xffe8c8, 22, 0, 1.25, 1, 1.4); spot.position.set(0, H - 0.95, 0); spot.target.position.set(0, 0, 0);
+const fill = new THREE.PointLight(0xfff0e0, 1.6, 6, 1); cam.add(fill); scene.add(cam);  // the player's soft fill
+spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.radius = 6; spot.shadow.bias = -0.0005; scene.add(spot, spot.target);
+
+// ---- Squidward: one rig, every clip from its own capture GLB (same skeleton names) ----
+status('загружаю Сквидварда…');
+const CLIPS = {idle: 'idle_s1', talk: 'talk_s1', walk: 'walk_proc', wave: 'wave_s1', shrug: 'shrug_s1', facepalm: 'facepalm_s1',
+  armscross: 'armscross_s1', react: 'react_s1', clarinet: 'clarinet_s1', doze: 'doze_s1', flee: 'mb_walk_scared'};
+const glbs = Object.fromEntries(await Promise.all(Object.entries(CLIPS).map(async ([k, f]) =>
+  [k, await gltf.loadAsync(`/clips/${f}/render/animation.glb`).catch(() => null)])));
+const base = glbs.idle;
+const sq = new THREE.Group(), body = base.scene; sq.add(body); scene.add(sq);
+// metalness from the capture export turns him black without an env map; he also gets a soft fill from the
+// player's side (below), since the room's lamp is straight overhead and leaves a face turned to us unlit
+body.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false;
+  for (const m of [o.material].flat()) { if ('metalness' in m) { m.metalness = 0; m.roughness = Math.max(m.roughness, 0.7); } } } });
+{ body.updateMatrixWorld(true); let b = new THREE.Box3().setFromObject(body);
+  body.scale.setScalar(SQ_H / b.getSize(new THREE.Vector3()).y); body.updateMatrixWorld(true);
+  b = new THREE.Box3().setFromObject(body); const c = b.getCenter(new THREE.Vector3());
+  body.position.set(-c.x, -b.min.y, -c.z); }
+body.rotation.y = n('sqyo', 0) * Math.PI / 180;
+const sqBlob = blob(0, 0, 0.9);
+const mixer = new THREE.AnimationMixer(body), acts = {};
+for (const [k, g] of Object.entries(glbs)) {
+  if (!g?.animations[0]) continue;
+  const clip = g.animations[0].clone(); clip.name = k;
+  // the captures carry the pelvis's drift across the video frame: keep its height, pin it in x/z (the code moves the root)
+  for (const t of clip.tracks) if (t.name.endsWith('.position') && /pelvis|root|hips/i.test(t.name)) {
+    const v = t.values, [x0, z0] = [v[0], v[2]]; for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; } }
+  acts[k] = mixer.clipAction(clip);
+}
+// bones for the procedural brush arm; ?arm=lift,bend,out tunes it in radians
+const bone = {}; body.traverse((o) => { if (o.isBone || o.type === 'Bone' || /_[LR]$|head/.test(o.name)) bone[o.name] ??= o; });
+const [lift, bend, out] = (q.get('arm') ?? '1.1,0.9,0').split(',').map(Number), ARM = {lift, bend, out};
+const brush = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.28, 6), new THREE.MeshLambertMaterial({color: 0x9a6a3a}));
+const tip = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), new THREE.MeshLambertMaterial({color: 0xd04a6a})); tip.position.y = 0.15; brush.add(tip);
+bone.hand_R?.add(brush); brush.scale.setScalar(1 / body.scale.x); brush.visible = false;
+// his clarinet, off-key on purpose: a reedy WebAudio voice that wanders a little scale while the clip plays
+let ac = null, reed = null, vol = null, noteAt = 0;
+const TUNE = [62, 64, 65, 67, 69, 67, 65, 64, 62, 61, 62, 69, 68, 65, 64, 62];
+const music = (on, dist) => {
+  if (!ac) { if (!on) return; ac = new AudioContext(); vol = ac.createGain(); vol.gain.value = 0; vol.connect(ac.destination);
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1800; lp.connect(vol);
+    reed = ac.createOscillator(); reed.type = 'square'; reed.connect(lp);
+    const vib = ac.createOscillator(), vd = ac.createGain(); vib.frequency.value = 5.5; vd.gain.value = 6; vib.connect(vd); vd.connect(reed.frequency);
+    reed.start(); vib.start(); }
+  const t = ac.currentTime, level = on ? 0.09 / Math.max(1, dist * 0.6) : 0;
+  vol.gain.setTargetAtTime(level, t, 0.15);
+  if (on && t > noteAt) { const i = Math.floor(t * 1.7) % TUNE.length, sour = Math.random() < 0.15 ? 0.6 : 0;
+    reed.frequency.setTargetAtTime(440 * 2 ** ((TUNE[i] + sour - 69) / 12), t, 0.03); noteAt = t + 0.35 + Math.random() * 0.4; } };
+let cur = null;
+const play = (k, {once = false, fade = 0.35} = {}) => {
+  const a = acts[k] ?? acts.idle; if (a === cur) return a;
+  a.reset(); a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = once; a.play();
+  if (cur) cur.crossFadeTo(a, fade, false); cur = a; return a; };
+play('idle');
+
+// ---- start poses: Squidward by his easel, SpongeBob just inside, facing him ----
+const sqPos = new THREE.Vector2(...polar(150, 2.2)); let sqYaw = 0;
+cam.position.set(...(([x, z]) => [x, EYE, z])(polar(-30, 1.0)));
+cam.rotation.y = Math.atan2(-(sqPos.x - cam.position.x), -(sqPos.y - cam.position.z));
+
+// ---- player controls ----
+const keys = {}, typing = () => document.activeElement === $('say');
+renderer.domElement.addEventListener('click', () => renderer.domElement.requestPointerLock());
+addEventListener('mousemove', (e) => { if (document.pointerLockElement !== renderer.domElement) return;
+  cam.rotation.y -= e.movementX * 0.0025; cam.rotation.x = Math.max(-1.4, Math.min(1.4, cam.rotation.x - e.movementY * 0.0025)); });
+addEventListener('keydown', (e) => {
+  if (typing()) { if (e.code === 'Escape') $('say').blur(); return; }
+  keys[e.code] = true;
+  if (e.code === 'Enter') { e.preventDefault(); document.exitPointerLock(); $('say').focus(); }
+  if (e.code === 'KeyT' && !e.repeat) micStart(); });
+addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'KeyT') micStop(); });
+$('say').addEventListener('keydown', (e) => { if (e.code === 'Enter' && $('say').value.trim()) { send($('say').value.trim()); $('say').value = ''; $('say').blur(); } });
+
+// ---- microphone: browser speech recognition, hold T ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, heard = '';
+const micStart = () => { if (!SR || rec) return; heard = ''; rec = new SR(); rec.lang = 'en-US'; rec.interimResults = true; rec.continuous = true;
+  rec.onresult = (e) => { heard = [...e.results].map((r) => r[0].transcript).join(' '); subs([['me', heard + ' …']]); };
+  rec.onend = () => { const t = heard.trim(); rec = null; if (t) send(t); else status('не расслышал'); };
+  rec.start(); status('🎙 слушаю…'); npcHeard(); };
+const micStop = () => { rec?.stop(); };
+
+// ---- subtitles ----
+const subs = (rows) => { $('subs').replaceChildren(...rows.map(([c, t]) => { const d = document.createElement('div'); d.className = c;
+  d.textContent = (c === 'sq' ? 'Squidward: ' : 'SpongeBob: ') + t; return d; })); };
+
+// ---- Squidward's body: Spark picks a line, a gesture and an action; this code moves him ----
+// places he walks to on his own or when asked: where he stands, what he faces (null: SpongeBob), what he does there
+const PLACES = {
+  easel: {at: polar(160, 2.15), look: polar(160, 3.0), act: 'paint', name: 'your easel'},
+  clarinet: {at: polar(-20, 2.05), look: polar(-20, 2.9), act: 'clarinet', name: 'your clarinet stand'},
+  window: {at: polar(15, 3.15), look: polar(15, 4.2), act: 'idle', name: 'the porthole window'},
+  sofa: {at: polar(45, 2.2), look: [0, 0], act: 'doze', name: 'your sofa'},
+  armchair: {at: polar(95, 2.1), look: [0, 0], act: 'doze', name: 'your armchair'},
+  portraits: {at: polar(-48, 3.0), look: polar(-48, 4.2), act: 'idle', name: 'your self-portraits'},
+  coral: {at: polar(-140, 2.9), look: polar(-140, 3.5), act: 'idle', name: 'your potted coral'},
+  door: {at: polar(-110, 3.3), look: null, act: 'armscross', name: 'the door'},
+};
+const TABLE = [-1.3, 0.9, 1.35];  // the table and its four chairs: walk around, not through
+let lastTalk = performance.now(), gestureUntil = 0, talking = false, away = 0, nextWander = performance.now() + 25000;
+let task = null, activity = PLACES.easel;  // task: a walk under way; activity: the place he is busy at
+const history = [];
+const near = () => { let best = null, bd = 1.3;
+  for (const p of PROPS) if (p.name) { const d = Math.hypot(p.at[0] - cam.position.x, p.at[1] - cam.position.z); if (d < bd) { bd = d; best = p.name; } }
+  return best; };
+const ray = new THREE.Raycaster(), mid = new THREE.Vector2();
+const looking = () => { ray.setFromCamera(mid, cam);
+  const h = ray.intersectObjects([...seen, sq], true)[0]; if (!h || h.distance > 7) return null;
+  for (let o = h.object; o; o = o.parent) { if (o === sq) return 'YOU'; if (o.userData.seen) return o.userData.seen; } return null; };
+const me = () => [cam.position.x, cam.position.z];
+const walk = (to, {stopAt = 0.08, speed = 0.9, then = null, place = null} = {}) => {
+  task = {to, stopAt, speed, then, place}; activity = null; acts.walk.timeScale = speed / 0.9; };
+// SpongeBob talks: he stops wandering to listen; a clarinet or a nap is cut short with a start
+const npcHeard = () => { lastTalk = performance.now();
+  if (task && !task.then) task = null;
+  if (activity && !activity.asked && (activity.act === 'doze' || activity.act === 'clarinet')) {
+    activity = {...activity, act: 'idle', look: null}; play('react', {once: true}); gestureUntil = performance.now() + 1500; } };
+async function send(text) {
+  npcHeard(); subs([['me', text]]); status('Сквидвард думает…');
+  const d = Math.hypot(sqPos.x - cam.position.x, sqPos.y - cam.position.z), by = near(), sees = looking();
+  const ctx = `(SpongeBob is ${d.toFixed(1)} m from you${by ? ', standing by ' + by : ''}${sees ? ', looking ' + (sees === 'YOU' ? 'right at you' : 'at ' + sees) : ''}. You are ${task ? 'walking' : activity ? 'at ' + activity.name : 'standing in the middle of the room'}.)`;
+  history.push({role: 'user', content: `${ctx} SpongeBob: ${text}`});
+  let r;
+  try { r = await (await fetch('/api/talk', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: history.at(-1).content, history: history.slice(0, -1)})})).json(); }
+  catch (e) { status('сервер не ответил'); return; }
+  history.push({role: 'assistant', content: JSON.stringify({gesture: r.gesture, action: r.action, place: r.place, line: r.line})});
+  status(`${r.model} · ${r.think_s}s мысль · ${r.voice_s}s голос · ${r.gesture} · ${r.action}${r.place ? ' → ' + r.place : ''}`);
+  const audio = r.audio ? new Audio(r.audio) : null;
+  if (audio) await new Promise((ok) => { audio.oncanplaythrough = ok; audio.onerror = ok; audio.load(); setTimeout(ok, 4000); });
+  const deliver = (gesture = r.gesture) => {
+    talking = true; lastTalk = performance.now(); subs([['me', text], ['sq', r.spoken]]);
+    if (gesture !== 'none' && acts[gesture]) { play(gesture, {once: gesture !== 'clarinet' && gesture !== 'doze'}); gestureUntil = performance.now() + 4500; }
+    const done = () => { talking = false; lastTalk = performance.now(); };
+    if (audio?.error === null && audio.duration) { audio.onended = done; audio.play().catch(done); }
+    else { const u = new SpeechSynthesisUtterance(r.spoken); u.pitch = 0.6; u.rate = 0.95; u.onend = done; speechSynthesis.speak(u); }
+  };
+  const pl = PLACES[r.place];
+  away = r.action === 'turn_away' ? performance.now() + 15000 : 0;
+  if (r.action === 'come') {
+    if (Math.hypot(sqPos.x - cam.position.x, sqPos.y - cam.position.z) > 2.6) walk(me, {stopAt: 1.75, then: () => deliver()});
+    else { task = null; activity = null; deliver(); }
+  } else if (r.action === 'flee' || (r.action === 'goto' && pl)) {
+    // he talks over his shoulder while he goes; fleeing takes the place farthest from SpongeBob
+    const to = pl && r.action === 'goto' ? pl : Object.values(PLACES).reduce((a, b) =>
+      Math.hypot(b.at[0] - cam.position.x, b.at[1] - cam.position.z) > Math.hypot(a.at[0] - cam.position.x, a.at[1] - cam.position.z) ? b : a);
+    walk(() => to.at, {speed: r.action === 'flee' ? 1.7 : 0.9, place: r.action === 'goto' ? {...to, asked: true} : to}); deliver('none');
+  } else { if (task?.then) task = null; deliver(); }
+}
+
+// ---- frame loop ----
+const clock = new THREE.Clock(), f = new THREE.Vector3(), rgt = new THREE.Vector3();
+const turnTo = (x, z, dt, speed = 4) => { const want = Math.atan2(x - sqPos.x, z - sqPos.y);
+  let dlt = ((want - sqYaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  sqYaw += Math.sign(dlt) * Math.min(Math.abs(dlt), speed * dt); return Math.abs(dlt); };
+// one walking step toward (tx, tz), bent around the table and around SpongeBob (unless he is the goal)
+const stepTo = (tx, tz, speed, dt, dodgeMe) => {
+  let dx = tx - sqPos.x, dz = tz - sqPos.y; const dist = Math.hypot(dx, dz); dx /= dist; dz /= dist;
+  for (const [ox, oz, r] of [TABLE, ...(dodgeMe ? [[cam.position.x, cam.position.z, 0.8]] : [])]) {
+    const ex = sqPos.x - ox, ez = sqPos.y - oz, e = Math.hypot(ex, ez), w = (r + 0.5 - e) / 0.5;
+    if (w <= 0 || (ex * dx + ez * dz) > 0) continue;  // far enough, or already walking away from it
+    const side = Math.sign(-ez * dx + ex * dz) || 1;  // go round on the side the goal is on
+    dx += (-ez / e * side + ex / e * 0.5) * Math.min(w, 1.5) * 1.6; dz += (ex / e * side + ez / e * 0.5) * Math.min(w, 1.5) * 1.6;
+    const l = Math.hypot(dx, dz); dx /= l; dz /= l;
+  }
+  const off = turnTo(sqPos.x + dx, sqPos.y + dz, dt, 5);
+  if (off < 0.8) { const step = Math.min(speed * dt, dist); sqPos.x += Math.sin(sqYaw) * step; sqPos.y += Math.cos(sqYaw) * step; }
+  const rr = Math.hypot(sqPos.x, sqPos.y), max = R - 0.5; if (rr > max) { sqPos.x *= max / rr; sqPos.y *= max / rr; }
+};
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), now = performance.now();
+  // player
+  if (!typing()) {
+    cam.getWorldDirection(f); f.y = 0; f.normalize(); rgt.crossVectors(f, cam.up);
+    const v = 1.8 * dt;
+    if (keys.KeyW) cam.position.addScaledVector(f, v); if (keys.KeyS) cam.position.addScaledVector(f, -v);
+    if (keys.KeyD) cam.position.addScaledVector(rgt, v); if (keys.KeyA) cam.position.addScaledVector(rgt, -v);
+  }
+  const dw = Math.hypot(cam.position.x, cam.position.z), max = R - 0.35;
+  if (dw > max) { cam.position.x *= max / dw; cam.position.z *= max / dw; }
+  const dx = cam.position.x - sqPos.x, dz = cam.position.z - sqPos.y, ds = Math.hypot(dx, dz);
+  if (ds < 0.55) { cam.position.x = sqPos.x + dx / ds * 0.55; cam.position.z = sqPos.y + dz / ds * 0.55; }
+  // npc: alone for a while, he potters about his room on his own
+  const engaged = now - lastTalk < 20000;
+  if (!task && !talking && now - lastTalk > 25000 && now > nextWander) {
+    const others = Object.values(PLACES).filter((p) => p !== activity && p.act !== 'armscross');
+    const to = others[Math.floor(Math.random() * others.length)];
+    walk(() => to.at, {speed: 0.7, place: to}); nextWander = now + 20000 + Math.random() * 25000;
+  }
+  if (task) {
+    const [tx, tz] = task.to(), left = Math.hypot(tx - sqPos.x, tz - sqPos.y);
+    if (left <= task.stopAt) { const t = task; task = null; acts.walk.timeScale = 1; if (t.place) activity = t.place; t.then?.(); }
+    else stepTo(tx, tz, task.speed, dt, !task.then);
+  } else if (away > now) turnTo(2 * sqPos.x - cam.position.x, 2 * sqPos.y - cam.position.z, dt, 3);
+  else if (talking || (engaged && !activity?.asked) || (activity && !activity.look)) turnTo(cam.position.x, cam.position.z, dt, 3);
+  else if (activity) turnTo(...activity.look, dt, 3);
+  // one rule picks the clip: walking > a gesture under way > talking > what he does at his place > idle
+  if (task) play(task.speed > 1.2 && acts.flee ? 'flee' : 'walk');
+  else if (now < gestureUntil) {}
+  else if (talking) play('talk');
+  else if (activity && (!engaged || activity.asked)) play(activity.act);  // 'paint' has no capture: idle plus the brush arm below
+  else play('idle');
+  sq.position.set(sqPos.x, 0, sqPos.y); sq.rotation.y = sqYaw; sqBlob.position.set(sqPos.x, 0.004, sqPos.y);
+  mixer.update(dt);
+  // painting: no clip was captured, so the right arm is lifted to the canvas and dabs on top of idle
+  const painting = !task && !talking && (!engaged || activity?.asked) && activity?.act === 'paint' && now >= gestureUntil;
+  brush.visible = painting;
+  if (painting) { const t = now / 1000;
+    bone.upperarm_R?.rotateX(-ARM.lift + Math.sin(t * 1.3) * 0.12); bone.upperarm_R?.rotateZ(ARM.out);
+    bone.forearm_R?.rotateX(-ARM.bend + Math.sin(t * 5.1) * 0.25); bone.head?.rotateX(0.12); }
+  music(cur === acts.clarinet, ds);
+  renderer.render(scene, cam);
+});
+status(SR ? 'готово · держи T и говори' : 'готово · микрофона нет в этом браузере, пиши через Enter');
+// test hook: ?debug lets a headless run fast-forward the silence and read his state
+if (q.has('debug')) Object.assign(window, {squidAge: (ms) => { lastTalk -= ms; nextWander -= ms; },
+  squidState: () => ({clip: cur?.getClip().name, task: !!task, activity: activity?.name, act: activity?.act, at: [sqPos.x.toFixed(2), sqPos.y.toFixed(2)], sees: looking()})});
+document.title = 'ready';
+</script></body></html>

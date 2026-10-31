@@ -26,3 +26,6 @@ research/video/
 
 # sandbox run journals (scratch)
 h0/out/dream/
+
+# squid_live tts cache (regenerable)
+h0/squid_live/cache/

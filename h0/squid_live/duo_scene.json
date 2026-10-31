@@ -1,0 +1,40 @@
+{
+ "id": "squid_duo",
+ "place": "Squidward's round living room inside his stone tiki-head house in Bikini Bottom: dark olive walls, a porthole window, framed self-portraits, an easel, a clarinet on a stand, a blue bamboo sofa",
+ "voice_ids": {
+  "spongebob": "0051da373e0a4ac282399909d1d31b69",
+  "squidward": "549dc86f83e44b0fa15f6c0842486178"
+ },
+ "hero": {
+  "name": "SpongeBob",
+  "voice": "spongebob",
+  "look": "a small square yellow sponge in a white shirt, red tie and brown shorts",
+  "soul": {
+   "diary": "Squidward said 'maybe later' about the jellyfishing trip. Maybe later is today! I made him a friendship bracelet out of kelp.",
+   "wants": [
+    "Squidward to come jellyfishing with him",
+    "to hear Squidward play the clarinet, just once, for him"
+   ],
+   "fears": [
+    "that Squidward really does not like him",
+    "being alone on a Saturday"
+   ],
+   "past_dream": "I dreamed the Krusty Krab was closed forever and nobody needed a fry cook.",
+   "facts": [
+    {"text": "He has the kelp bracelet in his pocket.", "hidden_from_hero": false},
+    {"text": "Squidward once kept a drawing SpongeBob made him, in a drawer.", "hidden_from_hero": true}
+   ]
+  }
+ },
+ "situation_hero": "you just let yourself into Squidward's living room on a Saturday morning; he is at his easel and has not turned around yet",
+ "actors": [
+  {
+   "name": "Squidward",
+   "voice": "squidward",
+   "look": "a tall grumpy pale-green octopus-like man with a big nose, in a brown shirt",
+   "persona": "Squidward: grumpy, sarcastic, vain about his clarinet and his paintings, tired of his job and of his neighbour SpongeBob. He wants his quiet Saturday to paint and practise. Deep down not cruel, and secretly a little lonely, which he would never admit."
+  }
+ ],
+ "objects": ["easel", "clarinet", "sofa", "porthole window", "self-portrait", "potted coral", "front door", "table"],
+ "hooks": {"A": ["clarinet"], "B": ["self-portrait"], "C": ["front door"]}
+}

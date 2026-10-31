@@ -1,11 +1,23 @@
 {
-  "_note": "USD. spark: per 1M tokens, per reasoning_effort; image: per generated image; h100_s: per GPU-second. null = price unknown -> charged as 0, but call caps still apply.",
+  "_note": "USD. spark: per 1M tokens {in,out}, per reasoning_effort (muse-spark-1.3 is one price for every effort); image: per generated image; h100_s: per GPU-second. Source for spark/image: https://dev.meta.ai/docs/pricing-rate-limits (checked 2026-10-27, same as h0/dream/llm.py). null = price unknown -> charged as 0, but call caps still apply.",
   "spark": {
-    "low": null,
-    "medium": null,
-    "high": null,
-    "max": null
+    "low": {
+      "in": 1.25,
+      "out": 4.25
+    },
+    "medium": {
+      "in": 1.25,
+      "out": 4.25
+    },
+    "high": {
+      "in": 1.25,
+      "out": 4.25
+    },
+    "max": {
+      "in": 1.25,
+      "out": 4.25
+    }
   },
-  "image": null,
+  "image": 0.01,
   "h100_s": 0.001267
 }

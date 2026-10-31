@@ -1,0 +1,516 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Squid duo</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font:15px/1.4 system-ui,sans-serif;color:#fff}
+#status{position:fixed;top:12px;right:12px;background:#0009;padding:6px 10px;border-radius:8px}
+#shot{position:fixed;top:12px;left:12px;background:#0009;padding:6px 10px;border-radius:8px;font:12px ui-monospace,monospace}
+#subs{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);width:min(860px,90vw);text-align:center}
+#subs div{background:#000b;display:inline-block;padding:6px 12px;border-radius:8px}
+#subs .Squidward{color:#c9f0c4} #subs .SpongeBob{color:#ffe873} #subs .narrator{color:#ddd;font-style:italic}
+#go{position:fixed;inset:0;display:grid;place-items:center;background:#000a;font-size:22px;cursor:pointer}
+#fade{position:fixed;inset:0;background:#000;opacity:0;transition:opacity .45s;pointer-events:none}
+#story{position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(720px,90vw);color:#fff;font:14px system-ui,sans-serif;text-shadow:0 1px 3px #000}
+#story .bar{height:4px;background:#ffffff33;border-radius:2px;margin-top:6px;overflow:hidden}
+#story .bar i{display:block;height:100%;width:0;background:#f5d742;transition:width .8s}
+#story .tick{white-space:nowrap;overflow:hidden}#story .tick span{display:inline-block;padding-left:100%;animation:tick 22s linear infinite}
+@keyframes tick{to{transform:translateX(-100%)}}
+#free{position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#f5d742;color:#000;border:0;border-radius:8px;padding:7px 14px;font:bold 14px system-ui,sans-serif;cursor:pointer}
+#free.on{background:#0009;color:#f5d742;cursor:default}
+#hint{position:fixed;left:12px;bottom:12px;background:#0009;padding:4px 8px;border-radius:6px;font:12px ui-monospace,monospace;color:#f5d742}
+</style>
+<script type="importmap">{"imports":{"three":"/three/build/three.module.js","three/addons/":"/three/examples/jsm/"}}</script></head><body>
+<div id="status">загрузка…</div><div id="shot"></div><div id="subs"></div><div id="hint">[F] — дверь</div><div id="story" hidden><div class="tick"><span></span></div><div class="bar"><i></i></div></div><button id="free" hidden>⚡ Фристайл [G]</button><div id="fade"></div><div id="go">▶ клик — смотреть сцену</div>
+<script type="module">
+// Squid duo (test-only, SpongeBob never ships): no player. The h0/dream engine (duo.py) plays SpongeBob and
+// Squidward with its director and Fish voices; this page stages its live lines in the H16 room: Squidward is
+// the anymove rig, SpongeBob is built from code boxes (image models refuse to draw him), and a camera
+// director cuts between shots on every line.  ?dream=<port> of the engine viewer (default 8771).
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+const q = new URLSearchParams(location.search), n = (k, v) => +(q.get(k) ?? v);
+const DREAM = `http://127.0.0.1:${n('dream', 8771)}`;
+const [R, H, SQ_H] = [4.2, 3.6, 1.85];
+const $ = (id) => document.getElementById(id), status = (t) => { $('status').textContent = t; };
+
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 100);
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });
+
+// ---- room: same build as index.html / h0/out/h16/round.html ----
+const load = (f) => new Promise((ok) => new THREE.TextureLoader().load('/room/' + f + '.png', (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; ok(t); }));
+const T = Object.fromEntries(await Promise.all(['t_wall', 't_floor', 't_ceiling', 't_beam', 'd_door', 'd_portrait', 'd_window'].map(async (f) => [f, await load(f)])));
+const tiled = (t, rx, ry, side = THREE.FrontSide) => { t = t.clone(); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.needsUpdate = true;
+  return new THREE.MeshLambertMaterial({map: t, side}); };
+const add = (geo, mat, pos = [0, 0, 0], rot = [0, 0, 0], parent = scene) => { const m = new THREE.Mesh(geo, mat); m.position.set(...pos); m.rotation.set(...rot); parent.add(m); return m; };
+add(new THREE.CylinderGeometry(R, R, H, 96, 1, true), tiled(T.t_wall, 2 * Math.PI * R / 2, H / 2, THREE.BackSide), [0, H / 2, 0]);
+add(new THREE.CircleGeometry(R, 96), tiled(T.t_floor, R, R), [0, 0, 0], [-Math.PI / 2, 0, 0]).receiveShadow = true;
+add(new THREE.CircleGeometry(R, 96), tiled(T.t_ceiling, R / 1.5, R / 1.5), [0, H, 0], [Math.PI / 2, 0, 0]);
+for (const a of [0, 60, 120]) add(new THREE.BoxGeometry(0.22, 0.3, 2 * R), tiled(T.t_beam, 1, 4), [0, H - 0.15, 0], [0, a * Math.PI / 180, 0]);
+const decal = (t, w, h, th, y) => { const a = th * Math.PI / 180, d = Math.sqrt(R * R - (w / 2) ** 2) - 0.02;
+  add(new THREE.PlaneGeometry(w, h), new THREE.MeshLambertMaterial({map: t, transparent: true, alphaTest: 0.5}), [d * Math.sin(a), y, -d * Math.cos(a)], [0, -a, 0]); };
+decal(T.d_window, 2.8, 1.4, 15, 1.9); decal(T.d_portrait, 1.1, 1.1, -58, 2.1); decal(T.d_portrait, 1.0, 1.0, -38, 2.05);
+decal(T.d_door, 0.95, 2.3, 75, 1.15); decal(T.d_door, 0.95, 2.3, -110, 1.15);
+const blobTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64); r.addColorStop(0, 'rgba(0,0,0,0.85)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
+const blob = (x, z, w) => { const m = add(new THREE.PlaneGeometry(w, w), new THREE.MeshBasicMaterial({map: blobTex, transparent: true, depthWrite: false}), [x, 0.004, z], [-Math.PI / 2, 0, 0]); m.renderOrder = 1; return m; };
+const polar = (th, r) => [r * Math.sin(th * Math.PI / 180), -r * Math.cos(th * Math.PI / 180)];
+const PROPS = [
+  {file: 'p_sofa', height: 1.0, at: polar(45, 3.1), face: 'c'}, {file: 'p_armchair', height: 1.35, at: polar(95, 3.0), face: 'c'},
+  {file: 'p_table', height: 0.85, at: [-1.3, 0.9], yaw: 0},
+  ...[[0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9]].map(([dx, dz]) => ({file: 'p_chair', height: 1.5, at: [-1.3 + dx, 0.9 + dz], face: [-1.3, 0.9]})),
+  {file: 'p_easel', height: 1.75, at: polar(160, 3.0), face: 'c'}, {file: 'p_vase', height: 0.75, at: polar(-80, 3.7), face: 'c'},
+  {file: 'p_coral', height: 0.9, at: polar(-140, 3.5), face: 'c'}, {file: 'p_stand', height: 1.1, at: polar(-20, 2.9), face: 'c'},
+  {file: 'p_lamp', height: 0.7, at: [0, 0], yaw: 0, top: H},
+];
+const gltf = new GLTFLoader(), yo = n('yo', 30);
+await Promise.all(PROPS.map(async (p) => {
+  const g = (await gltf.loadAsync('/room/' + p.file + '.glb').catch(() => null))?.scene;
+  if (!g) return;
+  const holder = new THREE.Group(); holder.add(g);
+  let b = new THREE.Box3().setFromObject(holder);
+  holder.scale.setScalar(p.height / b.getSize(new THREE.Vector3()).y);
+  b = new THREE.Box3().setFromObject(holder); const c = b.getCenter(new THREE.Vector3());
+  g.position.sub(new THREE.Vector3(c.x, b.min.y, c.z).divideScalar(holder.scale.x));
+  const [x, z] = p.at, tgt = p.face === 'c' ? [0, 0] : p.face;
+  const yaw = tgt ? Math.atan2(tgt[0] - x, tgt[1] - z) * 180 / Math.PI : p.yaw;
+  holder.position.set(x, p.top ? p.top - p.height : 0, z); holder.rotation.y = (yaw + yo) * Math.PI / 180;
+  scene.add(holder);
+  if (!p.top) { g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    const s = b.getSize(new THREE.Vector3()); blob(x, z, Math.max(s.x, s.z) * 1.4); }
+}));
+scene.add(new THREE.HemisphereLight(0xfff6e0, 0x553344, 2.2));
+const lamp = new THREE.PointLight(0xffe2c0, 8, 0, 1.2); lamp.position.set(0, H - 0.9, 0); scene.add(lamp);
+const spot = new THREE.SpotLight(0xffe8c8, 22, 0, 1.25, 1, 1.4); spot.position.set(0, H - 0.95, 0); spot.target.position.set(0, 0, 0);
+const fill = new THREE.PointLight(0xfff0e0, 1.6, 6, 1); cam.add(fill); scene.add(cam);  // soft fill from the lens
+spot.castShadow = true; spot.shadow.mapSize.set(1024, 1024); spot.shadow.radius = 6; spot.shadow.bias = -0.0005; scene.add(spot, spot.target);
+
+// ---- Squidward: one rig, every clip from its own capture GLB (as in index.html) ----
+status('загружаю Сквидварда…');
+const CLIPS = {idle: 'idle_s1', talk: 'talk_s1', walk: 'walk_proc', wave: 'wave_s1', shrug: 'shrug_s1', facepalm: 'facepalm_s1',
+  armscross: 'armscross_s1', react: 'react_s1', clarinet: 'clarinet_s1', doze: 'doze_s1', flee: 'mb_walk_scared'};
+const glbs = Object.fromEntries(await Promise.all(Object.entries(CLIPS).map(async ([k, f]) =>
+  [k, await gltf.loadAsync(`/clips/${f}/render/animation.glb`).catch(() => null)])));
+const sqRoot = new THREE.Group(), body = glbs.idle.scene; sqRoot.add(body); scene.add(sqRoot);
+body.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false;
+  for (const m of [o.material].flat()) { if ('metalness' in m) { m.metalness = 0; m.roughness = Math.max(m.roughness, 0.7); } } } });
+{ body.updateMatrixWorld(true); let b = new THREE.Box3().setFromObject(body);
+  body.scale.setScalar(SQ_H / b.getSize(new THREE.Vector3()).y); body.updateMatrixWorld(true);
+  b = new THREE.Box3().setFromObject(body); const c = b.getCenter(new THREE.Vector3());
+  body.position.set(-c.x, -b.min.y, -c.z); }
+const mixer = new THREE.AnimationMixer(body), acts = {};
+for (const [k, g] of Object.entries(glbs)) {
+  if (!g?.animations[0]) continue;
+  const clip = g.animations[0].clone(); clip.name = k;
+  for (const t of clip.tracks) if (t.name.endsWith('.position') && /pelvis|root|hips/i.test(t.name)) {
+    const v = t.values, [x0, z0] = [v[0], v[2]]; for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; } }
+  acts[k] = mixer.clipAction(clip);
+}
+const bone = {}; body.traverse((o) => { if (o.isBone || o.type === 'Bone' || /_[LR]$|head/.test(o.name)) bone[o.name] ??= o; });
+const brush = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.012, 0.28, 6), new THREE.MeshLambertMaterial({color: 0x9a6a3a}));
+const tip = new THREE.Mesh(new THREE.SphereGeometry(0.02, 8, 6), new THREE.MeshLambertMaterial({color: 0xd04a6a})); tip.position.y = 0.15; brush.add(tip);
+bone.hand_R?.add(brush); brush.scale.setScalar(1 / body.scale.x); brush.visible = false;
+let cur = null;
+const play = (k, {once = false, fade = 0.35} = {}) => {
+  const a = acts[k] ?? acts.idle; if (a === cur) return a;
+  a.reset(); a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = once; a.play();
+  if (cur) cur.crossFadeTo(a, fade, false); cur = a; return a; };
+play('idle');
+
+// ---- SpongeBob from code: a holey yellow box with a painted face, clothes as slabs, limbs on pivots ----
+const canvasTex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+const holes = (g, w, h, seed) => { let s = seed; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  g.fillStyle = '#f6e04a'; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 26; i++) { const r = 6 + rnd() * 16; g.fillStyle = rnd() < 0.6 ? '#cdb52c' : '#e2c93a';
+    g.beginPath(); g.ellipse(rnd() * w, rnd() * h, r, r * (0.7 + rnd() * 0.5), 0, 0, 7); g.fill(); } };
+const face = canvasTex(512, 420, (g, w, h) => { holes(g, w, h, 7);
+  for (const x of [176, 336]) {  // eyes, lashes, iris, pupil
+    g.lineWidth = 6; g.strokeStyle = '#222';
+    for (const dx of [-30, 0, 30]) { g.beginPath(); g.moveTo(x + dx, 78); g.lineTo(x + dx * 1.4, 40); g.stroke(); }
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x, 150, 72, 0, 7); g.fill(); g.stroke();
+    g.fillStyle = '#4aa8e8'; g.beginPath(); g.arc(x + 6, 154, 32, 0, 7); g.fill(); g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#111'; g.beginPath(); g.arc(x + 6, 154, 14, 0, 7); g.fill(); }
+  g.fillStyle = '#e8cc3a'; g.beginPath(); g.ellipse(256, 236, 22, 30, 0, 0, 7); g.fill();  // nose
+  g.fillStyle = '#f08a8a'; for (const x of [100, 412]) { g.beginPath(); g.arc(x, 270, 30, 0, 7); g.fill(); }  // cheeks
+  g.fillStyle = '#c0605a'; for (const [x, y] of [[90, 262], [104, 276], [112, 258], [400, 262], [414, 276], [422, 258]]) { g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+  g.lineWidth = 7; g.strokeStyle = '#3a2410'; g.beginPath(); g.moveTo(130, 268); g.quadraticCurveTo(256, 360, 382, 268); g.stroke();  // smile
+  g.fillStyle = '#fff'; g.strokeStyle = '#222'; g.lineWidth = 3; for (const x of [226, 260]) { g.fillRect(x, 304, 28, 30); g.strokeRect(x, 304, 28, 30); } });
+const side = canvasTex(256, 256, (g, w, h) => holes(g, w, h, 3));
+const M = (c) => new THREE.MeshLambertMaterial({color: c}), sideM = new THREE.MeshLambertMaterial({map: side});
+const sb = new THREE.Group(), sbBody = new THREE.Group(); sb.add(sbBody); scene.add(sb);
+add(new THREE.BoxGeometry(0.62, 0.5, 0.2), [sideM, sideM, sideM, sideM, new THREE.MeshLambertMaterial({map: face}), sideM], [0, 0.77, 0], [0, 0, 0], sbBody);
+add(new THREE.BoxGeometry(0.6, 0.075, 0.19), M(0xffffff), [0, 0.485, 0], [0, 0, 0], sbBody);  // shirt
+add(new THREE.BoxGeometry(0.6, 0.13, 0.19), M(0x8a5a2b), [0, 0.385, 0], [0, 0, 0], sbBody);  // shorts
+add(new THREE.BoxGeometry(0.605, 0.025, 0.195), M(0x111111), [0, 0.435, 0], [0, 0, 0], sbBody);  // belt
+add(new THREE.BoxGeometry(0.05, 0.12, 0.02), M(0xd8262c), [0, 0.47, 0.1], [0, 0, 0], sbBody);  // tie
+for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.05, 0.06, 3), M(0xffffff), [s * 0.05, 0.525, 0.1], [Math.PI, 0, s * 0.4], sbBody);  // collar
+const mouth = add(new THREE.CircleGeometry(0.06, 20), M(0x5a1010), [0, 0.72, 0.101], [0, 0, 0], sbBody); mouth.scale.set(1.4, 0.01, 1);
+const limb = (x, y, kind) => { const p = new THREE.Group(); p.position.set(x, y, 0); sbBody.add(p);
+  if (kind === 'arm') { add(new THREE.CylinderGeometry(0.05, 0.05, 0.07, 10), M(0xffffff), [0, -0.03, 0], [0, 0, 0], p);
+    add(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 8), M(0xf6e04a), [0, -0.19, 0], [0, 0, 0], p);
+    add(new THREE.SphereGeometry(0.045, 12, 8), M(0xf6e04a), [0, -0.36, 0], [0, 0, 0], p); }
+  else { add(new THREE.CylinderGeometry(0.024, 0.024, 0.16, 8), M(0xf6e04a), [0, -0.08, 0], [0, 0, 0], p);
+    add(new THREE.CylinderGeometry(0.03, 0.03, 0.11, 10), M(0xffffff), [0, -0.2, 0], [0, 0, 0], p);
+    add(new THREE.CylinderGeometry(0.031, 0.031, 0.012, 10), M(0xd8262c), [0, -0.165, 0], [0, 0, 0], p);
+    add(new THREE.CylinderGeometry(0.031, 0.031, 0.012, 10), M(0x2a5ad8), [0, -0.185, 0], [0, 0, 0], p);
+    add(new THREE.BoxGeometry(0.1, 0.065, 0.17), M(0x111111), [0, -0.285, 0.035], [0, 0, 0], p); }
+  return p; };
+const sbArm = [limb(-0.33, 0.66, 'arm'), limb(0.33, 0.66, 'arm')], sbLeg = [limb(-0.13, 0.32, 'leg'), limb(0.13, 0.32, 'leg')];
+sb.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+
+// ---- the two actors: where they stand, where they are going, what they are busy with ----
+const PLACES = {
+  easel: {at: polar(160, 2.15), look: polar(160, 3.0), act: 'paint'}, clarinet: {at: polar(-20, 2.05), look: polar(-20, 2.9), act: 'clarinet'},
+  window: {at: polar(15, 3.15), look: polar(15, 4.2), act: 'idle'}, sofa: {at: polar(45, 2.2), look: [0, 0], act: 'doze'},
+  portraits: {at: polar(-48, 3.0), look: polar(-48, 4.2), act: 'idle'}, coral: {at: polar(-140, 2.9), look: polar(-140, 3.5), act: 'idle'},
+  door: {at: polar(-110, 3.3), look: null, act: 'armscross'}, table: {at: [-0.2, 0.9], look: [-1.3, 0.9], act: 'idle'},
+};
+// engine object names (duo_scene.json) -> places
+const OBJ = {easel: 'easel', clarinet: 'clarinet', sofa: 'sofa', 'porthole window': 'window', 'self-portrait': 'portraits',
+  'potted coral': 'coral', 'front door': 'door', table: 'table'};
+const TABLE = [-1.3, 0.9, 1.35];
+const actor = (name, at, h) => ({name, pos: new THREE.Vector2(...at), yaw: 0, task: null, activity: null, h, talking: false, gesture: '', gestureUntil: 0});
+let actorsOut = false;  // book mode: after the scene change both of them are out on Conch Street
+const SQ = actor('Squidward', PLACES.easel.at, SQ_H), SB = actor('SpongeBob', polar(-110, 3.1), 1.02);
+for (const k in PLACES) PLACES[k].key = k;
+SQ.activity = PLACES.easel; SQ.yaw = Math.atan2(PLACES.easel.look[0] - SQ.pos.x, PLACES.easel.look[1] - SQ.pos.y);
+const other = (a) => a === SQ ? SB : SQ;
+const turnTo = (a, x, z, dt, speed = 4) => { const want = Math.atan2(x - a.pos.x, z - a.pos.y);
+  const d = ((want - a.yaw + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+  a.yaw += Math.sign(d) * Math.min(Math.abs(d), speed * dt); return Math.abs(d); };
+const walk = (a, to, {stopAt = 0.08, speed = 0.9, place = null, then = null} = {}) => { a.task = {to, stopAt, speed, place, then}; a.activity = null; };
+// one walking step toward (tx, tz), bent around the table and around the other actor
+const stepTo = (a, tx, tz, speed, dt) => {
+  let dx = tx - a.pos.x, dz = tz - a.pos.y; const dist = Math.hypot(dx, dz); dx /= dist; dz /= dist;
+  const o = other(a);
+  for (const [ox, oz, r] of [...(actorsOut ? CORALS : [TABLE]), [o.pos.x, o.pos.y, 0.7]]) {
+    const ex = a.pos.x - ox, ez = a.pos.y - oz, e = Math.hypot(ex, ez), w = (r + 0.5 - e) / 0.5;
+    if (w <= 0 || (ex * dx + ez * dz) > 0) continue;
+    const s = Math.sign(-ez * dx + ex * dz) || 1;
+    dx += (-ez / e * s + ex / e * 0.5) * Math.min(w, 1.5) * 1.6; dz += (ex / e * s + ez / e * 0.5) * Math.min(w, 1.5) * 1.6;
+    const l = Math.hypot(dx, dz); dx /= l; dz /= l;
+  }
+  if (turnTo(a, a.pos.x + dx, a.pos.y + dz, dt, 5) < 0.8) { const st = Math.min(speed * dt, dist); a.pos.x += Math.sin(a.yaw) * st; a.pos.y += Math.cos(a.yaw) * st; }
+  const rr = Math.hypot(a.pos.x, a.pos.y), max = R - 0.5; if (!actorsOut && rr > max) { a.pos.x *= max / rr; a.pos.y *= max / rr; }
+};
+// SpongeBob comes in through the front door and walks up to Squidward
+walk(SB, () => [SQ.pos.x, SQ.pos.y], {stopAt: 1.4, speed: 1.1});
+
+// ---- what a line looks like on the body: the engine gives words and voice directions, this picks a gesture ----
+const pick = (who, text, remarks) => {
+  const r = (remarks || []).join(' ').toLowerCase(), t = text.toLowerCase();
+  if (/\b(hi|hello|bye|goodbye|morning)\b/.test(t) && Math.random() < 0.7) return 'wave';
+  if (who === 'Squidward') {
+    if (/shrill|startl|gasp|yelp|shriek|alarm/.test(r)) return 'react';
+    if (/sigh|exhaust|groan|weary|tired/.test(r)) return Math.random() < 0.5 ? 'facepalm' : 'shrug';
+    if (/scoff|sarcas|dry|deadpan/.test(r)) return 'shrug';
+    if (/firm|sharp|stern|offend|irritat|cold|stubborn/.test(r)) return 'armscross';
+    return 'none';
+  }
+  if (/excit|bouncy|squeal|giddy|cheer|bubbly|gasp/.test(r)) return 'jump';
+  if (/sad|small|hurt|quiet|sniff|disappoint/.test(r)) return 'droop';
+  return 'none';
+};
+
+// ---- camera director: a bank of shots, one cut per line, a reaction cut inside long lines ----
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const head = (a) => V(a.pos.x, a.h * 0.88, a.pos.y);
+const geom = () => { const m = V((SQ.pos.x + SB.pos.x) / 2, 0, (SQ.pos.y + SB.pos.y) / 2);
+  const ax = V(SB.pos.x - SQ.pos.x, 0, SB.pos.y - SQ.pos.y); const d = Math.max(ax.length(), 0.3); ax.divideScalar(d);
+  let nrm = V(-ax.z, 0, ax.x); if (nrm.dot(V(-m.x, 0, -m.z)) < 0) nrm.negate();  // stay on the side that faces the room: one side of the axis, always
+  return {m, ax, nrm, d}; };
+const toward = (a, b) => { const v = V(b.pos.x - a.pos.x, 0, b.pos.y - a.pos.y); return v.normalize(); };
+const SHOTS = {
+  // over the listener's shoulder onto the speaker
+  ots: (s, l, k) => { const {nrm} = geom(), u = toward(s, l);
+    return {pos: V(l.pos.x, Math.max(l.h * 0.95, 0.9), l.pos.y).addScaledVector(u, 0.55).addScaledVector(nrm, 0.35), look: head(s), fov: 42}; },
+  close: (s, l, k) => { const {nrm} = geom(), u = toward(s, l);
+    return {pos: head(s).addScaledVector(u, 0.9 + s.h * 0.45).addScaledVector(nrm, 0.35).setY(s.h * 0.8), look: head(s).setY(s.h * 0.78), fov: 34}; },
+  two: (s, l, k) => { const {m, nrm, d} = geom();
+    return {pos: m.clone().addScaledVector(nrm, 1.6 + d * 0.8).setY(1.25), look: m.clone().setY(1.0), fov: 48}; },
+  wide: (s, l, k) => { const {m} = geom(), dir = m.length() > 0.2 ? m.clone().normalize().negate() : V(0, 0, 1);
+    return {pos: dir.multiplyScalar(R - 0.45).setY(2.7), look: m.clone().setY(0.8), fov: 62}; },
+  orbit: (s, l, k) => { const {m, d} = geom(), a = k.a0 + k.t * 0.18, r = 1.5 + d * 0.7;
+    return {pos: V(m.x + Math.sin(a) * r, 1.45, m.z + Math.cos(a) * r), look: m.clone().setY(1.0), fov: 50}; },
+  dolly: (s, l, k) => { const {nrm} = geom(), u = toward(s, l), e = Math.min(k.t / Math.max(k.dur, 1), 1), dd = 2.4 - 1.2 * (e * e * (3 - 2 * e));
+    return {pos: head(s).addScaledVector(u, dd).addScaledVector(nrm, 0.5).setY(s.h * 0.8), look: head(s), fov: 38}; },
+  low: (s, l, k) => { const u = toward(s, l), {nrm} = geom();  // from the floor, up at the speaker: Squidward towers
+    return {pos: V(s.pos.x, 0.35, s.pos.y).addScaledVector(u, 1.3).addScaledVector(nrm, 0.4), look: head(s).setY(s.h * 0.95), fov: 55}; },
+  follow: (s, l, k) => { const w = k.who, back = V(-Math.sin(w.yaw), 0, -Math.cos(w.yaw));
+    return {pos: V(w.pos.x, 1.6, w.pos.y).addScaledVector(back, 2.0), look: head(w), fov: 55}; },
+};
+let shot = {name: 'wide', s: SQ, l: SB, t: 0, dur: 6, a0: 0, who: SB}, used = [], lineNo = 0;
+const cut = (name, s, l, dur, extra = {}) => {
+  const {m} = geom(); shot = {name, s, l, t: 0, dur, a0: Math.atan2(cam.position.x - m.x, cam.position.z - m.z), who: s, ...extra};
+  used = [name, ...used].slice(0, 3); if (!outside || actorsOut) $('shot').textContent = `камера: ${name}${s ? ' · ' + s.name : ''}`; };
+const direct = (s, l, dur, gesture, walking) => {
+  lineNo++;
+  if (walking) return cut(Math.random() < 0.5 ? 'follow' : 'wide', s, l, dur);
+  const fresh = (xs) => xs.filter((x) => x !== used[0]);
+  let pool;
+  if (lineNo === 1) pool = ['wide'];
+  else if (gesture === 'jump' || gesture === 'react') pool = ['two', 'wide'];
+  else if (s === SQ && /facepalm|armscross/.test(gesture)) pool = ['low', 'close', 'two'];
+  else if (dur > 9) pool = ['dolly', 'orbit'];
+  else if (lineNo % 5 === 0) pool = ['two', 'orbit', 'wide'];
+  else pool = ['ots', 'ots', 'close', s === SQ ? 'low' : 'two'];
+  pool = fresh(pool); const name = pool[Math.floor(Math.random() * pool.length)] ?? 'ots';
+  cut(name, s, l, dur);
+  // long line: halfway, cut to the listener's face (a reaction shot), then back
+  if (dur > 7 && !/orbit|dolly/.test(name)) { const id = lineNo;
+    setTimeout(() => { if (lineNo === id) cut('close', l, s, dur / 3); }, dur * 450);
+    setTimeout(() => { if (lineNo === id) cut('ots', s, l, dur / 3); }, dur * 750); }
+};
+const clampCam = (p) => { const r = Math.hypot(p.x, p.z), max = R - 0.25; if (r > max) { p.x *= max / r; p.z *= max / r; } p.y = Math.min(Math.max(p.y, 0.25), H - 0.4); return p; };
+
+// ---- the engine's live stream: every line -> voice, subtitle, gesture, maybe a walk, and a cut ----
+const subs = (who, text) => { const d = document.createElement('div'); d.className = who;
+  d.textContent = `${who}: ${text.replace(/\[[^\]]*\]|<[^>]+>/g, '').replace(/\s+/g, ' ').trim()}`; $('subs').replaceChildren(d); };
+let run = null, spent = 0, lines = 0, joinedAt = 0;
+// ?score=wonder: the score book/score_wonder.json, its beats matched to the engine's events by their text
+const DIRECTED = new Map();
+if (q.get('score')) fetch(`/book/score_${q.get('score')}.json`).then((r) => r.json())
+  .then((sc) => { for (const b of sc.flatMap((x) => x.beats)) DIRECTED.set(b.text, b); }).catch(() => status('нет такой партитуры'));
+const onLine = (r) => {
+  const s = r.who === 'SpongeBob' ? SB : SQ, l = other(s), dur = (r.dur ?? 4) * 1000;
+  lines++; subs(s.name, r.text);
+  const bd = DIRECTED.get(r.text);  // a written-and-directed score (?score=) says the gesture and the shot itself
+  const g = GESTURES[s.name].includes(bd?.gesture) ? bd.gesture : pick(s.name, r.text, r.remarks);
+  let walking = false;
+  const place = actorsOut ? null : PLACES[OBJ[r.touch]] ?? null;  // free lines touch objects; outside they are street places
+  const outKey = actorsOut ? {'front door': 'door', pineapple: 'pineapple', rock: 'rock'}[r.touch] : null;
+  if (outKey) { stageTo(s, outKey); walking = true; } else if (place) {  // the engine says he touches an object: he goes there and gets busy with it
+    walking = true;
+    if (s === SQ) walk(SQ, () => place.at, {place: {...place, asked: true}});
+    else walk(SB, () => [place.at[0] * 0.85, place.at[1] * 0.85], {stopAt: 0.2, speed: 1.2, place: {...place, act: 'idle'}});
+  } else if (r.source !== 'book' && s === SB && Math.hypot(SB.pos.x - SQ.pos.x, SB.pos.y - SQ.pos.y) > 2.3 && !SB.task) {
+    walk(SB, () => [SQ.pos.x, SQ.pos.y], {stopAt: 1.3, speed: 1.2}); walking = true;  // he never lets Squidward get far
+  }
+  if (g !== 'none') { s.gesture = g; s.gestureUntil = performance.now() + 3500; if (s === SQ && acts[g]) play(g, {once: true}); }
+  s.talking = true; l.talking = false;
+  const done = () => { s.talking = false; };
+  if (r.audio && run) { const a = voice = new Audio(`${DREAM}/out/${run}/${r.audio}`); a.volume = outside !== actorsOut ? 0.35 : 1; a.onended = done; a.onerror = () => setTimeout(done, dur); a.play().catch(() => setTimeout(done, dur)); }
+  else setTimeout(done, dur);
+  if (SHOTS[bd?.shot]) { lineNo++; cut(bd.shot, s, l, dur / 1000, {who: s}); } else direct(s, l, dur / 1000, g, walking);
+  status(`реплик ${lines} · потрачено $${spent.toFixed(3)} · ${run}`);
+};
+// ---- book mode: the narrator's sentences are the stage directions (who goes where), the scene change walks them out ----
+const STAGE = [[/easel|paint/, 'easel'], [/clarinet/, 'clarinet'], [/sofa/, 'sofa'], [/window|porthole/, 'window'],
+  [/portrait/, 'portraits'], [/coral/, 'coral'], [/door/, 'door'], [/table|drawing|napkin/, 'table']];
+const GESTURES = {Squidward: ['none', 'wave', 'shrug', 'facepalm', 'armscross', 'react', 'clarinet', 'doze'], SpongeBob: ['none', 'wave', 'jump', 'droop']};
+const walkOff = () => {  // both of them out onto the open street (in front of the corals), then along it to Jellyfish Fields
+  walk(SQ, () => [0.2, -2.8], {speed: 0.8, then: () => walk(SQ, () => [-18, -2.8], {speed: 0.8})});
+  walk(SB, () => [-0.6, -2.2], {speed: 1.0, then: () => walk(SB, () => [-17.4, -2.2], {speed: 1.0})}); };
+const STREET_PLACES = {door: () => [outDoor[0], outDoor[1] + 0.8], pineapple: () => [6.6, -5.2], rock: () => [-6.8, -5.4]};
+// a place holds one body: whoever is staged there second (or finds the other already on it) stands beside it instead,
+// else the two shove each other off the same spot and the one the story named never gets there
+const placeOf = (a) => a.task?.place?.key ?? a.activity?.key;
+const stageTo = (who, key, claimed = new Set()) => {
+  if (key === 'walk_off') return walkOff();
+  if (actorsOut) { const at = STREET_PLACES[key]; if (at) walk(who, at, {stopAt: who === SB ? 0.9 : 0.1, speed: who === SB ? 1.1 : 0.8}); return; }
+  const place = PLACES[key]; if (!place) return;
+  if (placeOf(who) === key) { claimed.add(key); return; }  // already there
+  if (claimed.has(key) || placeOf(other(who)) === key) {
+    walk(who, () => [place.at[0] * 0.6, place.at[1] * 0.6], {stopAt: 0.5, speed: who === SB ? 1.2 : 0.9}); return; }
+  claimed.add(key);
+  if (who === SQ) walk(SQ, () => place.at, {place: {...place, key, asked: true}});
+  else walk(SB, () => [place.at[0] * 0.85, place.at[1] * 0.85], {stopAt: 0.2, speed: 1.2, place: {...place, key, act: 'idle'}}); };
+const onNarration = (text) => {
+  const d = document.createElement('div'); d.className = 'narrator'; d.textContent = text.replace(/^"|"$/g, ''); $('subs').replaceChildren(d);
+  stageFrom(text); };
+// the narrator's words put people where they say -- a book beat, or a freestyle piece of the book
+const stageFrom = (text) => {
+  const staged = DIRECTED.get(text)?.stage;
+  const claimed = new Set();
+  if (Array.isArray(staged)) for (const st of staged) stageTo(st.who === 'SpongeBob' ? SB : SQ, st.place, claimed);
+  else { let last = null; for (const sent of text.split(/(?<=[.!?])\s+/)) {  // a hand score (A): the narrator's sentences are the stage directions
+    if (/walk off|down the street/.test(sent)) { walkOff(); continue; }  // the ending names nobody
+    // the subject is the name that comes first: "Squidward flops onto the sofa, but SpongeBob..." is Squidward's;
+    // "Squidward stops. He walks to the table ... SpongeBob's drawing": a "He" goes on with the one named before
+    const iB = sent.indexOf('SpongeBob'), iQ = sent.indexOf('Squidward');
+    const named = iB < 0 && iQ < 0 ? null : iQ < 0 || (iB >= 0 && iB < iQ) ? SB : SQ;
+    const who = /^(He|His|Him)\b/.test(sent.trim()) && last ? last : named;
+    if (who) last = who;
+    if (!who || actorsOut) continue;
+    stageTo(who, STAGE.find(([re]) => re.test(sent.toLowerCase()))?.[1], claimed);
+    if (/after him|follows/.test(sent) && who === SB) walk(SB, () => [SQ.pos.x, SQ.pos.y], {stopAt: 1.0, speed: 1.3});
+  } }
+  if (SB.task || SQ.task) cut(Math.random() < 0.5 ? 'follow' : 'wide', SB.task ? SB : SQ, SB.task ? SQ : SB, 6, {who: SB.task ? SB : SQ});
+};
+const goOutTogether = async () => {
+  await buildStreet();
+  actorsOut = true; street.add(sqRoot, sb);
+  SQ.pos.set(outDoor[0] + 0.6, outDoor[1] + 0.6); SB.pos.set(outDoor[0] - 0.6, outDoor[1] + 1.1);
+  for (const a of [SQ, SB]) { a.task = null; a.activity = null; }
+  SQ.yaw = SB.yaw = 0;
+  if (!outside) goDoor(); else cut('two', SQ, SB, 6);
+};
+// ---- book -> freestyle: one button (or G) stops the score, the same two improvise on from this moment ----
+let mode = null;
+const setMode = (m) => { if (m === mode) return; mode = m; const b = $('free');
+  b.hidden = false; b.classList.toggle('on', m === 'free'); b.textContent = m === 'free' ? '⚡ фристайл: импровизируют' : '⚡ Фристайл [G]'; };
+const goFree = () => { if (mode !== 'book') return;
+  $('free').textContent = '⚡ переключаю…';
+  fetch(`${DREAM}/freestyle`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'})
+    .catch(() => { $('free').textContent = '⚡ Фристайл [G] (движок не ответил)'; }); };
+$('free').onclick = goFree;
+addEventListener('keydown', (e) => { if (e.code === 'KeyG' && !e.repeat) goFree(); });
+// ---- freestyle: the book's story comes out piece by piece, shown as a ticker and a bar ----
+let pieces = 0, told = 0, replaying = false;
+const story = (r) => {
+  if (r.type === 'schedule') { const n = (r.events || []).filter((e) => e.kind === 'story' || e.kind === 'exit').length;
+    if (!n) return; if (r.events.some((e) => e.t === 0)) { pieces = n; told = 0; } else pieces = told + n; }
+  if (r.type === 'event' && (r.kind === 'story' || r.kind === 'exit')) { told++;
+    const w = String(r.what || '').replace(/^The story moves on:? ?/, '').replace(/ In the book it goes.*$/, '').replace(/ Play this moment.*$/, '');
+    $('story').hidden = false; $('story').querySelector('span').textContent = `📖 ${told}/${pieces} · ${w}`;
+    // a piece is not the end of the run: "walk off down the street" must not take them out of the scene
+    if (r.kind === 'story' && !replaying) stageFrom(w.replace(/walk off|down the street/g, 'walk')); }
+  if (pieces) $('story').querySelector('i').style.width = `${Math.min(100, 100 * told / pieces)}%`; };
+const connect = async () => {
+  try { run = (await (await fetch(`${DREAM}/api/status`)).json()).live; } catch { run = null; }
+  if (!run) { status(`жду движок на ${DREAM} — запусти duo.py`); setTimeout(connect, 1000); return; }  // the page may open first
+  const es = new EventSource(`${DREAM}/events`), backlog = []; joinedAt = performance.now();
+  const handle = (r) => {
+    if (r.type === 'snapshot' && r.mode) setMode(r.mode);
+    if (r.type === 'mode' && r.mode === 'freestyle') { setMode('free');
+      const d = document.createElement('div'); d.className = 'narrator'; d.textContent = '— дальше без книги: импровизация —'; $('subs').replaceChildren(d); }
+    story(r);
+    if (r.type === 'narrator') onNarration(r.text);
+    if (r.type === 'transition' && (r.cause === 'book' || !actorsOut)) goOutTogether();  // freestyle: the door out is the first one
+    if (r.type === 'line') onLine(r); };
+  es.onmessage = (e) => { const r = JSON.parse(e.data);
+    if (r.type === 'cost') spent = r.dollars;
+    if (performance.now() - joinedAt < 700) backlog.push(r); else handle(r); };
+  // the backlog replayed on connect is history: only its last few seconds play (all of it when the run just began),
+  // and a scene change in it still happens so a late viewer lands where the story is
+  setTimeout(() => { const last = Math.max(0, ...backlog.map((r) => r.t ?? 0));
+    for (const r of backlog) if ((r.t ?? 0) >= last - 3 || r.type === 'transition') handle(r); else { replaying = true; story(r); replaying = false; } }, 700);
+  es.addEventListener('end', () => { es.close(); status(`сцена закончилась · реплик ${lines} · потрачено $${spent.toFixed(3)}`); });
+};
+
+// ---- the front door works: a SAMP-style floating label and a spinning pickup; [F] or a click on the label takes
+// the viewer out to Conch Street (app/'s scene, judge SHIP: the same SAM3D houses as GLB meshes, its sky and sand).
+// The two keep talking inside; out here their voices come muffled through the wall.
+const spinners = [], labels = [];
+const labelTex = (title, hint) => canvasTex(512, 160, (g, w) => {
+  g.textAlign = 'center'; g.lineJoin = 'round'; g.strokeStyle = '#000';
+  g.font = 'bold 54px Arial'; g.lineWidth = 10; g.strokeText(title, w / 2, 62); g.fillStyle = '#f5d742'; g.fillText(title, w / 2, 62);
+  g.font = 'bold 40px Arial'; g.lineWidth = 8; g.strokeText(hint, w / 2, 128); g.fillStyle = '#fff'; g.fillText(hint, w / 2, 128); });
+const doorLabel = (parent, at, y, title, hint) => {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({map: labelTex(title, hint), depthTest: false, transparent: true}));
+  s.scale.set(1.2, 0.375, 1); s.position.set(at[0], y, at[1]); s.renderOrder = 10; parent.add(s); labels.push(s);
+  const p = add(new THREE.OctahedronGeometry(0.08), new THREE.MeshBasicMaterial({color: 0xf5d742}), [at[0], 0.9, at[1]], [0, 0, 0], parent);
+  spinners.push(p); return s; };
+doorLabel(scene, polar(-110, 3.55), 2.6, 'Дверь', '[F] выйти на улицу');
+
+const street = new THREE.Scene(), STREET_R = 40;
+// placements from app/src/splats.ts (x, z, height in metres, yaw so each front faces the spawn at the origin)
+const HOUSES = [
+  {file: 'squidward_house', height: 5, x: 0, z: -9, yaw: n('yq', 0)}, {file: 'pineapple_house', height: 5.5, x: 8, z: -9, yaw: n('yp', 150)},
+  {file: '03_patrick_rock', height: 3.5, x: -8, z: -9, yaw: n('yr', 0)},
+  {file: '04_tube_coral', height: 1.6, x: -4.2, z: -5.5, yaw: 20}, {file: '04_tube_coral', height: 1.3, x: 4.3, z: -5.8, yaw: -70},
+  {file: '04_tube_coral', height: 1.8, x: -12, z: -6.5, yaw: 140}, {file: '04_tube_coral', height: 1.4, x: 12, z: -6, yaw: 230},
+];
+const CORALS = HOUSES.filter((h) => h.file === '04_tube_coral').map((h) => [h.x, h.z, 0.6]);
+let streetReady = null, outDoor = [0, -6.5];
+const buildStreet = () => streetReady ??= (async () => {
+  const tex = (f) => new Promise((ok) => new THREE.TextureLoader().load('/street/env/' + f, (t) => { t.colorSpace = THREE.SRGBColorSpace; ok(t); }));
+  const [sky, sand] = await Promise.all([tex('sky.png'), tex('floor_sand.png')]);
+  sky.mapping = THREE.EquirectangularReflectionMapping; street.background = sky;
+  sand.wrapS = sand.wrapT = THREE.RepeatWrapping; sand.repeat.setScalar(STREET_R * 2 / 3); sand.anisotropy = 8;
+  const edge = canvasTex(256, 256, (g) => { const r = g.createRadialGradient(128, 128, 64, 128, 128, 128);
+    r.addColorStop(0, '#fff'); r.addColorStop(1, '#000'); g.fillStyle = r; g.fillRect(0, 0, 256, 256); });  // the sand melts into the painted horizon
+  add(new THREE.CircleGeometry(STREET_R, 96), new THREE.MeshBasicMaterial({map: sand, alphaMap: edge, transparent: true}), [0, 0, 0], [-Math.PI / 2, 0, 0], street).renderOrder = -1;
+  street.add(new THREE.HemisphereLight(0xffffff, 0xe0d0a0, 2.4));
+  const sun = new THREE.DirectionalLight(0xfff4dd, 1.4); sun.position.set(6, 12, 8); street.add(sun);
+  const files = {}; for (const h of HOUSES) files[h.file] ??= gltf.loadAsync(`/street/splats/${h.file}.glb`).then((g) => g.scene).catch(() => null);
+  for (const h of HOUSES) {
+    const src = await files[h.file]; if (!src) continue;
+    const g = src.clone(), holder = new THREE.Group(); holder.add(g);
+    let b = new THREE.Box3().setFromObject(holder); holder.scale.setScalar(h.height / b.getSize(V()).y);
+    b = new THREE.Box3().setFromObject(holder); const c = b.getCenter(V());
+    g.position.sub(V(c.x, b.min.y, c.z).divideScalar(holder.scale.x));
+    holder.position.set(h.x, 0, h.z); holder.rotation.y = h.yaw * Math.PI / 180; street.add(holder);
+    if (h.file === 'squidward_house') { const s = new THREE.Box3().setFromObject(holder); outDoor = [h.x, s.max.z + 0.6]; }
+  }
+  doorLabel(street, outDoor, 2.7, 'Дом Сквидварда', '[F] войти');
+})();
+setTimeout(buildStreet, 1500);  // load it in the background so the first exit is quick
+
+// outside nobody talks, so the camera just tours the street: a slow change of views every 7 s
+const OUT_SHOTS = [
+  (k) => ({pos: V(Math.sin(k * 0.05) * 1.5, 1.6, 0.5), look: V(0, 2, -9), fov: 66}),  // the spawn view down the street
+  (k) => ({pos: V(outDoor[0] + 2.2 - k * 0.08, 0.45, outDoor[1] + 3.2), look: V(0, 3.2, -9), fov: 55}),  // low, up at the tiki head
+  (k) => ({pos: V(Math.sin(0.6 + k * 0.04) * 13, 4.5, -7 + Math.cos(0.6 + k * 0.04) * 13), look: V(0, 1.8, -9), fov: 50}),  // crane around
+  (k) => ({pos: V(3 + k * 0.06, 1.4, -2.5), look: V(8, 2.6, -9), fov: 48}),  // the pineapple next door
+];
+let outside = false, fading = false, outShot = 0, outT = 0, voice = null;
+const goDoor = async () => {
+  if (fading || $('go')) return; fading = true; $('fade').style.opacity = 1;
+  await Promise.all([outside ? null : buildStreet(), new Promise((ok) => setTimeout(ok, 480))]);
+  outside = !outside; outShot = 0; outT = 0;
+  renderer.toneMapping = outside ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;  // app/ draws the street untonemapped
+  if (voice) voice.volume = outside !== actorsOut ? 0.35 : 1;
+  $('hint').textContent = outside ? '[F] — войти в дом' : '[F] — дверь';
+  if (outside && !actorsOut) $('shot').textContent = 'камера: улица (голоса из дома)';
+  if (!outside || actorsOut) cut(shot.name, shot.s, shot.l, shot.dur);  // the dialogue's current shot cuts in again
+  $('fade').style.opacity = 0; fading = false; };
+addEventListener('keydown', (e) => { if (e.code === 'KeyF' && !e.repeat) goDoor(); });
+const ray = new THREE.Raycaster();
+renderer.domElement.addEventListener('click', (e) => {
+  ray.setFromCamera(new THREE.Vector2(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1), cam);
+  if (ray.intersectObjects(labels.filter((l) => l.parent === (outside ? street : scene))).length) goDoor(); });
+
+// ---- frame loop ----
+const clock = new THREE.Clock(), lookAt = V(0, 1, 0);
+cam.position.set(...polar(-60, 3.4).flatMap((x, i) => i ? [2.4, x] : [x])); cam.lookAt(0, 0.8, 0);
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05), now = performance.now(), t = now / 1000;
+  for (const a of [SQ, SB]) {
+    if (a.task) { const [tx, tz] = a.task.to(), left = Math.hypot(tx - a.pos.x, tz - a.pos.y);
+      if (left <= a.task.stopAt) { const {place, then} = a.task; if (place) a.activity = place; a.task = null; then?.(); } else stepTo(a, tx, tz, a.task.speed, dt); }
+    else if (a.talking || other(a).talking && !(a.activity?.asked)) turnTo(a, other(a).pos.x, other(a).pos.y, dt, 3);
+    else if (a.activity?.look) turnTo(a, ...a.activity.look, dt, 2);
+  }
+  // Squidward: one rule picks the clip (walk > gesture > talk > his place's activity > idle)
+  if (SQ.task) play('walk'); else if (now < SQ.gestureUntil) {} else if (SQ.talking) play('talk');
+  else if (SQ.activity && SQ.activity.act !== 'paint' && acts[SQ.activity.act]) play(SQ.activity.act); else play('idle');
+  sqRoot.position.set(SQ.pos.x, 0, SQ.pos.y); sqRoot.rotation.y = SQ.yaw;
+  mixer.update(dt);
+  const painting = !SQ.task && !SQ.talking && SQ.activity?.act === 'paint' && now >= SQ.gestureUntil;
+  brush.visible = painting;
+  if (painting) { bone.upperarm_R?.rotateX(-1.1 + Math.sin(t * 1.3) * 0.12); bone.forearm_R?.rotateX(-0.9 + Math.sin(t * 5.1) * 0.25); bone.head?.rotateX(0.12); }
+  // SpongeBob: all procedural — hop when he walks, squash and flap when he talks, a few big gestures
+  const g = now < SB.gestureUntil ? SB.gesture : '', w = !!SB.task;
+  let y = 0, sy = 1 + Math.sin(t * 2.2) * 0.015, tilt = 0, armZ = [0.25, -0.25], armX = [0, 0], legX = [0, 0];
+  if (w) { const p = t * 10; y = Math.abs(Math.sin(p)) * 0.07; legX = [Math.sin(p) * 0.7, -Math.sin(p) * 0.7]; armX = [-Math.sin(p) * 0.6, Math.sin(p) * 0.6]; }
+  if (SB.talking) { sy += Math.abs(Math.sin(t * 7)) * 0.04; armZ = [0.5 + Math.sin(t * 3.1) * 0.35, -0.5 - Math.sin(t * 3.7 + 1) * 0.35]; armX = [-0.4 - Math.sin(t * 2.3) * 0.3, -0.4 - Math.sin(t * 2.9) * 0.3]; }
+  if (g === 'jump') { y = Math.abs(Math.sin(t * 7)) * 0.3; armZ = [2.6, -2.6]; sy = 1 + Math.sin(t * 14) * 0.08; }
+  if (g === 'wave') { armZ[1] = -2.5 + Math.sin(t * 12) * 0.35; }
+  if (g === 'droop') { tilt = 0.18; armZ = [0.08, -0.08]; sy = 0.95; }
+  sbBody.position.y = y; sbBody.scale.set(1 / Math.sqrt(sy), sy, 1 / Math.sqrt(sy)); sbBody.rotation.x = tilt;
+  sbArm.forEach((p, i) => { p.rotation.set(armX[i], 0, armZ[i]); }); sbLeg.forEach((p, i) => { p.rotation.x = legX[i]; });
+  mouth.scale.y = SB.talking ? 0.2 + Math.abs(Math.sin(t * 15) * Math.sin(t * 4.3)) * 0.9 : 0.01;
+  sb.position.set(SB.pos.x, 0, SB.pos.y); sb.rotation.y = SB.yaw;
+  // camera: the current shot, eased toward its live framing (the actors keep moving inside a shot)
+  for (const s of spinners) { s.rotation.y = t * 2; s.position.y = 0.9 + Math.sin(t * 3) * 0.06; }
+  shot.t += dt; outT += dt;
+  const tour = outside && !actorsOut;
+  if (tour && outT > 7) { outShot = (outShot + 1) % OUT_SHOTS.length; outT = 0; }
+  const f = tour ? OUT_SHOTS[outShot](outT) : SHOTS[shot.name](shot.s ?? SQ, shot.l ?? SB, shot), p = outside ? f.pos : clampCam(f.pos);
+  const k = (tour ? outT : shot.t) < 0.05 ? 1 : 1 - Math.exp(-dt * 4);  // a cut jumps, then the shot tracks smoothly
+  cam.position.lerp(p, k); lookAt.lerp(f.look, k); cam.lookAt(lookAt);
+  if (cam.fov !== f.fov) { cam.fov += (f.fov - cam.fov) * k; cam.updateProjectionMatrix(); }
+  cam.updateMatrixWorld();  // the camera hangs in the room scene, which is not rendered while we are outside
+  renderer.render(outside ? street : scene, cam);
+});
+status('готово · клик — подключиться к движку');
+$('go').onclick = () => { $('go').remove(); connect(); };
+if (q.has('auto')) { $('go').remove(); connect(); }
+document.title = 'ready';
+</script></body></html>

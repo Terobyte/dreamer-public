@@ -26,6 +26,21 @@ from typing import Callable
 
 MUSE_URL = "https://api.meta.ai/v1/images/generations"
 MUSE_MODEL = "muse-image-1.0"
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def as_png(data: bytes) -> bytes:
+    """The engine reads `<key>.png` with pngjs, but Muse Image answers WebP (seen Oct 30): a WebP under a .png
+    name makes `build` exit 2, every shot goes missing and every room stays red. PNG bytes pass untouched."""
+    if data[:8] == PNG_MAGIC:
+        return data
+    import io
+
+    from PIL import Image  # the one non-stdlib import: only live pictures need it
+
+    out = io.BytesIO()
+    Image.open(io.BytesIO(data)).save(out, "PNG")
+    return out.getvalue()
 
 
 class MuseImage:
@@ -44,7 +59,7 @@ class MuseImage:
         })
         with urllib.request.urlopen(request, timeout=self.timeout) as answer:
             payload = json.load(answer)
-        return base64.b64decode(payload["data"][0]["b64_json"])
+        return as_png(base64.b64decode(payload["data"][0]["b64_json"]))
 
 
 class ModalHandle:

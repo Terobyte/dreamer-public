@@ -300,3 +300,25 @@ class TestAccounting(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPngBytes(unittest.TestCase):
+    """Muse Image answers WebP now; the engine reads the cache with pngjs, so every picture must be a PNG."""
+
+    def test_webp_becomes_png(self):
+        import io
+        from PIL import Image
+        from pipe2.assets import as_png
+        buf = io.BytesIO()
+        Image.new("RGB", (4, 4), (200, 30, 30)).save(buf, "WEBP")
+        out = as_png(buf.getvalue())
+        self.assertEqual(out[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(Image.open(io.BytesIO(out)).getpixel((1, 1))[0] > 150, True)
+
+    def test_png_passes_through_untouched(self):
+        import io
+        from PIL import Image
+        from pipe2.assets import as_png
+        buf = io.BytesIO()
+        Image.new("RGB", (2, 2)).save(buf, "PNG")
+        self.assertEqual(as_png(buf.getvalue()), buf.getvalue())

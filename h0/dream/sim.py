@@ -17,6 +17,7 @@ import queue
 import lang
 from clock import Clock
 from dialogue import PROMPT_VERSION
+from dialogue import Dialogue
 from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, names_in,
                       THRESHOLD, TICK, W_ADDRESSED, W_EVENT_HIT, W_GOAL_OPEN,
                       W_SILENT, W_SPOKE_LAST)
@@ -181,20 +182,25 @@ def _load_book_plan(book_dir, scene_ids=None, score=None):
             raise ValueError("score scene mismatch")
     for sid in scene_ids:
         bookmod.find_scene(book, sid)  # a score cannot bring a scene the book lacks
+    # freestyle (go_freestyle) needs what a score never does: who the actors are
+    # (cast.persona), what the hero wants (cast.soul) and what can be touched (scene.objects)
     cast = book["cast"]
     scenes = []
     for sid in scene_ids:
         sc = scores.get(sid) or bookmod.score_scene(book_dir, sid)
         speaking = {b["who"] for b in sc["beats"] if b["kind"] == "line" and b.get("who")}
-        actors = [{"name": n, "look": cast[n]["look"], "voice": cast[n]["voice"]}
+        actors = [{"name": n, "look": cast[n]["look"], "voice": cast[n]["voice"],
+                   **({"persona": cast[n]["persona"]} if cast[n].get("persona") else {})}
                   for n in sc["cast"] if n in speaking]
         pov = book["pov"]
+        hero = {"name": pov, "voice": cast[pov]["voice"], "look": cast[pov]["look"]}
+        if cast[pov].get("soul"):
+            hero["soul"] = cast[pov]["soul"]
+        objects = [str(o) for o in bookmod.find_scene(book, sid)[1].get("objects") or []]
         scenes.append({"scene": sid, "place": sc["place"], "beats": list(sc["beats"]),
                        "actors": actors,
-                       "dict": {"place": sc["place"],
-                                "hero": {"name": pov, "voice": cast[pov]["voice"],
-                                         "look": cast[pov]["look"]},
-                                "actors": actors, "objects": [], "events": [], "soul": {}}})
+                       "dict": {"place": sc["place"], "hero": hero,
+                                "actors": actors, "objects": objects, "events": [], "soul": {}}})
     return {"scenes": scenes, "narrator_voice": book.get("narrator_voice") or "old_man"}
 
 
@@ -304,6 +310,11 @@ class Sim:
         self._hero_world = []
         self._pending = {}
         self._schedule = []
+        # book -> freestyle: the book scenes still ahead, and whether the book's
+        # story is being dealt out piece by piece (go_freestyle)
+        self._free_book = []
+        self._free_story = False
+        self._free_lines = 0  # lines said since the last piece of the book came out
         # 3.2: what the narrator still has to voice -- one entry per cause,
         # taken one at a time through the same slot a line uses
         self._narrate = []
@@ -355,6 +366,7 @@ class Sim:
                                  paused_check=lambda: self.safety_paused,
                                  pause_lock=self._image_lock)
         self.n_transitions = 0
+        self._max_transitions = None  # set by run(); go_freestyle moves it
         self.stop_reason = None  # why the last run() loop ended (F7: main trusts this, not the wall clock)
         self.playing = False
         self.active_line = None
@@ -414,7 +426,8 @@ class Sim:
         here any more is nobody -- his "Just now" is dropped, not handed on."""
         who = ev["who"]
         names = [self.hero] + list(self.actors) if who == "all" else list(who)
-        return [n for n in names if n == self.hero or n in self.actors]
+        # a book plan lists the hero among the actors too: one "Just now" each
+        return [n for n in dict.fromkeys(names) if n == self.hero or n in self.actors]
 
     def _fire_due_events(self):
         """Checked on every loop step, not only on a free tick: an event is due at
@@ -423,7 +436,22 @@ class Sim:
         for i, ev in enumerate(self._schedule):
             if i in self._fired or ev["t"] > t_sim:
                 continue
+            piece = ev["kind"] in ("story", "exit")
+            if piece and self._free_lines < self.FREE_PIECE_LINES and any(
+                    e["kind"] in ("story", "exit") for j, e in enumerate(self._schedule)
+                    if j in self._fired):
+                # the bar waits for the players: the last piece is not played yet
+                continue
             self._fired.add(i)
+            if piece:
+                self._free_lines = 0
+                if self.fsm.state == "idle":
+                    self.fsm.idle_since = self.clock.now()  # the story moves: nobody is idle
+                # the director knows where the story is, at its next consult; a consult
+                # per piece put two orders on every two lines and the talk jumped
+                self.director.pending.append(
+                    {"type": "story", "value": "STORY NOW (the cast is playing this; "
+                                               "do not invent another plot): " + ev["what"]})
             who = self._recipients(ev)
             for name in who:
                 if name == self.hero:
@@ -442,6 +470,8 @@ class Sim:
                 self._discard_reason = "event"
             self._diagnostic({"type": "event", "what": ev["what"], "who": who,
                               "kind": ev["kind"]})
+            if ev["kind"] == "exit":
+                self._free_exit()
             if not who and self.dialogue is not None:
                 # 3.2: an event nobody sees has no mouth to answer it -- one
                 # narration per event, queued, not one per tick
@@ -690,7 +720,10 @@ class Sim:
                 if line["owner"] == "human" or line.get("role") == "hero":
                     voice_label = self.hero_voice
                 else:
-                    actor_name = line.get("actor") or (self.actors[0] if self.actors else None)
+                    # B62: a free line names its speaker in "who"; a book plan lists the hero
+                    # first in actors, so actors[0] would lend the actor the hero's voice
+                    actor_name = (line.get("actor") or line.get("who")
+                                  or (self.actors[0] if self.actors else None))
                     voice_label = self._actor_voices.get(actor_name) or "man"
             path = os.path.join(self._audio_dir, "line_%03d.wav" % self._line_seq)
             res = self._voice.synthesize(line["text"], voice_label, path)
@@ -759,6 +792,7 @@ class Sim:
         if self.dialogue is not None or line.get("source") == "book":
             said = line.get("said") or line["text"]
             self.transcript.append((event.get("who") or "?", said))
+            self._free_lines += 1
             if hasattr(self.dialogue, "heard"):
                 self.dialogue.heard(event.get("who") or "?", said)
                 self.dialogue.compact([self.hero] + list(self.actors), seen=len(self.transcript))
@@ -985,6 +1019,11 @@ class Sim:
         ns = self.fsm.next_scene
         self.hero_next = self.fsm.hero_next
         self.place = self.fsm.destination or "scene %d" % self.n_transitions
+        if self._free_book:
+            # book -> freestyle: whoever opened the door, the book says where it leads
+            nxt = self._free_book.pop(0)
+            ns = self._free_scene_dict(nxt)
+            self.place = nxt["place"]
         self.transcript = self.transcript[-2:]
         self._notes = {}
         self._notes_seen = {}
@@ -1136,20 +1175,151 @@ class Sim:
         self._event_hits = {}
         self._actor_streak = 0
         self._said_count = {}
-        self.scene = {"objects": [], "actors": [a["name"] for a in nxt["actors"]],
-                      "events": [], "goals": []}
+        self.scene = {"objects": list(nxt["dict"]["objects"]),
+                      "actors": [a["name"] for a in nxt["actors"]], "events": [], "goals": []}
         self.actors = [a["name"] for a in nxt["actors"]]
         self._actor_voices = {a["name"]: a["voice"] for a in nxt["actors"]}
         self._looks.update({a["name"]: a["look"] for a in nxt["actors"]})
-        self._personas = {}
+        self._personas = {a["name"]: a["persona"] for a in nxt["actors"] if a.get("persona")}
         self.director.actors = self.actors
         self.director.notes_given = []
-        self.memory.set_scene(self.place, [])
+        self.memory.set_scene(self.place, list(self.scene["objects"]))
         if self._media_live():
             self._request_background(self.place)
             self._start_scene_portraits()
         self._diagnostic(self.status())
         self._book_open_scene()
+
+    # --- book -> freestyle: one button, in the middle of a scene ---------------
+    FREESTYLE_STORY_MAX = 1200
+
+    def _book_story(self):
+        """What the book still had to tell, as one English note: the narration
+        beats left in this scene, then where the later scenes take place."""
+        try:
+            from voice import strip_tags
+        except ImportError:  # pragma: no cover
+            from .voice import strip_tags
+        bk = self.book
+        said = [strip_tags(b["text"]) for b in bk["beats"][bk["cursor"]:] if b["kind"] == "narration"]
+        later = [sc["place"] for sc in bk["scenes"][bk["i"] + 1:]]
+        story = " ".join(said)
+        if later:
+            story += " Then the story moves on to: " + "; ".join(later) + "."
+        story = story.strip()[:self.FREESTYLE_STORY_MAX]
+        if not story:
+            return ""
+        return ("The book this dream comes from goes on like this. Head toward it in your own words, "
+                "in your own time, never recite it: " + story)
+
+    FREE_PIECE_SECONDS = 45.0  # simulated seconds between two pieces of the book
+    FREE_DOOR_SECONDS = 45.0   # an open door the story waits at, then carries them through
+    FREE_PIECE_MAX = 600
+    FREE_PIECE_LINES = 6       # lines the players say on a piece before the next comes out
+
+    def _free_pieces_left(self):
+        return any(e["kind"] in ("story", "exit") for i, e in enumerate(self._schedule)
+                   if i not in self._fired)
+
+    def _free_pieces(self, beats):
+        """The book cut where its narrator speaks: each piece is what happens there
+        and roughly what is said, for the cast to play in their own words."""
+        try:
+            from voice import strip_tags
+        except ImportError:  # pragma: no cover
+            from .voice import strip_tags
+        pieces = []
+        for b in beats:
+            if b["kind"] == "narration" or not pieces:
+                pieces.append({"what": "", "said": []})
+            if b["kind"] == "narration":
+                pieces[-1]["what"] = strip_tags(b["text"])
+            elif b.get("who"):
+                pieces[-1]["said"].append('%s: "%s"' % (b["who"], strip_tags(b["text"])))
+        out = []
+        for p in pieces:
+            text = "The story moves on" + (": " + p["what"] if p["what"] else ".")
+            if p["said"]:
+                text += " In the book it goes roughly like this: " + " ".join(p["said"])
+            text += " Play this moment your own way, in your own words; never recite it."
+            out.append(text[:self.FREE_PIECE_MAX])
+        return out
+
+    def _free_events(self, beats, t0):
+        """Schedule rows for a scene's pieces from simulated second t0; when a book
+        scene follows, a last `exit` row opens the way to it."""
+        evs = [{"t": t0 + k * self.FREE_PIECE_SECONDS, "what": w, "who": "all", "kind": "story"}
+               for k, w in enumerate(self._free_pieces(beats))]
+        if self._free_book:
+            evs.append({"t": t0 + len(evs) * self.FREE_PIECE_SECONDS, "who": "all", "kind": "exit",
+                        "what": "This part of the story is told: it is time to go on to %s."
+                                % self._free_book[0]["place"]})
+        return evs
+
+    def _free_scene_dict(self, nxt):
+        """A book scene as the next_scene a transition applies, its pieces as events."""
+        return {"objects": list(nxt["dict"]["objects"]), "actors": [dict(a) for a in nxt["actors"]],
+                "events": self._free_events(nxt["beats"], 0.0), "goals": [], "hero_reason": None}
+
+    def _free_exit(self):
+        """A book scene is told: a door toward the next one opens (unless the
+        director already built a way out). The book's places are already built,
+        so the build is over at once and the door opens on the next tick."""
+        if not self._free_book or self.fsm.state != "idle":
+            return
+        objs = list(self.scene["objects"])
+        door = next((o for o in objs if "door" in o), objs[0] if objs else None)
+        if door is None:
+            return
+        now = self.clock.now()
+        for e in self.fsm.start_build(now, door, self._free_book[0]["place"]):
+            self._emit(e)
+        self.fsm.build_start = now - self.fsm.p["build"]
+
+    def go_freestyle(self, dialogue=None):
+        """The score stops at the next beat and the same cast improvises on from
+        the same moment: place, transcript, the line now playing and the stage
+        stay. The rest of the book is not handed over at once: it is cut where
+        its narrator speaks and dealt out on the scene's schedule, one piece every
+        FREE_PIECE_SECONDS, like a loading bar; the director hears the whole arc.
+        When a scene's pieces are told its door opens, and the next book scene is
+        where any door leads. From here lines are Dialogue's and the director
+        consults; one dream transition past the book ends it, as in a free run."""
+        bk = self.book
+        if bk is None or bk["over"]:
+            ev = {"type": "input", "source": "freestyle", "value": "", "ignored": "not a book"}
+            self._emit(ev)
+            return [ev]
+        cur = bk["scenes"][bk["i"]]
+        at, total = bk["cursor"], len(bk["beats"])
+        story = self._book_story()
+        self.book = None
+        self._book_hold_until = -1e9
+        if dialogue is not None:
+            self.dialogue = dialogue
+        if self.dialogue is None:
+            self.dialogue = Dialogue(load_profile(None))
+        if hasattr(self.dialogue, "heard"):
+            self.dialogue.on_memory = self._on_memory
+        if getattr(self.dialogue, "event_sink", None) is None:
+            self.dialogue.event_sink = self._diagnostic
+        # the book's fsm was built for the first scene and never ticked: it now
+        # touches what is in this scene
+        self.fsm.objects = list(self.scene["objects"])
+        self._free_book = list(bk["scenes"][bk["i"] + 1:])
+        self._free_story = True
+        self._max_transitions = self.n_transitions + len(self._free_book) + 1
+        t0 = (self.clock.now() - self.scene_start) * self.speed
+        pieces = self._free_events(bk["beats"][at:], t0)
+        self._schedule += pieces
+        ev = {"type": "mode", "mode": "freestyle", "scene": cur["scene"],
+              "at_beat": at, "of": total, "story": story, "pieces": len(pieces)}
+        self._diagnostic(ev)
+        self._diagnostic({"type": "schedule", "events": pieces})
+        self._last_tick = -1e9  # the first improvised line starts on the next free tick
+        self._diagnostic(self.status())
+        self.director.consult_async(self.clock.now(), events=[ev])
+        return [ev]
 
     # --- main loop -----------------------------------------------------------
     def _drain_director(self):
@@ -1242,6 +1412,11 @@ class Sim:
         for other in names_in(text, targets):
             if other != who:
                 self._addressed[other] = ADDRESS_HOLD
+        # a duo has nobody else to talk to: every line is the other one's cue, or he
+        # waits out the silence pressure (8 s of dead air on the live duo runs)
+        pair = list(dict.fromkeys(targets))
+        if len(pair) == 2 and who in pair:
+            self._addressed[pair[1 - pair.index(who)]] = ADDRESS_HOLD
 
     def _notes_for(self, who):
         """The director's notes an actor still has to play: the last one not yet
@@ -1467,6 +1642,8 @@ class Sim:
                 self.safety_continue()
             elif kind == "stop":
                 self.stop()
+            elif kind == "freestyle":
+                self.go_freestyle()
 
     def _touch(self, obj, source):
         events = self.fsm.touch(self.clock.now(), obj)
@@ -1547,6 +1724,7 @@ class Sim:
                 "build_pct": self.fsm.build_pct(now), "dollars": get_spent(),
                 "max_dollars": self.max_dollars,
                 "hero_owner": owner,
+                "mode": "book" if self.book is not None else "free",
                 "waiting_for": "hero" if waiting is not None else None,
                 "prompt_text": waiting["text"] if waiting is not None else "",
                 "seq": seq}
@@ -1569,6 +1747,10 @@ class Sim:
         self._maybe_start_scene_background()
         self._cycle_line()
         events = self.fsm.tick(now)
+        if (self._free_story and self.fsm.state == "ready" and not self._free_pieces_left()
+                and now - self.fsm.ready_at >= self.clock.scale(self.FREE_DOOR_SECONDS)):
+            # the story does not wait at an open door: it carries them through
+            events += self.fsm.touch(now, self.fsm.bridge)
         for e in events:
             self._emit(e)
             if e["type"] == "transition":
@@ -1585,19 +1767,24 @@ class Sim:
         if not self.fake and not self._budget_ok():
             return last_consult
         due = self.fsm.due(now)
-        if due or (self.fsm.state == "idle" and now - last_consult > self.fsm.p["min_interval"]):
+        # while the book still deals out pieces, the pieces are the director's rhythm
+        idle_ok = not (self._free_story and self._free_pieces_left())
+        if due or (idle_ok and self.fsm.state == "idle"
+                   and now - last_consult > self.fsm.p["min_interval"]):
             self.director.consult_async(now)
             return now
         return last_consult
 
     def run(self, max_transitions=2, max_seconds=90.0):
         start = self.clock.now()
+        if getattr(self, "_max_transitions", None) is None:
+            self._max_transitions = max_transitions  # go_freestyle moves it
         last_consult = -1e9
         last_cost = -1e9
-        while ((self.book is not None or self.n_transitions < max_transitions)
+        while ((self.book is not None or self.n_transitions < self._max_transitions)
                and self.clock.now() - start < max_seconds):
             self._tick()
-            if ((self.book is None and self.n_transitions >= max_transitions)
+            if ((self.book is None and self.n_transitions >= self._max_transitions)
                     or self.clock.now() - start >= max_seconds):
                 break
             if self.stopped or (self.dialogue is not None and self.fsm.awake):
@@ -1616,7 +1803,7 @@ class Sim:
             self.clock.real_sleep(0.01)
         # F7: name why the loop ended while the clock is still at the loop end;
         # a `timeout` row in the log is the only proof the limit was reached.
-        if self.book is None and self.n_transitions >= max_transitions:
+        if self.book is None and self.n_transitions >= self._max_transitions:
             self.stop_reason = "transitions"
         elif self.clock.now() - start >= max_seconds:
             self.stop_reason = "timeout"
@@ -1651,7 +1838,8 @@ class Sim:
 
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
-        label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None):
+        label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
+        freestyle=False):
     """serve=port (0 = any) starts the comic viewer on the live run (spec 11);
     the dream then goes on until "stop", the budget or a wake_up.
     max_seconds=None: 90 s, or long enough for one full build (420/speed + 120);
@@ -1698,6 +1886,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             sim.viewer = viewer
         if on_sim is not None:
             on_sim(sim)
+        if freestyle and plan is not None:
+            sim.go_freestyle()  # the book sets the stage, the cast improvises from beat 0
         try:
             sim.run(max_transitions=max_transitions, max_seconds=max_seconds)
         finally:

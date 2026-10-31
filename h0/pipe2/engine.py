@@ -168,7 +168,14 @@ class Engine:
         if report["code"] == 0:
             dist = self._room(work) / "dist"
             self.build(scene, dist, "none", None)
+            # `check --built` wants a picture per camera (SHOT_MISSING is an error since engine block E):
+            # shoot first, or, when this engine does not shoot, the missing pictures are not the scene's fault
+            if self._want_shots:
+                shots_retry(self, dist)
             report = self.check(scene, work, built=dist)
+            if not self._want_shots:
+                errors = [e for e in report["errors"] if e.get("code") != "SHOT_MISSING"]
+                report = {**report, "errors": errors, "code": report["code"] if errors else 0}
         return report
 
     def build(self, scene: dict, out: str | os.PathLike, assets: str, cache: str | os.PathLike | None) -> None:

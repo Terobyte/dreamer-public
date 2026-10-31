@@ -423,7 +423,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if origin is None or not (origin in {"http://" + h for h in self.viewer.allowed_hosts()}
                                    or self._engine_origin(origin)):
             return self._send(403, {"error": "forbidden"})
-        if urlparse(self.path).path not in ("/say", "/event", "/pov", "/continue", "/stop", "/api/ab"):
+        if urlparse(self.path).path not in ("/say", "/event", "/pov", "/continue", "/stop", "/freestyle", "/api/ab"):
             return self._not_found()
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", origin)
@@ -456,7 +456,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         if path == "/api/ab":
             return self._ab_verdict(body)
         sim = self.viewer.sim
-        if path not in ("/say", "/event", "/pov", "/continue", "/stop"):
+        if path not in ("/say", "/event", "/pov", "/continue", "/stop", "/freestyle"):
             return self._not_found()
         if sim is None:
             return self._send(409, {"error": "no live dream"})
@@ -474,6 +474,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": "hero_owner must be npc or human"})
             sim.submit("pov", owner)
             return self._send(200, {"ok": True, "hero_owner": owner})
+        if path == "/freestyle":
+            # book -> freestyle: the score stops, the same cast improvises on
+            sim.submit("freestyle")
+            return self._send(200, {"ok": True})
         if path == "/continue":
             # 2.2: the only way out of a safety pause; the sim resumes on its next tick
             sim.submit("continue")
