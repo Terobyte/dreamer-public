@@ -148,3 +148,104 @@ export class FakeObjectProvider implements ObjectProvider {
     return fakeGlb();
   }
 }
+
+/**
+ * A GLB of exactly `tris` triangles: a UV sphere with UVs
+ * and a material, the shape of the dense meshes SAM3D returns, so `cutGlb` has
+ * something it can really simplify.
+ */
+export function fakeDenseGlb(tris: number): Buffer {
+  const quads = Math.max(1, Math.ceil(tris / 2));
+  let rows = Math.max(1, Math.floor(Math.sqrt(quads)));
+  while (quads % rows !== 0) rows--;
+  const cols = quads / rows;
+  const pos: number[] = [];
+  const uv: number[] = [];
+  for (let i = 0; i <= rows; i++) {
+    for (let j = 0; j <= cols; j++) {
+      const u = j / cols;
+      const v = i / rows;
+      const th = u * Math.PI * 2;
+      const ph = v * Math.PI;
+      pos.push(Math.cos(th) * Math.sin(ph), Math.cos(ph), Math.sin(th) * Math.sin(ph));
+      uv.push(u, v);
+    }
+  }
+  const idx: number[] = [];
+  const row = cols + 1;
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const a = i * row + j;
+      const b = a + 1;
+      const c = a + row;
+      const d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  // An odd `tris` is one triangle short of a full quad grid: drop the last
+  // triangle so the count is exact instead of rounded up to even.
+  if (idx.length / 3 > tris) idx.length = tris * 3;
+  const posBuf = Buffer.from(new Float32Array(pos).buffer);
+  const uvBuf = Buffer.from(new Float32Array(uv).buffer);
+  const idxBuf = Buffer.from(new Uint32Array(idx).buffer);
+  const bin = Buffer.concat([posBuf, uvBuf, idxBuf]);
+  const min = [-1, -1, -1];
+  const max = [1, 1, 1];
+  const gltf = {
+    asset: { version: "2.0" },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, TEXCOORD_0: 1 }, indices: 2, material: 0 }] }],
+    materials: [{ name: "dense", pbrMetallicRoughness: { baseColorFactor: [0.6, 0.45, 0.3, 1], metallicFactor: 0 } }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: pos.length / 3, type: "VEC3", min, max },
+      { bufferView: 1, componentType: 5126, count: uv.length / 2, type: "VEC2" },
+      { bufferView: 2, componentType: 5125, count: idx.length, type: "SCALAR" },
+    ],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: posBuf.length },
+      { buffer: 0, byteOffset: posBuf.length, byteLength: uvBuf.length },
+      { buffer: 0, byteOffset: posBuf.length + uvBuf.length, byteLength: idxBuf.length },
+    ],
+    buffers: [{ byteLength: bin.length }],
+  };
+  const json = pad(Buffer.from(JSON.stringify(gltf), "utf-8"), 0x20);
+  const binPadded = pad(bin, 0);
+  const header = Buffer.alloc(12);
+  header.write("glTF", 0, "ascii");
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + 8 + json.length + 8 + binPadded.length, 8);
+  const chunk = (data: Buffer, type: number): Buffer => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32LE(data.length, 0);
+    head.writeUInt32LE(type, 4);
+    return Buffer.concat([head, data]);
+  };
+  return Buffer.concat([header, chunk(json, 0x4e4f534a), chunk(binPadded, 0x004e4942)]);
+}
+
+/**
+ * Like `FakeObjectProvider`, but every mesh is dense: `tris` maps an asset id
+ * (the `mesh` path) or a `what` (the `fromScene` path) to its triangle count.
+ */
+export class FakeDenseObjectProvider extends FakeObjectProvider {
+  constructor(
+    private readonly tris: Record<string, number>,
+    opts: FakeObjectOpts = {},
+  ) {
+    super(opts);
+  }
+
+  override async fromScene(scene: { bytes: Buffer; what: string }, size: ImageSize): Promise<SceneMesh> {
+    const got = await super.fromScene(scene, size);
+    const n = this.tris[scene.what];
+    return n === undefined ? got : { ...got, glb: fakeDenseGlb(n) };
+  }
+
+  override async mesh(png: Buffer, name: string): Promise<Buffer> {
+    const glb = await super.mesh(png, name);
+    const n = this.tris[name];
+    return n === undefined ? glb : fakeDenseGlb(n);
+  }
+}

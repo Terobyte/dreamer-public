@@ -109,7 +109,7 @@
 | `assets/sky.ts` | шов панорамы неба | `seamSky`, `inpaintSky(png, edit)`, `SEAM_PROMPT` | — | `assets-live` ? |
 | `assets/providers/muse-image.ts` | Muse Image `meta-models/muse-image-1` на `api.meta-models.ai`; ключ ТОЛЬКО из env `META_MODEL_API_KEY` | `MuseImageProvider(opts)`, `RetryableError` | — | `assets-live` (с мок-fetch) |
 | `assets/providers/sam3d.ts` | SAM3D по HTTP `/v1/3d/generations` (model `meta-models/sam-3d-objects`) | `Sam3dProvider.mesh(png,name)` | — | `assets-live` |
-| `assets/providers/fake.ts` | оффлайн-провайдеры для тестов | `FakeImageProvider`, `FakeObjectProvider`, `fakePng(w,h,rgb,whiteCorners)`, `fakeGlb()` | — | почти все assets-тесты |
+| `assets/providers/fake.ts` | оффлайн-провайдеры для тестов | `FakeImageProvider`, `FakeObjectProvider`, `fakePng(w,h,rgb,whiteCorners)`, `fakeGlb()`, `fakeDenseGlb(tris)`, `FakeDenseObjectProvider` | — | почти все assets-тесты, `koshakan-accept.test.ts` |
 | `assets/providers/types.ts` | швы `ImageProvider{generate,edit?}`, `ObjectProvider{mesh}` | — | — | — |
 
 ### 2.4 engine/ runtime (страница)
@@ -281,7 +281,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | меш SAM3D (из движка по HTTP) | `assets/providers/sam3d.ts Sam3dProvider` |
 | меш SAM3D (Modal, параллельно на N GPU) | `pipe2/assets.py ModalMesh`/`AssetQueue`; `h0/sam3d_modal.py` |
 | прогрев GPU | `pipe2/gpu.py GpuWarmth` |
-| фейковые провайдеры для тестов (engine) | `assets/providers/fake.ts` (`FakeImageProvider`, `FakeObjectProvider`, `fakePng`, `fakeGlb`); `engine/test/fake-shots.ts`; `test/helpers/{scene,broken,timing}.ts` |
+| фейковые провайдеры для тестов (engine) | `assets/providers/fake.ts` (`FakeImageProvider`, `FakeObjectProvider`, `fakePng`, `fakeGlb`, `fakeDenseGlb`, `FakeDenseObjectProvider`); `engine/test/fake-shots.ts`; `test/helpers/{scene,broken,timing}.ts` |
 | фейки для тестов pipe2 | `pipe2/fakes.py` (`FakeSpark`, `FakeEngine`, `ScenarioSpark`, `FakeAutoscaler`, `synthetic_task`) |
 | фейки для make | `make --fake`, `make/testdata/world_run` (готовый мир), `testdata/cast`, `refs/fake.py`, `testkit.OfflineTransport`, `brief.ScenarioBrief` |
 | фейки для dream | `dream/fake.py FakeTransport(script, reply, gate)`, `voice.fake_transport`, `images.fake_transport` |
