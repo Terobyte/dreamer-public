@@ -85,9 +85,9 @@ def gather(query, hint, providers, wiki=None):
 
 def _slots(brief):
     for p in brief.get('places') or []:
-        yield p['id'], p, p.get('query'), p.get('provider_hint'), p.get('fandom_wiki')
+        yield p['id'], p, p.get('query'), p.get('provider_hint'), p.get('fandom_wiki'), True
     for c in brief.get('cast') or []:
-        yield c['who'], c, c.get('query'), 'commons', None
+        yield c['who'], c, c.get('query'), 'commons', None, False
 
 
 def _safe_slot(out, sid):
@@ -160,14 +160,21 @@ def _local_slot(paths, text):
     return kept
 
 
+def _warn_no_refs(sid, is_place, warnings):
+    """A place left with no kept picture: the world would be built blind, so say so."""
+    if is_place and sid not in warnings:
+        warnings.append(sid)
+        print(f'WARN no refs for {sid}', flush=True)
+
+
 def run_refs(brief, out, *, providers, loader, pick='first', ask=None, local=None):
     """Writes out/refs.json (all candidates + kept), out/cues.md, out/<slot>/<n>.<ext>.
 
     `local` = {slot id: ([paths], cues)} — the user's own pictures; used instead of a web search."""
     out = Path(out)
     local = local or {}
-    slots, cues, used_dirs = {}, [], set()
-    for sid, info, query, hint, wiki in _slots(brief):
+    slots, cues, used_dirs, warnings = {}, [], set(), []
+    for sid, info, query, hint, wiki, is_place in _slots(brief):
         key = sid
         if key in slots:
             i = 2
@@ -184,6 +191,8 @@ def run_refs(brief, out, *, providers, loader, pick='first', ask=None, local=Non
             slots[key] = [dict({k: c.get(k) for k in FIELDS}, description=c['description'], kept=True)
                           for c in kept]
             cues.append(f'## {key}\n\n{local[sid][1]}\n')
+            if not kept:
+                _warn_no_refs(sid, is_place, warnings)
             continue
         if not query:
             slots[key] = []
@@ -214,6 +223,9 @@ def run_refs(brief, out, *, providers, loader, pick='first', ask=None, local=Non
         if text is None:
             text = '\n'.join(f'- {c.get("title") or ""}: {c.get("description") or ""}' for c in kept)
         cues.append(f'## {key}\n\n{text}\n')
-    (out / 'refs.json').write_text(json.dumps({'pick': pick, 'slots': slots}, ensure_ascii=False, indent=2))
+        if not kept:
+            _warn_no_refs(sid, is_place, warnings)
+    (out / 'refs.json').write_text(json.dumps({'pick': pick, 'slots': slots, 'warnings': warnings},
+                                              ensure_ascii=False, indent=2))
     (out / 'cues.md').write_text('\n'.join(cues))
     return slots

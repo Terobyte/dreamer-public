@@ -113,6 +113,7 @@ class Viewer:
         self.port = None
         self.httpd = None
         self.thread = None
+        self.client_connected = threading.Event()  # set by the first SSE client
         # blind A/B: the A/B order of every pair is drawn from this salt, fixed for
         # the server's life so the page and the verdict agree, fresh on each start
         self.ab_salt = "%016x" % random.getrandbits(64)
@@ -132,6 +133,10 @@ class Viewer:
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
         return self.port
+
+    def wait_client(self, timeout):
+        """Block until a page opens /events; -> True if one came within `timeout` s."""
+        return self.client_connected.wait(timeout)
 
     def stop(self):
         if self.httpd is not None:
@@ -374,6 +379,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self._cors()
         self.end_headers()
+        self.viewer.client_connected.set()
         self.close_connection = True
         offset, seen = 0, []
         last_snap = last_beat = time.monotonic()

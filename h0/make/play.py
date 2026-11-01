@@ -69,7 +69,16 @@ def _seed_reply(objects):
     })
 
 
-def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None):
+def _wait_for_viewer(timeout):
+    def on_sim(sim):
+        v = getattr(sim, 'viewer', None)
+        if v is not None and not v.wait_client(timeout):
+            print(f'WARN no viewer after {timeout:g}s, starting anyway', flush=True)
+    return on_sim
+
+
+def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None,
+         wait_viewer=False, wait_timeout=120):
     """-> (outdir, log.jsonl path) as sim.run. `serve`: port (0 = any) for the sim's SSE server."""
     run_dir = Path(run_dir)
     sj = json.loads((run_dir / "stage" / "stage.json").read_text())
@@ -93,6 +102,8 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
         kw.update(speed=100.0, max_transitions=2, max_seconds=max_seconds or 1.6)  # 160 sim-seconds
     elif max_seconds:
         kw["max_seconds"] = max_seconds
+    if wait_viewer and serve is not None and not fake:
+        kw["on_sim"] = _wait_for_viewer(wait_timeout)
     if sj["mode"] == "book":
         b = sj["book"]
         score = json.loads((run_dir / b["score"]).read_text()) if (run_dir / b["score"]).is_file() else None
@@ -113,14 +124,25 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
                media=media, serve=serve, no_build=True, fake=fake, **kw)
 
 
-def main(argv=None):
+def _hold():
+    try:
+        threading.Event().wait()
+    except KeyboardInterrupt:
+        pass
+
+
+def main(argv=None, hold=_hold):
     ap = argparse.ArgumentParser(prog="make.play")
     ap.add_argument("run")
     ap.add_argument("--fake", action="store_true")
     ap.add_argument("--freestyle", action="store_true")
     ap.add_argument("--port", type=int, default=0, help="sim SSE port (0 = any)")
     ap.add_argument("--static-port", type=int, default=0)
+    ap.add_argument("--wait-viewer", dest="wait_viewer", action="store_true", default=None,
+                    help="start the sim when a page connects (default on unless --fake)")
+    ap.add_argument("--no-wait-viewer", dest="wait_viewer", action="store_false")
     a = ap.parse_args(argv)
+    wait = (not a.fake) if a.wait_viewer is None else (a.wait_viewer and not a.fake)
     srv = None
     sim_port = a.port
     if not a.fake:
@@ -128,8 +150,10 @@ def main(argv=None):
         print(static_url(a.run, sp, sim_port or 8770), flush=True)
     try:
         out, log = play(a.run, fake=a.fake, freestyle=a.freestyle or None,
-                        serve=None if a.fake else (sim_port or 8770))
+                        serve=None if a.fake else (sim_port or 8770), wait_viewer=wait)
         print(log)
+        if wait:
+            hold()
     finally:
         if srv:
             srv.shutdown()
