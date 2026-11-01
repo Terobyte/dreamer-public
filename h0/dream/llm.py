@@ -5,6 +5,7 @@ usage: llm.call("hero", system, messages, max_tokens=300, fake=True)
 import datetime
 import json
 import math
+import logging
 import os
 import subprocess
 import tempfile
@@ -262,6 +263,11 @@ class RealTransport:
                 diagnostics.append(report(
                     "llm", "llm_fallback", error, self.event_sink,
                     from_model=model, to_model=SPARK_MODEL))
+            # B52: the free primary failed; the paid Spark 1.3 must still respect the cap
+            if _cap[0] is not None and get_spent() >= _cap[0] - 1e-9:
+                logging.getLogger("llm").warning(
+                    "cap $%.2f reached, paid fallback %s skipped", _cap[0], SPARK_MODEL)
+                return {"content": "", "usage": {}, "model": model, "diagnostics": diagnostics}
             model, max_tokens = SPARK_MODEL, max(SPARK_MIN_TOKENS, max_tokens)
         key = os.environ.get("META_MODEL_API_KEY")
         if not key:

@@ -197,11 +197,11 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 - **B49 — Fish TTS синхронно в главном цикле: тик замирает до 4×15 с** · MAJOR · `sim.py:685-706`. Это (d), мёртвый эфир.
 - **B50 — следующая строка генерируется только после конца текущей, `prepared_npc` почти не заполняется** · MAJOR (дизайн 1.2a, но это механическая причина 8 с тишины) · `sim.py:1368-1378`. Это (d).
 - **B51 — финальная строка cost пишется до join фолд-потоков Dialogue, и `verify_run` падает** · MAJOR при `--talk spark|wonder` · `sim.py:1638-1648`. Это Д7.
-- **B52 — после капа Spark Open падает в платный Spark 1.3 мимо капа** · MINOR · `llm.py:359` против `:262-269`.
-- **B53 — бенч считает мёртвый прогон по потолку; один TimeoutExpired теряет всю пачку** · MINOR · `bench_f1.py:296-305`, `bank.py:35,250`. Это остаток Д7.
+- **B52 — после капа Spark Open падает в платный Spark 1.3 мимо капа** · MINOR · `llm.py:359` против `:262-269`. **fixed** — RealTransport не уходит в платный fallback при достигнутом капе, отвечает пусто с warning.
+- **B53 — бенч считает мёртвый прогон по потолку; один TimeoutExpired теряет всю пачку** · MINOR · `bench_f1.py:296-305`, `bank.py:35,250`. Это остаток Д7. **fixed** — bank.run_scene ловит TimeoutExpired и отдаёт failed-run, пачка не теряется; bench_f1 не начисляет cap за timeout-мёртвый прогон, а учитывает записанный spend (0 если расходов не было); частичный вывод TimeoutExpired (bytes) декодируется перед разбором outdir=.
 
 ### Серверы (P3)
-- **B30 — dream/server.py: request smuggling мимо Origin-гарда через keep-alive** · CRIT · `h0/dream/server.py:145,162-172,437-448`. Сервер отвечает 403, не читая тело, и тело разбирается как следующий запрос без Origin. Воспроизведено: `SIM GOT: [('say','hello')]`. Фикс: `close_connection=True` на всех ранних выходах.
+- **B30 — dream/server.py: request smuggling мимо Origin-гарда через keep-alive** · CRIT · `h0/dream/server.py:145,162-172,437-448`. Сервер отвечает 403, не читая тело, и тело разбирается как следующий запрос без Origin. Воспроизведено: `SIM GOT: [('say','hello')]`. Фикс: `close_connection=True` на всех ранних выходах. **fixed** — do_POST ставит close_connection=True, пока тело не прочитано.
 - **B31 — rt.py `/ws` без проверки Origin/Host: любая вкладка гонит ASR+Spark+Fish** · CRIT · `h0/live/rt.py:249-251`. Открытый хвост PROGRESS подтверждён.
 - **B32 — live/server.py: CSRF и DNS-rebinding на `/turn` и `/asr`, плюс KeyError без ответа, гонки глобалов, пустой Fish на неизвестный id** · MAJOR · `h0/live/server.py:51-84`.
 - **B33 — squid_live/server.py `/api/talk`: CSRF, ввод без лимита длины, роль `system` от клиента** · MAJOR · `h0/squid_live/server.py:156-185`.

@@ -1839,7 +1839,7 @@ class Sim:
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
         label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
-        freestyle=False, plan=None, no_build=False):
+        freestyle=False, plan=None, no_build=False, on_outdir=None):
     """plan: a ready book plan (make/play.py), run() does not load the book itself;
     no_build: the world is one, the director may not send the dream anywhere else.
     serve=port (0 = any) starts the comic viewer on the live run (spec 11);
@@ -1865,6 +1865,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             break
         except FileExistsError:
             stamp += 1
+    if on_outdir is not None:
+        on_outdir(outdir)  # bank: a run killed by its timeout is still found and charged
     if serve is not None:
         max_seconds = float("inf")
     elif max_seconds is None and plan is not None:
@@ -2187,7 +2189,8 @@ def main(argv=None):
                            serve=args.port if args.serve else None,
                            max_seconds=args.max_seconds,
                            book=args.book, scenes=book_scenes, score=args.score,
-                           hero_owner=args.hero)
+                           hero_owner=args.hero,
+                           on_outdir=lambda d: print("rundir=%s" % d, flush=True))
     with open(logpath, encoding="utf-8") as f:
         rows = [json.loads(l) for l in f]
     transitions = sum(1 for r in rows if r["type"] == "transition")

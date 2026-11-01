@@ -122,7 +122,8 @@ def _run_refs(ctx):
     from .refs import fake as _fake
     brief = json.loads((ctx.run_dir / 'brief' / 'brief.json').read_text())
     pick = ctx.opts.get('pick') or 'first'
-    if ctx.params.get('fake'):
+    if ctx.params.get('fake') or not ctx.opts.get('live'):
+        # offline default like world/cast/story: no commons/openverse/tavily from tests
         providers, loader, ask = _fake.providers(), _fake.image, _fake.vision_ask
     else:
         from .refs import commons, fandom, openverse, tavily

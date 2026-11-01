@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from make import core
 
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class Base(unittest.TestCase):
     def setUp(self):
+        self.enterContext(mock.patch.object(core, "STUB_SLEEP", 0.05))  # overlap still shows
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.run_dir = Path(self._tmp.name) / "run"
