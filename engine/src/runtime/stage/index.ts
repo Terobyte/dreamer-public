@@ -1,9 +1,9 @@
-import type { PerspectiveCamera, Scene } from "three";
+import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import type { NavRamp } from "../../nav/floor.js";
 import { clipForBeat } from "./anim.js";
 import { createActor, type Actor } from "./actors.js";
-import { directShot, roomRect, type ShotKind } from "./camera.js";
+import { createDirector, createPendingQueue, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { floorAt, stageRegex, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
@@ -55,6 +55,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     for (let i = 1; i < m.positions.length; i += 3) top = Math.max(top, m.positions[i]);
     return top || 2.7;
   };
+  /** a room without a `:ceiling` mesh is open sky (a yard): the director gives it a taller camera ceiling */
+  const isOpen = (room: string): boolean => !(c.geo.meshes ?? []).some((q: any) => q.id === `${room}:ceiling`);
+  // deterministic "random" for the director (no Math.random in the runtime)
+  let seed = 20261101;
+  const rng = (): number => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
 
   const claims: Claims = {};
   const actors = new Map<string, Actor>();
@@ -69,7 +77,40 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y, sp?.yaw ?? 0, clipUrls, cast[who].idle);
     if (sp && sp.name === startName) claims[sp.name] = who;
     actors.set(who, a);
-    c.scene.add(a.group);
+  }
+  const director = createDirector(rng);
+  const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
+  const dActors = (list: Actor[]): DActor[] =>
+    list.map((a) => {
+      const lvl = toucherLevel(a.who);
+      const f = roomOfActor(a, lvl);
+      return { name: a.who, pos: a.pos(), yaw: a.yaw(), height: heightOf(a.who), level: lvl, room: f?.room ?? null, walking: a.moving() };
+    });
+  const heightOf = (who: string): number => Number(cast[who].height_m ?? 1.7);
+  let toucherLevel: (who: string) => string | null = () => null;
+  // facing the viewer (F-live): two actors face each other, a lone one faces the first camera (`wide`)
+  {
+    const list = [...actors.values()].sort((x, y) => (x.who < y.who ? -1 : 1));
+    if (list.length) {
+      const f0 = roomOfActor(list[0], null) ?? (c.geo.floors ?? [])[0];
+      let firstCam: [number, number, number] = [list[0].pos()[0], 1.5, list[0].pos()[1] + 4];
+      if (f0) {
+        const probe = createDirector(rng).step({
+          event: { kind: "tick", dt: 0 },
+          actors: dActors(list),
+          room: { outline: f0.outline, ceiling: ceilingOf(f0.room), open: isOpen(f0.room) },
+          fov: c.camera.fov,
+          aspect: c.camera.aspect,
+        });
+        firstCam = probe.cam;
+      }
+      const yaws = initialYaws(list.map((a) => a.pos()), firstCam);
+      list.forEach((a, i) => {
+        a.go([], yaws[i], a.act());
+        a.update(1, 0);
+      });
+    }
+    for (const a of actors.values()) c.scene.add(a.group);
   }
 
   const subs = createSubs(c.sim);
@@ -84,6 +125,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     doorOpen: c.doorOpen,
     actor: (w) => actors.get(w),
   });
+  toucherLevel = (who) => toucher.levelOf(who);
   const touch = (who: string, name: string): void => void toucher.touch(who, name);
 
   const whoOf = (e: StageEvent): string | null => {
@@ -139,9 +181,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let pieces = 0;
   let told = 0;
 
+  const pendingQueue = createPendingQueue();
+  let lastSpeaker: string | null = null;
   const handlers: StageHandlers = {
     line(e) {
       const who = whoOf(e);
+      if (who) lastSpeaker = who;
+      pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
@@ -151,6 +197,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who && t) touch(who, t);
     },
     narrator(e) {
+      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
       subs.narrator({ text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       const pick = clipForBeat({ who: null, text: e.text }, cast);
@@ -180,29 +227,74 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     },
   };
 
-  let shot: ShotKind = "wide";
-  let lastTalk = -100;
   let camRoom: string | null = null;
+  let camOutline: V2[] = [];
   let camHeight: number | null = null;
+  let prevCut: number | null = null;
+  const look = new Vector3();
   const update = (dt: number, now: number): void => {
     for (const a of actors.values()) a.update(dt, now);
     toucher.tick();
     const list = [...actors.values()];
-    const talker = list.find((a) => a.speaking());
-    if (talker) lastTalk = now;
-    shot = talker ? "close" : now - lastTalk > 4 ? "wide" : "two";
-    const focus = talker ?? list[0];
-    if (!focus) return;
-    const lvl = toucher.levelOf(focus.who);
-    // never leave the camera unplaced (F36): off every floor (a ramp) -> the room under the actor on any level, else the first room
-    const f = roomAt(focus.pos(), lvl) ?? roomAt(focus.pos()) ?? (c.geo.floors ?? [])[0];
-    if (!f) return;
-    camRoom = f.room;
-    camHeight = ceilingOf(f.room);
-    const floorY = layerOf(lvl ?? (f as any).level ?? null).layer.y ?? 0;
-    const s = directShot(shot, list.map((a) => ({ pos: a.pos(), speaking: a.speaking() })), roomRect(f.outline), camHeight, floorY, f.outline);
-    c.camera.position.set(...s.pos);
-    c.camera.lookAt(...s.look);
+    const sorted = [...list].sort((x, y) => (x.who < y.who ? -1 : 1));
+    // F5: handlers may fire twice before one update — every queued event reaches the director in order, the camera shows the last
+    const queued = pendingQueue.takeAll();
+    const events: DEvent[] = queued.length ? queued : [{ kind: "tick", dt } as DEvent];
+    let s: ReturnType<typeof director.step> | null = null;
+    for (let idx = 0; idx < events.length; idx++) {
+      const ev = events[idx];
+      const isLast = idx === events.length - 1;
+      if (queued.length) ev.dt = isLast ? dt : 0;
+      // F1: a line always leads with its own speaker (ignoring stale speaking timers);
+      // a narrator leads with the first actor by name; ticks keep the current talker
+      let focus: Actor | undefined;
+      if (ev.kind === "line" && ev.speaker) focus = list.find((a) => a.who === ev.speaker) ?? list.find((a) => a.speaking()) ?? sorted[0];
+      else if (ev.kind === "narrator") focus = sorted[0];
+      else focus = list.find((a) => a.speaking()) ?? list.find((a) => a.who === (ev.speaker ?? lastSpeaker)) ?? sorted[0];
+      focus ??= sorted[0];
+      if (!focus) {
+        if (!queued.length) return;
+        continue;
+      }
+      if (ev.kind === "line" && !ev.speaker) ev.speaker = focus.who;
+      const lvl = toucher.levelOf(focus.who);
+      // never leave the camera unplaced (F36): off every floor (a ramp) -> the room under the actor on any level, else the first room
+      const f = roomAt(focus.pos(), lvl) ?? roomAt(focus.pos()) ?? (c.geo.floors ?? [])[0];
+      if (!f) {
+        if (!queued.length) return;
+        continue;
+      }
+      camRoom = f.room;
+      camOutline = f.outline ?? [];
+      camHeight = ceilingOf(f.room);
+      const floorY = layerOf(lvl ?? (f as any).level ?? null).layer.y ?? 0;
+      // only the actors of the speaker's room and level are in the frame
+      const here = dActors(list).filter((d) => d.room === f.room && d.level === lvl);
+      if (!here.length) {
+        if (!queued.length) return;
+        continue;
+      }
+      // the speaker leads (a narrator line: the first actor by name), so the director's room is the one under `focus`
+      if (ev.kind !== "line") ev.speaker = undefined;
+      const out = director.step({
+        event: ev,
+        actors: here,
+        room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY },
+        rng,
+        fov: c.camera.fov,
+        aspect: c.camera.aspect,
+      });
+      if (isLast) s = out;
+    }
+    if (!s) return;
+    const k = s.cut !== prevCut ? 1 : 1 - Math.exp(-4 * dt);  // a cut jumps, inside a plan the camera follows smoothly
+    prevCut = s.cut;
+    const pos = c.camera.position;
+    // F5: the blended position is kept inside the camera room (an L room's notch is outside between two inside frames)
+    const sm = smoothCam([pos.x, pos.y, pos.z], s.cam, k, camOutline);
+    pos.set(sm[0], sm[1], sm[2]);
+    look.set(look.x + (s.look[0] - look.x) * k, look.y + (s.look[1] - look.y) * k, look.z + (s.look[2] - look.z) * k);
+    c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();
   };
 
