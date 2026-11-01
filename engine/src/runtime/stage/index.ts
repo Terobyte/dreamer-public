@@ -140,12 +140,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     line(e) {
       const who = whoOf(e);
       subs.line({ who: e.who, text: e.text, audio: e.audio });
+      window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
       const t = touchName(e.touch);
       if (who && t) touch(who, t);
     },
     narrator(e) {
       subs.narrator({ text: e.text, audio: e.audio });
+      window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       const hit = remark(String(e.text ?? ""));
       if (hit) touch(hit.who, hit.place);
     },
