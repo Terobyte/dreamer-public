@@ -198,10 +198,22 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
   const scene = ctx.scene as any;
   const levels = (ctx as any).levels as Map<string, { intervals: Interval[] }>;
   const rooms: Array<{ id: string; level: string; height: number; edges: AuthorEdge[] }> = (ctx as any).rooms ?? [];
+  // the pseudo-room `walls` has no place in `rooms`: it sorts after the real
+  // ones, as in `merge.roomOrder`
+  const roomRank = (r: string): number => order.get(r) ?? rooms.length;
   const order = new Map<string, number>(rooms.map((r, i) => [r.id, i]));
   const roomById = new Map(rooms.map((r) => [r.id, r]));
-  const edgeOf = (roomId: string, i: number): AuthorEdge | undefined =>
-    roomById.get(roomId)?.edges.find((e) => e.i === i);
+  const edgeOf = (roomId: string, i: number): AuthorEdge | undefined => {
+    if (roomId === "walls") {
+      const w = ((scene.walls ?? []) as any[])[i];
+      if (!w) return undefined;
+      const from: V2 = [Number(w.from[0]), Number(w.from[1])];
+      const to: V2 = [Number(w.to[0]), Number(w.to[1])];
+      const len = Math.hypot(to[0] - from[0], to[1] - from[1]);
+      return { id: `walls#${i}`, room: "walls", i, from, to, arc: null, len, normalIn: len > 0 ? [-(to[1] - from[1]) / len, (to[0] - from[0]) / len] : [0, 1] };
+    }
+    return roomById.get(roomId)?.edges.find((e) => e.i === i);
+  };
 
   const byLevel = new Map<string, Array<{ iv: Interval; idx: number }>>();
   if (levels) {
@@ -279,7 +291,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       picked = best.iv;
       pickedIdx = best.idx;
       level = best.lvl;
-      const sideRooms = [...new Set(picked.sides.map((s) => s.room))].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+      const sideRooms = [...new Set(picked.sides.map((s) => s.room))].sort((a, b) => roomRank(a) - roomRank(b));
       rideRoom = sideRooms[0];
       const side = picked.sides.find((s) => s.room === rideRoom)!;
       rideEdge = edgeOf(rideRoom, side.edge);
@@ -383,7 +395,7 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
       }
     }
 
-    const roomsList = [...new Set(picked.sides.map((s) => s.room))].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+    const roomsList = [...new Set(picked.sides.map((s) => s.room))].sort((a, b) => roomRank(a) - roomRank(b));
     // the leaf can only open into a room the opening joins; an invalid opening
     // takes part in nothing downstream, not even overlap checks of later ones
     const sw = o.leaf?.swing;
@@ -564,7 +576,8 @@ export function resolveOpenings(ctx: Ctx): OpeningGeo[] {
 }
 
 function sideAddr(iv: Interval, order: Map<string, number>): string {
-  const rooms = [...new Set(iv.sides.map((s) => s.room))].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+  const rank = (r: string): number => order.get(r) ?? order.size;
+  const rooms = [...new Set(iv.sides.map((s) => s.room))].sort((a, b) => rank(a) - rank(b));
   const r = rooms[0] ?? "?";
   const side = iv.sides.find((s) => s.room === r);
   return `${r}#${side ? side.edge : "?"}`;

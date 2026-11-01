@@ -108,6 +108,8 @@ export function controls(dom: HTMLElement, yaw0: number): Keys {
   let pitch = 0;
   addEventListener("keydown", (e) => down.add(e.code));
   addEventListener("keyup", (e) => down.delete(e.code));
+  // a key released while the window is unfocused never sends keyup
+  addEventListener("blur", () => down.clear());
   dom.addEventListener("click", () => void dom.requestPointerLock?.());
   addEventListener("mousemove", (e) => {
     if (document.pointerLockElement === dom) [yaw, pitch] = mouseLook(yaw, pitch, e.movementX, e.movementY);
@@ -128,7 +130,7 @@ export function controls(dom: HTMLElement, yaw0: number): Keys {
       const fz = Math.cos(a);
       const len = Math.hypot(f, s);
       const d = (SPEED * dt) / len;
-      return [(f * fx + s * fz) * d, (f * fz - s * fx) * d];
+      return [(f * fx - s * fz) * d, (f * fz + s * fx) * d];
     },
   };
 }

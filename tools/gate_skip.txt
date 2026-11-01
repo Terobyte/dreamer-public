@@ -8,6 +8,3 @@ h0/dream/test_bugs_sim_queue.py
 engine/test/bugs-budget.test.ts
 engine/test/bugs-built.test.ts
 engine/test/bugs-camera.test.ts
-engine/test/bugs-openings.test.ts
-engine/test/bugs-openroom.test.ts
-engine/test/bugs-walk.test.ts

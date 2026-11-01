@@ -27,10 +27,10 @@
 
 Файлы тестов: `engine/test/bugs-openings.test.ts`, `bugs-openroom.test.ts`, `bugs-walk.test.ts`. Зоны: `engine/src/openings/**`, `engine/src/stairs/**`, `engine/src/decals/**`, `engine/src/runtime/walk.ts`, `bugs.md`, `tools/gate_skip.txt`.
 
-- [ ] P2 (B11 B12 B13): псевдокомната `"walls"` сортируется последней, как в `merge.roomOrder`; `at`-проём на свободной стене не пропадает, индексы `geos`/`openings` не расходятся, `sRange` не падает
-- [ ] P1 (B14 B15): открытость комнаты читается из `open`, а не из `height == 0`
-- [ ] B16: стрейф D вправо; B38: клавиши сбрасываются на `blur`
-- [ ] три файла зелёные и убраны из `tools/gate_skip.txt`; golden-тесты движка зелёные
+- [x] P2 (B11 B12 B13): псевдокомната `"walls"` сортируется последней, как в `merge.roomOrder`; `at`-проём на свободной стене не пропадает, индексы `geos`/`openings` не расходятся, `sRange` не падает
+- [x] P1 (B14 B15): открытость комнаты читается из `open`, а не из `height == 0`
+- [x] B16: стрейф D вправо; B38: клавиши сбрасываются на `blur`
+- [x] три файла зелёные и убраны из `tools/gate_skip.txt`; golden-тесты движка зелёные
 
 ## Б4. engine: бюджет, check --built, камеры (B19 B20 B21 B22 B35 B37)
 

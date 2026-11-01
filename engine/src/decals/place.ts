@@ -8,6 +8,7 @@ import type { AuthorEdge, RoomRec } from "../props/place.js";
 import { edgeNormal, edgePoint, fracOf, isClosed, mOnEdge, nearestEdge, onWallAxis, specAng } from "../props/place.js";
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
+import { FREE } from "../plan/merge.js";
 
 const STAGE: Stage = "decals";
 /** flat things sit this far off the inner face of the wall */
@@ -159,6 +160,52 @@ function physicalOverlap(
   return false;
 }
 
+/** height backing a decal of an open room, or null when no wall is built
+ *  under the point: an open boundary with no neighbour, or a stretch only
+ *  open rooms border, builds no wall (see build/geometry.ts). A shared
+ *  stretch is backed by the neighbouring closed rooms' heights and by any
+ *  free wall on it (its top, same as build/geometry.ts wallRoom); with
+ *  several neighbours the lowest wins, so the decal fits everywhere */
+function openWallCap(
+  iv: PlanInterval | undefined,
+  room: RoomRec,
+  geoById: Map<string, RoomRec>,
+  rawById: Map<string, any>,
+  sceneWalls: any[],
+): number | null {
+  if (!iv) return null;
+  let cap: number | null = null;
+  const take = (h: unknown): void => {
+    const n = Number(h);
+    if (!Number.isFinite(n)) return;
+    cap = cap === null ? n : Math.min(cap, n);
+  };
+  for (const s of iv.sides) {
+    if (s.room === FREE) {
+      const w = sceneWalls[s.edge];
+      if (!w) continue;
+      if (typeof w.h === "number") {
+        take(w.h);
+        continue;
+      }
+      // `h: null` takes the tallest room of the level (see plan/merge.ts freeWalls)
+      const lvl = String(w.level ?? room.level);
+      let top: number | null = null;
+      for (const r of geoById.values()) {
+        if (r.level !== lvl) continue;
+        const n = Number(r.height);
+        if (!Number.isFinite(n)) continue;
+        top = top === null ? n : Math.max(top, n);
+      }
+      if (top !== null) take(top);
+      continue;
+    }
+    if (rawById.get(s.room)?.open === true) continue;
+    take(geoById.get(s.room)?.height);
+  }
+  return cap;
+}
+
 export function placeDecals(ctx: Ctx): DecalGeo[] {
   const scene = ctx.scene as any;
   const rooms = (ctx.rooms ?? []) as RoomRec[];
@@ -254,12 +301,17 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
       delta = e.arc.r * Math.asin(Math.min(1, w / 2 / faceR));
     }
 
+    // an open room builds no wall of its own: with no shared stretch under
+    // the point (or only yards around) the backing height is 0, so the
+    // y-check below reports the floating decal instead of waving it through
+    const iv = findInterval(ctx, room, e, q);
+    const backing = rawById.get(roomId)?.open === true ? (openWallCap(iv, room, roomById, rawById, (scene.walls ?? []) as any[]) ?? 0) : room.height;
     out.push({
       i,
       room: roomId,
       edge: e.id,
       edgeRef: e,
-      iv: findInterval(ctx, room, e, q),
+      iv,
       tooWide,
       level: room.level,
       m,
@@ -271,7 +323,7 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
       y: yc,
       levelY,
       wallT,
-      height: room.height,
+      height: backing,
     });
   }
   return out;

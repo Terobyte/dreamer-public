@@ -132,7 +132,9 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
 
     // the solid above the flight is the ceiling of the room it runs in; under
     // `to.room` that same plane is the bottom of its slab, so it can be cut
-    const ceil = Number(fromGeo.height ?? 0);
+    // an open room has `height` 0 and no ceiling at all: read `open`, not the height
+    const rawFromRoom = ((scene.rooms ?? []) as any[]).find((rr) => rr?.id === String(s?.from?.room));
+    const ceil = rawFromRoom?.open === true ? Infinity : Number(fromGeo.height ?? 0);
     const nose = (s0: number): number => r + s0 * (r / going);
     const clear = (s0: number): number => ceil - nose(s0);
     // nose(s) grows with s, so the headroom runs out once and stays out
@@ -207,8 +209,13 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
     // room it climbs into (a beam there can hang low enough to poke through
     // that room's own floor, into the stairwell below) must be checked.
     const rawFrom = ((scene.rooms ?? []) as any[]).find((rr) => rr?.id === String(s?.from?.room));
+    // beams hang where the build puts them: under the compiled room height
+    // (0 for an open room, same as build/geometry.ts), not the authored one —
+    // otherwise the check and the beam mesh disagree (F3). a ceiling of
+    // Infinity above would hide a real obstacle (F1), so open rooms keep
+    // their beams checked at the built height instead of being skipped
     const beamSources: Array<{ beams: ReturnType<typeof beamPolys>; roomCeil: number }> = [
-      { beams: beamPolys(rawFrom), roomCeil: ceil },
+      { beams: beamPolys(rawFrom), roomCeil: Number(fromGeo.height ?? 0) },
       { beams: beamPolys(rawTo), roomCeil: dy + Number(toGeo.height ?? 0) },
     ];
     const allBeams = beamSources.flatMap((src) => src.beams.map((bm) => ({ ...bm, roomCeil: src.roomCeil })));
