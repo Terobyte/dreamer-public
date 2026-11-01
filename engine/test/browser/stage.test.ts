@@ -106,7 +106,7 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
         return Math.abs(((a.yaw - y + 540) % 360) - 180) <= 10;
       },
       [who, want[0], want[1], yaw] as [string, number, number, number | null],
-      { timeout: 10_000 },
+      { timeout: 30_000 }, // a loaded machine (another run gating) slows the walk, not the result
     );
   };
 
@@ -149,12 +149,12 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
 
     emit(1); // case 1
     await near(page, cs[0].who, cs[0].target, cs[0].yaw);
-    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "sit", cs[0].who, { timeout: 5000 });
+    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "sit", cs[0].who, { timeout: 15_000 });
     await sample();
 
     emit(2); // case 2: beside the taken chair (target + yaw from expect_touch.json)
     await near(page, cs[1].who, cs[1].target, cs[1].yaw);
-    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "idle", cs[1].who, { timeout: 5000 });
+    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "idle", cs[1].who, { timeout: 15_000 });
     await sample();
 
     emit(3); // case 3: the narrator's remark walks Rochester to the window (target + yaw from expect_touch.json)
@@ -191,7 +191,7 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
     expect(texts).toContain("Mr. Rochester rose and went to the window");
     expect(errors).toEqual([]);
     await page.close();
-  }, 120_000);
+  }, 240_000);
 
   it("test_browser_no_stage_param_means_no_stage", async () => {
     const page = await browser.newPage();

@@ -351,6 +351,15 @@ class BuildFSM:
         self.last_call = now
         return ticket
 
+    def rearm_consult(self, ticket):
+        """Undo the one-shot flags begin_consult spent when its reply was dropped."""
+        hint = ticket.get("hint")
+        if hint == "ready_stale" and self.state == "ready" and ticket["epoch"] == self.build_epoch:
+            self.ready_stale_fired = False
+        elif hint == "nudge" and ticket["epoch"] == self.build_epoch:
+            self.nudge_pending = True
+            self.nudge_delivered = ticket["nudged_before"]
+
     def finish_consult(self, now, ticket, decision):
         """Apply one director decision (dict, or anything else = broken JSON)."""
         self.in_flight = False

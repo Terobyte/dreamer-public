@@ -68,7 +68,7 @@ class LineLoopTest(unittest.TestCase):
     def test_run_emits_line_events(self):
         import json
         from sim import run
-        outdir, logpath = run(profile="A", fake=True, speed=100,
+        outdir, logpath = run(profile="A", fake=True, speed=100, max_seconds=3,
                                max_transitions=1, seed=2)
         with open(logpath, encoding="utf-8") as f:
             rows = [json.loads(l) for l in f]
@@ -93,7 +93,7 @@ class TransitionKeepsFullActorsTest(unittest.TestCase):
 class StressSlowDirectorTest(unittest.TestCase):
     def test_stress_slow_director(self):
         from sim import run_stress
-        rep = run_stress(delay=8.0, speed=20, seed=7)
+        rep = run_stress(delay=1.6, speed=100, seed=7, max_seconds=2.4)  # same 160 sim-s, 5x faster
         self.assertGreaterEqual(rep["consult_stale"], 1)
         self.assertEqual(rep["bridge_changes_in_building"], 0)
         self.assertEqual(rep["exceptions"], 0)
@@ -104,7 +104,7 @@ class LogJsonlTest(unittest.TestCase):
         import json
         import os
         from sim import run
-        outdir, logpath = run(profile="A", fake=True, speed=100,
+        outdir, logpath = run(profile="A", fake=True, speed=100, max_seconds=3,
                                max_transitions=1, seed=1)
         with open(logpath, encoding="utf-8") as f:
             rows = [json.loads(l) for l in f]

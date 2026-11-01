@@ -20,6 +20,7 @@ def _stages(**over):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        self.enterContext(mock.patch.object(core, "STUB_SLEEP", 0.05))
         t = tempfile.TemporaryDirectory()
         self.addCleanup(t.cleanup)
         self.run_dir = Path(t.name) / "run"

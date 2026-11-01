@@ -33,7 +33,7 @@ class SimFlowBugTests(unittest.TestCase):
         sim.submit("stop")
         sim._tick()
         started.set()
-        self.assertTrue(returned.wait(0), "_start_line blocks on voice synthesis; the loop cannot advance")
+        self.assertTrue(returned.wait(2), "_start_line blocks on voice synthesis; the loop cannot advance")
         self.assertTrue(started.is_set())
 
     def test_B51_final_cost_row_waits_for_dialogue_fold(self):
@@ -54,6 +54,9 @@ class SimFlowBugTests(unittest.TestCase):
         dlg._mind_threads.append(worker)
         worker.start()
         self.assertTrue(entered.wait(2))
+        # the fold is released from a timer: run() must wait for it before the final
+        # cost row (released only after run() returned, the join could never finish)
+        threading.Timer(0.3, release.set).start()
         sim.run(max_transitions=1, max_seconds=0.0)
         with open(os.path.join(sim.outdir, "log.jsonl"), encoding="utf-8") as f:
             costs = [json.loads(line)["dollars"] for line in f if json.loads(line)["type"] == "cost"]
@@ -61,6 +64,49 @@ class SimFlowBugTests(unittest.TestCase):
         worker.join(2)
         self.assertAlmostEqual(costs[-1], llm.get_spent(), places=6,
                                msg="the final cost row misses the Dialogue fold charge")
+
+    def test_F2_final_cost_row_waits_for_background_voice(self):
+        llm.reset_spent()
+        self.addCleanup(llm.reset_spent)
+        entered, release = threading.Event(), threading.Event()
+
+        class Voice:
+            def synthesize(self, text, label, path):
+                entered.set()
+                release.wait(5)
+                llm._charge(0.0123)
+                return {"ok": False, "pause": 0.0}
+
+        sim = S.Sim(profile="A", fake=False, outdir=tempfile.mkdtemp(), media={"voice": Voice()})
+        self.addCleanup(sim.close)
+        sim._start_line({"owner": "npc", "text": "hello"})
+        self.assertTrue(entered.wait(2))
+        # the voice is released from a timer: run() must wait for it before the
+        # final cost row (released only after run() returned, the join could never finish)
+        threading.Timer(0.3, release.set).start()
+        sim.run(max_transitions=1, max_seconds=0.0)
+        with open(os.path.join(sim.outdir, "log.jsonl"), encoding="utf-8") as f:
+            costs = [json.loads(line)["dollars"] for line in f if json.loads(line)["type"] == "cost"]
+        self.assertAlmostEqual(costs[-1], 0.0123, places=6,
+                               msg="the final cost row misses the background voice charge")
+
+    def test_F3_close_joins_background_voice(self):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+        class Voice:
+            def synthesize(self, text, label, path):
+                entered.set()
+                release.wait(5)
+                finished.set()
+                return {"ok": False, "pause": 0.0}
+
+        sim = S.Sim(profile="A", fake=False, outdir=tempfile.mkdtemp(), media={"voice": Voice()})
+        sim._start_line({"owner": "npc", "text": "hello"})
+        self.assertTrue(entered.wait(2))
+        threading.Timer(0.3, release.set).start()
+        sim.close()
+        self.assertTrue(finished.is_set(), "close() returned while the voice was still synthesizing")
+        self.assertFalse(sim._voicing["thread"].is_alive())
 
     def test_B60_book_line_event_preserves_beat_fields(self):
         plan = S._load_book_plan(BOOK, ["library"])

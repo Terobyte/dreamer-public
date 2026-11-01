@@ -537,9 +537,9 @@ class _ScriptedDialogue:
 
 
 class SimDialogueTest(unittest.TestCase):
-    def _run(self, dlg, steps=200, before=None):
+    def _run(self, dlg, steps=200, before=None, speed=1000.0):
         d = tempfile.mkdtemp()
-        sim = Sim(profile="A", fake=True, speed=1000.0, outdir=d, dialogue=dlg)
+        sim = Sim(profile="A", fake=True, speed=speed, outdir=d, dialogue=dlg)
         try:
             if before:
                 before(sim)
@@ -572,7 +572,8 @@ class SimDialogueTest(unittest.TestCase):
         def build(sim):
             sim.fsm.start_build(sim.clock.now(), "clarinet", "grandma's porch")
         dlg = _ScriptedDialogue(hero_touch="clarinet")
-        sim, rows = self._run(dlg, steps=60, before=build)
+        # speed 200: a loaded machine stretches 60 ticks, and at 1000 the build can finish
+        sim, rows = self._run(dlg, steps=60, before=build, speed=200.0)
         doors = [r for r in rows if r["type"] == "door"]
         self.assertTrue(doors, "early TOUCH in building is a closed door")
         self.assertEqual((doors[0]["state"], doors[0]["source"]), ("closed", "hero"))

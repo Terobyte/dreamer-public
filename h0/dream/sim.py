@@ -323,6 +323,9 @@ class Sim:
         self._fired = set()
         self._discard_reason = "human"
         self._gen_thread = None
+        self._gen_taken = None  # B47: (who, role, events) the running worker took
+        self._voicing = None  # B49: a line whose voice is synthesized in the background
+        self._human_backlog = []  # B46: human lines behind the queued one
         self._gen_who = None
         self._gen_epoch = None
         self._gen_result = None
@@ -632,6 +635,9 @@ class Sim:
         self.memory.wait()
         if self.dialogue is not None and hasattr(self.dialogue, "wait"):
             self.dialogue.wait()
+        voicing = self._voicing
+        if voicing is not None and voicing.get("thread") is not None:
+            voicing["thread"].join()  # F3: no voice write or charge after close
         self.wait_images()
         self._drain_director()
         if self._storage is not None:
@@ -726,13 +732,47 @@ class Sim:
                                   or (self.actors[0] if self.actors else None))
                     voice_label = self._actor_voices.get(actor_name) or "man"
             path = os.path.join(self._audio_dir, "line_%03d.wav" % self._line_seq)
-            res = self._voice.synthesize(line["text"], voice_label, path)
-            if res["ok"]:
-                audio_seconds = res["seconds"]
-                line = dict(line, audio=res.get("audio"), dur=res["pause"])
-            else:
-                audio_seconds = None
-                line = dict(line, audio=None, dur=res["pause"])
+            # B49: Fish TTS can take 4x15 s; it runs off the loop thread and the
+            # line starts (_finish_voicing) on the first tick after it is done
+            job = {"line": line, "done": threading.Event(), "res": None}
+
+            def synth():
+                try:
+                    job["res"] = self._voice.synthesize(line["text"], voice_label, path)
+                except Exception as e:
+                    job["res"] = {"ok": False, "pause": 0.0, "error": "%s: %s" % (type(e).__name__, e)}
+                finally:
+                    job["done"].set()
+            self._voicing = job
+            self.active_line = line
+            self.playing = True
+            self._line_started_at = None
+            # gate test_media: the playback slot is known synchronously (tag-free
+            # text pause); the voice thread only corrects it via _play_line later.
+            # _line_started_at stays None, so no reader treats the line as started.
+            self._line_duration = self.clock.scale(line_duration(line["text"], None))
+            voice_thread = threading.Thread(target=synth, daemon=True)
+            job["thread"] = voice_thread
+            voice_thread.start()
+            return None
+        return self._play_line(line, audio_seconds, res, whisper_to)
+
+    def _finish_voicing(self):
+        job = self._voicing
+        if job is None or not job["done"].is_set():
+            return False
+        self._voicing = None
+        line, res = job["line"], job["res"]
+        self.active_line = None
+        if res["ok"]:
+            line = dict(line, audio=res.get("audio"), dur=res["pause"])
+            self._play_line(line, res["seconds"], res, line.get("whisper_to"))
+        else:
+            line = dict(line, audio=None, dur=res["pause"])
+            self._play_line(line, None, res, line.get("whisper_to"))
+        return True
+
+    def _play_line(self, line, audio_seconds, res, whisper_to):
         duration = self.clock.scale(line_duration(line["text"], audio_seconds))
         self.active_line = line
         self.playing = True
@@ -743,7 +783,8 @@ class Sim:
             who = line.get("who") or (self.hero if line["owner"] == "human" else None)
             event["who"] = who
             event["role"] = line.get("role") or ("hero" if line["owner"] == "human" else "actor")
-            for key in ("remarks", "level", "look", "touch", "impulse", "source", "para"):
+            for key in ("remarks", "level", "look", "touch", "impulse", "source", "para",
+                        "stage", "gesture", "shot"):
                 if line.get(key) is not None:
                     event[key] = line[key]
         if res is not None and line.get("dur") is not None:
@@ -881,7 +922,10 @@ class Sim:
         out.append({"type": "line_queued", "turn_owner": "human", "text": clean})
         input_ev = {"type": "input", "source": "speech", "value": clean}
         out.append(input_ev)
-        self.next_line = {"owner": "human", "text": clean}
+        if self.next_line is not None and self.next_line.get("owner") == "human":
+            self._human_backlog.append({"owner": "human", "text": clean})  # B46: queue, never overwrite
+        else:
+            self.next_line = {"owner": "human", "text": clean}
         self.memory.add_line("human", clean)
         for e in out:
             self._emit(e)
@@ -1140,7 +1184,9 @@ class Sim:
         bk["cursor"] += 1
         if beat["kind"] == "line" and beat.get("who"):
             self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
-                            "text": beat["text"], "source": "book", "para": beat.get("para")})
+                            "text": beat["text"], "source": "book", "para": beat.get("para"),
+                            "stage": beat.get("stage"), "gesture": beat.get("gesture"),
+                            "shot": beat.get("shot")})
             return
         text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]
         self._diagnostic({"type": "narrator", "cause": "book", "text": text,
@@ -1333,6 +1379,9 @@ class Sim:
         line first (it already replaced the prepared NPC line), else the prepared NPC
         line (spec 5a turn order). A queued line also starts when nothing is playing."""
         now = self.clock.now()
+        if self._voicing is not None:
+            self._finish_voicing()
+            return
         if self.active_line is not None:
             if self._line_started_at is not None and now - self._line_started_at < self._line_duration:
                 return
@@ -1347,6 +1396,8 @@ class Sim:
             return
         if self.next_line is not None:
             queued, self.next_line = self.next_line, None
+            if self._human_backlog:
+                self.next_line = self._human_backlog.pop(0)
         elif self.prepared_npc is not None:
             queued = dict(self._prepared_meta or {}, owner="npc", text=self.prepared_npc)
             self.prepared_npc = None
@@ -1480,6 +1531,15 @@ class Sim:
         self._diagnostic({"type": "silence", "pressure": table})
         return None, None
 
+    def _return_taken(self, taken):
+        who, role, events = taken
+        if not events:
+            return
+        if role == "hero":
+            self._hero_world = list(events) + self._hero_world
+        elif who in self.actors:
+            self._pending[who] = list(events) + self._pending.get(who, [])
+
     def _start_narration(self, req):
         """3.2: the narrator takes the generation slot a line takes, so he is never
         in flight beside a line and is voiced before the first line of a new scene."""
@@ -1501,6 +1561,7 @@ class Sim:
         # no _gen_who: an event must not bump the turn because of a narration
         self._gen_who = None
         self._gen_epoch = None
+        self._gen_taken = None
         self._gen_thread = threading.Thread(target=work, daemon=True)
         self._gen_thread.start()
 
@@ -1515,6 +1576,11 @@ class Sim:
             res, self._gen_result = self._gen_result, None
         if res is not None:
             line, scene_no, epoch, who = res
+            taken, self._gen_taken = self._gen_taken, None
+            accepted = (isinstance(line, dict) and line.get("role") != "narrator"
+                        and scene_no == self.n_transitions and epoch == self._turn_epoch)
+            if taken is not None and not accepted:
+                self._return_taken(taken)  # B47: a dropped turn gives its events back
             self._gen_who = None
             self._gen_epoch = None
             if isinstance(line, dict) and line.get("role") == "narrator":
@@ -1542,8 +1608,10 @@ class Sim:
                 self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
         # 1.2a: a free tick -- nothing playing, nothing queued, no worker running
+        # B43: a queued line waits for pending narration (_cycle_line), so the
+        # narration must still be allowed to start here or both wait forever
         if (busy or self.active_line is not None or self.prepared_npc is not None
-                or self.next_line is not None):
+                or (self.next_line is not None and not self._narrate)):
             return
         if self.fsm.awake or self.stopped or not self._budget_ok():
             return
@@ -1562,8 +1630,10 @@ class Sim:
         world = {"place": self.place, "objects": list(self.scene["objects"]),
                  "actors": list(self.actors)}
         transcript = list(self.transcript)
+        taken = None
         if role == "hero":
             world_events, self._hero_world = self._hero_world, []
+            taken = (who, role, list(world_events))
             args = (world, transcript, world_events)
             fn = self.dialogue.hero_line
         else:
@@ -1571,6 +1641,7 @@ class Sim:
             state = {"build_pct": self.fsm.build_pct(now),
                      "bridge": self.fsm.bridge if locked else None}
             events = self._pending.pop(who, [])
+            taken = (who, role, list(events))
             self._notes_shown[who] = len(self._notes.get(who, []))
             args = (who, world, transcript, state, self._notes_for(who), events,
                     self._personas.get(who, ""))
@@ -1589,6 +1660,7 @@ class Sim:
 
         self._gen_who = who
         self._gen_epoch = epoch
+        self._gen_taken = taken
         self._gen_thread = threading.Thread(target=work, daemon=True)
         self._gen_thread.start()
 
@@ -1827,6 +1899,11 @@ class Sim:
         self._join_judge(timeout=None)
         if self._gen_thread is not None:
             self._gen_thread.join()
+        if self.dialogue is not None and hasattr(self.dialogue, "wait"):
+            self.dialogue.wait()  # B51: the Dialogue fold threads charge too
+        voicing = self._voicing
+        if voicing is not None and voicing.get("thread") is not None:
+            voicing["thread"].join()  # F2: background Fish TTS charges too
         self.memory.wait(timeout=None)
         self.wait_images()
         if self.logger:

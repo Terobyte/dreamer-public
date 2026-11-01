@@ -279,7 +279,9 @@ if (q.get('score')) fetch(`/book/score_${q.get('score')}.json`).then((r) => r.js
 const onLine = (r) => {
   const s = r.who === 'SpongeBob' ? SB : SQ, l = other(s), dur = (r.dur ?? 4) * 1000;
   lines++; subs(s.name, r.text);
-  const bd = DIRECTED.get(r.text);  // a written-and-directed score (?score=) says the gesture and the shot itself
+  // B60: the book beat's own stage/gesture/shot ride on the line event; the ?score= text lookup is the fallback
+  const bd = (r.gesture || r.shot || r.stage) ? r : DIRECTED.get(r.text);  // a written-and-directed score says the gesture and the shot itself
+  if (Array.isArray(bd?.stage)) { const claimed = new Set(); for (const st of bd.stage) stageTo(st.who === 'SpongeBob' ? SB : SQ, st.place, claimed); }
   const g = GESTURES[s.name].includes(bd?.gesture) ? bd.gesture : pick(s.name, r.text, r.remarks);
   let walking = false;
   const place = actorsOut ? null : PLACES[OBJ[r.touch]] ?? null;  // free lines touch objects; outside they are street places
