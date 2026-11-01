@@ -21,6 +21,8 @@ import {
   WebGLRenderer,
 } from "three";
 import { loadGlb, loadMaps } from "./assets.js";
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addOutdoor } from "./outdoor.js";
 import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
@@ -279,6 +281,8 @@ async function start(): Promise<void> {
   };
   if (walking || setup.error) syncCamera();
 
+  // host hooks (temporary, Koshakan crutch until the engine plays clips itself): per-frame callbacks
+  const frameHooks: ((dt: number, now: number) => void)[] = [];
   let last = performance.now();
   const frame = (now: number): void => {
     const real = Math.max(0, (now - last) / 1000);
@@ -305,6 +309,7 @@ async function start(): Promise<void> {
       }
       touching = hit;
     }
+    for (const h of frameHooks) { try { h(Math.min(real, 0.1), now); } catch (e) { console.warn("onFrame hook", e); } }
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   };
@@ -350,6 +355,9 @@ async function start(): Promise<void> {
     },
     look: (yaw: number): void => keys.setYaw(yaw),
     stage: stage ? stage.api : null,
+    /** host access to the live three.js objects (same three instance as the engine) */
+    three: { THREE, scene, camera, renderer, loadGltf: (url: string) => new GLTFLoader().loadAsync(url) },
+    onFrame: (cb: (dt: number, now: number) => void): void => { frameHooks.push(cb); },
     meshCount: (): number => meshTotal,
     inspect: (
       id: string,
