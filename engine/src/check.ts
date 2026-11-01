@@ -84,7 +84,9 @@ export function runCheck(
   // budgets read the built dist/ and never gate a stage: they only add findings
   if (opts?.tris !== undefined) {
     for (const i of budgetIssues(ctx, opts.tris)) {
-      const isErr = i.code === "POINT_LIGHT_BUDGET" ? i.data?.level === "error" : CODES[i.code].level === "error";
+      // an unreadable model has unknown triangles: that blocks the check, it never stays a warn
+      const unreadable = i.code === "TRI_PROP_BUDGET" && (i.data as any)?.unreadable === true;
+      const isErr = unreadable || (i.code === "POINT_LIGHT_BUDGET" ? i.data?.level === "error" : CODES[i.code].level === "error");
       (isErr ? errors : warnings).push(i);
     }
   }

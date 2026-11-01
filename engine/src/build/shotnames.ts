@@ -16,12 +16,14 @@ export function shotBaseNames(cameras: { id: string }[]): string[] {
     return safe === "" || safe === "." || safe === ".." ? `_${safe}` : safe;
   });
   const counts = new Map<string, number>();
-  for (const b of base) counts.set(b, (counts.get(b) ?? 0) + 1);
+  // APFS and NTFS fold case: `A.png` and `a.png` are one file
+  const fold = (s: string): string => s.toLowerCase();
+  for (const b of base) counts.set(fold(b), (counts.get(fold(b)) ?? 0) + 1);
   const used = new Set<string>();
   return base.map((b, i) => {
-    let name = (counts.get(b) ?? 0) > 1 ? `${b}-${i}` : b;
-    while (used.has(name)) name = `${name}-${i}`;
-    used.add(name);
+    let name = (counts.get(fold(b)) ?? 0) > 1 ? `${b}-${i}` : b;
+    while (used.has(fold(name))) name = `${name}-${i}`;
+    used.add(fold(name));
     return name;
   });
 }

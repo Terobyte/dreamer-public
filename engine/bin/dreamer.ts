@@ -81,6 +81,8 @@ function printAndDiff(rp: string, report: Report): void {
     for (const i of report.diff.fixed) console.log(`исправлено: ${i.code} ${i.path}`);
     for (const i of report.diff.new) console.log(`появилось: ${i.code} ${i.path}`);
   }
+  // a missing shot is the one finding a reader greps for by camera id: say it in one line
+  for (const e of report.errors ?? []) if (e.code === "SHOT_MISSING") console.log(`${e.code}: ${e.msg}`);
   writeFileSync(rp, out);
 }
 
@@ -161,10 +163,14 @@ async function main(): Promise<number> {
       // once `shots` has been run, every camera must have its picture;
       // a missing `shots/` dir means every picture is missing
       if (existsSync(join(builtFlag, "geometry.json"))) {
-        const cams: { id: string; ref?: string | null }[] = JSON.parse(readFileSync(join(builtFlag, "geometry.json"), "utf-8")).cameras ?? [];
-        builtCams = cams;
-        missingShots = shotBaseNames(cams)
-          .map((n, index) => ({ index, id: cams[index]!.id, file: `${n}.png` }))
+        // the scene decides which cameras exist; the dist only lends refs by id
+        const geoCams: { id: string; ref?: string | null }[] = JSON.parse(readFileSync(join(builtFlag, "geometry.json"), "utf-8")).cameras ?? [];
+        const sceneCams = ((raw as any)?.cameras ?? []).filter(
+          (c: unknown): c is { id: string } => !!c && typeof c === "object" && typeof (c as { id: unknown }).id === "string",
+        );
+        builtCams = sceneCams.map((c: { id: string }) => ({ ref: geoCams.find((g) => g.id === c.id)?.ref ?? null }));
+        missingShots = shotBaseNames(sceneCams)
+          .map((n, index) => ({ index, id: sceneCams[index]!.id, file: `${n}.png` }))
           .filter((m) => !isShotFile(join(builtFlag, "shots", m.file)));
       } else {
         // without geometry.json the dist cannot be trusted: every scene

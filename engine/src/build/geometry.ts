@@ -293,7 +293,7 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     floors,
     materials: materialTable(scene, assetFiles, free, glassIds),
     lights: (scene.lights ?? []) as Light[],
-    cameras: (scene.cameras ?? []) as Camera[],
+    cameras: ((scene.cameras ?? []) as Camera[]).map((c) => ({ ...c })),
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },
     style: { ambient: Number(scene.style?.ambient ?? 1.0), exterior: String(scene.style?.exterior ?? "#808080") },
     ...(scene.outdoor ? { outdoor: outdoorOf(scene, assetFiles, levelY) } : {}),

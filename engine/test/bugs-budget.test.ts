@@ -77,6 +77,14 @@ describe("B20 unreadable glb must not count as 0 triangles", () => {
     const geo = { meshes: [{ kind: "prop", id: "chair", glb: "ok.glb", indices: [] }] } as any;
     expect(countTris(geo, d, ["chair"]).by_prop["chair"]).toBe(2000);
   });
+
+  it("B20 F1: unreadable glb blocks check with an error, not a warn", async () => {
+    const { runCheck } = (await import("../src/check.js")) as any;
+    const { demoFlat } = (await import("./helpers/scene.js")) as any;
+    const { report } = runCheck(demoFlat(), { tris: { total: 0, by_prop: {}, unreadable: ["chairs"] } });
+    expect(report.errors.map((i: any) => i.code)).toContain("TRI_PROP_BUDGET");
+    expect(report.ok).toBe(false);
+  });
 });
 
 describe("B21 point-light budget applies scene-wide and per room with error level", () => {

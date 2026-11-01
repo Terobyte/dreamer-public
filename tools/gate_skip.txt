@@ -5,6 +5,3 @@ h0/dream/test_bugs_llm_bench.py
 h0/dream/test_bugs_server.py
 h0/dream/test_bugs_sim_flow.py
 h0/dream/test_bugs_sim_queue.py
-engine/test/bugs-budget.test.ts
-engine/test/bugs-built.test.ts
-engine/test/bugs-camera.test.ts

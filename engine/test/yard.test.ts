@@ -451,7 +451,7 @@ describe("Б1 budget in a yard", () => {
     const lamp = { kind: "point", pos: [0, 2.5, -10], color: "#ffd8b0", power: 1 };
     s.lights = [lamp, lamp, lamp];
     const { ctx } = runCheck(s);
-    const issues = budgetIssues(ctx, { total: 10, by_prop: {} }).filter((i) => i.code === "POINT_LIGHT_BUDGET");
+    const issues = budgetIssues(ctx, { total: 10, by_prop: {} }).filter((i) => i.code === "POINT_LIGHT_BUDGET" && (i.data as any).room !== undefined);
     expect(issues.map((i) => (i.data as any).room)).toEqual(["yard"]);
   });
 });

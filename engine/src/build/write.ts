@@ -78,14 +78,15 @@ function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbS
  * a model by that model's own count (once per copy). `by_prop` is one copy.
  */
 export function countTris(geometry: Geometry, outDir: string, propIds?: Iterable<string>): TriCount {
-  const perFile = new Map<string, number>();
-  const modelTris = (rel: string): number => {
+  const perFile = new Map<string, number | null>();
+  const unreadable: string[] = [];
+  const modelTris = (rel: string): number | null => {
     let n = perFile.get(rel);
     if (n === undefined) {
       try {
         n = glbTriangles(readFileSync(join(outDir, decodeURIComponent(rel))));
       } catch {
-        n = 0;
+        n = null;
       }
       perFile.set(rel, n);
     }
@@ -98,14 +99,18 @@ export function countTris(geometry: Geometry, outDir: string, propIds?: Iterable
   for (const m of geometry.meshes) {
     if (m.kind === "prop" && m.glb !== undefined) {
       const n = modelTris(m.glb);
-      total += n;
       const key = rawPropId(String(m.id), ids);
+      if (n === null) {
+        if (!unreadable.includes(key)) unreadable.push(key);
+        continue;
+      }
+      total += n;
       if (!Object.prototype.hasOwnProperty.call(by_prop, key)) by_prop[key] = n;
     } else {
       total += Math.floor(m.indices.length / 3);
     }
   }
-  return { total, by_prop };
+  return unreadable.length > 0 ? { total, by_prop, unreadable } : { total, by_prop };
 }
 
 const RUNTIME_ENTRY = fileURLToPath(new URL("../runtime/main.ts", import.meta.url));
