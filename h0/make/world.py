@@ -93,7 +93,9 @@ def run_world(ctx, runner=subprocess.run):
     if ctx.params.get("fake"):
         shutil.copytree(FIXTURE, run, dirs_exist_ok=True)
     else:
-        argv = pipe2_argv(task, run, usd=ctx.budget_usd, effort=ctx.opts.get("effort"), resume=ctx.resume)
+        # a pipe2 that died before its skeleton (e.g. bad argv) has nothing to resume
+        resume = ctx.resume and (run / "skeleton.json").is_file()
+        argv = pipe2_argv(task, run, usd=ctx.budget_usd, effort=ctx.opts.get("effort"), resume=resume)
         r = runner(argv, cwd=str(H0))
         if r.returncode != 0:
             raise RuntimeError(f"pipe2 run failed (exit {r.returncode}); world.tmp kept for --resume")

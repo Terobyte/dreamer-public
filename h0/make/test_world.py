@@ -105,8 +105,10 @@ class RunWorld(NoNet):
             with self.assertRaises(Exception):
                 world.run_world(_ctx(run), runner=lambda argv, **kw: mock.Mock(returncode=3))
             calls = []
-            world.run_world(_ctx(run, resume=True),
-                            runner=lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0))
+            ctx = _ctx(run, resume=True)
+            (ctx.out / "run").mkdir(parents=True, exist_ok=True)
+            (ctx.out / "run" / "skeleton.json").write_text("{}")  # pipe2 got far enough to resume
+            world.run_world(ctx, runner=lambda argv, **kw: calls.append(argv) or mock.Mock(returncode=0))
             self.assertIn("--resume", calls[0])
 
     def test_fake_copies_fixture_no_pipe2(self):
@@ -125,6 +127,10 @@ class RunWorld(NoNet):
 
             def runner(argv, **kw):
                 seen.append(argv)
+                if len(seen) == 1:  # pipe2 got as far as its skeleton, then died
+                    rd = Path(argv[argv.index("--run-dir") + 1])
+                    rd.mkdir(parents=True, exist_ok=True)
+                    (rd / "skeleton.json").write_text("{}")
                 return mock.Mock(returncode=1 if len(seen) == 1 else 0)
             st = core.Stage("world", (), 1, lambda c: world.run_world(c, runner=runner), ("fake", "effort", "cap"))
             out = core.run_make(run, "p", stages={"world": st}, only="world")
