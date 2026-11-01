@@ -36,3 +36,6 @@ runs/
 
 # make fixture dist is committed
 !h0/make/testdata/**/dist/
+
+# shared prop library: meshes are heavy, index + source png stay in git
+assets/props/**/*.glb
