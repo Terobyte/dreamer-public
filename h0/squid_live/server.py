@@ -29,7 +29,7 @@ ROOTS = {  # url prefix -> folder on disk
     "/street/splats/": ACTIVE / "meta" / "h0" / "out" / "glb_sam3d",
     "/street/": ACTIVE / "meta" / "app" / "public",
 }
-META_API, META_MODEL = "https://api.meta.ai/v1/chat/completions", "muse-spark-1.3"
+META_API, META_MODEL = "https://api.meta.ai/v1/chat/completions", "muse-spark-1.3-contributor"
 BASETEN_API, BASETEN_MODEL = "https://inference.baseten.co/v1/chat/completions", "meta-models/muse-spark-open-1026"
 FISH_API, FISH_MODEL = "https://api.fish.audio/v1/tts", "drama-3"
 SQUIDWARD_VOICE = "549dc86f83e44b0fa15f6c0842486178"  # Fish library voice, tests only

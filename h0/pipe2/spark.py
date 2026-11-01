@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 URL = "https://api.meta.ai/v1/chat/completions"
-MODEL = "muse-spark-1.3"
+MODEL = "muse-spark-1.3-contributor"
 MAX_TOKENS = 64000
 POST_TIMEOUT_S = 1800.0
 MAX_RETRIES = 2

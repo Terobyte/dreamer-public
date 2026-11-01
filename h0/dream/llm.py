@@ -18,7 +18,7 @@ if __package__:
 else:
     from diagnostics import report
 
-SPARK_MODEL = "muse-spark-1.3"
+SPARK_MODEL = "muse-spark-1.3-contributor"
 SPARK_OPEN_MODEL = "meta-models/muse-spark-open-1026"
 WONDER_MODEL = "muse-wonder-1.0"
 # Bench r2 probe: Claude Haiku through the local Claude Code CLI on the owner's

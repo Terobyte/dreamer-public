@@ -67,7 +67,7 @@ class TestBody(unittest.TestCase):
         body = tr.bodies[0]
         self.assertEqual(body["max_tokens"], 64000)
         self.assertEqual(body["reasoning_effort"], "high")
-        self.assertEqual(body["model"], "muse-spark-1.3")
+        self.assertEqual(body["model"], "muse-spark-1.3-contributor")
         self.assertEqual(body["messages"], MSGS)
         self.assertTrue(ans.valid)
         self.assertEqual(ans.scene, SCENE)

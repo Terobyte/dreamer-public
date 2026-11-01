@@ -45,7 +45,7 @@ in a ```json fenced block, no prose after it. After that I will run `dreamer che
 def img(p): return {"type": "image_url", "image_url": {"url": "data:image/%s;base64,%s" % ("png" if p.suffix == ".png" else "jpeg", base64.b64encode(p.read_bytes()).decode())}}
 
 def call(messages):
-    body = {"model": "muse-spark-1.3", "reasoning_effort": "max", "max_tokens": 64000, "messages": messages}
+    body = {"model": "muse-spark-1.3-contributor", "reasoning_effort": "max", "max_tokens": 64000, "messages": messages}
     req = urllib.request.Request("https://api.meta.ai/v1/chat/completions", json.dumps(body).encode(),
                                  {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"})
     t = time.time()

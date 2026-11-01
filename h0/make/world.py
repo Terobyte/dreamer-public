@@ -25,9 +25,16 @@ def build_task_md(brief):
     places = brief["places"]
     levels = sorted({p["level"] for p in places})
     multi = len(levels) > 1
-    out = ["Build the whole interior of a small set of rooms (private test scene, never shipped):",
-           "all rooms walkable and connected by doors" + (" and stairs." if multi else "."), "",
-           "Floors and rooms (ids are suggestions, keep them without `_`):"]
+    if any(p["type"] == "yard" for p in places):
+        out = ["Build a small walkable scene of rooms and outdoor yards (private test scene, never shipped):",
+               "all places walkable; houses open onto the yards by doors" + (", floors by stairs." if multi else "."),
+               "Places of type `yard` are outdoors: a room with `open: true` (no walls, ceiling or height), "
+               "an `outdoor` sky and ground, and a `facade` and `roof` on every house room touching a yard "
+               "(see \"Как описать улицу\" in the engine spec). Never a tall closed room.", ""]
+    else:
+        out = ["Build the whole interior of a small set of rooms (private test scene, never shipped):",
+               "all rooms walkable and connected by doors" + (" and stairs." if multi else "."), ""]
+    out.append("Floors and rooms (ids are suggestions, keep them without `_`):")
     for lv in levels:
         out.append(f"- L{lv} {_floor(lv)}")
         for p in sorted((p for p in places if p["level"] == lv), key=lambda p: p["id"]):

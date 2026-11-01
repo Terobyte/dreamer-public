@@ -52,7 +52,7 @@ PREROLL = 10  # frames kept before speech starts, so the first syllable is not c
 
 
 async def spark(http, messages):
-    body = {"model": "muse-spark-1.3", "reasoning_effort": "minimal", "max_tokens": 300, "stream": True,
+    body = {"model": "muse-spark-1.3-contributor", "reasoning_effort": "minimal", "max_tokens": 300, "stream": True,
             "messages": [{"role": "system", "content": SQUIDWARD_LOAD}, *messages]}
     async with http.post("https://api.meta.ai/v1/chat/completions", json=body,
                          headers={"Authorization": f"Bearer {META_KEY}"}) as r:

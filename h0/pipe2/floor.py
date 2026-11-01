@@ -18,7 +18,7 @@ from pipe2.blame import SKELETON, blame_global
 from pipe2.engine import EngineError, Gated, blocking, green
 from pipe2.geom import in_room
 from pipe2.merge import merge
-from pipe2.room import Ctx, RoomPipeline, RoomResult, RoomStore
+from pipe2.room import Ctx, RoomPipeline, RoomResult, RoomStore, engine_spec
 from pipe2.spark import Answer
 from pipe2.seams import repair_seams
 from pipe2.degrade import degrade
@@ -437,7 +437,7 @@ class Floor:
         text = _prompt(role, TASK=self._task_text(), CUES=self._cues_text(),
                        SKELETON=_pretty(skeleton) if skeleton else "",
                        PLAN=_pretty(plan) if plan else "", DEFECTS=_pretty(defects),
-                       SPEC=self._doc("specs/engine-scene.md"),
+                       SPEC=engine_spec(),
                        SCHEMA=self._doc("engine/schema/engine-scene.schema.json"))
         images = [_image(p) for p in self._refs()]
         effort = (self.deps.get("effort") or {}).get(role, "high")

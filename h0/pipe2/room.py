@@ -21,6 +21,8 @@ HERE = Path(__file__).parent
 PROMPTS = HERE / "prompts"
 REPO = HERE.parent.parent
 SPEC_PATH = REPO / "specs/engine-scene.md"
+#: open yards, facades, roofs, sky: engine-scene.md does not cover them, so every spec reader gets this too
+STREET_PATH = REPO / "engine/docs/street.md"
 SCHEMA_PATH = REPO / "engine/schema/engine-scene.schema.json"
 
 _UNSAFE_SHOT_CHARS = re.compile(r"[/\\\x00-\x1f]")
@@ -91,8 +93,14 @@ class Ctx:
         given = self.spec if which == "spec" else self.schema
         if given is not None:
             return given
-        path = SPEC_PATH if which == "spec" else SCHEMA_PATH
-        return path.read_text() if path.exists() else ""
+        if which != "spec":
+            return SCHEMA_PATH.read_text() if SCHEMA_PATH.exists() else ""
+        return engine_spec()
+
+
+def engine_spec() -> str:
+    """specs/engine-scene.md plus engine/docs/street.md: the whole format a model writes in."""
+    return "\n\n".join(p.read_text() for p in (SPEC_PATH, STREET_PATH) if p.exists())
 
 
 @dataclass
@@ -528,7 +536,10 @@ class RoomPipeline:
                        REPORT=_pretty(report),
                        SKELETON=_pretty(self.ctx.skeleton))
         assert NOT_YOURS in text
-        return [_user(text, self._shots())]
+        # references first, then our shots: without them the critic judges a picture against nothing
+        # (Twelve Oaks: "green" on a scene that looked nothing like its references)
+        row = (self.ctx.plan.get("rooms") or {}).get(self.room) or {}
+        return [_user(text, self._refs(row) + self._shots())]
 
 
 def _findings_note(findings) -> list:

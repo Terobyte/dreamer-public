@@ -88,7 +88,7 @@ class MuseImage:
 
 
 class ModalHandle:
-    """A spawned SAM3D call. `get` raises TimeoutError while it is still running."""
+    """A spawned mesh call. `get` raises TimeoutError while it is still running."""
 
     def __init__(self, call):
         self.call = call
@@ -97,10 +97,16 @@ class ModalHandle:
         return self.call.get(timeout=timeout)
 
 
-class ModalMesh:
-    """Live `MeshProvider`: one spawn per PNG on the deployed SAM3D class."""
+#: `--mesh` -> deployed (app, class); both take `run(name, png, with_ply)` (h0/trellis_modal.py, h0/sam3d_modal.py)
+MESH_APPS = {"trellis": ("dreamer-trellis", "Trellis"), "sam3d": ("dreamer-sam3d", "Sam3D")}
+#: seconds from submit to GLB, cold start included: a cold TRELLIS 1024 cascade loads 4B weights first
+MESH_TIMEOUT_S = {"trellis": 600, "sam3d": 330}
 
-    def __init__(self, app: str = "dreamer-sam3d", cls: str = "Sam3D"):
+
+class ModalMesh:
+    """Live `MeshProvider`: one spawn per PNG on a deployed mesh class (TRELLIS.2 1024 by default)."""
+
+    def __init__(self, app: str = "dreamer-trellis", cls: str = "Trellis"):
         self.app = app
         self.cls = cls
         self._remote = None

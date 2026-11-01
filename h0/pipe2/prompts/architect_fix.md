@@ -7,7 +7,7 @@ json object in a ```json fenced block, no prose after it:
 ## Task
 {{TASK}}
 
-Visual cues for the apartment: {{CUES}}
+Visual cues for the scene: {{CUES}}
 
 ## Your previous skeleton
 {{SKELETON}}

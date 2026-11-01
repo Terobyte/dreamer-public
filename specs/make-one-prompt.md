@@ -4,7 +4,7 @@
 
 **Порядок:** М0 → М1 → М2 → М3 → М4 → М5 → М6 → Б1 → Б2 → Б3 → Б4 (блок Б — баги охоты 10-31, внизу; make важнее, сдача 4 ноября). Ветку `tero/make-one-prompt` tero заводит сам от текущей (ночь 10-30 + правки хозяина 10-31 уже закоммичены).
 
-**Игроки и раунды (хозяин 10-31):** расписание фазы Sonnet ×1 → Muse ×6 → Opus ×1 (`--player-schedule claude:claude-sonnet-5-5×1,muse:muse-spark-1.3×6,claude:claude-opus-5-5×1`), 8 раундов. Судья codex gpt-6-luna, тестера нет, эскалация claude:sonnet.
+**Игроки и раунды (хозяин 10-31):** расписание фазы Sonnet ×1 → Muse ×6 → Opus ×1 (`--player-schedule claude:claude-sonnet-5-5×1,muse:muse-spark-1.3-contributor×6,claude:claude-opus-5-5×1`), 8 раундов. Судья codex gpt-6-luna, тестера нет, эскалация claude:sonnet.
 
 **Фьюз:** нет SHIP за 8 раундов — хозяин-ведущий доделывает фазу в дереве или записывает долг в `specs/make-debt.md` и идёт к следующей фазе. Ночь не должна встать на одной фазе.
 

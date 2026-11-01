@@ -17,7 +17,7 @@ from pathlib import Path
 
 API = "https://api.meta.ai/v1/chat/completions"
 KEY = os.environ["META_MODEL_API_KEY"]
-MODEL, EFFORT = "muse-spark-1.3", "minimal"
+MODEL, EFFORT = "muse-spark-1.3-contributor", "minimal"
 HERE = Path(__file__).parent
 OUT = HERE / "out" / "gate"
 OFF_TURNS, MAX_ON_TURNS = 8, 4

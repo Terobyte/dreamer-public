@@ -2,7 +2,7 @@
 
 Same card (from bible_opus.json) and same player lines for every model; records the reply text,
 time to first token and total time per turn. Hidden engine events go in as system notes.
-usage: python actor_test.py muse-spark-1.3:minimal muse-wonder-1.0:low ...
+usage: python actor_test.py muse-spark-1.3-contributor:minimal muse-wonder-1.0:low ...
 """
 import json
 import os

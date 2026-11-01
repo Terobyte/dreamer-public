@@ -25,7 +25,7 @@ READY = {"oak": "glb/oak.glb", "rotunda": "glb/rotunda.glb", "ironbench": "glb/i
          "plankbench": "glb/plankbench.glb"}
 FILMS = ["refs/film/12oaks_v.jpg", "refs/film/b1.jpg", "refs/film/b3.jpg", "refs/film/Picnic1_v.jpg"]
 MODEL = "anthropic/claude-opus-5.5"
-CRITIC = "muse-spark-1.3"  # the model pipe2 critics run on
+CRITIC = "muse-spark-1.3-contributor"  # the model pipe2 critics run on
 PIPE2 = ENGINE.parent / "h0/pipe2"
 
 # engine/src/assets/templates.ts, copied: the cache key must match byte for byte

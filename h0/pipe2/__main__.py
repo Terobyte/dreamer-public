@@ -7,7 +7,7 @@ import threading
 import time
 from pathlib import Path
 
-from pipe2.assets import AssetQueue, ModalMesh, MuseImage
+from pipe2.assets import MESH_APPS, MESH_TIMEOUT_S, AssetQueue, ModalMesh, MuseImage
 from pipe2.engine import Engine
 from pipe2.fakes import FailedImages, FailedMeshes, FakeAutoscaler, ScenarioSpark
 from pipe2.floor import Floor
@@ -50,6 +50,7 @@ def _parser():
     run.add_argument('--k', type=int, default=2)
     run.add_argument('--effort', nargs='+', default=[])
     run.add_argument('--resume', action='store_true'); run.add_argument('--fake', action='store_true')
+    run.add_argument('--mesh', choices=sorted(MESH_APPS), default='trellis')
     bench = commands.add_parser('measure'); _caps(bench)
     bench.add_argument('--role', choices=['builder', 'critic_layout', 'critic_assets'], required=True)
     bench.add_argument('--effort', choices=['high', 'medium', 'max'], required=True)
@@ -79,12 +80,13 @@ def run(args):
     fake = args.fake
     spark = ScenarioSpark(ledger) if fake else Spark(HttpTransport(), ledger)
     assets = AssetQueue(root / 'cache', FailedImages() if fake else MuseImage(),
-                        FailedMeshes() if fake else ModalMesh(), ledger, poll_s=.01 if fake else 2)
+                        FailedMeshes() if fake else ModalMesh(*MESH_APPS[args.mesh]), ledger, poll_s=.01 if fake else 2,
+                        mesh_timeout_s=MESH_TIMEOUT_S[args.mesh])
     if fake:
         autoscaler, heartbeat = FakeAutoscaler(), {}
     else:
         import modal
-        autoscaler = ModalAutoscaler()
+        autoscaler = ModalAutoscaler(*MESH_APPS[args.mesh])
         heartbeat = modal.Dict.from_name('dreamer-pipe2-heartbeat', create_if_missing=True)
     warmth = GpuWarmth(autoscaler, assets, ledger, heartbeat, k=args.k)
     floor = Floor(args.task_dir, root, {'spark': spark, 'engine': Engine(REPO / 'engine', shots=not fake),

@@ -37,6 +37,16 @@ class TaskSnapshot(NoNet):
         for name in ("Jane", "Eyre", "Rochester"):
             self.assertNotIn(name, md)
 
+    def test_yard_asks_for_an_open_room_not_an_interior(self):
+        # Twelve Oaks: a lawn written as a 30 m closed room gave a bare 25 m wall over the house
+        brief = {**BRIEF, "places": [*BRIEF["places"][:2],
+                 {"id": "street", "type": "yard", "size_m": [30, 10], "level": 0, "next_to": ["hall"],
+                  "query": "s", "provider_hint": "commons", "fandom_wiki": None}]}
+        md = world.build_task_md(brief)
+        self.assertNotIn("whole interior", md)
+        for word in ("`open: true`", "`outdoor`", "`facade`", "`roof`"):
+            self.assertIn(word, md)
+
 
 class Argv(NoNet):
     def test_all_caps_and_effort(self):

@@ -1,7 +1,10 @@
 The engine built room `{{ROOM}}` with the generated assets. Judge the room as it now looks: materials,
 colours, scale of the meshes, whether an asset came out wrong.
 
-Attached: the screenshots of your own cameras (`{{ROOM}}_*`).
+Attached: first the reference frames of your room (reference i was shot from camera
+`{{ROOM}}_ref<i>`), then the screenshots of your own cameras (`{{ROOM}}_*`). Compare each screenshot
+with its reference: shape, colours, materials, furniture, sizes, what stands where. A screenshot that
+looks nothing like its reference is a finding, even when the check is green.
 Objects of another room seen through an opening are not yours.
 
 ## Your current fragment

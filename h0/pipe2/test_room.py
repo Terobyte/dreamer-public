@@ -225,6 +225,20 @@ class TestRoom(RoomCase):
                           self.texts(call))
         self.assertEqual(["A_ref1"], self.engine.shot_cameras)
 
+    def test_critics_see_the_reference_before_the_shot(self):
+        ref = Path(tempfile.mkdtemp()) / "a.png"
+        ref.write_bytes(b"\x89PNG\r\n\x1a\nREFERENCE")
+        ctx = self.ctx({"builder": [answer(partial())],
+                        "critic_layout": [answer(partial())],
+                        "critic_assets": [answer(partial())]})
+        ctx.plan = {**PLAN, "rooms": {**PLAN["rooms"], "A": {**PLAN["rooms"]["A"], "refs": [str(ref)]}}}
+        RoomPipeline("A", ctx).run()
+        for call in self.asked("critic_layout") + self.asked("critic_assets"):
+            images = [p for p in call["messages"][0]["content"] if p["type"] == "image_url"]
+            self.assertEqual(2, len(images), "the reference and the room's own shot")
+            self.assertEqual("a.png", images[0]["name"], "reference comes first")
+            self.assertIn("reference frames of your room", self.texts(call))
+
 
     def test_red_without_own_findings_is_not_accepted(self):
         overlap = {"code": 1, "errors": [{"code": "ROOMS_OVERLAP", "path": "/rooms/0",

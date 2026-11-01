@@ -10,9 +10,12 @@ class Autoscaler(Protocol):
 
 
 class ModalAutoscaler:
+    def __init__(self, app='dreamer-trellis', cls='Trellis'):
+        self.app, self.cls = app, cls
+
     def set(self, min_containers, buffer_containers, scaledown_window):
         import modal
-        modal.Cls.from_name('dreamer-sam3d', 'Sam3D')().update_autoscaler(
+        modal.Cls.from_name(self.app, self.cls)().update_autoscaler(
             min_containers=min_containers, buffer_containers=buffer_containers,
             scaledown_window=scaledown_window)
 
