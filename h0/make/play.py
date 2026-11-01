@@ -90,7 +90,7 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
         dlg = Dialogue(sim.load_profile(None), transport=FakeTransport(reply=lambda *a: touch),
                        rng=random.Random(0))
         dlg.background = False
-        kw.update(speed=20.0, max_transitions=2, max_seconds=max_seconds or 8.0)
+        kw.update(speed=100.0, max_transitions=2, max_seconds=max_seconds or 1.6)  # 160 sim-seconds
     elif max_seconds:
         kw["max_seconds"] = max_seconds
     if sj["mode"] == "book":

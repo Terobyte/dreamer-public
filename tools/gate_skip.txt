@@ -1,10 +1,7 @@
 # open bughunt repros (bugs.md, hunt 2026-10-31): red until their phase fixes them.
 # a bug phase deletes its line here once the file is green; nothing else touches this list.
-h0/dream/test_bugs_director.py
 h0/dream/test_bugs_llm_bench.py
 h0/dream/test_bugs_server.py
-h0/dream/test_bugs_sim_flow.py
-h0/dream/test_bugs_sim_queue.py
 engine/test/bugs-budget.test.ts
 engine/test/bugs-built.test.ts
 engine/test/bugs-camera.test.ts

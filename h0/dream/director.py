@@ -291,13 +291,13 @@ class Director:
         path = self._write_prompt(prompt)
         self.in_flight = True
         self.max_in_flight = max(self.max_in_flight, 1)
-        t = threading.Thread(target=self._finish, args=(ticket, prompt, path, mem_sizes),
+        t = threading.Thread(target=self._finish, args=(ticket, prompt, path, mem_sizes, queued),
                              daemon=True)
         self._thread = t
         t.start()
         return ticket
 
-    def _finish(self, ticket, prompt, prompt_path=None, mem_sizes=None):
+    def _finish(self, ticket, prompt, prompt_path=None, mem_sizes=None, queued=()):
         # The FSM alone validates and reports bridge/next_scene/voice problems
         # (fields + reason on an "invalid" event); this call must not quietly
         # rewrite an out-of-scene bridge to None before the FSM ever sees it,
@@ -313,11 +313,15 @@ class Director:
                     # the dream paused while this consult was in flight: the
                     # reply is discarded, not applied -- it never reaches the fsm
                     self.fsm.in_flight = False
+                    self._requeue(ticket, queued)
                     return
                 now = self.clock.now()
                 ev = self.fsm.finish_consult(now, ticket, decision)
             self.notes_given += [(e.get("to"), e.get("note")) for e in ev
                                  if e.get("type") == "message"]
+            verdicts = [e.get("verdict") for e in ev if e.get("type") == "consult"]
+            if not verdicts or verdicts[-1] in ("invalid", "stale"):
+                self._requeue(ticket, queued)  # B48: a dropped reply must not eat its input
             for e in ev:
                 if e.get("type") == "consult":
                     e["decision"] = decision if isinstance(decision, dict) else None
@@ -334,8 +338,18 @@ class Director:
             # (e.g. a fake that raises outright); without this the FSM would
             # refuse every later begin_consult() (F31).
             self.fsm.in_flight = False
+            self._requeue(ticket, queued)
         finally:
             self.in_flight = False
+
+    def _requeue(self, ticket, queued):
+        """The consult's reply was discarded: its events go back in line (oldest
+        first) and the fsm re-arms the one-shot triggers it spent."""
+        if queued:
+            self.pending[:0] = list(queued)
+        rearm = getattr(self.fsm, "rearm_consult", None)
+        if rearm is not None:
+            rearm(ticket)
 
     def _remember(self, events, decision, now):
         """Only accepted replies may change persistent facts and decisions."""

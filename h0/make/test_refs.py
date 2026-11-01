@@ -177,11 +177,15 @@ class FindingsTest(NoNet):
     def test_slot_path_stays_inside_out(self):
         from make.refs.fake import image
         p = {'commons': lambda q, n: [{'url': 'c0', 'provider': 'commons'}]}
-        d = Path(tempfile.mkdtemp())
-        before = set(d.parent.iterdir())
+        # own nest, not the shared tmp dir: parallel tests write there too
+        root = Path(tempfile.mkdtemp())
+        d = root / 'a' / 'b' / 'out'
+        d.mkdir(parents=True)
+        ups = [d.parent, d.parent.parent, root]
+        before = [set(u.iterdir()) for u in ups]
         refs.run_refs({'places': [], 'cast': [{'who': '../../escaped', 'query': 'q'}]},
                       d, providers=p, loader=lambda u: image(u))
-        self.assertEqual(before, set(d.parent.iterdir()))
+        self.assertEqual(before, [set(u.iterdir()) for u in ups])
         self.assertTrue(list(d.rglob('*.png')) + list(d.rglob('*.jpg')))
 
     def test_provider_failure_falls_through(self):
