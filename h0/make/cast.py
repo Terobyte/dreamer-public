@@ -286,16 +286,16 @@ def _check_clips(who, c, cast_dir, glb_ok):
             errs.append(f"{who}.clips.{name}: {problem}")
         else:
             durs[name] = dur
-    idle = c.get("idle")
-    if idle is not None:
+    idle = c["idle"] if "idle" in c else None
+    if "idle" in c:
         errs.extend(_check_idle(who, idle, clips, durs))
     verbs = c.get("verbs")
-    if verbs is not None:
-        ok = (isinstance(verbs, dict) and verbs
+    if "verbs" in c:
+        ok = (isinstance(verbs, dict)
               and all(isinstance(k, str) and isinstance(v, list) and all(isinstance(w, str) for w in v)
                       for k, v in verbs.items()))
         if not ok:
-            errs.append(f"{who}.verbs: must be a non-empty {{clip: [words]}}")
+            errs.append(f"{who}.verbs: must be an object {{clip: [words]}}")
     return errs
 
 
@@ -369,7 +369,7 @@ def _fill_idle(path):
     cast = json.loads(path.read_text())
     changed = False
     for c in cast.values():
-        if c.get("clips") and c.get("idle") is None:
+        if c.get("clips") and "idle" not in c:
             c["idle"] = default_idle(c["clips"])
             changed = True
     if changed:

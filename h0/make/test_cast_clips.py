@@ -141,6 +141,13 @@ class CheckClips(unittest.TestCase):
             self.assertEqual(len(errs), 1, (bad, errs))
             self.assertIn("Mama.clips.wake", errs[0])
 
+    def test_empty_clips_map_is_static_character(self):
+        d = _copy()
+        _edit(d, clips={})
+        d_idle = cast.check_cast(d)
+        self.assertEqual(d_idle, [])
+        self.assertIsNone(cast.default_idle({}))
+
     def test_clip_symlink_outside(self):
         d = _copy()
         shutil.copy(FIX / "wake.glb", d.parent / "out.glb")
@@ -203,6 +210,18 @@ class CheckClips(unittest.TestCase):
             errs = _errs(verbs=bad)
             self.assertEqual(len(errs), 1, (bad, errs))
             self.assertIn("Mama.verbs", errs[0])
+            self.assertIn("must be an object", errs[0])
+
+    def test_idle_null_rejected(self):
+        errs = _errs(idle=None)
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("Mama.idle", errs[0])
+
+    def test_verbs_null_rejected_empty_map_ok(self):
+        errs = _errs(verbs=None)
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("Mama.verbs", errs[0])
+        self.assertEqual(_errs(verbs={}), [])
 
     def test_no_exception_on_garbage(self):
         for bad in ({"wake": None}, {"wake": 5}, {"wake": ""}, {"wake": ["a"]}, {"wake": "."}):
