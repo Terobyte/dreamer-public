@@ -68,7 +68,7 @@ class LineLoopTest(unittest.TestCase):
     def test_run_emits_line_events(self):
         import json
         from sim import run
-        outdir, logpath = run(profile="A", fake=True, speed=100,
+        outdir, logpath = run(profile="A", fake=True, speed=100, max_seconds=3,
                                max_transitions=1, seed=2)
         with open(logpath, encoding="utf-8") as f:
             rows = [json.loads(l) for l in f]
@@ -104,7 +104,7 @@ class LogJsonlTest(unittest.TestCase):
         import json
         import os
         from sim import run
-        outdir, logpath = run(profile="A", fake=True, speed=100,
+        outdir, logpath = run(profile="A", fake=True, speed=100, max_seconds=3,
                                max_transitions=1, seed=1)
         with open(logpath, encoding="utf-8") as f:
             rows = [json.loads(l) for l in f]

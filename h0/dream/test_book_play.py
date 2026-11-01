@@ -29,7 +29,7 @@ def rows_of(path):
 
 
 def play(**kw):
-    out, log = S.run(book=BOOK, fake=True, speed=50, **kw)
+    out, log = S.run(book=BOOK, fake=True, speed=1000, **kw)
     return out, log, rows_of(log)
 
 
@@ -89,7 +89,7 @@ class PlayTest(unittest.TestCase):
         spoken = [r for r in rows if r["type"] == "line" and r["text"].startswith("It is bad enough")]
         self.assertEqual(spoken[0]["who"], "Ashley Wilkes")
         with self.assertRaises(SystemExit) as cm:
-            S.main(["--book", BOOK, "--score", path, "--scene", "lawn", "--fake", "--speed", "50"])
+            S.main(["--book", BOOK, "--score", path, "--scene", "lawn", "--fake", "--speed", "1000"])
         self.assertEqual(cm.exception.code, 2)
 
     def test_two_scenes_one_transition(self):
@@ -120,7 +120,7 @@ class PlayTest(unittest.TestCase):
         self.assertFalse([r for r in rows if r["type"] in ("consult", "line_queued")])
 
     def test_plain_run_unchanged(self):
-        out, log = S.run(profile="A", fake=True, max_transitions=1, speed=50)
+        out, log = S.run(profile="A", fake=True, max_transitions=1, speed=50, max_seconds=3)
         rows = rows_of(log)
         types = {r["type"] for r in rows}
         self.assertTrue(any(r["type"] == "line" and r["text"] == "npc line 1" for r in rows))

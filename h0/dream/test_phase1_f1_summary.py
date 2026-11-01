@@ -61,6 +61,7 @@ class PhaseSummaryTest(unittest.TestCase):
                 row = re.search(r"(?m)^\| *" + re.escape(step) + r" [^\n]*\|$", text)
                 self.assertTrue(row, "%s summary has no table row for step %s" % (where, step))
 
+    @unittest.skipUnless(os.path.isfile(bench_f1.LEDGER), "the bench ledger is local (h0/out is gitignored)")
     def test_ledger_total_matches_the_ledger_file(self):
         gated, spike = ledger_totals()
         for where, text in (("DEVLOG", self.devlog), ("PROGRESS", self.progress)):
@@ -85,6 +86,7 @@ class PhaseSummaryTest(unittest.TestCase):
         for where, text in (("DEVLOG", self.devlog), ("PROGRESS", self.progress)):
             self.assertIn(OWNER_LINE, text, "%s summary misses the 7б line" % where)
 
+    @unittest.skipUnless(os.path.isfile(bench_f1.LEDGER), "the bench ledger is local (h0/out is gitignored)")
     def test_owner_grant_and_f1_verdict_are_written_down(self):
         """2026-10-29: the owner raised the ceiling ("поднимай потолок") and the Ф1 bench
         ran n=2 to a verdict. The grant and the new ceiling must be in the summaries, the
