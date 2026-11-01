@@ -14,14 +14,16 @@ import { placeAssets, type GlbSize } from "./materials.js";
 import { factOf, type PropFact } from "../props/fact.js";
 import type { Geometry } from "./geometry.js";
 import { glbTriangles } from "../assets/tris.js";
-import type { TriCount } from "../budget.js";
+import { TRI_LIMITS, propClass, type TriCount } from "../budget.js";
+import { cutGlb } from "../assets/cut.js";
 import { shotBaseNames } from "./shotnames.js";
 import { doorDefs, type DoorJson } from "./doors.js";
 
 export interface BuildJson {
   ok: boolean;
   seconds: number;
-  assets: { used: string[]; fallback: string[]; missing: string[] };
+  /** `cut`: object assets whose cached mesh was over budget and went into dist cut down */
+  assets: { used: string[]; fallback: string[]; missing: string[]; cut?: Record<string, { from: number; to: number }> };
   /** what each prop's model really measures, so `check --built` can use it */
   props: Record<string, { fact: PropFact | null }>;
   warnings: string[];
@@ -173,6 +175,38 @@ function copyRefs(cameras: Camera[], outDir: string, scenePath?: string): string
   return warnings;
 }
 
+/**
+ * The cache keeps every mesh in full; the budget is applied here, on the
+ * copy in dist. One GLB serves every prop that uses it, so the strictest
+ * prop's limit wins.
+ */
+async function cutPlaced(
+  ctx: Ctx,
+  outDir: string,
+  objects: string[],
+  warnings: string[],
+): Promise<Record<string, { from: number; to: number }>> {
+  const cut: Record<string, { from: number; to: number }> = Object.create(null);
+  const props = ((ctx.scene as any)?.props ?? []) as any[];
+  for (const id of objects) {
+    const limits = props.filter((p) => String(p?.asset) === id && p?.size).map((p) => TRI_LIMITS[propClass(p.size)]);
+    if (limits.length === 0) continue;
+    const limit = Math.min(...limits);
+    const dest = join(outDir, "assets", `${id}.glb`);
+    const buf = readFileSync(dest);
+    const from = glbTriangles(buf);
+    if (from <= limit) continue;
+    try {
+      const out = await cutGlb(buf, limit);
+      writeFileSync(dest, out);
+      cut[id] = { from, to: glbTriangles(out) };
+    } catch (e) {
+      warnings.push(`ASSET_CUT_FAILED ${id}: ${(e as Error).message}`);
+    }
+  }
+  return cut;
+}
+
 /** Everything `build` puts in `dist/`; the scene's own directory is untouched. */
 export async function writeDist(
   ctx: Ctx,
@@ -196,6 +230,7 @@ export async function writeDist(
     glbSizes = placed.sizes;
     assetWarnings.push(...placed.warnings);
   }
+  const cut = await cutPlaced(ctx, outDir, Object.keys(glbSizes), assetWarnings);
 
   const geometry = buildGeometry(ctx, assetFiles, glbSizes);
   const nav = ctx.nav ?? buildNav(ctx);
@@ -211,7 +246,12 @@ export async function writeDist(
   const out: BuildJson = {
     ok: true,
     seconds: (Date.now() - opts.startedAt) / 1000,
-    assets: { used: assets.used, fallback: assets.fallback, missing: assets.missing },
+    assets: {
+      used: assets.used,
+      fallback: assets.fallback,
+      missing: assets.missing,
+      ...(Object.keys(cut).length > 0 ? { cut } : {}),
+    },
     props: propFacts(ctx.scene, geometry, glbSizes),
     doors: doorDefs(ctx),
     tris: countTris(

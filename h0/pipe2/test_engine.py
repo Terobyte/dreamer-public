@@ -96,18 +96,19 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(0, out.returncode, out.stderr)
         self.assertEqual(json.loads(out.stdout)[: len(rows)], [r["key"] for r in rows])
 
-    def test_object_keys_carry_the_budget_of_their_smallest_prop(self):
-        # the mesh is cut to this number, so `check` never fails on a mesh it was asked for
+    def test_keys_carry_no_budget(self):
+        # the cache holds the full mesh; `build` cuts it per scene, so no row asks for a triangle count
         scene = example("demo.scene.json")
         rows = {r["id"]: r for r in self.engine.asset_keys(scene)}
-        self.assertEqual(1000, rows["p_vase"]["tris"])     # 0.4 m: small
-        self.assertEqual(5000, rows["p_table"]["tris"])    # 1.1 m: furniture
-        self.assertNotIn("tris", rows["t_wall"])
+        self.assertIn("p_vase", rows)
+        self.assertIn("t_wall", rows)
+        for r in rows.values():
+            self.assertNotIn("tris", r)
         big = copy.deepcopy(scene)
         vase = next(p for p in big["props"] if p["asset"] == "p_vase")
         big["props"].append({**vase, "id": "big_vase", "size": {"w": 1, "d": 1, "h": 3}})
-        rows = {r["id"]: r for r in self.engine.asset_keys(big)}
-        self.assertEqual(1000, rows["p_vase"]["tris"])     # one GLB for both: the tighter limit wins
+        big_rows = {r["id"]: r for r in self.engine.asset_keys(big)}
+        self.assertEqual(rows["p_vase"]["key"], big_rows["p_vase"]["key"])     # one GLB for both sizes
 
     def test_build_room_scene_and_shots(self):
         skeleton = example("demo-flat.scene.json")

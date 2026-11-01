@@ -101,8 +101,6 @@ class ModalHandle:
 MESH_APPS = {"sam3d": ("dreamer-sam3d", "Sam3D")}
 #: seconds from submit to GLB, cold start included
 MESH_TIMEOUT_S = {"sam3d": 330}
-#: apps whose `run` takes `faces=` (the key's triangle budget); sam3d returns its mesh as is
-SIZED_APPS: set[str] = set()
 
 
 class ModalMesh:
@@ -120,9 +118,9 @@ class ModalMesh:
             self._remote = modal.Cls.from_name(self.app, self.cls)().run
         return self._remote
 
-    def submit(self, name: str, png: bytes, faces: int | None = None):
-        sized = {"faces": faces} if faces and self.app in SIZED_APPS else {}
-        return ModalHandle(self._run().spawn(name, png, with_ply=False, **sized))
+    def submit(self, name: str, png: bytes):
+        # the mesh comes back in full; the engine cuts it to the budget at build time
+        return ModalHandle(self._run().spawn(name, png, with_ply=False))
 
 
 class _Asset:
@@ -268,7 +266,7 @@ class AssetQueue:
                 return
             started = self.clock()
             try:
-                handle = self.meshes.submit(key, png, asset.spec.get("tris"))
+                handle = self.meshes.submit(key, png)
             except Exception as problem:
                 self.ledger.charge("h100_s", self.mesh_timeout_s, reserved=estimate)
                 if attempt:
@@ -282,9 +280,6 @@ class AssetQueue:
             if reason is None:
                 try:
                     self._write(f"{key}.glb", answer["glb"])
-                    if answer.get("full"):
-                        # the undecimated original: another cut later needs no new GPU run
-                        self._write(f"{key}.full.glb", answer["full"])
                 except OSError as problem:
                     self._failed(asset, type(problem).__name__)
                 return

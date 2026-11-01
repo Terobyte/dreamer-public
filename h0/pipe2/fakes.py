@@ -135,7 +135,7 @@ class FailedImages:
 
 
 class FailedMeshes:
-    def submit(self, name, png, faces=None):
+    def submit(self, name, png):
         raise RuntimeError('offline mesh provider')
 
 

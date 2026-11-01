@@ -85,7 +85,7 @@
 
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
-| `build/write.ts` | оркестрация build: пишет `check.json, top.svg, nav.json, geometry.json, index.html, runtime.js (esbuild), build.json` | `writeDist`, `bundleRuntime`, `countTris`, `BuildJson{ok,seconds,assets{used,fallback,missing},props{fact},tris,doors[]}` | dist/ | `build-cli.test.ts`, `build-geometry.test.ts` |
+| `build/write.ts` | оркестрация build: пишет `check.json, top.svg, nav.json, geometry.json, index.html, runtime.js (esbuild), build.json` | `writeDist`, `bundleRuntime`, `countTris`, `cutPlaced`, `BuildJson{ok,seconds,assets{used,fallback,missing,cut?{id:{from,to}}},props{fact},tris,doors[]}` | dist/ | `build-cli.test.ts`, `build-geometry.test.ts`, `asset-cut.test.ts` |
 | `build/geometry.ts` | вся геометрия: `Geometry{meshes, floors[{room,level,y,outline}], materials, lights, cameras, spawn, style, outdoor}` | `buildGeometry(ctx, assetFiles, glbSizes)`, `materialTable` | geometry.json | `build-geometry.test.ts` |
 | `build/{walls,slab,floors,roof,beams,stairs,doors,fixtures,decals,props,mesh,color,materials,page,shots,shotnames}.ts` | стены с вырезами, плиты/дыры, earClip, крыша, балки, лестницы+перила, двери (`doorDefs`), окна-фикстуры, MeshBuilder, цвет-заглушка по id (`grayOf`), `placeAssets` (GLB в dist + размеры), html-страница, `runShots` (Playwright, лист `sheet.png`), `shotBaseNames` | `intervalMeshes`, `extrudeFace`, `earClip`, `roofMeshes`, `stairMeshes`, `doorMeshes`, `fixtureGeos`, `propMeshes`, `planeMesh`, `boxMesh`, `placeAssets`, `runShots`, `serveDist`, `sheetHtml` | dist/shots/`<cam>`.png | `build-geometry`, `walls-fixtures`, `build-things`, `build-shots`, `browser/shots.test.ts` |
 
@@ -100,6 +100,7 @@
 | `assets/batch.ts` | пул параллельных задач, `IMAGE_CONCURRENCY = 16` | `pool(items, limit, fn)` | — | `assets-live` |
 | `assets/glb.ts` | GLB 2.0 reader/writer + нормализация SAM3D: front -> +Z (`front_deg`), низ на y=0, центр по footprint | `readGlb`, `writeGlb`, `normalizeGlb` | .glb | `glb.test.ts` (18) |
 | `assets/tris.ts` | треугольники GLB | `glbTriangles(buf)` | — | `glb.test.ts` |
+| `assets/cut.ts` | срез GLB под лимит треугольников (meshopt simplify), `build` режет копию в dist, кэш нетронут | `cutGlb(buf, tris)` | `CUT_EMPTY`, `CUT_OVER` | `asset-cut.test.ts` |
 | `assets/alpha.ts` | белый фон -> альфа (наклейки/объекты) | `cutWhite(png)` | — | `foliage-cutout.test.ts` |
 | `assets/sky.ts` | шов панорамы неба | `seamSky`, `inpaintSky(png, edit)`, `SEAM_PROMPT` | — | `assets-live` ? |
 | `assets/providers/muse-image.ts` | Muse Image `meta-models/muse-image-1` на `api.meta-models.ai`; ключ ТОЛЬКО из env `META_MODEL_API_KEY` | `MuseImageProvider(opts)`, `RetryableError` | — | `assets-live` (с мок-fetch) |
@@ -315,6 +316,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | карта связей комнат | `openings/graph.py roomGraph`; для книги — вручную (L23) |
 | нормализовать GLB (перёд на +Z, низ в 0) | `assets/glb.ts normalizeGlb` (поворот только по авторскому `front_deg`) |
 | число треугольников GLB | `assets/tris.ts glbTriangles` |
+| урезать меш под бюджет пропа | `assets/cut.ts cutGlb` (в сборке: `build/write.ts cutPlaced`) |
 | размер/класс пропа | `budget.ts propClass`; категории `props/cats.ts CATS` |
 | пересечение объектов (OBB) | `geom/obb.ts obbIntersects`, `obbPolyIntersects` |
 | дуги/кривые стены | `geom/arc.ts arcFromBulge`, `discretizeArc` |

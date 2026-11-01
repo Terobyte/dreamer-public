@@ -80,13 +80,11 @@ class FakeMeshes:
         self.glbs = list(glbs) if glbs is not None else None
         self.handles = []
         self.names = []
-        self.faces = []
         self._lock = threading.Lock()
 
-    def submit(self, name, png, faces=None):
+    def submit(self, name, png):
         with self._lock:
             self.names.append(name)
-            self.faces.append(faces)
             glb = self.glbs.pop(0) if self.glbs else self.glb
             handle = FakeHandle(glb, hang=self.hang)
             self.handles.append(handle)
@@ -130,8 +128,8 @@ class TestHappyPath(unittest.TestCase):
         saw = []
 
         class Meshes(FakeMeshes):
-            def submit(self, name, png, faces=None):
-                handle = super().submit(name, png, faces)
+            def submit(self, name, png):
+                handle = super().submit(name, png)
                 submitted.set()
                 return handle
 
@@ -273,7 +271,7 @@ class TestAccounting(unittest.TestCase):
         ledger = FakeLedger()
 
         class Meshes(FakeMeshes):
-            def submit(self, name, png, faces=None):
+            def submit(self, name, png):
                 with self._lock:
                     self.names.append(name)
                     handle = FakeHandle(b"glb", sec=0.0)
@@ -305,28 +303,38 @@ if __name__ == "__main__":
 
 
 class TestMeshBudget(unittest.TestCase):
-    def test_mesh_is_asked_for_the_budget_of_its_key(self):
+    """The cache holds the full mesh; the engine cuts it to the budget at build time."""
+
+    def test_mesh_is_asked_for_without_a_budget(self):
         meshes = FakeMeshes()
         q, cache, _ = queue(meshes=meshes)
-        q.put("kitchen", [{**key("cup"), "tris": 1000}, key("stool")])
+        q.put("kitchen", [key("cup"), key("stool")])
         q.wait("kitchen")
-        self.assertEqual({("cup", 1000), ("stool", None)}, set(zip(meshes.names, meshes.faces)))
+        self.assertEqual({"cup", "stool"}, set(meshes.names))
+        self.assertEqual(b"glb", (cache / "cup.glb").read_bytes())
 
-    def test_full_mesh_is_kept_next_to_the_scene_one(self):
-        # the undecimated original stays in the cache: a lighter or heavier cut needs no new GPU run
+    def test_modal_mesh_submit_takes_no_faces(self):
+        import inspect
+        from pipe2 import assets
+
+        self.assertEqual(["self", "name", "png"], list(inspect.signature(assets.ModalMesh.submit).parameters))
+        self.assertFalse(hasattr(assets, "SIZED_APPS"))
+
+    def test_only_the_scene_mesh_is_written(self):
+        # one mesh in the cache, untouched: no second "full" copy beside it
         class Full(FakeHandle):
             def get(self, timeout):
                 return {**super().get(timeout), "full": b"full-glb"}
 
         class Meshes(FakeMeshes):
-            def submit(self, name, png, faces=None):
+            def submit(self, name, png):
                 return Full(b"glb")
 
         q, cache, _ = queue(meshes=Meshes())
         q.put("kitchen", [key("cup")])
         q.wait("kitchen")
         self.assertEqual(b"glb", (cache / "cup.glb").read_bytes())
-        self.assertEqual(b"full-glb", (cache / "cup.full.glb").read_bytes())
+        self.assertFalse((cache / "cup.full.glb").exists())
 
 
 class TestPngBytes(unittest.TestCase):
