@@ -248,6 +248,7 @@ async function start(): Promise<void> {
       camera: setup.camera as any,
       stageUrl,
       sim,
+      film: params.get("film") === "1",
       geo,
       nav,
       layers: all,

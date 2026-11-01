@@ -1,0 +1,152 @@
+"""make film: play book scenes on the engine page and record them into one mp4 with every voice.
+
+  cd h0 && python3 -m make.film runs/<a> [runs/<b> ...] --out film.mp4 [--max 600] [--size 1280x720]
+
+Per run: the dist gets the current runtime (an old world plays with today's engine), make.play serves the
+scene, engine/bin/record.mjs films the page with ?film=1 (no controls on screen) and logs when every event
+arrived. Playwright never records sound, so each voiced event's wav is laid under the picture at that moment
+(ffmpeg adelay); the scene ends TAIL_MS after book_end. Scenes are joined in the order given.
+"""
+import argparse
+import queue
+import shutil
+import socket
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+from make.play import static_url
+
+H0 = Path(__file__).resolve().parents[1]
+ENGINE = H0.parent / "engine"
+TAIL_MS = 2500
+END = ("book_end", "stop")
+
+
+def page_url(run_dir, static_port, sim_port):
+    return static_url(run_dir, static_port, sim_port) + "&film=1"
+
+
+def mux_cmd(video, events, sim_outdir, dst):
+    """ffmpeg argv: the page video + each voiced event's wav delayed to the ms the page got it."""
+    voiced = []
+    for e in events:
+        if not e.get("audio"):
+            continue
+        p = Path(sim_outdir) / e["audio"]
+        if p.is_file():
+            voiced.append((int(e["ms"]), str(p)))
+        else:
+            print(f"film: no wav {p}, that line stays silent", flush=True)
+    ends = [int(e["ms"]) for e in events if e.get("type") in END]
+    args = ["ffmpeg", "-y", "-v", "error", "-i", str(video)]
+    if voiced:
+        for _, p in voiced:
+            args += ["-i", p]
+        f = "".join(f"[{i + 1}:a]adelay={ms}|{ms},aresample=44100[a{i}];" for i, (ms, _) in enumerate(voiced))
+        f += "".join(f"[a{i}]" for i in range(len(voiced))) + f"amix=inputs={len(voiced)}:normalize=0[a]"
+        args += ["-filter_complex", f, "-map", "0:v", "-map", "[a]"]
+    else:
+        args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v", "-map", "1:a", "-shortest"]
+    if ends:
+        args += ["-t", "%.2f" % ((max(ends) + TAIL_MS) / 1000)]
+    args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-c:a", "aac", "-b:a", "160k", str(dst)]
+    return args
+
+
+def concat_cmd(parts, dst, list_file):
+    Path(list_file).write_text("".join(f"file '{p}'\n" for p in parts))
+    return ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(list_file), "-c", "copy", str(dst)]
+
+
+def _free_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _lines(proc):
+    q = queue.Queue()
+
+    def pump():
+        for line in proc.stdout:
+            print(f"  play: {line.rstrip()}", flush=True)
+            q.put(line.strip())
+        q.put(None)
+    threading.Thread(target=pump, daemon=True).start()
+    return q
+
+
+def _next(q, pred, timeout):
+    while True:
+        line = q.get(timeout=timeout)
+        if line is None:
+            raise RuntimeError("make.play exited early")
+        if pred(line):
+            return line
+
+
+def record_scene(run_dir, dst, max_s=600, size="1280x720"):
+    """One run -> dst mp4 with sound. Raises when the page never reaches book_end/stop."""
+    import json
+    run_dir = Path(run_dir).resolve()
+    rec = run_dir / "film"
+    shutil.rmtree(rec, ignore_errors=True)
+    rec.mkdir(parents=True)
+    dist = run_dir / "world" / "run" / "dist"
+    subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "runtime", str(dist)], cwd=ENGINE, check=True)
+    sim_port, static_port = _free_port(), _free_port()
+    play = subprocess.Popen([sys.executable, "-u", "-m", "make.play", str(run_dir), "--port", str(sim_port),
+                             "--static-port", str(static_port)], cwd=H0, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    try:
+        q = _lines(play)
+        _next(q, lambda l: l.startswith("http://"), 60)
+        url = page_url(run_dir, static_port, sim_port)
+        r = subprocess.run(["node", "bin/record.mjs", url, str(rec), str(max_s), size], cwd=ENGINE)
+        if r.returncode != 0:
+            raise RuntimeError(f"record.mjs exit {r.returncode}: the scene did not reach its end in {max_s}s")
+        log = _next(q, lambda l: l.endswith("log.jsonl"), 120)
+    finally:
+        play.terminate()
+        try:
+            play.wait(10)
+        except subprocess.TimeoutExpired:
+            play.kill()
+    events = json.loads((rec / "events.json").read_text())
+    video = next(rec.glob("*.webm"))
+    subprocess.run(mux_cmd(video, events, Path(log).parent, dst), check=True)
+    return dst
+
+
+def film(runs, out, max_s=600, size="1280x720"):
+    out = Path(out).resolve()
+    parts = []
+    for i, run in enumerate(runs):
+        print(f"film: scene {i + 1}/{len(runs)} {run}", flush=True)
+        parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size))
+    if len(parts) == 1:
+        shutil.move(parts[0], out)
+    else:
+        subprocess.run(concat_cmd(parts, out, out.with_suffix(".txt")), check=True)
+        for p in parts:
+            Path(p).unlink()
+        out.with_suffix(".txt").unlink()
+    print(f"film: {out}", flush=True)
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="make.film")
+    ap.add_argument("runs", nargs="+")
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--max", type=int, default=600, help="seconds per scene before giving up")
+    ap.add_argument("--size", default="1280x720")
+    a = ap.parse_args(argv)
+    film(a.runs, a.out, a.max, a.size)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

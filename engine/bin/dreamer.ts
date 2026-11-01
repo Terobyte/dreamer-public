@@ -7,7 +7,7 @@ import { runCheck } from "../src/check.js";
 import type { TriCount } from "../src/budget.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
-import { writeDist } from "../src/build/write.js";
+import { writeDist, bundleRuntime } from "../src/build/write.js";
 import { shotBaseNames } from "../src/build/shotnames.js";
 import { runShots, SHOTS_DEFAULTS } from "../src/build/shots.js";
 import { runAssets, missingAssets } from "../src/assets/run.js";
@@ -92,6 +92,12 @@ async function main(): Promise<number> {
   const args = process.argv.slice(2);
   if (args[0] === "build") return runBuild(args);
   if (args[0] === "shots") return runShotsCmd(args);
+  if (args[0] === "runtime" && args[1]) {
+    // re-bundle runtime.js into a built dist: an old world plays with the current engine (film, fixes)
+    await bundleRuntime(join(args[1], "runtime.js"));
+    console.log(`runtime: ${join(args[1], "runtime.js")}`);
+    return 0;
+  }
   if (args[0] !== "check" || !args[1]) {
     console.error(USAGE);
     return 2;

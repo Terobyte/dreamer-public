@@ -15,6 +15,8 @@ export interface StageCtx {
   /** value of `?stage=` (url of stage.json, relative to the page) and of `?sim=` */
   stageUrl: string;
   sim: string | null;
+  /** ?film=1: recording a film, no controls on screen (freestyle button, story ticker, G key) */
+  film?: boolean;
   geo: any;
   layers: Array<{ layer: any; bits: Uint8Array }>;
   nav: any;
@@ -147,14 +149,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   // only a book run has the button (F27): seed / free scenes never show it; freestyle is one-way
   const bookRun = stage.mode === "book";
   const setMode = (m: string): void => {
-    if (!bookRun || m === mode || mode === "freestyle" || (m !== "book" && m !== "freestyle")) return;
+    if (c.film || !bookRun || m === mode || mode === "freestyle" || (m !== "book" && m !== "freestyle")) return;
     mode = m;
     btn.hidden = false;
     btn.classList.toggle("on", m === "freestyle");
     btn.textContent = m === "freestyle" ? "⚡ фристайл: импровизируют" : "⚡ Фристайл [G]";
   };
   const goFree = (): void => {
-    if (mode !== "book" || !c.sim) return;
+    if (c.film || mode !== "book" || !c.sim) return;
     btn.textContent = "⚡ переключаю…";
     fetch(`${c.sim.replace(/\/$/, "")}/freestyle`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(
       () => (btn.textContent = "⚡ Фристайл [G] (движок не ответил)"),
@@ -219,6 +221,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         pieces = ((e.events as any[]) ?? []).filter((x) => x.kind === "story" || x.kind === "exit").length;
       } else if (e.kind === "story" || e.kind === "exit") {
         told++;
+        if (c.film) return;
         const w = String(e.what ?? "").replace(/^The story moves on:? ?/, "");
         ticker.hidden = false;
         tickerText.textContent = `📖 ${told}/${pieces || "?"} · ${w}`;
