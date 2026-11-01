@@ -276,11 +276,12 @@ async function runBuild(args: string[]): Promise<number> {
     const live = assets === "live";
     // A fully populated cache needs no live provider at all, so it must not
     // require an API key: only construct them once something is missing.
-    const needsLive = live && (cacheFlag === undefined || missingAssets(ctx.scene, cacheFlag).length > 0);
+    const needsLive = live && (cacheFlag === undefined || missingAssets(ctx.scene, cacheFlag, dirname(scenePath)).length > 0);
     const assetReport = await runAssets(ctx.scene, {
       mode: assets,
       cacheDir: cacheFlag,
       maxDollars,
+      sceneDir: dirname(scenePath),
       image: needsLive ? new MuseImageProvider() : undefined,
       object: needsLive ? new Sam3dProvider() : undefined,
     });

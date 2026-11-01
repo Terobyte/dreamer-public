@@ -84,13 +84,24 @@ export class MuseImageProvider implements ImageProvider {
     throw new Error("muse-image: response has no image");
   }
 
+  /** The object alone, redrawn from the place picture through the edit endpoint (as `pic_bedroom.py` did by hand). */
+  async fromRef(ref: { bytes: Buffer; what: string }, prompt: string, _size: ImageSize): Promise<Buffer> {
+    const text =
+      `Only ${ref.what}, whole, on a plain white background, without the rest of the frame. ` +
+      `Keep its exact shape, colours and materials from the picture. ${prompt}`;
+    return await this.edit(ref.bytes, text);
+  }
+
   /** `/v1/images/edits`, as `h0/h13_seam.py` calls it for the sky seam band. */
   async edit(png: Buffer, prompt: string): Promise<Buffer> {
+    // JPEG frames (pipe2 accepts .jpg/.jpeg refs) keep their MIME type and
+    // filename; anything else uploads as PNG exactly like before.
+    const jpeg = png.length >= 3 && png[0] === 0xff && png[1] === 0xd8 && png[2] === 0xff;
     const form = new FormData();
     form.append("model", this.model);
     form.append("prompt", prompt);
     form.append("response_format", "b64_json");
-    form.append("image", new Blob([new Uint8Array(png)], { type: "image/png" }), "img.png");
+    form.append("image", new Blob([new Uint8Array(png)], { type: jpeg ? "image/jpeg" : "image/png" }), jpeg ? "img.jpg" : "img.png");
     const res = await fetch(`${this.baseUrl}/v1/images/edits`, {
       method: "POST",
       headers: { authorization: `Bearer ${this.key}` },

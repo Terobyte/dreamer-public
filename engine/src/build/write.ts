@@ -225,7 +225,7 @@ export async function writeDist(
   let glbSizes: Record<string, GlbSize> = {};
   const assetWarnings: string[] = [];
   if (opts.cacheDir !== undefined && assets.used.length > 0) {
-    const placed = placeAssets(ctx.scene, opts.cacheDir, assets.used, outDir);
+    const placed = placeAssets(ctx.scene, opts.cacheDir, assets.used, outDir, opts.scenePath === undefined ? undefined : dirname(opts.scenePath));
     assetFiles = placed.files;
     glbSizes = placed.sizes;
     assetWarnings.push(...placed.warnings);
@@ -264,6 +264,8 @@ export async function writeDist(
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
       // a generated asset its post-step rejected (a sky that is not 2:1)
       ...(assets.failed ?? []).map((w) => `${w.code}: ${w.msg}`),
+      // an object with a ref the provider could not use: drawn from text, said out loud
+      ...(assets.warnings ?? []).map((w) => `${w.code}: ${w.id} drawn from its prompt, the provider has no fromRef`),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
       ...refWarnings,
     ],

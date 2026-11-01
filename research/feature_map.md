@@ -94,9 +94,9 @@
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
 | `assets/templates.ts` | `AssetKind = tile\|decal\|object\|sky`, шаблон промпта, размер по aspect | `promptFor(kind, prompt)`, `sizeFor(aspect)` | — | `assets-cache.test.ts` |
-| `assets/cache.ts` | ключ кэша = sha256 шаблонного промпта (+aspect кроме object); `size`/`front_deg` в ключ НЕ входят | `cacheKey(kind, prompt, aspect)`, `cachePaths(dir,key)` -> `<key>.png/.alpha.png/.src.png/.glb`, `appendLedger` -> `ledger.jsonl` | cache dir | `assets-cache.test.ts` |
+| `assets/cache.ts` | ключ кэша = sha256 шаблонного промпта (+aspect кроме object); `size`/`front_deg` в ключ НЕ входят | `cacheKey(kind, prompt, aspect, ref?)` (с `ref` в ключ входят sha256 байтов картинки и `what`; без `ref` ключ прежний), `cachePaths(dir,key)` -> `<key>.png/.alpha.png/.src.png/.glb`, `appendLedger` -> `ledger.jsonl` | cache dir | `assets-cache.test.ts` |
 | `assets/cost.ts` | деньги в центах: `IMAGE_CENTS 1`, `MESH_CENTS 15`; потолок | `priceCents`, `dollarsToCents`, `totalCents`, `class Budget`, `CapError` | — | `assets-cache`, `assets-live.test.ts` |
-| `assets/run.ts` | список ассетов сцены, чего нет в кэше, живой прогон (картинка -> альфа -> меш), режимы `none\|cache\|live` | `sceneAssets`, `missingAssets`, `runAssets`, `resolvedAssets` | AssetReport | `assets-live.test.ts` (25), `build-assets.test.ts` |
+| `assets/run.ts` | список ассетов сцены, чего нет в кэше, живой прогон (картинка -> альфа -> меш), режимы `none\|cache\|live` | `sceneAssets`, `missingAssets(scene, cache, sceneDir?)`, `runAssets` (`opts.sceneDir`: `ref.image` читается только внутри папки сцены, иначе `failed` `REF_PATH`/`REF_MISSING`; провайдер без `fromRef` → `warnings` `REF_IGNORED`), `resolvedAssets(..., sceneDir?)` | AssetReport | `assets-live.test.ts` (25), `build-assets.test.ts`, `asset-ref.test.ts` |
 | `assets/batch.ts` | пул параллельных задач, `IMAGE_CONCURRENCY = 16` | `pool(items, limit, fn)` | — | `assets-live` |
 | `assets/glb.ts` | GLB 2.0 reader/writer + нормализация SAM3D: front -> +Z (`front_deg`), низ на y=0, центр по footprint | `readGlb`, `writeGlb`, `normalizeGlb` | .glb | `glb.test.ts` (18) |
 | `assets/tris.ts` | треугольники GLB | `glbTriangles(buf)` | — | `glb.test.ts` |
@@ -164,7 +164,7 @@ CLI: `cd h0 && python3 -m pipe2 run <task_dir> --run-dir D [--cap-usd N --cap-ca
 | файл | что делает | ключевое | тесты |
 |---|---|---|---|
 | `__main__.py` | запуск, сигналы, тик прогрева GPU каждые 30 с, фейк-режим | `run(args)`, `main`, `_efforts` | `test_cli` |
-| `floor.py` | архитектор: skeleton + plan один раз, потом комнаты параллельно; починка скелета до 2 раундов | `Floor.run -> FloorResult`, `skeleton_defects`, `MAX_ARCHITECT_FIX_ROUNDS` | `test_floor`, `test_bugs_floor`, `test_floor_ref_names` |
+| `floor.py` | архитектор: skeleton + plan один раз, потом комнаты параллельно; починка скелета до 2 раундов | `Floor.run -> FloorResult`, `skeleton_defects`, `MAX_ARCHITECT_FIX_ROUNDS`, `attach_refs(scene, plan, scene_dir)` (кадр комнаты → `ref` у всех её `object`) | `test_floor`, `test_bugs_floor`, `test_floor_ref_names`, `test_ref_assets` |
 | `room.py` | конвейер комнаты: builder -> fix (до `MAX_FIX_ROUNDS 2`) -> critic_layout -> critic_assets; `RoomStore` (green-файлы для resume) | `RoomPipeline.run -> RoomResult`, `RoomStore`, `shot_filenames`, `engine_spec()` | `test_room`, `test_bugs_room` |
 | `merge.py` | сборка частичных сцен комнат в скелет, владельцы находок | `merge(skeleton, partials, plan)`, `owner_of`, `split_owners` | `test_merge`, `test_merge_v2` |
 | `blame.py` | чья комната виновата в находке движка (бисекция) | `blame_room`, `blame_global`, `NAV_CODES` | `test_blame` |
@@ -254,7 +254,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | собрать dist из scene.json | `dreamer build --out D --assets none\|cache\|live`; `build/write.ts writeDist`; Python `Engine.build` |
 | снимки камер сцены | `dreamer shots <dist>` (`build/shots.ts runShots`) -> `dist/shots/<cam>.png`, `sheet.png`; Python `engine.shots_retry` |
 | имена файлов снимков | `build/shotnames.ts shotBaseNames`; в pipe2 `room.shot_filenames` |
-| кэш-ключ ассета | `assets/cache.ts cacheKey(kind, prompt, aspect)`; из Python только через `pipe2/keys.ts` (`Engine.asset_keys`) |
+| предмет по картинке места (вырезать и перерисовать на белом → SAM3D) | `ref: {image, what}` у `object` в сцене; `ImageProvider.fromRef` (`MuseImageProvider.fromRef` = `edit` на `/v1/images/edits`); в pipe2 — `floor.py attach_refs` |
+| кэш-ключ ассета | `assets/cache.ts cacheKey(kind, prompt, aspect, ref?)`; из Python только через `pipe2/keys.ts` (`Engine.asset_keys`) |
 | пути файлов кэша ассета | `cachePaths(dir, key)` |
 | цена/потолок денег (engine) | `assets/cost.ts Budget`, `priceCents`, `CapError` |
 | потолок денег (pipe2) | `pipe2/ledger.py Ledger.allow/charge/settle` |

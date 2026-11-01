@@ -83,18 +83,49 @@ class FakeEngine:
 
     # -- assets ---------------------------------------------------------------
 
-    def asset_keys(self, scene):
+    def asset_keys(self, scene, scene_dir=None):
+        import base64
+        import hashlib
+
         out = []
         for name, spec in (scene.get("assets") or {}).items():
             prompt = spec.get("prompt") or ""
-            out.append({"id": name, "kind": spec.get("kind") or "object",
-                        "key": "%s:%s" % (name, prompt), "prompt": prompt,
-                        "size": spec.get("size")})
+            row: dict = {"id": name, "kind": spec.get("kind") or "object",
+                         "key": "%s:%s" % (name, prompt), "prompt": prompt,
+                         "size": spec.get("size")}
+            ref = spec.get("ref") if isinstance(spec, dict) else None
+            if ((spec.get("kind") or "object") == "object" and isinstance(ref, dict)
+                    and scene_dir is not None and isinstance(ref.get("image"), str)
+                    and isinstance(ref.get("what"), str)):
+                rel = Path(ref["image"])
+                if rel.is_absolute():
+                    continue
+                try:
+                    # `..` that normalizes back inside is fine; only a resolved
+                    # path leaving the scene folder skips the frame
+                    inside = (Path(scene_dir) / rel).resolve().is_relative_to(Path(scene_dir).resolve())
+                except OSError:
+                    continue
+                if inside:
+                    src = Path(scene_dir) / rel
+                    try:
+                        raw = src.read_bytes() if src.is_file() else None
+                    except OSError:
+                        raw = None
+                    if raw is not None:
+                        # тот же ключ, что считает движок (cacheKey в engine/src/assets/cache.ts
+                        # через keys.ts): promptFor без имени ассета, затем |ref|sha256(байтов)|what
+                        framed = ("single object, front view facing the camera, whole object, "
+                                  "plain white background, no shadow. %s" % prompt)
+                        subject = "%s|ref|%s|%s" % (framed, hashlib.sha256(raw).hexdigest(), ref["what"])
+                        row["key"] = hashlib.sha256(subject.encode()).hexdigest()
+                        row["ref"] = {"bytes": base64.b64encode(raw).decode(), "what": ref["what"]}
+            out.append(row)
         return out
 
     # -- build ----------------------------------------------------------------
 
-    def build(self, scene, out, assets, cache):
+    def build(self, scene, out, assets, cache, scene_dir=None):
         with self._lock:
             self._live_builds += 1
             self.max_builds = max(self.max_builds, self._live_builds)

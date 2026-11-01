@@ -68,6 +68,44 @@ def as_png(data: bytes) -> bytes:
     return out.getvalue()
 
 
+def _spec_ref(spec: dict) -> tuple[bytes | None, str | None]:
+    """`(bytes, what)` when this key was queued with its reference frame, else `(None, None)`.
+
+    `keys.ts` carries the frame as base64 (JSON cannot hold bytes); in-process
+    callers pass raw bytes. Anything unparseable means text-only: never fail a
+    whole asset on a bad sidecar."""
+    ref = spec.get("ref") if isinstance(spec, dict) else None
+    if not isinstance(ref, dict) or not isinstance(ref.get("what"), str):
+        return None, None
+    raw = ref.get("bytes")
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw), ref["what"]
+    if isinstance(raw, str):
+        try:
+            return base64.b64decode(raw), ref["what"]
+        except Exception:
+            return None, None
+    return None, None
+
+
+def _multipart(fields: dict, files: dict) -> tuple[bytes, str]:
+    """Minimal `multipart/form-data` encoder (stdlib only): `fields` are text
+    parts, `files` map name -> (filename, bytes, mime)."""
+    import uuid
+
+    boundary = "----dreamer%s" % uuid.uuid4().hex
+    parts = bytearray()
+    for name, value in fields.items():
+        parts += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"
+                  % (boundary, name, value)).encode()
+    for name, (filename, blob, mime) in files.items():
+        parts += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\n"
+                  "Content-Type: %s\r\n\r\n" % (boundary, name, filename, mime)).encode()
+        parts += bytes(blob) + b"\r\n"
+    parts += ("--%s--\r\n" % boundary).encode()
+    return bytes(parts), "multipart/form-data; boundary=%s" % boundary
+
+
 class MuseImage:
     """Live `ImageProvider`. The key is read per call, never at import."""
 
@@ -75,6 +113,34 @@ class MuseImage:
         self.url = url
         self.model = model
         self.timeout = timeout
+
+    def fromRef(self, ref_bytes: bytes, what: str, prompt: str, size: str) -> bytes:
+        """The object alone, redrawn from the place picture (H2): the same edit
+        call `pic_bedroom.py` did by hand, text naming what to cut out.
+
+        The edits endpoint takes a multipart form with the picture as a file,
+        like the TS `edit` it mirrors — never JSON with base64."""
+        text = ("Only %s, whole, on a plain white background, without the rest of the frame. "
+                "Keep its exact shape, colours and materials from the picture. %s" % (what, prompt))
+        raw = bytes(ref_bytes)
+        if raw[:8] == PNG_MAGIC:
+            filename, mime = "img.png", "image/png"
+        else:
+            filename, mime = "img.jpg", "image/jpeg"
+        body, content_type = _multipart(
+            {"model": self.model, "prompt": text, "response_format": "b64_json"},
+            {"image": (filename, raw, mime)},
+        )
+        url = self.url.replace("/generations", "/edits", 1)
+        if url == self.url:
+            url = self.url + "/edits"
+        request = urllib.request.Request(url, body, {
+            "Authorization": f"Bearer {os.environ['META_MODEL_API_KEY']}",
+            "Content-Type": content_type,
+        })
+        with urllib.request.urlopen(request, timeout=self.timeout) as answer:
+            payload = json.load(answer)
+        return as_png(base64.b64decode(payload["data"][0]["b64_json"]))
 
     def generate(self, prompt: str, size: str) -> bytes:
         body = json.dumps({"model": self.model, "prompt": prompt, "n": 1, "size": size}).encode()
@@ -240,8 +306,13 @@ class AssetQueue:
         if not self.ledger.allow("image", estimate):
             self._failed(asset, "cap")
             return None
+        ref_bytes, ref_what = _spec_ref(spec)
+        use_from_ref = ref_bytes is not None and hasattr(self.images, "fromRef")
         try:
-            png = self.images.generate(spec["prompt"], spec["size"])
+            if use_from_ref:
+                png = self.images.fromRef(ref_bytes, ref_what, spec["prompt"], spec["size"])
+            else:
+                png = self.images.generate(spec["prompt"], spec["size"])
         except Exception as problem:
             self.ledger.charge("image", 1, reserved=estimate)
             self._failed(asset, type(problem).__name__)

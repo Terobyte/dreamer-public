@@ -80,6 +80,13 @@ export class FakeImageProvider implements ImageProvider {
     return fakePng(4, 4, this.rgb, true);
   }
 
+  readonly refCalls: { bytes: Buffer; what: string; prompt: string; size: ImageSize }[] = [];
+
+  async fromRef(ref: { bytes: Buffer; what: string }, prompt: string, size: ImageSize): Promise<Buffer> {
+    this.refCalls.push({ bytes: ref.bytes, what: ref.what, prompt, size });
+    return fakePng(4, 4, this.rgb, true);
+  }
+
   readonly edits: { prompt: string; width: number; height: number }[] = [];
 
   /** A stand-in painter: every gray (128) pixel becomes a row-wise blend of its nearest non-gray neighbours. */

@@ -8,6 +8,7 @@ import base64
 import json
 import math
 import re
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -235,6 +236,51 @@ def skeleton_defects(skeleton, plan) -> list:
     return defects
 
 
+def attach_refs(scene: dict, plan: dict, scene_dir) -> dict:
+    """Every `object` in a room that has a reference frame gets `ref`: the frame is
+    copied next to the scene (`refs/<room><ext>`, relative, never `../`) and `what`
+    is the prop's name. The engine then cuts the thing out of the picture instead of
+    drawing it from a retelling (H2). Rooms without a frame stay text-only."""
+    scene_dir = Path(scene_dir)
+    assets = scene.get("assets") or {}
+    rooms = (plan or {}).get("rooms") or {}
+    images = {}
+    for prop in scene.get("props") or []:
+        if not isinstance(prop, dict):
+            continue
+        rid, aid = prop.get("room"), prop.get("asset")
+        asset = assets.get(aid) if isinstance(aid, str) else None
+        if not isinstance(asset, dict) or asset.get("kind") != "object" or not isinstance(rid, str):
+            continue
+        # the room id lands in a filesystem path below: never let a
+        # model-supplied id (`../escape`) escape the scene folder (F8)
+        if not ROOM_ID_RE.fullmatch(rid):
+            continue
+        if rid not in images:
+            row = rooms.get(rid)
+            refs = [Path(r) for r in row.get("refs") or [] if isinstance(r, str)] if isinstance(row, dict) else []
+            named = [r for r in refs if r.stem == rid or r.parent.name == rid]
+            frame = (named or refs or [None])[0]
+            rel = None
+            if frame is not None and frame.is_file():
+                rel = Path("refs") / (rid + frame.suffix.lower())
+                dest = scene_dir / rel
+                try:
+                    inside = dest.resolve().is_relative_to(scene_dir.resolve())
+                except OSError:
+                    inside = False
+                if inside:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    if frame.resolve() != dest.resolve():
+                        shutil.copyfile(frame, dest)
+                else:
+                    rel = None
+            images[rid] = rel.as_posix() if rel is not None else None
+        if images[rid] is not None:
+            asset["ref"] = {"image": images[rid], "what": str(prop.get("id") or aid)}
+    return scene
+
+
 def _prompt(name: str, **fields) -> str:
     text = (PROMPTS / (name + ".md")).read_text()
     for key, value in fields.items():
@@ -352,12 +398,17 @@ class Floor:
 
         room_ids = [r.get("id") for r in skeleton.get("rooms") or []]
         room_results = self._build_rooms(room_ids, ctx)
-        self.deps["assets"].close()
 
         post_defects = self._post_defects(skeleton, plan, engine, work, room_results)
         partials = {rid: res.partial for rid, res in room_results.items() if res.partial}
         seam = repair_seams(ctx, partials)
         scene, removed = degrade(engine, work, skeleton, seam.partials, plan)
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        attach_refs(scene, plan, self.run_dir)
+        # F1: финальные ref-aware ключи уходят в очередь до close, иначе сборка
+        # ищет в кэше ключ с байтами кадра, которого очередь никогда не видела
+        self.deps["assets"].put("floor", engine.asset_keys(scene, self.run_dir))
+        self.deps["assets"].close()
         clock = self.deps.get("clock", time.monotonic)
         sleep = self.deps.get("sleep", time.sleep)
         assets = self.deps["assets"]
@@ -369,7 +420,7 @@ class Floor:
         dist = self.run_dir / "dist"
         final_errors, sheets = [], {}
         try:
-            engine.build(scene, dist, "cache", ctx.cache)
+            engine.build(scene, dist, "cache", ctx.cache, self.run_dir)
             sheets = self._final_shots(engine, dist, room_ids)
         except EngineError as exc:
             final_errors.append({"kind": "build_failed", "code": exc.code})

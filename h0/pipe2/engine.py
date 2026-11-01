@@ -178,9 +178,52 @@ class Engine:
                 report = {**report, "errors": errors, "code": report["code"] if errors else 0}
         return report
 
-    def build(self, scene: dict, out: str | os.PathLike, assets: str, cache: str | os.PathLike | None) -> None:
+    @staticmethod
+    def _stage_scene(scene: dict, scene_dir: str | os.PathLike | None) -> Path:
+        """A temp folder holding the scene plus its `refs/*`: the CLI resolves
+        `ref.image` against the scene file, so frames copied next to another
+        folder (attach_refs under run_dir) must travel with it."""
+        import shutil
+
         here = Path(tempfile.mkdtemp())
-        scene_path = self._write_scene(here, scene)
+        scene_path = Engine._write_scene(here, scene)
+        if scene_dir is not None:
+            root = Path(scene_dir)
+            try:
+                anchor = root.resolve()
+            except OSError:
+                anchor = None
+            for spec in (scene.get("assets") or {}).values():
+                if not isinstance(spec, dict):
+                    continue
+                ref = spec.get("ref")
+                if not isinstance(ref, dict) or not isinstance(ref.get("image"), str):
+                    continue
+                rel = Path(ref["image"])
+                if rel.is_absolute() or anchor is None:
+                    continue
+                try:
+                    # `..` that normalizes back inside is fine; only a resolved
+                    # path leaving the scene folder (a symlink escape, say) skips
+                    inside = (root / rel).resolve().is_relative_to(anchor)
+                except OSError:
+                    continue
+                if not inside:
+                    continue
+                try:
+                    src_is_file = (root / rel).is_file()
+                except OSError:
+                    continue
+                if not src_is_file:
+                    continue
+                dst = here / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(root / rel, dst)
+        return scene_path
+
+    def build(self, scene: dict, out: str | os.PathLike, assets: str, cache: str | os.PathLike | None,
+              scene_dir: str | os.PathLike | None = None) -> None:
+        scene_path = self._stage_scene(scene, scene_dir)
         args = ["build", str(scene_path), "--out", str(out), "--assets", assets]
         if cache is not None:
             args += ["--cache", str(cache)]
@@ -195,10 +238,12 @@ class Engine:
         if done.returncode != 0:
             raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
 
-    def asset_keys(self, scene: dict) -> list[dict]:
-        """`{id, kind, key, prompt, size}` per referenced asset, from the engine."""
-        here = Path(tempfile.mkdtemp())
-        scene_path = self._write_scene(here, scene)
+    def asset_keys(self, scene: dict, scene_dir: str | os.PathLike | None = None) -> list[dict]:
+        """`{id, kind, key, prompt, size[, ref]}` per referenced asset, from the engine.
+
+        With `scene_dir`, `ref.image` files are staged next to the temp scene so
+        `keys.ts` folds the frame bytes into the key, exactly as the build will."""
+        scene_path = self._stage_scene(scene, scene_dir)
         done = subprocess.run(
             ["node", "--import", "tsx", str(KEYS_TS), str(scene_path)],
             cwd=self.engine_dir,
@@ -225,12 +270,16 @@ class Gated:
         with self._slots:
             return self.engine.check_full(scene, work)
 
-    def asset_keys(self, scene):
-        return self.engine.asset_keys(scene)
+    def asset_keys(self, scene, scene_dir=None):
+        if scene_dir is None:
+            return self.engine.asset_keys(scene)
+        return self.engine.asset_keys(scene, scene_dir)
 
-    def build(self, scene, out, assets, cache):
+    def build(self, scene, out, assets, cache, scene_dir=None):
         with self._slots:
-            return self.engine.build(scene, out, assets, cache)
+            if scene_dir is None:
+                return self.engine.build(scene, out, assets, cache)
+            return self.engine.build(scene, out, assets, cache, scene_dir)
 
     def shots(self, dist, size="960x720"):
         with self._slots:

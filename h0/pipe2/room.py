@@ -433,11 +433,16 @@ class RoomPipeline:
     # -- engine side ----------------------------------------------------------
 
     def _queue(self, assets: dict) -> None:
-        """Hand the engine's keys for `assets` to the queue; it generates in parallel."""
+        """Hand the engine's keys for `assets` to the queue; it generates in parallel.
+
+        Refs are attached first, so the queued key already folds in the frame
+        bytes and the queue paints from the picture (H2), not from text."""
         if not assets:
             return
         scene, _violations = merge(self.ctx.skeleton, {self.room: self.partial}, self.ctx.plan)
-        keys = [k for k in self.ctx.engine.asset_keys(scene) if k.get("id") in assets]
+        from pipe2.floor import attach_refs
+        attach_refs(scene, self.ctx.plan, self.ctx.store.root)
+        keys = [k for k in self.ctx.engine.asset_keys(scene, self.ctx.store.root) if k.get("id") in assets]
         self.ctx.assets.put(self.room, keys)
 
     def _preview(self, stage: str, assets: str) -> None:
@@ -451,7 +456,10 @@ class RoomPipeline:
         self._shot_names.pop(stage, None)
         shutil.rmtree(dist, ignore_errors=True)
         try:
-            self.ctx.engine.build(scene, dist, assets, None if assets == "none" else cache)
+            from pipe2.floor import attach_refs
+            attach_refs(scene, self.ctx.plan, self.ctx.store.root)
+            self.ctx.engine.build(scene, dist, assets, None if assets == "none" else cache,
+                                  self.ctx.store.root)
             shots_retry(self.ctx.engine, dist)
             # the whole scene's camera list decides our own cameras' filenames
             self._shot_names[stage] = dict(zip(ids, shot_filenames(ids)))

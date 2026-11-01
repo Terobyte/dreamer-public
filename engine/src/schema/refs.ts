@@ -213,6 +213,11 @@ export function checkRefs(raw: any): Issue[] {
   }
 
   for (const [k, v] of Object.entries((raw.assets ?? {}) as Record<string, any>)) {
+    // a reference picture only feeds an object's mesh; a tile or decal is drawn whole
+    if (v && typeof v === "object" && v.ref !== undefined && v.kind !== "object") {
+      const path = `/assets/${escapePtr(k)}/ref`;
+      out.push({ code: "REF_KIND", stage: "schema", path, msg: msg("REF_KIND", { path, v: k, got: v.kind ?? "?", want: "object" }) });
+    }
     // a sky panorama is equirect 2:1; anything else (or missing) breaks the dome
     if (v?.kind === "sky" && v?.aspect !== "2:1") {
       const path = `/assets/${escapePtr(k)}/aspect`;

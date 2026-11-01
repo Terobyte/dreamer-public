@@ -8,9 +8,11 @@ import { type AssetKind, promptFor } from "./templates.js";
  * only scale an asset at normalization time, so editing them must not
  * regenerate it — they stay out of the key.
  */
-export function cacheKey(kind: AssetKind, prompt: string, aspect?: string): string {
+export function cacheKey(kind: AssetKind, prompt: string, aspect?: string, ref?: { bytes: Buffer; what: string }): string {
   const base = promptFor(kind, prompt);
-  const subject = kind === "object" ? base : `${base}|${aspect ?? "1:1"}`;
+  let subject = kind === "object" ? base : `${base}|${aspect ?? "1:1"}`;
+  // a reference picture changes what gets drawn; without one the key is the old one byte for byte
+  if (ref !== undefined) subject += `|ref|${createHash("sha256").update(ref.bytes).digest("hex")}|${ref.what}`;
   return createHash("sha256").update(subject).digest("hex");
 }
 

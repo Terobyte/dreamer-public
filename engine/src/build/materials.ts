@@ -61,7 +61,7 @@ function blankPng(buf: Buffer): boolean {
  * bottom on y = 0, footprint centred — so the page can place a mesh from
  * numbers Node computed instead of measuring the model itself.
  */
-export function placeAssets(scene: Scene, cacheDir: string, used: string[], outDir: string): PlacedAssets {
+export function placeAssets(scene: Scene, cacheDir: string, used: string[], outDir: string, sceneDir?: string): PlacedAssets {
   // a null-prototype map so an asset id of "__proto__" lands as a real own
   // key instead of silently hitting the inherited accessor (F5)
   const files: AssetFiles = Object.create(null) as AssetFiles;
@@ -69,7 +69,7 @@ export function placeAssets(scene: Scene, cacheDir: string, used: string[], outD
   const declared = ((scene as any)?.assets ?? {}) as Record<string, any>;
 
   const warnings: string[] = [];
-  const resolved = resolvedAssets(scene, cacheDir, used);
+  const resolved = resolvedAssets(scene, cacheDir, used, sceneDir);
   const assetsDir = resolve(join(outDir, "assets"));
   if (resolved.length > 0) mkdirSync(assetsDir, { recursive: true });
   for (const r of resolved) {

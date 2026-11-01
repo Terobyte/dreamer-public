@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { Scene } from "../types.js";
 import { cachePaths, cacheKey, appendLedger } from "./cache.js";
 import { cutWhite } from "./alpha.js";
@@ -18,15 +19,24 @@ export interface AssetRef {
   prompt: string;
   aspect: string;
   key: string;
+  /** object only: the picture bytes (read from the scene folder) and what to cut out; already in `key` */
+  ref?: { bytes: Buffer; what: string };
+  /** why the declared `ref` could not be read: the asset is not generated and goes to `failed` */
+  refError?: "REF_PATH" | "REF_MISSING";
 }
+
+/** A failed asset: `reason` and `id` say which one and why (a ref outside the scene folder, say). */
+export type AssetFailure = Issue & { reason?: string; id?: string };
 
 export interface AssetReport {
   used: string[];
   fallback: string[];
   missing: string[];
   cents: number;
-  /** assets generated but rejected by a post-step (a sky that is not 2:1) */
-  failed?: Issue[];
+  /** assets generated but rejected by a post-step (a sky that is not 2:1), or whose `ref` could not be read */
+  failed?: AssetFailure[];
+  /** `REF_IGNORED`: an object with a `ref` drawn from text because the provider has no `fromRef` */
+  warnings?: { code: "REF_IGNORED"; id: string }[];
 }
 
 export interface AssetsOpts {
@@ -35,6 +45,8 @@ export interface AssetsOpts {
   image?: ImageProvider;
   object?: ObjectProvider;
   maxDollars?: number;
+  /** the folder of `scene.json`: every `ref.image` is read relative to it, never outside */
+  sceneDir?: string;
 }
 
 /**
@@ -67,6 +79,63 @@ export function sceneAssets(scene: Scene): AssetRef[] {
   return refs;
 }
 
+/**
+ * True when `full` lies strictly inside `root`. A `relative` check stays exact
+ * at `/` (where `root + sep` becomes `//`) and names only whole components, so
+ * a file called `..foo` is not mistaken for its parent.
+ */
+function inside(root: string, full: string): boolean {
+  const rel = relative(root, full);
+  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+
+/**
+ * Reads each object's `ref.image` from `sceneDir` and folds the bytes into its
+ * key. An absolute path or one that leaves `sceneDir` after normalization is
+ * never read (`REF_PATH`); a file that is not there is `REF_MISSING`. A symlink
+ * inside the folder pointing outside it resolves outside and is `REF_PATH` too.
+ */
+function withRefs(scene: Scene, refs: AssetRef[], sceneDir: string | undefined): AssetRef[] {
+  const declared = (scene?.assets ?? {}) as Record<string, any>;
+  return refs.map((r) => {
+    const want = declared[r.id]?.ref;
+    if (r.kind !== "object" || want === undefined || want === null) return r;
+    const image = String(want.image ?? "");
+    const what = String(want.what ?? "");
+    if (sceneDir === undefined) return { ...r, refError: "REF_MISSING" };
+    const root = resolve(sceneDir);
+    const full = resolve(root, image);
+    if (image === "" || isAbsolute(image) || !inside(root, full)) return { ...r, refError: "REF_PATH" };
+    let real: string;
+    try {
+      if (!existsSync(full) || !statSync(full).isFile()) return { ...r, refError: "REF_MISSING" };
+      real = realpathSync(full);
+    } catch {
+      return { ...r, refError: "REF_MISSING" };
+    }
+    try {
+      if (!inside(realpathSync(root), real)) return { ...r, refError: "REF_PATH" };
+    } catch {
+      return { ...r, refError: "REF_PATH" };
+    }
+    const ref = { bytes: readFileSync(real), what };
+    return { ...r, ref, key: cacheKey(r.kind, r.prompt, r.aspect, ref) };
+  });
+}
+
+function refFailure(r: AssetRef): AssetFailure {
+  const path = `/assets/${r.id}/ref`;
+  const why = r.refError === "REF_PATH" ? "path leaves the scene folder" : "no such file in the scene folder";
+  return {
+    code: r.refError as any,
+    stage: "assets" as any,
+    path,
+    msg: `assets: ref image of ${r.id}: ${why}, drawing a placeholder`,
+    reason: r.refError,
+    id: r.id,
+  };
+}
+
 /** True once the asset has everything the page needs to draw it for real. */
 function cached(cacheDir: string, ref: AssetRef): boolean {
   const p = cachePaths(cacheDir, ref.key);
@@ -78,8 +147,8 @@ function cached(cacheDir: string, ref: AssetRef): boolean {
  * decide whether live providers (and their API key) are needed at all —
  * a fully populated cache should build without touching either.
  */
-export function missingAssets(scene: Scene, cacheDir: string): AssetRef[] {
-  return sceneAssets(scene).filter((r) => !cached(cacheDir, r));
+export function missingAssets(scene: Scene, cacheDir: string, sceneDir?: string): AssetRef[] {
+  return withRefs(scene, sceneAssets(scene), sceneDir).filter((r) => r.refError === undefined && !cached(cacheDir, r));
 }
 
 /**
@@ -105,6 +174,18 @@ export async function runAssets(scene: Scene, opts: AssetsOpts): Promise<AssetRe
   if (opts.mode === "none") {
     return { used: [], fallback: refs.map((r) => r.id), missing: [], cents: 0 };
   }
+  const all = withRefs(scene, refs, opts.sceneDir);
+  const bad = all.filter((r) => r.refError !== undefined);
+  const report = await runReadable(scene, all.filter((r) => r.refError === undefined), opts);
+  if (bad.length === 0) return report;
+  return {
+    ...report,
+    fallback: [...report.fallback, ...bad.map((r) => r.id)],
+    failed: [...(report.failed ?? []), ...bad.map(refFailure)],
+  };
+}
+
+async function runReadable(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promise<AssetReport> {
   if (opts.mode === "live") return await runLive(scene, refs, opts);
   const cacheDir = opts.cacheDir;
   if (cacheDir === undefined) throw new Error("assets: cache mode needs a cache directory");
@@ -130,8 +211,8 @@ export interface ResolvedAsset {
 }
 
 /** Where each `used` asset's real file lives in the cache, for `writeDist` to copy out. */
-export function resolvedAssets(scene: Scene, cacheDir: string, used: string[]): ResolvedAsset[] {
-  const byId = new Map(sceneAssets(scene).map((r) => [r.id, r]));
+export function resolvedAssets(scene: Scene, cacheDir: string, used: string[], sceneDir?: string): ResolvedAsset[] {
+  const byId = new Map(withRefs(scene, sceneAssets(scene), sceneDir).map((r) => [r.id, r]));
   const out: ResolvedAsset[] = [];
   for (const id of used) {
     const ref = byId.get(id);
@@ -202,6 +283,7 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   // 401/403) is skipped on the second pass instead of wasting another attempt.
   const noRetry = new Set<string>();
   const failed: Issue[] = [];
+  const ignored = new Set<string>();
 
   /** The reference image: the asset itself for a tile or decal, the input for an object. */
   const genImage = async (ref: AssetRef): Promise<void> => {
@@ -215,7 +297,13 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
     // row for the same paid attempt.
     let png: Buffer;
     try {
-      png = await image.generate(promptFor(ref.kind, ref.prompt), sizeFor(ref.aspect));
+      if (ref.ref !== undefined && image.fromRef !== undefined) {
+        png = await image.fromRef(ref.ref, promptFor(ref.kind, ref.prompt), sizeFor(ref.aspect));
+      } else {
+        // never silently: the build says this object was drawn from text only
+        if (ref.ref !== undefined) ignored.add(ref.id);
+        png = await image.generate(promptFor(ref.kind, ref.prompt), sizeFor(ref.aspect));
+      }
     } catch (e) {
       log(ref, IMAGE_CENTS);
       if (!(e instanceof RetryableError)) noRetry.add(ref.id);
@@ -300,7 +388,10 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   }
   await Promise.all(retryMeshes);
 
-  const report = reportFrom(cacheDir, refs, budget.spent);
+  const report: AssetReport = reportFrom(cacheDir, refs, budget.spent);
+  if (ignored.size > 0) {
+    report.warnings = refs.filter((r) => ignored.has(r.id)).map((r) => ({ code: "REF_IGNORED" as const, id: r.id }));
+  }
   return failed.length > 0 ? { ...report, failed } : report;
 }
 
