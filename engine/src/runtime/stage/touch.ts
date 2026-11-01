@@ -18,6 +18,8 @@ export interface ToucherCtx {
   doors: Record<string, { level?: string; cells: number[] }>;
   doorOpen(id: string): boolean;
   actor(who: string): TouchActor | undefined;
+  /** collects pose-fallback warnings (Stage.warnings) */
+  warnings?: string[];
 }
 
 export type TouchResult = "walk" | "skip" | "unreachable" | "queued" | "no_actor";
@@ -40,7 +42,7 @@ export function createToucher(c: ToucherCtx) {
     return l ? String((l.layer as { level?: unknown }).level ?? "") : null;
   };
 
-  const touch = (who: string, name: string): TouchResult => {
+  const touch = (who: string, name: string, pose?: string): TouchResult => {
     const a = c.actor(who);
     if (!a) {
       console.warn(`stage: touch by "${who}", who is not in the cast`);
@@ -53,7 +55,7 @@ export function createToucher(c: ToucherCtx) {
     }
     pending.delete(who);
     const before = new Set(Object.keys(c.claims));
-    const r = resolveTouch({ places: c.places, claims: c.claims, actor: { who, at: a.pos() }, name, clips: [] });
+    const r = resolveTouch({ places: c.places, claims: c.claims, actor: { who, at: a.pos() }, name, clips: [], pose, warnings: c.warnings });
     if ("skip" in r) return "skip";
     const to = r.place.level ?? from;
     const openCells: Record<string, number[]> = {};
@@ -71,7 +73,7 @@ export function createToucher(c: ToucherCtx) {
       releaseClaim(c.claims, before);
       return "unreachable";
     }
-    for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== r.place.name) delete c.claims[k];
+    for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== (r.claim ?? r.place.name)) delete c.claims[k];
     a.go(route.path, r.yaw, r.act, route.ys);
     return "walk";
   };

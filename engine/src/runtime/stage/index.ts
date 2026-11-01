@@ -28,6 +28,7 @@ export interface StageCtx {
 export interface Stage {
   handlers: StageHandlers;
   update(dt: number, now: number): void;
+  warnings(): string[];
   api: {
     actors(): Array<{ who: string; pos: V2; yaw: number; act: string }>;
     camera(): { pos: [number, number, number]; room: string | null; height: number | null };
@@ -121,7 +122,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const subs = createSubs(c.sim);
   const remark = stageRegex(places, names);
 
+  const warnings: string[] = [];
   const toucher = createToucher({
+    warnings,
     places,
     claims,
     levels: c.layers.map((l): StageLevel => ({ layer: l.layer, bits: l.bits, y: l.layer.y })),
@@ -316,6 +319,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
 
   return {
+    warnings: () => [...warnings],
     handlers,
     update,
     api: {
