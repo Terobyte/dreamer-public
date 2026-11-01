@@ -8,6 +8,7 @@ import type { StageLevel } from "./path.js";
 import { floorAt, stageRegex, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { createSubs } from "./subs.js";
+import { createSight } from "./sight.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -81,6 +82,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     actors.set(who, a);
   }
   const director = createDirector(rng);
+  // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
+  const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
@@ -184,6 +187,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let told = 0;
 
   const pendingQueue = createPendingQueue();
+  /** the cast member a narration names first ("Down went Mirai" -> Mirai): the director's close goes to them */
+  const namedIn = (text: string): string | undefined => {
+    let best: string | undefined;
+    let at = Infinity;
+    for (const n of names) {
+      const m = new RegExp(`(?<![\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "u").exec(text);
+      if (m && m.index < at) [best, at] = [n, m.index];
+    }
+    return best;
+  };
   let lastSpeaker: string | null = null;
   const handlers: StageHandlers = {
     line(e) {
@@ -199,7 +212,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who && t) touch(who, t);
     },
     narrator(e) {
-      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
+      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0 });
       subs.narrator({ text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       const pick = clipForBeat({ who: null, text: e.text }, cast);
@@ -252,7 +265,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       // a narrator leads with the first actor by name; ticks keep the current talker
       let focus: Actor | undefined;
       if (ev.kind === "line" && ev.speaker) focus = list.find((a) => a.who === ev.speaker) ?? list.find((a) => a.speaking()) ?? sorted[0];
-      else if (ev.kind === "narrator") focus = sorted[0];
+      else if (ev.kind === "narrator") focus = list.find((a) => a.who === ev.about) ?? sorted[0];
       else focus = list.find((a) => a.speaking()) ?? list.find((a) => a.who === (ev.speaker ?? lastSpeaker)) ?? sorted[0];
       focus ??= sorted[0];
       if (!focus) {
@@ -286,6 +299,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         rng,
         fov: c.camera.fov,
         aspect: c.camera.aspect,
+        clear: sight,
       });
       if (isLast) s = out;
     }

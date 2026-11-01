@@ -52,6 +52,18 @@ class MuxCmd(unittest.TestCase):
         args = film.mux_cmd("v.webm", [{"ms": 100, "type": "line", "audio": a}], self.sim, "out.mp4")
         self.assertNotIn("-t", args)
 
+    def test_black_loading_head_is_cut_at_page_ready(self):
+        # the video starts with the browser context; the world loads for seconds on a black page first
+        a = _wav(self.sim, "line_001.wav")
+        events = [{"ms": 3100, "type": "ready"}, {"ms": 4000, "type": "narrator", "audio": a},
+                  {"ms": 9000, "type": "book_end"}]
+        args = film.mux_cmd("v.webm", events, self.sim, "out.mp4")
+        start = 3100 + film.READY_MS
+        self.assertEqual(args[args.index("-ss") + 1], "%.2f" % (start / 1000))
+        self.assertLess(args.index("-ss"), args.index("v.webm"))
+        self.assertIn("adelay=%d|%d" % (4000 - start, 4000 - start), self._filter(args))
+        self.assertEqual(args[args.index("-t") + 1], "%.2f" % ((9000 + film.TAIL_MS - start) / 1000))
+
 
 class Concat(unittest.TestCase):
     def test_list_file_in_order(self):

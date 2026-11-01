@@ -8,6 +8,7 @@ import {
   Float32BufferAttribute,
   Group,
   HemisphereLight,
+  NeutralToneMapping,
   Mesh,
   MeshStandardMaterial,
   PointLight,
@@ -128,6 +129,12 @@ async function start(): Promise<void> {
       .catch(() => ({})),
   ]);
 
+  // highlights roll off instead of clipping: Koshakan's cream walls and sky read as white blotches without it.
+  // Neutral keeps hues and mid tones (unlike ACES); a world can opt out with style.tone = "none"
+  if (geo.style?.tone !== "none") {
+    (renderer as any).toneMapping = NeutralToneMapping;
+    (renderer as any).toneMappingExposure = Number(geo.style?.exposure ?? 0.9);
+  }
   const scene = new Scene();
   scene.background = new Color(geo.style?.exterior || "#808080");
 

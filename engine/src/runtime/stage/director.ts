@@ -19,6 +19,8 @@ export interface DEvent {
   speaker?: string;
   durationS?: number;
   shot?: string;
+  /** narrator: the actor the text names (a close in a narration run frames them) */
+  about?: string;
   dt: number;
 }
 export interface DRoom {
@@ -36,6 +38,9 @@ export interface DirectorInput {
   /** vertical FOV in degrees and aspect of the real camera (default 50, 16:9) */
   fov?: number;
   aspect?: number;
+  /** true when nothing stands between the camera and the look point (the runtime raycasts the world).
+   *  Without it the director is pure and blind to furniture (Koshakan: a close behind the bed's footboard). */
+  clear?: (cam: V3, look: V3) => boolean;
 }
 export interface DirectorOut {
   plan: string;
@@ -179,7 +184,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     }
     const named = ev.kind === "line" ? all.find((a) => a.name === ev.speaker) : undefined;
     // narrator always pivots on the first actor by name, never on the stored focus (F1)
-    const pivot = ev.kind === "narrator" ? all[0] : (named ?? all.find((a) => a.name === focus) ?? all[0]);
+    const pivot = ev.kind === "narrator" ? (all.find((a) => a.name === ev.about) ?? all[0]) : (named ?? all.find((a) => a.name === focus) ?? all[0]);
     // the room of the speaker (narrator: of the first actor); other rooms/levels are not in the frame
     const crew = all.filter((a) => a.room === pivot.room && a.level === pivot.level);
     const speaker = crew.find((a) => a.name === pivot.name) ?? crew[0];
@@ -195,12 +200,20 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       if (walkers.length === 1) return "follow";
       if (walkers.length > 1) return "wide";
       if (count === 1) return "wide";
-      if (ev.kind === "narrator") return crew.length >= 2 && maxSpan(crew) <= 4 ? "two" : "wide";
+      if (ev.kind === "narrator") {
+        if (crew.length < 2 || maxSpan(crew) > 4) return "wide";
+        // a picture book is mostly narration: two, then a close/dolly/orbit, then two again (Koshakan)
+        if (lastPlan !== "two") return "two";
+        const np: Plan[] = ["close", "dolly", "orbit"];
+        return np[Math.floor(rng() * np.length) % np.length];
+      }
       let pool: Plan[];
       // F15: rule 5 without a listener = its pool cut to the lone-actor plans (two/orbit/wide ∩ wide/close/follow)
       if (count % 5 === 0) pool = listener ? ["two", "orbit", "wide"] : ["wide"];
       else if (!listener) pool = ["wide", "close", "follow"];
       else pool = BANK.filter((p) => p !== "low" || speaker.height > listener.height);
+      // nobody walks: "follow" would film the back of the speaker's head and the floor ahead (Koshakan)
+      pool = pool.filter((p) => p !== "follow");
       let i = Math.floor(rng() * pool.length) % pool.length;
       if (pool[i] === lastPlan) i = (i + 1) % pool.length;
       return pool[i];
@@ -245,13 +258,43 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     if (roomKey !== null && key !== roomKey && ev.kind !== "line" && ev.kind !== "narrator") cutSeq++;
     roomKey = key;
 
-    const out = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker);
+    const out0 = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker);
+    const out = unblock(out0, inp, snap);
     // F12: a coerced plan (low -> close, ots -> close, two -> wide) is what the viewer saw: repeats compare to it
     if (ev.kind === "line" || ev.kind === "narrator") lastPlan = out.plan as Plan;
     return out;
   };
 
   return { step };
+}
+
+/** A blocked frame turns about its look point (smallest turn first, so the 180° side mostly holds), rises, and
+ *  moves in or out, until the probe sees the subject; no clear spot in the room -> the original frame. */
+function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn): DirectorOut {
+  const clear = inp.clear;
+  if (!clear || clear(out.cam, out.look)) return out;
+  const room = inp.room;
+  const floorY = room.floorY ?? 0;
+  const height = room.open ? floorY + OPEN_CEILING : room.ceiling;
+  const rect = roomRect(room.outline);
+  const L = out.look;
+  const v: V2 = [out.cam[0] - L[0], out.cam[2] - L[2]];
+  const r0 = Math.max(0.6, Math.hypot(v[0], v[1]));
+  const d0 = norm(v);
+  for (const a of [0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 120, -120])
+    for (const dy of [0, 0.35, 0.7, 1.1])
+      for (const k of [1, 0.75, 1.3, 0.55]) {
+        const dir = rotate(d0, a);
+        const p = clampCamera([L[0] + dir[0] * r0 * k, out.cam[1] + dy, L[2] + dir[1] * r0 * k], rect, height, floorY);
+        let c: V3 = p;
+        if (room.outline.length >= 3) {
+          const [sx, sz] = snap(room.outline, [p[0], p[2]], rect);
+          if (!insideInset(room.outline, [sx, sz])) continue;
+          c = [sx, p[1], sz];
+        }
+        if (clear(c, L)) return { ...out, cam: c };
+      }
+  return out;
 }
 
 function nearestOther(crew: DActor[], s: DActor): DActor | undefined {

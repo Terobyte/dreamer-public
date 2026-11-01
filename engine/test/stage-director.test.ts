@@ -48,10 +48,15 @@ describe("director plan rules", () => {
     expect(mk().step(line()).plan).toBe("wide");
     expect(mk().step(narr()).plan).toBe("wide");
   });
-  it("rule 4: narrator -> two when everyone within 4 m, else wide; 5th narrator is still rule 4", () => {
+  it("rule 4: narrator -> two when everyone within 4 m, else wide; a run of narration varies (Koshakan)", () => {
+    // a picture book is mostly narration: rule 4 alone gave one identical two-shot for five minutes
     const m = mk();
     expect(m.step(narr()).plan).toBe("wide");
-    for (let i = 0; i < 6; i++) expect(m.step(narr()).plan).toBe("two");
+    const plans = Array.from({ length: 8 }, () => m.step(narr()).plan);
+    expect(plans[0]).toBe("two");
+    for (let i = 1; i < plans.length; i++) expect(plans[i]).not.toBe(plans[i - 1]);
+    for (let i = 0; i < plans.length; i += 2) expect(plans[i]).toBe("two");
+    for (let i = 1; i < plans.length; i += 2) expect(["close", "dolly", "orbit"]).toContain(plans[i]);
     const far = mk();
     far.step(narr());
     expect(far.step(narr(), [A(), act("b", [17, 10])]).plan).toBe("wide");
@@ -250,6 +255,23 @@ describe("blocking F1-F4", () => {
     expect((s2 as any).cut).not.toBe((s1 as any).cut);
   });
 });
+describe("narration about an actor", () => {
+  it("a close in a narration run frames the actor the text names", () => {
+    const m = mk(3);
+    m.step(narr());
+    m.step({ ...narr(), about: "b" });
+    let s = m.step({ ...narr(), about: "b" });
+    for (let i = 0; i < 6 && s.plan !== "close"; i++) {
+      m.step({ ...narr(), about: "b" });
+      s = m.step({ ...narr(), about: "b" });
+    }
+    expect(s.plan).toBe("close");
+    // b stands at (11, 10): the close looks at b's head
+    expect(s.look[0]).toBeCloseTo(11, 6);
+    expect(s.look[2]).toBeCloseTo(10, 6);
+  });
+});
+
 describe("blocking F6 narrator two frames the pair", () => {
   it("tight-room narrator reports two and looks at the pair midpoint, not wide of one", () => {
     const m = mk();

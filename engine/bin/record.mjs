@@ -1,7 +1,7 @@
 // Record one stage page: a video (no sound, Playwright never captures audio) plus the moment the page got every
 // sim event, so make.film lays each voice wav under the picture at the time it played live.
 //   node bin/record.mjs <page url> <out dir> [max seconds] [WxH]
-// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur}]), last.png. Exit 3: no book_end/stop.
+// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur}], plus {ms, type: "ready"} when the world is built), last.png. Exit 3: no book_end/stop.
 import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
@@ -33,6 +33,10 @@ await page.addInitScript(() => {
 });
 page.on("pageerror", (e) => console.log("[pageerror]", String(e).slice(0, 200)));
 await page.goto(url);
+// the world is built (window.__ready): make.film cuts the black loading head before this moment
+page.waitForFunction(() => window.__ready === true, null, { polling: 100, timeout: 0 })
+  .then(() => events.push({ ms: Date.now() - t0, type: "ready" }))
+  .catch(() => {});
 const until = Date.now() + Number(maxS) * 1000;
 const over = () => events.some((e) => e.type === "book_end" || e.type === "stop");
 while (Date.now() < until && !over()) await page.waitForTimeout(500);

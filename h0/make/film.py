@@ -21,6 +21,7 @@ from make.play import static_url
 H0 = Path(__file__).resolve().parents[1]
 ENGINE = H0.parent / "engine"
 TAIL_MS = 2500
+READY_MS = 300  # after the page is ready (world built) the first frame is drawn; the head before it is black
 END = ("book_end", "stop")
 
 
@@ -30,17 +31,19 @@ def page_url(run_dir, static_port, sim_port):
 
 def mux_cmd(video, events, sim_outdir, dst):
     """ffmpeg argv: the page video + each voiced event's wav delayed to the ms the page got it."""
+    readies = [int(e["ms"]) for e in events if e.get("type") == "ready"]
+    start = min(readies) + READY_MS if readies else 0
     voiced = []
     for e in events:
         if not e.get("audio"):
             continue
         p = Path(sim_outdir) / e["audio"]
         if p.is_file():
-            voiced.append((int(e["ms"]), str(p)))
+            voiced.append((max(0, int(e["ms"]) - start), str(p)))
         else:
             print(f"film: no wav {p}, that line stays silent", flush=True)
     ends = [int(e["ms"]) for e in events if e.get("type") in END]
-    args = ["ffmpeg", "-y", "-v", "error", "-i", str(video)]
+    args = ["ffmpeg", "-y", "-v", "error"] + (["-ss", "%.2f" % (start / 1000)] if start else []) + ["-i", str(video)]
     if voiced:
         for _, p in voiced:
             args += ["-i", p]
@@ -50,7 +53,7 @@ def mux_cmd(video, events, sim_outdir, dst):
     else:
         args += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v", "-map", "1:a", "-shortest"]
     if ends:
-        args += ["-t", "%.2f" % ((max(ends) + TAIL_MS) / 1000)]
+        args += ["-t", "%.2f" % ((max(ends) + TAIL_MS - start) / 1000)]
     args += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-c:a", "aac", "-b:a", "160k", str(dst)]
     return args
 
