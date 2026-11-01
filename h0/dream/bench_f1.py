@@ -11,6 +11,7 @@ takes any single --talk, so Spark Open and Wonder are measured by the same bar."
 import argparse
 import json
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -301,8 +302,22 @@ def main(argv=None):
         # a run that never printed its dir may still have spent up to its cap --
         # except after bank's own pre-flight refusal (exit 2), which happens before
         # a single job starts: that batch cost nothing and must not eat the ceiling
+        # F1/F2: a timed-out run charges its recorded spend (or 0), not cap
+        timeout_spents = []
+        for l in p.stdout.splitlines():
+            if l.startswith("timeout="):
+                m = re.search(r"spent=([0-9.]+)", l)
+                if m:
+                    try:
+                        timeout_spents.append(float(m.group(1)))
+                    except ValueError:
+                        timeout_spents.append(0.0)
+                else:
+                    timeout_spents.append(0.0)
+        timeouts = len(timeout_spents)
         missing = 0 if (p.returncode == 2 and not run_dirs) else max(args.runs - len(run_dirs), 0)
-        dollars = round(dollars + cap * missing, 4)
+        missing_capped = max(missing - timeouts, 0)
+        dollars = round(dollars + sum(timeout_spents) + cap * missing_capped, 4)
         os.makedirs(os.path.dirname(os.path.abspath(args.ledger)), exist_ok=True)
         with open(args.ledger, "a", encoding="utf-8") as f:
             f.write(json.dumps({"step": step, "t": stamp, "runs": run_dirs, "dollars": dollars,

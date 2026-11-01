@@ -32,7 +32,36 @@ def run_scene(scene, dollars, speed, talk="spark-open", max_seconds=None, langua
            "--max-dollars", str(dollars), "--talk", talk, "--lang", language]
     if max_seconds is not None:
         cmd += ["--max-seconds", str(max_seconds)]
-    p = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE, timeout=1200)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, cwd=HERE, timeout=1200)
+    except subprocess.TimeoutExpired as exc:
+        # B53: one dead run is reported as failed, it must not kill the batch
+        # F2: keep partial output so the ledger can charge actual spend, not $0 or cap
+        partial = ""
+        # F4: TimeoutExpired carries bytes even with text=True; decode, never str(bytes)
+        for v in (exc.stdout, exc.stderr):
+            if isinstance(v, bytes):
+                v = v.decode("utf-8", "replace")
+            if v:
+                partial += v + "\n"
+        cand = None
+        # sim.py prints rundir= as soon as the run dir exists, outdir= only at the end
+        for line in partial.splitlines():
+            if line.startswith(("rundir=", "outdir=")):
+                try:
+                    cand = os.path.realpath(line.split()[0].split("=", 1)[1])
+                except Exception:
+                    cand = None
+                break
+        if cand and os.path.isdir(cand):
+            try:
+                with open(os.path.join(cand, "log.jsonl"), encoding="utf-8") as f:
+                    rows = [json.loads(l) for l in f]
+                spent = max([r.get("dollars") or 0 for r in rows if r.get("type") == "cost"] or [0])
+                return None, "sim timed out after 1200s partial_outdir=%s partial_spent=%.4f" % (cand, spent)
+            except Exception:
+                pass
+        return None, "sim timed out after 1200s"
     log = p.stdout + p.stderr
     # sim.py prints outdir= even when it dies (validation failure exits 1), so the
     # exit code decides: a broken dream must not be scored as a finished run
@@ -255,6 +284,12 @@ def main():
         head = "%s / %s" % (name, talk) if len(talks) > 1 else name
         if not rundir:
             out.append("## %s\n\nrun failed:\n```\n%s\n```\n" % (head, log[-1500:]))
+            if "timed out" in log:
+                m = re.search(r"partial_spent=([0-9.]+)", log)
+                if m:
+                    print("timeout=%s spent=%s" % (head, m.group(1)), flush=True)
+                else:
+                    print("timeout=%s" % head, flush=True)
             continue
         with open(os.path.join(rundir, "log.jsonl"), encoding="utf-8") as f:
             rows = [json.loads(l) for l in f]

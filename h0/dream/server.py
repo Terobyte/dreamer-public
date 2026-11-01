@@ -435,6 +435,9 @@ class ViewerHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        # a rejected POST leaves its body unread on a keep-alive socket; that
+        # body would be parsed as the next request (B30), so close instead
+        self.close_connection = True
         if not self._guard():
             return
         ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
@@ -450,6 +453,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             return self._send(400, {"error": "bad json"})
+        self.close_connection = False  # body fully consumed: keep-alive is safe
         if not isinstance(body, dict):
             return self._send(400, {"error": "json object expected"})
         path = urlparse(self.path).path
