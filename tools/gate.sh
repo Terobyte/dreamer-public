@@ -1,6 +1,6 @@
 #!/bin/sh
 # tero gate for meta: h0/dream, h0/make, h0/pipe2 + servers, engine vitest. Files in tools/gate_skip.txt are left out.
-# The three suites run side by side; dream and make run their test classes in parallel (tools/ptest.py).
+# The python suites run side by side, engine vitest after them; dream and make run their test classes in parallel (tools/ptest.py).
 cd "$(dirname "$0")/.." || exit 2
 skip=$(grep -v '^#' tools/gate_skip.txt | grep -v '^$')
 logs=$(mktemp -d)
@@ -26,10 +26,12 @@ fi
  done
  echo $rc >"$logs/py.rc") >"$logs/py" 2>&1 &
 
+# engine vitest runs after the python suites and on at most 5 workers: browser and CLI tests
+# spawn node/chrome and time out when they share 10 cores with three runs' players
+wait
 ex=""
 for f in $(echo "$skip" | grep '^engine/'); do ex="$ex --exclude ${f#engine/}"; done
-(cd engine && npx vitest run $ex; echo $? >"$logs/engine.rc") >"$logs/engine" 2>&1 &
-wait
+(cd engine && npx vitest run --maxWorkers=5 $ex; echo $? >"$logs/engine.rc") >"$logs/engine" 2>&1
 
 # green suites first, red last: the gate's tail is what the player sees
 rc=0
