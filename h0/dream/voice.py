@@ -66,32 +66,11 @@ def _write_silent_wav(path, seconds, rate=8000):
 
 
 def fish_key():
-    """FISH_AUDIO_API_KEY from env, else career/.env like gate_test.fish_key (lazy)."""
-    key = os.environ.get("FISH_AUDIO_API_KEY", "").strip()
-    if key:
-        return key
-    for base in ("/Users/terobyte/Desktop/Projects/Active/scripts/career/.env",
-                 os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "..", "..", "..", "scripts", "career", ".env")):
-        try:
-            with open(base, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("FISH_AUDIO_API_KEY="):
-                        val = line.split("=", 1)[1].strip().strip('"').strip("'")
-                        if val:
-                            return val
-        except OSError:
-            continue
-    # last resort: gate_test.fish_key (reads its own path, imports lazily so
-    # offline tests never touch META_MODEL_API_KEY at import time)
-    try:
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-        from gate_test import fish_key as gate_key
-        return gate_key()
-    except Exception:
-        return ""
+    """FISH_AUDIO_API_KEY from env, else meta/.env (via keys.get)."""
+    import sys
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+    import keys
+    return keys.get("FISH")
 
 
 CHARACTERS = {"spongebob": "SPONGEBOB_VOICE", "squidward": "SQUIDWARD_VOICE"}

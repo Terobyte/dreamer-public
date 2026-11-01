@@ -18,6 +18,18 @@ if __package__:
 else:
     from diagnostics import report
 
+# Eagerly import shared HTTP client so its urlopen reference is captured
+# before any test monkey-patches urllib.request.urlopen (late import would
+# capture the mock as "real" and bypass it).
+try:
+    import sys as _sys_llm
+    _h0_llm = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    if _h0_llm not in _sys_llm.path:
+        _sys_llm.path.append(_h0_llm)
+    import keys as _keys_eager, llm_http as _llm_http_eager  # noqa: F401
+except Exception:
+    pass
+
 SPARK_MODEL = "muse-spark-1.3-contributor"
 SPARK_OPEN_MODEL = "meta-models/muse-spark-open-1026"
 WONDER_MODEL = "muse-wonder-1.0"
@@ -222,20 +234,24 @@ def _prompt_text(system, messages):
     return "\n".join(parts)
 
 
+def _shared():
+    """h0/keys.py and h0/llm_http.py live one level up; dream runs as a package or from its own dir."""
+    import sys
+    h0 = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    if h0 not in sys.path:
+        sys.path.append(h0)
+    import keys
+    import llm_http
+    return keys, llm_http
+
+
 def _baseten_key():
-    """BASETEN_API_KEY from the environment, else from the gitignored meta/.env."""
-    key = os.environ.get("BASETEN_API_KEY", "").strip()
-    if key:
-        return key
+    """BASETEN_API_KEY from the environment, else from the gitignored meta/.env; "" if none."""
+    keys, _ = _shared()
     try:
-        with open(ENV_FILE, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("BASETEN_API_KEY="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ""
+        return keys.get("BASETEN", ENV_FILE)
+    except keys.MissingKey:
+        return ""
 
 
 class RealTransport:
@@ -269,9 +285,8 @@ class RealTransport:
                     "cap $%.2f reached, paid fallback %s skipped", _cap[0], SPARK_MODEL)
                 return {"content": "", "usage": {}, "model": model, "diagnostics": diagnostics}
             model, max_tokens = SPARK_MODEL, max(SPARK_MIN_TOKENS, max_tokens)
-        key = os.environ.get("META_MODEL_API_KEY")
-        if not key:
-            raise RuntimeError("META_MODEL_API_KEY is not set")
+        keys, _ = _shared()
+        key = keys.get("META")  # MissingKey names the variable, never a value
         out = _post(META_API, "Bearer " + key, model, effort, system, messages, max_tokens)
         out["model"] = model
         out["diagnostics"] = diagnostics
@@ -307,30 +322,9 @@ def _post(url, auth, model, effort, system, messages, max_tokens, temperature=No
                          *(messages or [])]}
     if temperature is not None:
         body["temperature"] = temperature
-    req = urllib.request.Request(
-        url, json.dumps(body).encode(),
-        {"Authorization": auth, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=120) as r:
-        raw = r.read().decode()
-    # Support both a plain JSON body and an SSE stream body.
-    if raw.lstrip().startswith("data:"):
-        text, usage = "", {}
-        for line in raw.splitlines():
-            line = line.strip()
-            if not line.startswith("data:") or line == "data: [DONE]":
-                continue
-            data = json.loads(line[5:])
-            usage = data.get("usage") or usage
-            for ch in data.get("choices", []):
-                text += (ch.get("delta") or {}).get("content") or ""
-        return {"content": text, "usage": usage}
-    data = json.loads(raw)
-    choices = data.get("choices") or []
-    content = ""
-    if choices:
-        content = (choices[0].get("message") or {}).get("content") or \
-            (choices[0].get("delta") or {}).get("content") or ""
-    return {"content": content, "usage": data.get("usage") or {}}
+    _, llm_http = _shared()
+    out = llm_http.post(url, auth, body, 120, 2)
+    return {"content": out["content"], "usage": out["usage"]}
 
 
 def _piece_parts(piece, prompt_tok):

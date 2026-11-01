@@ -211,6 +211,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | `books/` | gwtw, jane-eyre (демо), koshakan, ohenry, sherlock + picks | `book.json {title,author,pov,narrator_voice,cast{name:{sex,voice,look}},chapters[{n,file,scenes[{id,paras,place,cast,aliases}]}]}` | — | — |
 | `scenes/` | 8+ готовых сцен-банка (roof, laundromat, bus, kitchen, hospital, school, ferry, elevator) + twelve_oaks | — | — | — |
 
+**h0 (общее).** `llm_http.py` — единственный HTTP-клиент провайдеров (`post`, `backoff`, `TransportError`); `keys.py` — ключи из env, потом `meta/.env` (`get`, `MissingKey`). Тест `h0/test_llm_http.py`.
+
 ### 2.9 Modal / GPU / прочее в h0
 
 | файл | что | заметка |
@@ -269,6 +271,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | потолок денег (dream) | `dream/llm.py set_cap / get_spent / _charge / charge_fish / charge_image` |
 | вызов Spark с ретраем JSON (make brief) | `make/brief.py make_brief(prompt, ask)`: 1 ретрай с текстом ошибки валидации |
 | вызов Spark (pipe2: транспорт, ретраи сети, резерв токенов) | `pipe2/spark.py Spark(transport, ledger).ask(role, room, round, messages, effort)`, транспорт `HttpTransport` |
+| один HTTP-клиент Meta/Baseten/Fish (список хостов, охрана платной модели, ретраи, чистая ошибка) | `h0/llm_http.py post(url, auth, payload, timeout, retries)`, `backoff(n)`; ключи — `h0/keys.py get("META"/"BASETEN"/"FISH"/"IMAGE")` |
 | разобрать JSON из ответа модели | `pipe2/spark.py parse_scene`; в dream `author._json`, `dialogue` ? |
 | вызов LLM по роли в dream (hero/actor/judge/narrator/director) | `dream/llm.py call(role, system, messages)` |
 | выбрать модель/effort по роли | `llm.ROLE_TABLE`, `llm.resolve(role)`, `llm.set_talk_model` |
