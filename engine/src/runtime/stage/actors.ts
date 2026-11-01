@@ -1,5 +1,7 @@
-import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
+import { AnimationClip, Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
+import { createAnimator, type Animator } from "./anim.js";
 import type { V2 } from "./places.js";
 
 export const SIT_DROP = 0.45;
@@ -20,16 +22,43 @@ export interface Actor {
   moving(): boolean;
   speak(seconds: number): void;
   speaking(): boolean;
+  /** play a clip by name (no animator or no such clip -> stays in idle) */
+  play(clip: string, o?: { once?: boolean }): void;
   update(dt: number, now: number): void;
 }
 
+/** clip name -> animations[0] of its GLB; a clip that does not load is skipped with a warning */
+async function loadClips(who: string, urls: Record<string, string>): Promise<Record<string, AnimationClip>> {
+  const loader = new GLTFLoader();
+  const out: Record<string, AnimationClip> = {};
+  await Promise.all(
+    Object.entries(urls).map(async ([name, url]) => {
+      try {
+        const g = await loader.loadAsync(url);
+        const clip = g.animations.find((a) => a.name === name) ?? g.animations[0];
+        if (!clip) throw new Error("no animation in the file");
+        out[name] = clip;
+      } catch (e) {
+        console.warn(`stage: actor "${who}" clip "${name}" failed (${String(e)}), skipped`);
+      }
+    }),
+  );
+  return out;
+}
+
 /** Cast member `who` from a GLB, scaled to `height_m`; a plain box stands in if the GLB does not load. */
-export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0): Promise<Actor> {
+export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0, clipUrls: Record<string, string> = {}, idle?: string): Promise<Actor> {
   const group = new Group();
   group.name = `actor:${who}`;
   let body: Group;
+  let animator: Animator | null = null;
   try {
-    body = await loadGlb({ glb: glbUrl } as any, { min: new Vector3(-0.3, 0, -0.3), max: new Vector3(0.3, heightM, 0.3) });
+    const [b, clips] = await Promise.all([
+      loadGlb({ glb: glbUrl } as any, { min: new Vector3(-0.3, 0, -0.3), max: new Vector3(0.3, heightM, 0.3) }),
+      loadClips(who, clipUrls),
+    ]);
+    body = b;
+    if (Object.keys(clips).length) animator = createAnimator(body, clips, { idle });
   } catch (e) {
     console.warn(`stage: actor "${who}" GLB failed (${String(e)}), using a box`);
     body = new Group();
@@ -61,6 +90,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let segY = y;
   let talkUntil = 0;
   let clock = 0;
+  let wasMoving = false;
   const wrap = (a: number): number => ((a % 360) + 540) % 360 - 180;
 
   const apply = (now: number, moving: boolean): void => {
@@ -88,6 +118,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       if (fa === "idle" || path.length) act = "idle";
     },
     moving: () => path.length > 0 || finish !== null,
+    play(clip, o) {
+      animator?.play(clip, o);
+    },
     speak(seconds) {
       talkUntil = clock + seconds;
     },
@@ -137,6 +170,13 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         }
       }
       apply(now, moving);
+      if (animator) {
+        const m = path.length > 0 || finish !== null;
+        if (m && !wasMoving) (animator.has("walk") ? animator.play("walk") : animator.idle());
+        else if (!m && wasMoving) animator.idle();
+        wasMoving = m;
+        animator.update(dt);
+      }
     },
   };
 }

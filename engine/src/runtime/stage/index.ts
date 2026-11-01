@@ -1,6 +1,7 @@
 import type { PerspectiveCamera, Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import type { NavRamp } from "../../nav/floor.js";
+import { clipForBeat } from "./anim.js";
 import { createActor, type Actor } from "./actors.js";
 import { directShot, roomRect, type ShotKind } from "./camera.js";
 import type { StageLevel } from "./path.js";
@@ -42,7 +43,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const placesJson = await fetch(new URL(stage.places, runBase)).then((r) => r.json());
   const places: Place[] = placesJson.places ?? placesJson;
   const castUrl = new URL(stage.cast, runBase);
-  const cast: Record<string, { glb: string; height_m?: number }> = await fetch(castUrl).then((r) => r.json());
+  const cast: Record<string, { glb: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]> }> = await fetch(castUrl).then((r) => r.json());
   const names = Object.keys(cast);
 
   const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
@@ -63,7 +64,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const sp = places.find((p) => p.name === startName) ?? fallback;
     const at: V2 = sp ? sp.at : [c.geo.spawn.at[0], c.geo.spawn.at[1]];
     const url = new URL(cast[who].glb, castUrl).href;
-    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y, sp?.yaw ?? 0);
+    const clipUrls: Record<string, string> = {};
+    for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
+    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y, sp?.yaw ?? 0, clipUrls, cast[who].idle);
     if (sp && sp.name === startName) claims[sp.name] = who;
     actors.set(who, a);
     c.scene.add(a.group);
@@ -142,12 +145,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
+      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture }, cast);
+      if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
       if (who && t) touch(who, t);
     },
     narrator(e) {
       subs.narrator({ text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
+      const pick = clipForBeat({ who: null, text: e.text }, cast);
+      if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const hit = remark(String(e.text ?? ""));
       if (hit) touch(hit.who, hit.place);
     },
