@@ -7,6 +7,7 @@ weights are already in the `anymove` volume (hf_cache) on acc2.
 
 deploy: modal deploy h0/trellis_modal.py
 usage:  modal run h0/trellis_modal.py --out <dir> --pngs a.png,b.png
+returns the scene GLB cut to `faces` and the 200k-face original (`full`) for later cuts.
 """
 import os
 import time
@@ -18,8 +19,13 @@ COMMIT = "75fbf0183001ed9876c8dbb35de6b68552ee08bd"
 REPO = "/opt/trellis2"
 ARCH = "8.0;8.6;8.9;9.0"
 #: engine TRI_LIMITS: small 1000, furniture 5000, large 8000; SCENE_TRI_LIMIT 300k is an error.
-#: TRELLIS' own default (150k) is what made Twelve Oaks lag, so props are decimated to furniture size.
+#: TRELLIS' own default (150k) is what made Twelve Oaks lag, so the scene mesh is cut to the key's budget
+#: (pipe2 passes `faces` from keys.ts); FACES is the furniture budget for callers that do not.
 FACES = 5000
+#: the decimator lands near its target, not under it: aim below the budget so `check` stays green
+MARGIN = 0.9
+#: the kept original: detail for a heavier cut later, without a new 4B run
+FULL_FACES = 200_000
 TEX = 1024
 PIPELINE = "1024_cascade"
 
@@ -104,25 +110,35 @@ class Trellis:
         self.pipe.cuda()
 
     @modal.method()
-    def run(self, name: str, png: bytes, with_ply: bool = False, faces: int = FACES) -> dict:
+    def run(self, name: str, png: bytes, with_ply: bool = False, faces: int = FACES,
+            with_full: bool = True) -> dict:
         import io
 
-        import o_voxel
         from PIL import Image
 
         t = time.time()
         mesh = self.pipe.run(Image.open(io.BytesIO(png)), seed=42, pipeline_type=PIPELINE)[0]
         mesh.simplify(16777216)
-        glb = o_voxel.postprocess.to_glb(
-            vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs, coords=mesh.coords,
-            attr_layout=mesh.layout, voxel_size=mesh.voxel_size, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
-            decimation_target=faces, texture_size=TEX, remesh=True, remesh_band=1, remesh_project=0)
-        path = f"/tmp/{os.getpid()}-{time.time_ns()}.glb"
-        glb.export(path, extension_webp=False)
-        blob = Path(path).read_bytes()
-        os.remove(path)
+        glb = _glb(mesh, int(faces * MARGIN))
+        full = _glb(mesh, FULL_FACES) if with_full else b""
         # no gaussian splat here: `ply` stays empty, like sam3d with with_ply=False
-        return {"name": name, "glb": blob, "ply": b"", "sec": round(time.time() - t, 1), "baked": True}
+        return {"name": name, "glb": glb, "full": full, "ply": b"", "sec": round(time.time() - t, 1),
+                "baked": True}
+
+
+def _glb(mesh, target: int) -> bytes:
+    """One textured GLB of `mesh` decimated to about `target` faces."""
+    import o_voxel
+
+    glb = o_voxel.postprocess.to_glb(
+        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs, coords=mesh.coords,
+        attr_layout=mesh.layout, voxel_size=mesh.voxel_size, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
+        decimation_target=target, texture_size=TEX, remesh=True, remesh_band=1, remesh_project=0)
+    path = f"/tmp/{os.getpid()}-{time.time_ns()}.glb"
+    glb.export(path, extension_webp=False)
+    blob = Path(path).read_bytes()
+    os.remove(path)
+    return blob
 
 
 heartbeat = modal.Dict.from_name("dreamer-pipe2-heartbeat", create_if_missing=True)
@@ -143,4 +159,5 @@ def main(out: str, pngs: str):
     jobs = [(os.path.splitext(os.path.basename(p))[0], open(p, "rb").read()) for p in pngs.split(",")]
     for r in Trellis().run.starmap(jobs):
         (Path(out) / (r["name"] + ".glb")).write_bytes(r["glb"])
-        print(r["name"], f"{r['sec']}s", f"glb={len(r['glb']) // 1024}KB")
+        (Path(out) / (r["name"] + ".full.glb")).write_bytes(r["full"])
+        print(r["name"], f"{r['sec']}s", f"glb={len(r['glb']) // 1024}KB", f"full={len(r['full']) // 1024}KB")

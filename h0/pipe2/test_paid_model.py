@@ -42,6 +42,12 @@ class MeshDefault(unittest.TestCase):
         self.assertEqual("1024_cascade", re.search(r'PIPELINE = "([^"]+)"',
                          (REPO / "h0/trellis_modal.py").read_text()).group(1))
 
+    def test_trellis_takes_the_budget_and_keeps_the_original(self):
+        src = (REPO / "h0/trellis_modal.py").read_text()
+        self.assertRegex(src, r"def run\(self, name: str, png: bytes, with_ply: bool = False, faces: int = FACES")
+        self.assertIn('"full": full', src)
+        self.assertIn("int(faces * MARGIN)", src)
+
     def test_sam3d_is_still_selectable(self):
         args = _parser().parse_args(["run", "task", "--run-dir", "r", "--mesh", "sam3d"])
         self.assertEqual(("dreamer-sam3d", "Sam3D"), MESH_APPS[args.mesh])

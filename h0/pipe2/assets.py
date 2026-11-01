@@ -101,6 +101,8 @@ class ModalHandle:
 MESH_APPS = {"trellis": ("dreamer-trellis", "Trellis"), "sam3d": ("dreamer-sam3d", "Sam3D")}
 #: seconds from submit to GLB, cold start included: a cold TRELLIS 1024 cascade loads 4B weights first
 MESH_TIMEOUT_S = {"trellis": 600, "sam3d": 330}
+#: apps whose `run` takes `faces=` (the key's triangle budget); sam3d returns its mesh as is
+SIZED_APPS = {"dreamer-trellis"}
 
 
 class ModalMesh:
@@ -118,8 +120,9 @@ class ModalMesh:
             self._remote = modal.Cls.from_name(self.app, self.cls)().run
         return self._remote
 
-    def submit(self, name: str, png: bytes):
-        return ModalHandle(self._run().spawn(name, png, with_ply=False))
+    def submit(self, name: str, png: bytes, faces: int | None = None):
+        sized = {"faces": faces} if faces and self.app in SIZED_APPS else {}
+        return ModalHandle(self._run().spawn(name, png, with_ply=False, **sized))
 
 
 class _Asset:
@@ -265,7 +268,7 @@ class AssetQueue:
                 return
             started = self.clock()
             try:
-                handle = self.meshes.submit(key, png)
+                handle = self.meshes.submit(key, png, asset.spec.get("tris"))
             except Exception as problem:
                 self.ledger.charge("h100_s", self.mesh_timeout_s, reserved=estimate)
                 if attempt:
@@ -279,6 +282,9 @@ class AssetQueue:
             if reason is None:
                 try:
                     self._write(f"{key}.glb", answer["glb"])
+                    if answer.get("full"):
+                        # the undecimated original: another cut later needs no new GPU run
+                        self._write(f"{key}.full.glb", answer["full"])
                 except OSError as problem:
                     self._failed(asset, type(problem).__name__)
                 return

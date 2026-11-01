@@ -96,6 +96,19 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(0, out.returncode, out.stderr)
         self.assertEqual(json.loads(out.stdout)[: len(rows)], [r["key"] for r in rows])
 
+    def test_object_keys_carry_the_budget_of_their_smallest_prop(self):
+        # trellis decimates to this number, so `check` never fails on a mesh it was asked for
+        scene = example("demo.scene.json")
+        rows = {r["id"]: r for r in self.engine.asset_keys(scene)}
+        self.assertEqual(1000, rows["p_vase"]["tris"])     # 0.4 m: small
+        self.assertEqual(5000, rows["p_table"]["tris"])    # 1.1 m: furniture
+        self.assertNotIn("tris", rows["t_wall"])
+        big = copy.deepcopy(scene)
+        vase = next(p for p in big["props"] if p["asset"] == "p_vase")
+        big["props"].append({**vase, "id": "big_vase", "size": {"w": 1, "d": 1, "h": 3}})
+        rows = {r["id"]: r for r in self.engine.asset_keys(big)}
+        self.assertEqual(1000, rows["p_vase"]["tris"])     # one GLB for both: the tighter limit wins
+
     def test_build_room_scene_and_shots(self):
         skeleton = example("demo-flat.scene.json")
         sofa = copy.deepcopy(next(p for p in skeleton["props"] if p["id"] == "sofa"))
