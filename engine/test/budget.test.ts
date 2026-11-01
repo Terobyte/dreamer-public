@@ -72,14 +72,14 @@ describe("check --built budgets", () => {
     expect(codes(r)).toContain("TRI_SCENE_BUDGET");
   });
 
-  it("POINT_LIGHT_BUDGET: 3 in one room warns, 9 in the scene errors", () => {
+  it("POINT_LIGHT_BUDGET: 3 in one room errors, 9 in the scene errors", () => {
     const lamp = { kind: "point", pos: [0.2, 2.6, -1.5], color: "#ffd8b0", power: 1 };
-    const warn = built(
+    const room = built(
       { total: 10, by_prop: {} },
       patched([{ op: "add", path: "/lights/-", value: lamp }, { op: "add", path: "/lights/-", value: lamp }]),
     );
-    expect(warn.warnings.map((i) => i.code)).toContain("POINT_LIGHT_BUDGET");
-    expect(warn.ok).toBe(true);
+    // B21: the room limit is an error now, not a warning
+    expect(room.errors.map((i) => i.code)).toContain("POINT_LIGHT_BUDGET");
     // demo-flat already has 2 point lamps, so +7 is exactly 9 on the scene
     const raw9 = patched(
       Array.from({ length: 7 }, () => ({ op: "add" as const, path: "/lights/-", value: lamp })),
@@ -131,7 +131,8 @@ describe("budget blocking findings", () => {
       passport: {},
     };
     const issues = budgetIssues(ctx, { total: 3, by_prop: {} });
-    expect(issues.filter((i) => i.code === "POINT_LIGHT_BUDGET")).toEqual([]);
+    // per-room attribution only: the scene-wide cap (B21) is checked elsewhere
+    expect(issues.filter((i) => i.code === "POINT_LIGHT_BUDGET" && (i.data as any).room !== undefined)).toEqual([]);
   });
 
   const triGlb = (count: number, mode?: number): Buffer => {

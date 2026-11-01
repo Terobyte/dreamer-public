@@ -9,13 +9,16 @@ export const FURNITURE_MAX_M = 2;
 export const TRI_LIMITS = { small: 1000, furniture: 5000, large: 8000 } as const;
 export const SCENE_TRI_LIMIT = 300_000;
 export const ROOM_POINT_LIGHTS = 2;
-export const SCENE_POINT_LIGHTS = 8;
+/** three.js shades every lamp of the scene in every fragment, so the room limit holds scene-wide */
+export const SCENE_POINT_LIGHTS = ROOM_POINT_LIGHTS;
 
 export type PropClass = keyof typeof TRI_LIMITS;
 
 export interface TriCount {
   total: number;
   by_prop: Record<string, number>;
+  /** props whose model file is missing or unreadable: their triangles are unknown */
+  unreadable?: string[];
 }
 
 export function propClass(size: { w?: number; d?: number; h?: number }): PropClass {
@@ -40,6 +43,16 @@ export function budgetIssues(ctx: Ctx, tris: TriCount): Issue[] {
       data: { id: String(p.id), tris: n, limit },
     });
   });
+  for (const id of tris.unreadable ?? []) {
+    const i = ((scene.props ?? []) as any[]).findIndex((p) => String(p?.id) === id);
+    issues.push({
+      code: "TRI_PROP_BUDGET",
+      stage: "routes",
+      path: i >= 0 ? `/props/${i}` : "/props",
+      msg: `${id}: модель не читается, треугольники неизвестны`,
+      data: { id, unreadable: true },
+    });
+  }
   if (tris.total > SCENE_TRI_LIMIT) {
     issues.push({
       code: "TRI_SCENE_BUDGET",
@@ -79,7 +92,7 @@ export function budgetIssues(ctx: Ctx, tris: TriCount): Issue[] {
       stage: "routes",
       path: "/lights",
       msg: msg("POINT_LIGHT_BUDGET", { room, n: String(n), limit: String(ROOM_POINT_LIGHTS) }),
-      data: { room, n, limit: ROOM_POINT_LIGHTS, level: "warn" },
+      data: { room, n, limit: ROOM_POINT_LIGHTS, level: "error" },
     });
   }
   if (points.length > SCENE_POINT_LIGHTS) {

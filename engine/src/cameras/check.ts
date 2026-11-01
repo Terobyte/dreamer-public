@@ -79,6 +79,45 @@ export function checkCameras(ctx: Ctx): Issue[] {
   const topOf = (r: { id: string; level: string; height: number }): number =>
     isOpen(r.id) ? Infinity : levelY(r.level) + r.height;
 
+  // the wall body is flat; a camera above every wall that touches it (a parapet,
+  // a balustrade with an explicit lower `h`) is over the wall, not inside it.
+  // room perimeter walls are full height: if one is still under the camera,
+  // a nearby low free wall must not mask it.
+  const nearOutline = (outline: V2[], p: V2, band: number): boolean => {
+    for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+      const [ax, az] = outline[i];
+      const [bx, bz] = outline[j];
+      const dx = bx - ax;
+      const dz = bz - az;
+      const len2 = dx * dx + dz * dz;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - az) * dz) / len2));
+      if (Math.hypot(p[0] - (ax + t * dx), p[1] - (az + t * dz)) <= band) return true;
+    }
+    return false;
+  };
+  const clearsLowWalls = (level: string, p: V2, y: number): boolean => {
+    const near = ((scene.walls ?? []) as any[]).filter((w) => {
+      if (String(w?.level) !== level || !Array.isArray(w.from) || !Array.isArray(w.to)) return false;
+      const [ax, az] = w.from as V2;
+      const [bx, bz] = w.to as V2;
+      const dx = bx - ax;
+      const dz = bz - az;
+      const len2 = dx * dx + dz * dz;
+      const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - az) * dz) / len2));
+      const d = Math.hypot(p[0] - (ax + t * dx), p[1] - (az + t * dz));
+      return d <= (typeof w.thickness === "number" ? w.thickness : 0.2) / 2 + 0.05;
+    });
+    const base = levelY(level);
+    if (near.length === 0 || !near.every((w) => typeof w.h === "number" && y > base + w.h + EPS)) return false;
+    // a room wall under the camera is full height: it still blocks
+    const band = 0.2 / 2 + 0.05;
+    for (const r of rooms) {
+      if (r.level !== level || !r.outline || isOpen(r.id)) continue;
+      if (y < levelY(r.level) + r.height - EPS && nearOutline(r.outline, p, band)) return false;
+    }
+    return true;
+  };
+
   for (let i = 0; i < list.length; i++) {
     const cam = list[i];
     const pos = cam?.pos;
@@ -117,7 +156,7 @@ export function checkCameras(ctx: Ctx): Issue[] {
       });
       continue;
     }
-    if (inBody(ctx.levels?.get(room.level)?.body, p)) {
+    if (inBody(ctx.levels?.get(room.level)?.body, p) && !clearsLowWalls(room.level, p, y)) {
       fail({ ...xyz, kind: "in", what: `теле стены ${room.id}` });
       continue;
     }

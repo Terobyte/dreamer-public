@@ -26,6 +26,15 @@ describe("camera bugs", () => {
     expect(outside.map((i) => i.msg)).toEqual([]);
   });
 
+  it("B22 F2: low overlay wall does not mask a full-height room wall", async () => {
+    const { demoFlat } = (await import("./helpers/scene.js")) as any;
+    const s = demoFlat();
+    s.walls = [{ level: "L0", from: [-4, -1], to: [-4, 1], material: "olive", h: 0.5 }];
+    s.cameras = [{ id: "x", pos: [-3.95, 1.6, 0], look: [0, 1.6, 0] }];
+    const { report } = runCheck(s);
+    expect(report.errors.filter((i: any) => i.code === "CAMERA_OUTSIDE").length).toBeGreaterThan(0);
+  });
+
   it("B35 second writeDist with the same ctx still resolves the camera ref", async () => {
     const dir = mkdtempSync(join(tmpdir(), "bug35-"));
     const scenePath = join(dir, "demo-flat.scene.json");

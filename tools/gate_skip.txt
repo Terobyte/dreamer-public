@@ -1,6 +1,3 @@
 # open bughunt repros (bugs.md, hunt 2026-10-31): red until their phase fixes them.
 # a bug phase deletes its line here once the file is green; nothing else touches this list.
-engine/test/bugs-budget.test.ts
-engine/test/bugs-built.test.ts
-engine/test/bugs-camera.test.ts
 engine/test/bugs-ready.test.ts
