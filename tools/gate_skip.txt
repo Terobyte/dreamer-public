@@ -3,3 +3,4 @@
 engine/test/bugs-budget.test.ts
 engine/test/bugs-built.test.ts
 engine/test/bugs-camera.test.ts
+engine/test/bugs-ready.test.ts
