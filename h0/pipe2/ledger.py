@@ -102,11 +102,19 @@ class Ledger:
         calls could all pass the same cap check.
 
         `cap_calls` limits `spark` only; images and GPU seconds are bounded by `cap_usd`."""
+        return self._grant(kind, estimate_usd, reserve_tokens, cap_on_refusal=True)
+
+    def reserve(self, kind, estimate_usd, reserve_tokens=0):
+        """Like `allow`, but a refusal does not cap the run: the caller may wait for an
+        in-flight reserve to turn into a fact and try again. Same worst-case reserve."""
+        return self._grant(kind, estimate_usd, reserve_tokens, cap_on_refusal=False)
+
+    def _grant(self, kind, estimate_usd, reserve_tokens, *, cap_on_refusal):
         with self._lock:
             if self.closed:
                 return False
             if self._refused(kind, estimate_usd, reserve_tokens):
-                if not self.capped:
+                if cap_on_refusal and not self.capped:
                     self.capped = True
                     self._save_budget()
                     self.record({"kind": "cap_hit", "role": kind, "cost_usd": self.spent,

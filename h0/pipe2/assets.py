@@ -268,6 +268,9 @@ class AssetQueue:
         self._rooms: dict[str, set[str]] = {}
         # the mask path: tried, still running, came through, reached SAM3D but failed; MASK_ALL_FALLBACK is said once
         self._mask = {"tried": 0, "pending": 0, "ok": 0, "hit": 0, "said": False}
+        # meshes holding a worst-case reserve right now; a reserve that does not fit waits on them
+        self._mesh_cond = threading.Condition()
+        self._meshes_running = 0
 
     # -- queue ----------------------------------------------------------------
 
@@ -378,7 +381,7 @@ class AssetQueue:
         key = asset.spec["key"]
         frame, what, _ = _spec_ref(asset.spec)
         estimate = self.ledger.cost_of("h100_s", self.mesh_timeout_s)
-        if not self.ledger.allow("h100_s", estimate):
+        if not self._mesh_allow(asset, estimate):
             self._failed(asset, "cap")
             with self._lock:
                 self._mask["hit"] += 1
@@ -390,19 +393,19 @@ class AssetQueue:
             if _mask_mesh(problem):
                 # the mask arrived and SAM3D blew up on submit: an ordinary mesh
                 # failure, said out loud like the through-handle path below, never a redraw
-                self.ledger.charge("h100_s", self.mesh_timeout_s, reserved=estimate)
+                self._mesh_charge(self.mesh_timeout_s, reserved=estimate)
                 self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
                 self._failed(asset, type(problem).__name__)
                 with self._lock:
                     self._mask["hit"] += 1
                 return True
-            self.ledger.charge("h100_s", 0, reserved=estimate)
+            self._mesh_charge(0, reserved=estimate)
             self._mask_fallback(asset, "empty" if _mask_empty(problem) else "error")
             return False
         answer, reason = self._poll(handle, started)
         sec = answer.get("sec") if isinstance(answer, dict) else None
         units = sec if isinstance(sec, (int, float)) else self.mesh_timeout_s
-        self.ledger.charge("h100_s", units, reserved=estimate)
+        self._mesh_charge(units, reserved=estimate)
         if reason is not None:
             self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
             self._failed(asset, reason)
@@ -421,6 +424,35 @@ class AssetQueue:
         with self._lock:
             self._mask["ok"] += 1
         return True
+
+    def _mesh_allow(self, asset: _Asset, estimate: float) -> bool:
+        """Reserve a worst-case mesh. Does not fit while other meshes run -> wait for one
+        to settle its reserve into a fact. `cap` only when nothing runs and it still does not fit."""
+        reserve = getattr(self.ledger, "reserve", None)
+        with self._mesh_cond:
+            if reserve is not None:
+                while True:
+                    if reserve("h100_s", estimate):
+                        self._meshes_running += 1
+                        return True
+                    if not self._meshes_running:
+                        break
+                    self._mesh_cond.wait(max(self.poll_s, 0.01))
+            elif self.ledger.allow("h100_s", estimate):
+                self._meshes_running += 1
+                return True
+        self.ledger.record({"kind": "WARN", "room": asset.room, "asset": asset.spec["key"],
+                            "reason": "cap", "detail": "mesh reserve exceeds the world budget"})
+        return False
+
+    def _mesh_charge(self, units: float, reserved: float) -> None:
+        """Book a mesh's fact in place of its reserve and wake the meshes waiting for room."""
+        try:
+            self.ledger.charge("h100_s", units, reserved=reserved)
+        finally:
+            with self._mesh_cond:
+                self._meshes_running -= 1
+                self._mesh_cond.notify_all()
 
     def _picture(self, asset: _Asset) -> bytes | None:
         spec = asset.spec
@@ -461,14 +493,14 @@ class AssetQueue:
         key = asset.spec["key"]
         estimate = self.ledger.cost_of("h100_s", self.mesh_timeout_s)
         for attempt in (0, 1):
-            if not self.ledger.allow("h100_s", estimate):
+            if not self._mesh_allow(asset, estimate):
                 self._failed(asset, "cap")
                 return
             started = self.clock()
             try:
                 handle = self.meshes.submit(key, png)
             except Exception as problem:
-                self.ledger.charge("h100_s", self.mesh_timeout_s, reserved=estimate)
+                self._mesh_charge(self.mesh_timeout_s, reserved=estimate)
                 if attempt:
                     self._failed(asset, type(problem).__name__)
                     return
@@ -476,7 +508,7 @@ class AssetQueue:
             answer, reason = self._poll(handle, started)
             sec = answer.get("sec") if isinstance(answer, dict) else None
             units = sec if isinstance(sec, (int, float)) else self.mesh_timeout_s
-            self.ledger.charge("h100_s", units, reserved=estimate)
+            self._mesh_charge(units, reserved=estimate)
             if reason is None:
                 try:
                     self._write(f"{key}.glb", answer["glb"])

@@ -18,7 +18,7 @@ import { budgetIssues, type TriCount } from "./budget.js";
 
 export function runCheck(
   raw: unknown,
-  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null>; tris?: TriCount; missingShots?: { index: number; id: string; file: string }[]; builtCams?: { ref?: string | null }[] },
+  opts?: { until?: Stage; builtNav?: NavJson; facts?: Record<string, PropFact | null>; tris?: TriCount; missingShots?: { index: number; id: string; file: string }[]; builtCams?: { ref?: string | null }[]; missingAssets?: string[] },
 ): { report: Report; ctx: Ctx } {
   const until = opts?.until ?? "nav";
   const untilIdx = STAGES.indexOf(until);
@@ -113,6 +113,23 @@ export function runCheck(
         stage: "routes",
         path: `/cameras/${m.index}`,
         msg: msg("SHOT_MISSING", { id: m.id, file: m.file }),
+      });
+    }
+  }
+  // `build.json` lists cached assets the dist had to draw as placeholders:
+  // an object without its GLB is a build error, never a silent box
+  if (opts?.missingAssets !== undefined && upToProps) {
+    // `assets.missing` holds asset ids: report the props that use a missing object asset, by prop id
+    const missing = new Set(opts.missingAssets);
+    const declared = (ctx.scene?.assets ?? {}) as Record<string, { kind?: string } | undefined>;
+    for (const p of (ctx.scene?.props ?? []) as { id?: unknown; asset?: unknown }[]) {
+      if (typeof p?.id !== "string" || typeof p.asset !== "string") continue;
+      if (!missing.has(p.asset) || declared[p.asset]?.kind !== "object") continue;
+      errors.push({
+        code: "ASSET_MISSING",
+        stage: "routes",
+        path: `/props/${p.id}`,
+        msg: msg("ASSET_MISSING", { id: p.id }),
       });
     }
   }

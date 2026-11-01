@@ -160,6 +160,8 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `ни у одной из ${params.n} камер нет ref: сравнивать снимки не с чем`;
     case "SHOT_MISSING":
       return `камера ${params.id}: нет снимка ${params.file} в dist/shots`;
+    case "ASSET_MISSING":
+      return `ассет ${params.id}: нет кэшированного GLB, в сборке заглушка`;
     case "POINT_LIGHT_BUDGET":
       return params.room === ""
         ? `сцена: ${params.n} point-ламп, не больше ${params.limit}`

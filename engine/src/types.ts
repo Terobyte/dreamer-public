@@ -62,6 +62,7 @@ export type Code =
   | "TRI_SCENE_BUDGET"
   | "CAMERA_NO_REF"
   | "SHOT_MISSING"
+  | "ASSET_MISSING"
   | "POINT_LIGHT_BUDGET";
 
 export interface Issue {

@@ -141,6 +141,7 @@ async function main(): Promise<number> {
     let tris: TriCount | undefined;
     let missingShots: { index: number; id: string; file: string }[] | undefined;
     let builtCams: { ref?: string | null }[] | undefined;
+    let missingAssets: string[] | undefined;
     if (builtFlag !== undefined) {
       const navPath = join(builtFlag, "nav.json");
       builtNav = JSON.parse(readFileSync(navPath, "utf-8"));
@@ -153,6 +154,10 @@ async function main(): Promise<number> {
         const props = buildJson.props as Record<string, { fact: PropFact | null }> | undefined;
         if (props) {
           facts = Object.fromEntries(Object.entries(props).map(([id, p]) => [id, p?.fact ?? null]));
+        }
+        const missing = (buildJson.assets as { missing?: unknown } | undefined)?.missing;
+        if (Array.isArray(missing)) {
+          missingAssets = missing.filter((m): m is string => typeof m === "string");
         }
       }
     }
@@ -192,7 +197,7 @@ async function main(): Promise<number> {
         }));
       }
     }
-    const { report, ctx } = runCheck(raw, { builtNav, facts, tris, missingShots, builtCams });
+    const { report, ctx } = runCheck(raw, { builtNav, facts, tris, missingShots, builtCams, missingAssets });
     const sceneName = typeof ctx.scene?.name === "string" ? ctx.scene.name : undefined;
     const rp = reportPath ?? defaultReportPath(scenePath, sceneName);
     printAndDiff(rp, report);

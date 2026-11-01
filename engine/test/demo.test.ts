@@ -11,9 +11,11 @@ const goldenUrl = new URL("./golden/demo-flat.check.json", import.meta.url);
 
 // phase 1 does not emit these, so no case scene can exist for them;
 // budget codes only fire with `--built` tris from a dist/, which runCase never passes;
-// ASSET_FAILED only comes from the asset step of `build`, never from `check`
+// ASSET_FAILED only comes from the asset step of `build`, never from `check`;
+// ASSET_MISSING only fires with `--built` assets.missing from a dist/, which runCase never passes
 const OUT_OF_PHASE = new Set<Code>([
   "ASSET_FAILED",
+  "ASSET_MISSING",
   "STAIR_EXIT_OUTSIDE",
   "STAIR_HEADROOM",
   "ROUTE_BLOCKED",

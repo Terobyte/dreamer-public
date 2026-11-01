@@ -173,7 +173,7 @@ CLI: `cd h0 && python3 -m pipe2 run <task_dir> --run-dir D [--cap-usd N --cap-ca
 | `engine.py` | движок как Python-интерфейс (subprocess `dreamer`), в temp-каталоге, мемо по хэшу сцены, `Gated` | `Engine.check/build/shots`, `green(report)`, `blocking`, `scene_for_room`, `shots_retry`, `KEYS_TS` | `test_engine` |
 | `keys.ts` | печатает ключи ассетов сцены через `sceneAssets/promptFor/sizeFor` движка (единый источник ключа) | CLI | `test_engine` |
 | `spark.py` | клиент Spark: 1 вызов = 1 Answer; `MODEL = muse-spark-1.3-contributor`, `MAX_TOKENS 64000`, ретраи транспорта `MAX_RETRIES 2` с `RETRY_BASE_S`; невалидный JSON не бросает, возвращает `valid=False` | `Spark.ask(role, room, round_no, messages, effort)`, `HttpTransport`, `parse_scene`, `Answer`, `reserve_of` | `test_spark`, `test_paid_model` |
-| `ledger.py` | журнал событий jsonl + потолки usd/calls/tokens, резервы, `resume` | `Ledger.allow/charge/settle/record`, `load_prices` (`prices.json`) | `test_ledger`, `test_bugs_ledger` |
+| `ledger.py` | журнал событий jsonl + потолки usd/calls/tokens, резервы, `resume` | `Ledger.allow/charge/settle/record`, `Ledger.reserve` (как `allow`, но отказ не ставит `capped`: можно ждать), `load_prices` (`prices.json`) | `test_ledger`, `test_bugs_ledger`, `test_mesh_wait` |
 | `assets.py` | Muse Image (`muse-image-1.0`) -> SAM3D на Modal (`dreamer-sam3d`, таймаут 330 с), очередь по ключам, по комнатам | `AssetQueue.put/wait/done/close`, `MuseImage`, `ModalMesh`, `png_complete`, `as_png` | `test_assets`, `test_bugs_assets` |
 | `gpu.py` | прогрев GPU: `min_containers`, окно 120 с, всегда сброс при выходе | `GpuWarmth.start/tick/close`, `ModalAutoscaler` | `test_gpu` |
 | `geom.py` | точка в комнате (дуги) | `in_room`, `room_polygon` | через floor |
@@ -261,6 +261,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | пути файлов кэша ассета | `cachePaths(dir, key)` |
 | цена/потолок денег (engine) | `assets/cost.ts Budget`, `priceCents`, `CapError` |
 | потолок денег (pipe2) | `pipe2/ledger.py Ledger.allow/charge/settle` |
+| резерв меша, который ждёт идущие меши вместо `cap` (pipe2) | `pipe2/assets.py AssetQueue._mesh_allow/_mesh_charge` поверх `Ledger.reserve` |
 | потолок денег (dream) | `dream/llm.py set_cap / get_spent / _charge / charge_fish / charge_image` |
 | вызов Spark с ретраем JSON (make brief) | `make/brief.py make_brief(prompt, ask)`: 1 ретрай с текстом ошибки валидации |
 | вызов Spark (pipe2: транспорт, ретраи сети, резерв токенов) | `pipe2/spark.py Spark(transport, ledger).ask(role, room, round, messages, effort)`, транспорт `HttpTransport` |
