@@ -439,7 +439,13 @@ class Floor:
                        PLAN=_pretty(plan) if plan else "", DEFECTS=_pretty(defects),
                        SPEC=engine_spec(),
                        SCHEMA=self._doc("engine/schema/engine-scene.schema.json"))
-        images = [_image(p) for p in self._refs()]
+        refs = self._refs()
+        images = [_image(p) for p in refs]
+        if refs:  # the plan cites refs by filename; attached images carry no visible name
+            root = (self.task_dir / "refs").resolve()
+            text += ("\n\nAttached task refs, in order (use exactly these names in plan.rooms.<id>.refs):\n"
+                     + "\n".join("%d. %s" % (i + 1, p.resolve().relative_to(root).as_posix())
+                                  for i, p in enumerate(refs)))
         effort = (self.deps.get("effort") or {}).get(role, "high")
         return self.spark.ask(role, "floor", attempt, [_user(text, images)], effort)
 
