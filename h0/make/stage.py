@@ -202,6 +202,28 @@ def _book_voice(book_dir):
         return None
 
 
+def pick_start(places, actors):
+    """{actor: place name}: the closest group of places, so the cast starts together.
+
+    Round-robin over the list put Mama and Mirai 18 m apart on the meadow. Each place in turn is an
+    anchor with its nearest neighbours; the group with the smallest spread wins. More actors than
+    places -> names repeat (runtime fallback handles the overlap)."""
+    if not places or not actors:
+        return {}
+    k = min(len(actors), len(places))
+
+    def d(a, b):
+        return ((a["at"][0] - b["at"][0]) ** 2 + (a["at"][1] - b["at"][1]) ** 2) ** 0.5
+    best = None
+    for a in places:
+        group = sorted(places, key=lambda q: d(a, q))[:k]
+        cost = sum(d(a, q) for q in group)
+        if best is None or cost < best[0]:
+            best = (cost, group)
+    names = [q["name"] for q in best[1]]
+    return {who: names[i % len(names)] for i, who in enumerate(actors)}
+
+
 def write_stage(run_dir, out, brief=None, freestyle=False):
     """Writes out/places.json and out/stage.json; -> the stage.json dict.
 
@@ -215,7 +237,7 @@ def write_stage(run_dir, out, brief=None, freestyle=False):
     (out / "places.json").write_text(json.dumps(res, ensure_ascii=False, indent=2))
     names = [p["name"] for p in res["places"]]
     actors = _actors(run_dir, brief)
-    start = {who: names[i % len(names)] for i, who in enumerate(actors)} if names else {}
+    start = pick_start(res["places"], actors)
     sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
           "mode": brief.get("mode"), "book": None, "seed": None,
           "objects": [p["name"] for p in res["places"]], "voices": _voices(run_dir),

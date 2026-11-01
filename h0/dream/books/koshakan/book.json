@@ -40,7 +40,12 @@
       "Mama": "Mama",
       "Mirai": "Mirai",
       "she": "Mirai"
-     }
+     },
+     "refs": [
+      "refs/bedroom_empty.png",
+      "refs/01_morning_wake.png"
+     ],
+     "ref_cues": "Small cosy child's bedroom, warm cream walls. A low honey-wood child's bed with round ball knobs on the four posts, a heart cut-out in the footboard, a fat white pillow and a cream quilt with tiny pink flowers. Behind the bed a small four-pane window with sheer cream curtains tied back with ribbons, peach-gold sunrise outside. Soft warm watercolour light, plain warm floor. Nothing dark, nothing rusty."
     },
     {
      "id": "bathroom",
@@ -57,7 +62,12 @@
      "aliases": {
       "Mama": "Mama",
       "Mirai": "Mirai"
-     }
+     },
+     "refs": [
+      "refs/bathroom_empty.png",
+      "refs/02_bathroom.png"
+     ],
+     "ref_cues": "Small warm bathroom, cream-beige plastered walls. A white pedestal washbasin with an arched chrome tap and two cross-handle chrome taps. A small wooden step stool in front of the basin. Above it a wooden wall shelf with a potted trailing ivy, a yellow rubber duck and a white soap pump. A wooden towel rail with a cream towel. Everything clean, white porcelain, warm wood. Nothing rusty, no dark grime."
     },
     {
      "id": "meadow",
@@ -75,7 +85,12 @@
       "Mama": "Mama",
       "Mirai": "Mirai",
       "she": "Mirai"
-     }
+     },
+     "refs": [
+      "refs/meadow_empty.png",
+      "refs/03_dandelions.png"
+     ],
+     "ref_cues": "Open soft meadow under a hazy pale cream-yellow sky. Dense knee-high grass, thick with yellow dandelion flowers and white dandelion seed clocks everywhere, seeds floating in the air. Gentle, flat, no trees nearby, misty horizon. Warm muted greens and pale yellows."
     }
    ]
   }

@@ -157,7 +157,8 @@ def _run_refs(ctx):
                 ans = spark.ask('refs', 'refs', 0, [{'role': 'user', 'content': parts}], 'medium')
                 ctx.usd = ledger.spent
                 return json.dumps(ans.scene) if ans.valid and ans.scene is not None else '{}'
-    _refs.run_refs(brief, ctx.out, providers=providers, loader=loader, pick=pick, ask=ask)
+    local = _refs.book_local(brief, Path(__file__).resolve().parents[1])
+    _refs.run_refs(brief, ctx.out, providers=providers, loader=loader, pick=pick, ask=ask, local=local)
     (ctx.out / 'marker.txt').write_text(json.dumps({'start': time.time(), 'end': time.time()}))
     return 0.0
 

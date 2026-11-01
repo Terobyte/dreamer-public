@@ -127,9 +127,45 @@ def _personal_cues(sid, info, brief):
     return '\n'.join(f'- {b}' for b in bits)
 
 
-def run_refs(brief, out, *, providers, loader, pick='first', ask=None):
-    """Writes out/refs.json (all candidates + kept), out/cues.md, out/<slot>/<n>.<ext>."""
+def book_local(brief, base):
+    """{place id: ([picture paths], cues)} from the book scene's own `refs`/`ref_cues` (storyboard).
+
+    A private book is not on the web; its storyboard is the reference. Paths are relative to the
+    book dir, which is relative to `base` (h0) unless absolute."""
+    b = brief.get('book') or {}
+    if not b.get('dir') or not b.get('scene'):
+        return {}
+    bdir = Path(b['dir']) if Path(b['dir']).is_absolute() else Path(base) / b['dir']
+    try:
+        book = json.loads((bdir / 'book.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    for ch in book.get('chapters') or []:
+        for sc in ch.get('scenes') or []:
+            if sc.get('id') == b['scene'] and sc.get('refs'):
+                pics = [bdir / r for r in sc['refs'] if (bdir / r).is_file()]
+                places = [p['id'] for p in brief.get('places') or []]
+                return {pid: (pics, sc.get('ref_cues') or '') for pid in places[:1]} if pics else {}
+    return {}
+
+
+def _local_slot(paths, text):
+    kept = []
+    for p in paths:
+        data = Path(p).read_bytes()
+        s = sniff(data)
+        if s:
+            kept.append({'url': Path(p).resolve().as_uri(), 'provider': 'book', 'title': Path(p).stem,
+                         'description': text, '_bytes': data, '_ext': s[0], 'width': s[1], 'height': s[2]})
+    return kept
+
+
+def run_refs(brief, out, *, providers, loader, pick='first', ask=None, local=None):
+    """Writes out/refs.json (all candidates + kept), out/cues.md, out/<slot>/<n>.<ext>.
+
+    `local` = {slot id: ([paths], cues)} — the user's own pictures; used instead of a web search."""
     out = Path(out)
+    local = local or {}
     slots, cues, used_dirs = {}, [], set()
     for sid, info, query, hint, wiki in _slots(brief):
         key = sid
@@ -138,6 +174,17 @@ def run_refs(brief, out, *, providers, loader, pick='first', ask=None):
             while f'{sid}__{i}' in slots:
                 i += 1
             key = f'{sid}__{i}'
+        if sid in local:
+            kept = _local_slot(*local[sid])
+            d = _unique_slot_dir(out, key, used_dirs)
+            used_dirs.add(d)
+            for n, c in enumerate(kept):
+                d.mkdir(parents=True, exist_ok=True)
+                (d / f'{n}.{c["_ext"]}').write_bytes(c['_bytes'])
+            slots[key] = [dict({k: c.get(k) for k in FIELDS}, description=c['description'], kept=True)
+                          for c in kept]
+            cues.append(f'## {key}\n\n{local[sid][1]}\n')
+            continue
         if not query:
             slots[key] = []
             cues.append(f'## {key}\n\n{_personal_cues(sid, info, brief)}\n')
