@@ -231,7 +231,7 @@ class EngineRefPaths(unittest.TestCase):
                  "props": [{"id": "bed", "asset": "a_bed", "room": "bedroom"}]}
         got = eng.asset_keys(scene, run)[0]["key"]
         framed = "single object, front view facing the camera, whole object, plain white background, no shadow. bed"
-        subject = "%s|ref|%s|%s" % (framed, hashlib.sha256(raw).hexdigest(), "bed")
+        subject = "%s|ref|%s|%s|%s" % (framed, hashlib.sha256(raw).hexdigest(), "bed", "mask")
         want = hashlib.sha256(subject.encode()).hexdigest()
         self.assertEqual(got, want)
 

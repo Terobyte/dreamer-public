@@ -9,7 +9,7 @@ import { buildGeometry, type AssetFiles, type Camera } from "./geometry.js";
 import { buildNav } from "../nav/grid.js";
 import { topSvg } from "../report/topsvg.js";
 import { indexHtml } from "./page.js";
-import { runAssets, type AssetReport } from "../assets/run.js";
+import { resolvedAssets, runAssets, sceneAssets, type AssetReport, type AssetWarning } from "../assets/run.js";
 import { placeAssets, type GlbSize } from "./materials.js";
 import { factOf, type PropFact } from "../props/fact.js";
 import type { Geometry } from "./geometry.js";
@@ -23,7 +23,14 @@ export interface BuildJson {
   ok: boolean;
   seconds: number;
   /** `cut`: object assets whose cached mesh was over budget and went into dist cut down */
-  assets: { used: string[]; fallback: string[]; missing: string[]; cut?: Record<string, { from: number; to: number }> };
+  /** `pose`: per used object asset, the pose SAM3D gave a mesh cut by mask (`null` when none); not used for placement */
+  assets: {
+    used: string[];
+    fallback: string[];
+    missing: string[];
+    cut?: Record<string, { from: number; to: number }>;
+    pose?: Record<string, object | null>;
+  };
   /** what each prop's model really measures, so `check --built` can use it */
   props: Record<string, { fact: PropFact | null }>;
   warnings: string[];
@@ -207,6 +214,40 @@ async function cutPlaced(
   return cut;
 }
 
+/** Each used object's `<key>.pose.json` next to its GLB in the cache; a missing or unreadable file is `null`. */
+function posesOf(ctx: Ctx, cacheDir: string | undefined, used: string[], scenePath: string | undefined): Record<string, object | null> {
+  const out: Record<string, object | null> = Object.create(null);
+  if (cacheDir === undefined) {
+    // No cache, no pose files: a used object still gets its explicit null.
+    const kinds = new Map(sceneAssets(ctx.scene).map((r) => [r.id, r.kind]));
+    for (const id of used) if (kinds.get(id) === "object") out[id] = null;
+    return out;
+  }
+  const sceneDir = scenePath === undefined ? undefined : dirname(scenePath);
+  for (const a of resolvedAssets(ctx.scene, cacheDir, used, sceneDir)) {
+    if (a.kind !== "object") continue;
+    const file = a.path.replace(/\.glb$/, ".pose.json");
+    let pose: object | null = null;
+    try {
+      if (existsSync(file)) {
+        const v = JSON.parse(readFileSync(file, "utf-8"));
+        pose = v !== null && typeof v === "object" ? v : null;
+      }
+    } catch {
+      pose = null;
+    }
+    out[a.id] = pose;
+  }
+  return out;
+}
+
+function warningText(w: AssetWarning): string {
+  if (w.code === "REF_IGNORED") return `${w.code}: ${w.id} drawn from its prompt, the provider has no fromRef`;
+  if (w.code === "MASK_ALL_FALLBACK") return `${w.code}: no object went through the mask, every one took the redraw path`;
+  if (w.reason === undefined) return `${w.code}: ${w.id} SAM3D failed after the mask, no redraw fallback`;
+  return `${w.code}: ${w.id} cut by redraw, the mask path gave ${w.reason}`;
+}
+
 /** Everything `build` puts in `dist/`; the scene's own directory is untouched. */
 export async function writeDist(
   ctx: Ctx,
@@ -251,6 +292,7 @@ export async function writeDist(
       fallback: assets.fallback,
       missing: assets.missing,
       ...(Object.keys(cut).length > 0 ? { cut } : {}),
+      pose: posesOf(ctx, opts.cacheDir, assets.used, opts.scenePath),
     },
     props: propFacts(ctx.scene, geometry, glbSizes),
     doors: doorDefs(ctx),
@@ -265,7 +307,7 @@ export async function writeDist(
       // a generated asset its post-step rejected (a sky that is not 2:1)
       ...(assets.failed ?? []).map((w) => `${w.code}: ${w.msg}`),
       // an object with a ref the provider could not use: drawn from text, said out loud
-      ...(assets.warnings ?? []).map((w) => `${w.code}: ${w.id} drawn from its prompt, the provider has no fromRef`),
+      ...(assets.warnings ?? []).map(warningText),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
       ...refWarnings,
     ],

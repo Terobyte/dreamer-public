@@ -1,6 +1,6 @@
 import { PNG } from "pngjs";
 import type { ImageSize } from "../templates.js";
-import type { ImageProvider, ObjectProvider } from "./types.js";
+import { MaskEmptyError, MaskMeshError, type ImageProvider, type ObjectProvider, type SceneMesh } from "./types.js";
 
 /**
  * A tiny solid PNG. `whiteCorners` makes it usable as a decal: the alpha cut
@@ -121,8 +121,27 @@ export class FakeImageProvider implements ImageProvider {
   }
 }
 
+export interface FakeObjectOpts {
+  /** by `what`: `error` = segmentation throws, `empty` = MASK_EMPTY, `mesh` = SAM3D fails after the mask */
+  fail?: Record<string, "error" | "empty" | "mesh">;
+  /** the pose every `fromScene` mesh comes back with; none by default */
+  pose?: object | null;
+}
+
 export class FakeObjectProvider implements ObjectProvider {
   readonly calls: { name: string }[] = [];
+  readonly sceneCalls: { bytes: Buffer; what: string; size: ImageSize }[] = [];
+
+  constructor(private readonly opts: FakeObjectOpts = {}) {}
+
+  async fromScene(scene: { bytes: Buffer; what: string }, size: ImageSize): Promise<SceneMesh> {
+    this.sceneCalls.push({ bytes: scene.bytes, what: scene.what, size });
+    const fail = this.opts.fail?.[scene.what];
+    if (fail === "error") throw new Error("fake segmentation app is down");
+    if (fail === "empty") throw new MaskEmptyError();
+    if (fail === "mesh") throw new MaskMeshError("fake SAM3D failed on the mask");
+    return this.opts.pose === undefined ? { glb: fakeGlb() } : { glb: fakeGlb(), pose: this.opts.pose };
+  }
 
   async mesh(_png: Buffer, name: string): Promise<Buffer> {
     this.calls.push({ name });

@@ -88,7 +88,7 @@ class Sam3D:
         self.inf = Inference(f"{CKPT}/hf/pipeline.yaml", compile=False)
 
     @modal.method()
-    def run(self, name: str, png: bytes, with_ply: bool = True) -> dict:
+    def run(self, name: str, png: bytes, with_ply: bool = True, mask=None) -> dict:
         import io
         import time
 
@@ -97,7 +97,11 @@ class Sam3D:
 
         t = time.time()
         rgb = np.array(Image.open(io.BytesIO(png)).convert("RGB"))
-        mask = white_bg_mask(rgb)
+        if mask is None:
+            mask = white_bg_mask(rgb)
+        elif isinstance(mask, (bytes, bytearray)):
+            # a SAM 3 PNG mask of the object in this very frame: no white background to look for
+            mask = np.array(Image.open(io.BytesIO(mask)).convert("L")) > 127
         rgba = self.inf.merge_mask_to_rgba(rgb, mask)
         # Inference.__call__ hardcodes mesh postprocess off; call the pipeline directly to get a textured GLB
         kw = dict(stage1_only=False, with_mesh_postprocess=True, with_layout_postprocess=False,
@@ -115,6 +119,16 @@ class Sam3D:
         return pack_result(name, out, with_ply, time.time() - t, baked)
 
 
+#: what `pipeline.run` puts in `out` about where the object sits in the frame
+POSE_KEYS = ("rotation", "translation", "scale")
+
+
+def _plain(value):
+    if hasattr(value, "detach"):
+        value = value.detach().cpu()
+    return value.tolist() if hasattr(value, "tolist") else value
+
+
 def pack_result(name, out, with_ply, sec, baked):
     ply = b""
     if with_ply:
@@ -123,7 +137,8 @@ def pack_result(name, out, with_ply, sec, baked):
             out["gs"].save_ply(str(path))
             ply = path.read_bytes()
     glb = out["glb"].export(file_type="glb") if out.get("glb") is not None else b""
-    return {"name": name, "glb": glb, "ply": ply, "sec": round(sec, 1), "baked": baked}
+    pose = {k: _plain(out[k]) for k in POSE_KEYS if k in out} or None
+    return {"name": name, "glb": glb, "ply": ply, "sec": round(sec, 1), "baked": baked, "pose": pose}
 
 
 def save_result(out_dir: Path, result: dict):

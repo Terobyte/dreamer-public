@@ -27,6 +27,7 @@ const out = sceneAssets(scene).map((r) => {
   if (r.kind !== "object" || want === undefined || want === null) return base;
   const image = String(want.image ?? "");
   const what = String(want.what ?? "");
+  const mode = want.mode === "redraw" ? "redraw" : "mask";
   if (image === "") return base;
   const full = resolve(root, image);
   // a symlink inside the scene folder pointing outside it must not leak its
@@ -41,7 +42,7 @@ const out = sceneAssets(scene).map((r) => {
     return base;
   }
   const bytes = readFileSync(real);
-  return { ...base, key: cacheKey(r.kind, r.prompt, r.aspect, { bytes, what }),
-    ref: { bytes: bytes.toString("base64"), what } };
+  return { ...base, key: cacheKey(r.kind, r.prompt, r.aspect, { bytes, what, mode }),
+    ref: { bytes: bytes.toString("base64"), what, mode } };
 });
 console.log(JSON.stringify(out));

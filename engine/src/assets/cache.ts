@@ -8,11 +8,16 @@ import { type AssetKind, promptFor } from "./templates.js";
  * only scale an asset at normalization time, so editing them must not
  * regenerate it — they stay out of the key.
  */
-export function cacheKey(kind: AssetKind, prompt: string, aspect?: string, ref?: { bytes: Buffer; what: string }): string {
+export function cacheKey(
+  kind: AssetKind,
+  prompt: string,
+  aspect?: string,
+  ref?: { bytes: Buffer; what: string; mode?: "mask" | "redraw" },
+): string {
   const base = promptFor(kind, prompt);
   let subject = kind === "object" ? base : `${base}|${aspect ?? "1:1"}`;
   // a reference picture changes what gets drawn; without one the key is the old one byte for byte
-  if (ref !== undefined) subject += `|ref|${createHash("sha256").update(ref.bytes).digest("hex")}|${ref.what}`;
+  if (ref !== undefined) subject += `|ref|${createHash("sha256").update(ref.bytes).digest("hex")}|${ref.what}|${ref.mode === "redraw" ? "redraw" : "mask"}`;
   return createHash("sha256").update(subject).digest("hex");
 }
 
@@ -25,6 +30,8 @@ export interface CachePaths {
   src: string;
   /** object only: the mesh. */
   glb: string;
+  /** object only: the pose SAM3D gave a mesh cut by mask (`null` when it gave none). */
+  pose: string;
 }
 
 export function cachePaths(cacheDir: string, key: string): CachePaths {
@@ -33,6 +40,7 @@ export function cachePaths(cacheDir: string, key: string): CachePaths {
     alpha: join(cacheDir, `${key}.alpha.png`),
     src: join(cacheDir, `${key}.src.png`),
     glb: join(cacheDir, `${key}.glb`),
+    pose: join(cacheDir, `${key}.pose.json`),
   };
 }
 

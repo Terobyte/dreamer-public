@@ -9,7 +9,7 @@ import { type AssetKind, promptFor, sizeFor } from "./templates.js";
 import { Budget, CapError, IMAGE_CENTS, MESH_CENTS, dollarsToCents } from "./cost.js";
 import { IMAGE_CONCURRENCY, pool } from "./batch.js";
 import { RetryableError } from "./providers/muse-image.js";
-import type { ImageProvider, ObjectProvider } from "./providers/types.js";
+import { MaskEmptyError, MaskMeshError, type ImageProvider, type ObjectProvider } from "./providers/types.js";
 
 export type AssetsMode = "none" | "cache" | "live";
 
@@ -19,8 +19,8 @@ export interface AssetRef {
   prompt: string;
   aspect: string;
   key: string;
-  /** object only: the picture bytes (read from the scene folder) and what to cut out; already in `key` */
-  ref?: { bytes: Buffer; what: string };
+  /** object only: the picture bytes (read from the scene folder), what to cut out and how (`mask` unless `redraw`); already in `key` */
+  ref?: { bytes: Buffer; what: string; mode: "mask" | "redraw" };
   /** why the declared `ref` could not be read: the asset is not generated and goes to `failed` */
   refError?: "REF_PATH" | "REF_MISSING";
 }
@@ -35,9 +35,20 @@ export interface AssetReport {
   cents: number;
   /** assets generated but rejected by a post-step (a sky that is not 2:1), or whose `ref` could not be read */
   failed?: AssetFailure[];
-  /** `REF_IGNORED`: an object with a `ref` drawn from text because the provider has no `fromRef` */
-  warnings?: { code: "REF_IGNORED"; id: string }[];
+  /**
+   * `REF_IGNORED`: an object with a `ref` drawn from text because the provider has no `fromRef`;
+   * `MASK_FALLBACK`: an object meant to be cut by mask that went the Н2 way (`reason`) or failed on SAM3D after the mask (no `reason`);
+   * `MASK_ALL_FALLBACK` (`id: "*"`): not one object went through the mask
+   */
+  warnings?: AssetWarning[];
 }
+
+export type MaskFallbackReason = "empty" | "error" | "unavailable";
+
+export type AssetWarning =
+  | { code: "REF_IGNORED"; id: string }
+  | { code: "MASK_FALLBACK"; id: string; reason?: MaskFallbackReason }
+  | { code: "MASK_ALL_FALLBACK"; id: string };
 
 export interface AssetsOpts {
   mode: AssetsMode;
@@ -102,6 +113,7 @@ function withRefs(scene: Scene, refs: AssetRef[], sceneDir: string | undefined):
     if (r.kind !== "object" || want === undefined || want === null) return r;
     const image = String(want.image ?? "");
     const what = String(want.what ?? "");
+    const mode = want.mode === "redraw" ? ("redraw" as const) : ("mask" as const);
     if (sceneDir === undefined) return { ...r, refError: "REF_MISSING" };
     const root = resolve(sceneDir);
     const full = resolve(root, image);
@@ -118,7 +130,7 @@ function withRefs(scene: Scene, refs: AssetRef[], sceneDir: string | undefined):
     } catch {
       return { ...r, refError: "REF_PATH" };
     }
-    const ref = { bytes: readFileSync(real), what };
+    const ref = { bytes: readFileSync(real), what, mode };
     return { ...r, ref, key: cacheKey(r.kind, r.prompt, r.aspect, ref) };
   });
 }
@@ -159,6 +171,7 @@ function remainingCents(cacheDir: string, ref: AssetRef): number {
   // a sky may pay a second image call: the edit that paints its seam band
   if (ref.kind === "sky") return 2 * IMAGE_CENTS;
   if (ref.kind !== "object") return IMAGE_CENTS;
+  // a mask object may still fall back to the Н2 path, so its picture stays in the estimate
   const hasSrc = existsSync(cachePaths(cacheDir, ref.key).src);
   return (hasSrc ? 0 : IMAGE_CENTS) + MESH_CENTS;
 }
@@ -282,7 +295,7 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   // An asset whose failure is not retryable (a permanent HTTP error, say
   // 401/403) is skipped on the second pass instead of wasting another attempt.
   const noRetry = new Set<string>();
-  const failed: Issue[] = [];
+  const failed: AssetFailure[] = [];
   const ignored = new Set<string>();
 
   /** The reference image: the asset itself for a tile or decal, the input for an object. */
@@ -364,11 +377,76 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
     }
   };
 
+  const maskWarn = new Map<string, AssetWarning>();
+  const masked = new Set<string>();
+  const maskHit = new Set<string>();
+  /**
+   * The Н2б path: SAM 3 cuts `what` out of the frame, SAM3D meshes it with
+   * that mask. `fallback` sends the asset on the Н2 path (said out loud);
+   * a SAM3D failure after the mask is `failed`, never a fallback.
+   */
+  const genScene = async (ref: AssetRef): Promise<"done" | "fallback" | "failed"> => {
+    const p = cachePaths(cacheDir, ref.key);
+    const fall = (reason: MaskFallbackReason): "fallback" => {
+      maskWarn.set(ref.id, { code: "MASK_FALLBACK", id: ref.id, reason });
+      return "fallback";
+    };
+    if (object.fromScene === undefined) return fall("unavailable");
+    // Admission only: the mesh spend itself is booked below, once SAM3D has
+    // actually run. A dead segmenter must not eat the MESH_CENTS the Н2
+    // fallback still needs to finish inside the estimate.
+    if (budget.spent + MESH_CENTS > budget.capCents) {
+      maskHit.add(ref.id);
+      return "failed";
+    }
+    let got: { glb: Buffer; pose?: object | null };
+    try {
+      got = await object.fromScene({ bytes: ref.ref!.bytes, what: ref.ref!.what }, sizeFor(ref.aspect));
+    } catch (e) {
+      if (e instanceof MaskEmptyError || (e as any)?.code === "MASK_EMPTY") return fall("empty");
+      if (e instanceof MaskMeshError || (e as any)?.code === "MASK_MESH") {
+        if (!budget.take(MESH_CENTS)) return "failed";
+        log(ref, MESH_CENTS);
+        noRetry.add(ref.id);
+        maskHit.add(ref.id);
+        maskWarn.set(ref.id, { code: "MASK_FALLBACK", id: ref.id });
+        failed.push({
+          code: "MASK_MESH" as any,
+          stage: "assets" as any,
+          path: `/assets/${ref.id}`,
+          msg: `assets: SAM3D failed on the mask of ${ref.id}: ${(e as Error).message}, drawing a placeholder`,
+          reason: "MASK_MESH",
+          id: ref.id,
+        } as AssetFailure);
+        return "failed";
+      }
+      return fall("error");
+    }
+    if (!budget.take(MESH_CENTS)) return "failed";
+    log(ref, MESH_CENTS);
+    try {
+      writeCached(p.pose, Buffer.from(JSON.stringify(got.pose ?? null)));
+      writeCached(p.glb, got.glb);
+    } catch {
+      noRetry.add(ref.id);
+      maskHit.add(ref.id);
+      return "failed";
+    }
+    masked.add(ref.id);
+    return "done";
+  };
+  const wantsMask = (ref: AssetRef): boolean => ref.kind === "object" && ref.ref !== undefined && ref.ref.mode !== "redraw";
+  const viaMask = new Set<string>();
+
   // Images run in a capped pool; each object's mesh is kicked off the moment
   // its own image resolves, uncapped, so it overlaps unrelated image calls
   // instead of waiting for the whole pool to drain.
   const firstPassMeshes: Promise<void>[] = [];
   await pool(todo, IMAGE_CONCURRENCY, async (ref) => {
+    if (wantsMask(ref)) {
+      viaMask.add(ref.id);
+      if ((await genScene(ref)) !== "fallback") return;
+    }
     await genImage(ref);
     if (ref.kind === "object") firstPassMeshes.push(genMesh(ref));
   });
@@ -389,9 +467,15 @@ async function runLive(scene: Scene, refs: AssetRef[], opts: AssetsOpts): Promis
   await Promise.all(retryMeshes);
 
   const report: AssetReport = reportFrom(cacheDir, refs, budget.spent);
-  if (ignored.size > 0) {
-    report.warnings = refs.filter((r) => ignored.has(r.id)).map((r) => ({ code: "REF_IGNORED" as const, id: r.id }));
+  const warnings: AssetWarning[] = [];
+  for (const r of refs) {
+    if (ignored.has(r.id)) warnings.push({ code: "REF_IGNORED", id: r.id });
+    const m = maskWarn.get(r.id);
+    if (m !== undefined) warnings.push(m);
   }
+  // a warning for the host: the mask path is wired but nothing came through it
+  if (viaMask.size > 0 && masked.size === 0 && maskHit.size === 0) warnings.push({ code: "MASK_ALL_FALLBACK", id: "*" });
+  if (warnings.length > 0) report.warnings = warnings;
   return failed.length > 0 ? { ...report, failed } : report;
 }
 

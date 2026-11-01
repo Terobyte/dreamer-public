@@ -405,7 +405,11 @@
             "required": ["image", "what"],
             "additionalProperties": false,
             "description": "object only (REF_KIND otherwise): a picture of the place, path relative to the scene folder, and what to cut out of it",
-            "properties": { "image": { "type": "string" }, "what": { "type": "string" } }
+            "properties": {
+              "image": { "type": "string" },
+              "what": { "type": "string" },
+              "mode": { "enum": ["mask", "redraw"], "default": "mask", "description": "mask: SAM 3 cuts `what` out of the frame and SAM3D meshes it with that mask; redraw: Muse redraws it on white first (Н2)" }
+            }
           }
         }
       }

@@ -114,12 +114,14 @@ class FakeEngine:
                         raw = None
                     if raw is not None:
                         # тот же ключ, что считает движок (cacheKey в engine/src/assets/cache.ts
-                        # через keys.ts): promptFor без имени ассета, затем |ref|sha256(байтов)|what
+                        # через keys.ts): promptFor без имени ассета, затем |ref|sha256(байтов)|what|mode
                         framed = ("single object, front view facing the camera, whole object, "
                                   "plain white background, no shadow. %s" % prompt)
-                        subject = "%s|ref|%s|%s" % (framed, hashlib.sha256(raw).hexdigest(), ref["what"])
+                        mode = ref.get("mode") if isinstance(ref.get("mode"), str) else None
+                        mode = "redraw" if mode == "redraw" else "mask"
+                        subject = "%s|ref|%s|%s|%s" % (framed, hashlib.sha256(raw).hexdigest(), ref["what"], mode)
                         row["key"] = hashlib.sha256(subject.encode()).hexdigest()
-                        row["ref"] = {"bytes": base64.b64encode(raw).decode(), "what": ref["what"]}
+                        row["ref"] = {"bytes": base64.b64encode(raw).decode(), "what": ref["what"], "mode": mode}
             out.append(row)
         return out
 
@@ -168,6 +170,66 @@ class FailedImages:
 class FailedMeshes:
     def submit(self, name, png):
         raise RuntimeError('offline mesh provider')
+
+
+class FakeSegmenter:
+    """Stand-in for SAM 3 (`SEG_APP`): remembers the frame and `what`; `fail` by what: error | empty."""
+
+    def __init__(self, fail=None):
+        self.fail = dict(fail or {})
+        self.calls = []
+
+    def mask(self, png, what):
+        self.calls.append({"png": bytes(png), "what": what})
+        mode = self.fail.get(what)
+        if mode == "error":
+            raise RuntimeError("fake SAM 3 app is down")
+        if mode == "empty":
+            from pipe2.assets import MaskEmpty
+
+            raise MaskEmpty(what)
+        return b"mask:" + what.encode()
+
+
+class _FakeHandle:
+    def __init__(self, call):
+        self.call = call
+
+    def get(self, timeout):
+        return self.call()
+
+
+class FakeSam3D:
+    """Stand-in for `Sam3D.run(name, png, with_ply, mask=None)`: remembers the mask it got."""
+
+    def __init__(self, fail=False, pose=None):
+        self.fail = fail
+        self.pose = pose
+        self.calls = []
+
+    def run(self, name, png, with_ply=True, mask=None):
+        self.calls.append({"name": name, "png": bytes(png), "mask": mask})
+        if self.fail:
+            raise RuntimeError("fake SAM3D failed")
+        return {"name": name, "glb": b"glb", "ply": b"", "sec": 1.0, "baked": True, "pose": self.pose}
+
+    def handle(self, name, png, mask=None):
+        return _FakeHandle(lambda: self.run(name, png, False, mask))
+
+
+class FakeSceneMeshes:
+    """Fake `MeshProvider` with the mask path: segmenter first, then SAM3D with `mask=`."""
+
+    def __init__(self, segmenter=None, sam3d=None):
+        self.segmenter = segmenter or FakeSegmenter()
+        self.sam3d = sam3d or FakeSam3D()
+
+    def submit(self, name, png):
+        return self.sam3d.handle(name, png)
+
+    def from_scene(self, name, frame, what):
+        mask = self.segmenter.mask(frame, what)
+        return self.sam3d.handle(name, frame, mask)
 
 
 class FakeAutoscaler:

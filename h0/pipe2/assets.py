@@ -68,24 +68,28 @@ def as_png(data: bytes) -> bytes:
     return out.getvalue()
 
 
-def _spec_ref(spec: dict) -> tuple[bytes | None, str | None]:
-    """`(bytes, what)` when this key was queued with its reference frame, else `(None, None)`.
+def _spec_ref(spec: dict) -> tuple[bytes | None, str | None, str]:
+    """`(bytes, what, mode)` when this key was queued with its reference frame,
+    else `(None, None, "mask")`.
 
     `keys.ts` carries the frame as base64 (JSON cannot hold bytes); in-process
     callers pass raw bytes. Anything unparseable means text-only: never fail a
-    whole asset on a bad sidecar."""
+    whole asset on a bad sidecar. An unset `mode` means `mask`, like the engine.
+    `mode` always travels with the bytes and `what`, never read separately."""
     ref = spec.get("ref") if isinstance(spec, dict) else None
     if not isinstance(ref, dict) or not isinstance(ref.get("what"), str):
-        return None, None
+        return None, None, "mask"
+    mode = ref.get("mode")
+    mode = "redraw" if mode == "redraw" else "mask"
     raw = ref.get("bytes")
     if isinstance(raw, (bytes, bytearray)):
-        return bytes(raw), ref["what"]
+        return bytes(raw), ref["what"], mode
     if isinstance(raw, str):
         try:
-            return base64.b64decode(raw), ref["what"]
+            return base64.b64decode(raw), ref["what"], mode
         except Exception:
-            return None, None
-    return None, None
+            return None, None, "mask"
+    return None, None, "mask"
 
 
 def _multipart(fields: dict, files: dict) -> tuple[bytes, str]:
@@ -163,8 +167,37 @@ class ModalHandle:
         return self.call.get(timeout=timeout)
 
 
-#: `--mesh` -> deployed (app, class); `run(name, png, with_ply)` (h0/sam3d_modal.py)
+#: `--mesh` -> deployed (app, class); `run(name, png, with_ply, mask=None)` (h0/sam3d_modal.py)
 MESH_APPS = {"sam3d": ("dreamer-sam3d", "Sam3D")}
+#: text -> mask (SAM 3, h0/sam3_modal.py): `mask(png, what) -> PNG`. A stub until SAM 3 is deployed (parked)
+SEG_APP = ("dreamer-sam3", "Sam3")
+
+
+class MaskEmpty(Exception):
+    """The segmenter found nothing worth cutting: the asset goes the redraw (Н2) way."""
+
+    code = "MASK_EMPTY"
+
+
+class MaskMeshError(Exception):
+    """SAM3D failed after the mask arrived: an ordinary mesh failure, never a redraw fallback."""
+
+    code = "MASK_MESH"
+
+
+def _mask_empty(problem: Exception) -> bool:
+    # a remote MaskEmpty may come back as another class of the same name
+    return getattr(problem, "code", None) == "MASK_EMPTY" or type(problem).__name__ == "MaskEmpty"
+
+
+def _mask_mesh(problem: Exception) -> bool:
+    return getattr(problem, "code", None) == "MASK_MESH" or type(problem).__name__ == "MaskMeshError"
+
+
+def _wants_mask(spec: dict) -> bool:
+    """An object with a readable frame and no `mode: "redraw"`: an unset mode means mask."""
+    frame, _, mode = _spec_ref(spec)
+    return spec.get("kind") == "object" and frame is not None and mode != "redraw"
 #: seconds from submit to GLB, cold start included
 MESH_TIMEOUT_S = {"sam3d": 330}
 
@@ -187,6 +220,18 @@ class ModalMesh:
     def submit(self, name: str, png: bytes):
         # the mesh comes back in full; the engine cuts it to the budget at build time
         return ModalHandle(self._run().spawn(name, png, with_ply=False))
+
+    def from_scene(self, name: str, frame: bytes, what: str):
+        """SAM 3 masks `what` in the frame (blocking), then SAM3D meshes the frame with that mask.
+        A segmentation failure raises here; a SAM3D failure comes back through the handle -
+        except a `spawn` that blows up on submit, which raises MaskMeshError (failed, never a fallback)."""
+        import modal
+
+        mask = modal.Cls.from_name(*SEG_APP)().mask.remote(frame, what)
+        try:
+            return ModalHandle(self._run().spawn(name, frame, with_ply=False, mask=mask))
+        except Exception as problem:
+            raise MaskMeshError(name) from problem
 
 
 class _Asset:
@@ -221,6 +266,8 @@ class AssetQueue:
         self._lock = threading.RLock()
         self._assets: dict[str, _Asset] = {}
         self._rooms: dict[str, set[str]] = {}
+        # the mask path: tried, still running, came through, reached SAM3D but failed; MASK_ALL_FALLBACK is said once
+        self._mask = {"tried": 0, "pending": 0, "ok": 0, "hit": 0, "said": False}
 
     # -- queue ----------------------------------------------------------------
 
@@ -260,7 +307,16 @@ class AssetQueue:
         """No more keys will be accepted; assets already in flight still finish."""
         with self._lock:
             self.closed = True
+        self._mask_summary()
 
+    def _mask_summary(self) -> None:
+        """Once closed and settled: not one object came through the mask -> a warning for the host."""
+        with self._lock:
+            m = self._mask
+            if not self.closed or m["pending"] or not m["tried"] or m["ok"] or m["hit"] or m["said"]:
+                return
+            m["said"] = True
+        self.ledger.record({"kind": "MASK_ALL_FALLBACK", "tried": m["tried"]})
     def idle(self) -> bool:
         with self._lock:
             assets = list(self._assets.values())
@@ -287,11 +343,84 @@ class AssetQueue:
 
     def _run(self, asset: _Asset) -> None:
         try:
+            if _wants_mask(asset.spec) and self._scene(asset):
+                return
             png = self._picture(asset)
             if png is not None and asset.spec["kind"] == "object":
                 self._mesh(asset, png)
         finally:
             asset.finished.set()
+
+    def _mask_fallback(self, asset: _Asset, reason: str) -> None:
+        self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room,
+                            "asset": asset.spec["key"], "reason": reason})
+
+    def _scene(self, asset: _Asset) -> bool:
+        """The mask path. True: the asset is settled here (meshed or failed); False: go the Н2 way.
+        A SAM3D failure after the mask is an ordinary mesh failure, never a fallback."""
+        from_scene = getattr(self.meshes, "from_scene", None)
+        if from_scene is None:
+            with self._lock:
+                self._mask["tried"] += 1
+            self._mask_fallback(asset, "unavailable")
+            return False
+        with self._lock:
+            self._mask["tried"] += 1
+            self._mask["pending"] += 1
+        try:
+            return self._scene_mesh(asset, from_scene)
+        finally:
+            with self._lock:
+                self._mask["pending"] -= 1
+            self._mask_summary()
+
+    def _scene_mesh(self, asset: _Asset, from_scene) -> bool:
+        key = asset.spec["key"]
+        frame, what, _ = _spec_ref(asset.spec)
+        estimate = self.ledger.cost_of("h100_s", self.mesh_timeout_s)
+        if not self.ledger.allow("h100_s", estimate):
+            self._failed(asset, "cap")
+            with self._lock:
+                self._mask["hit"] += 1
+            return True
+        started = self.clock()
+        try:
+            handle = from_scene(key, frame, what)
+        except Exception as problem:
+            if _mask_mesh(problem):
+                # the mask arrived and SAM3D blew up on submit: an ordinary mesh
+                # failure, said out loud like the through-handle path below, never a redraw
+                self.ledger.charge("h100_s", self.mesh_timeout_s, reserved=estimate)
+                self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
+                self._failed(asset, type(problem).__name__)
+                with self._lock:
+                    self._mask["hit"] += 1
+                return True
+            self.ledger.charge("h100_s", 0, reserved=estimate)
+            self._mask_fallback(asset, "empty" if _mask_empty(problem) else "error")
+            return False
+        answer, reason = self._poll(handle, started)
+        sec = answer.get("sec") if isinstance(answer, dict) else None
+        units = sec if isinstance(sec, (int, float)) else self.mesh_timeout_s
+        self.ledger.charge("h100_s", units, reserved=estimate)
+        if reason is not None:
+            self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
+            self._failed(asset, reason)
+            with self._lock:
+                self._mask["hit"] += 1
+            return True
+        try:
+            # the pose first: a GLB on disk is what marks the asset done
+            self._write(f"{key}.pose.json", json.dumps(answer.get("pose")).encode())
+            self._write(f"{key}.glb", answer["glb"])
+        except OSError as problem:
+            self._failed(asset, type(problem).__name__)
+            with self._lock:
+                self._mask["hit"] += 1
+            return True
+        with self._lock:
+            self._mask["ok"] += 1
+        return True
 
     def _picture(self, asset: _Asset) -> bytes | None:
         spec = asset.spec
@@ -306,7 +435,7 @@ class AssetQueue:
         if not self.ledger.allow("image", estimate):
             self._failed(asset, "cap")
             return None
-        ref_bytes, ref_what = _spec_ref(spec)
+        ref_bytes, ref_what, _ = _spec_ref(spec)
         use_from_ref = ref_bytes is not None and hasattr(self.images, "fromRef")
         try:
             if use_from_ref:

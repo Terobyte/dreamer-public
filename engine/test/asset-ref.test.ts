@@ -19,7 +19,7 @@ function tmp(): string {
 function scene(refImage = "refs/bedroom.png"): any {
   return {
     assets: {
-      bed: { kind: "object", prompt: "a wooden bed", ref: { image: refImage, what: "кровать у левой стены" } },
+      bed: { kind: "object", prompt: "a wooden bed", ref: { image: refImage, what: "кровать у левой стены", mode: "redraw" } },
       chair: { kind: "object", prompt: "a wooden chair" },
     },
     props: [{ asset: "bed" }, { asset: "chair" }],

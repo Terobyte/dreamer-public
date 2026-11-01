@@ -96,7 +96,7 @@
 | `assets/templates.ts` | `AssetKind = tile\|decal\|object\|sky`, шаблон промпта, размер по aspect | `promptFor(kind, prompt)`, `sizeFor(aspect)` | — | `assets-cache.test.ts` |
 | `assets/cache.ts` | ключ кэша = sha256 шаблонного промпта (+aspect кроме object); `size`/`front_deg` в ключ НЕ входят | `cacheKey(kind, prompt, aspect, ref?)` (с `ref` в ключ входят sha256 байтов картинки и `what`; без `ref` ключ прежний), `cachePaths(dir,key)` -> `<key>.png/.alpha.png/.src.png/.glb`, `appendLedger` -> `ledger.jsonl` | cache dir | `assets-cache.test.ts` |
 | `assets/cost.ts` | деньги в центах: `IMAGE_CENTS 1`, `MESH_CENTS 15`; потолок | `priceCents`, `dollarsToCents`, `totalCents`, `class Budget`, `CapError` | — | `assets-cache`, `assets-live.test.ts` |
-| `assets/run.ts` | список ассетов сцены, чего нет в кэше, живой прогон (картинка -> альфа -> меш), режимы `none\|cache\|live` | `sceneAssets`, `missingAssets(scene, cache, sceneDir?)`, `runAssets` (`opts.sceneDir`: `ref.image` читается только внутри папки сцены, иначе `failed` `REF_PATH`/`REF_MISSING`; провайдер без `fromRef` → `warnings` `REF_IGNORED`), `resolvedAssets(..., sceneDir?)` | AssetReport | `assets-live.test.ts` (25), `build-assets.test.ts`, `asset-ref.test.ts` |
+| `assets/run.ts` | список ассетов сцены, чего нет в кэше, живой прогон (картинка -> альфа -> меш), режимы `none\|cache\|live` | `sceneAssets`, `missingAssets(scene, cache, sceneDir?)`, `runAssets` (`opts.sceneDir`: `ref.image` читается только внутри папки сцены, иначе `failed` `REF_PATH`/`REF_MISSING`; провайдер без `fromRef` → `warnings` `REF_IGNORED`; `ref.mode` `mask` (по умолчанию) → `ObjectProvider.fromScene`, иначе/при сбое путь Н2 с `MASK_FALLBACK` `empty\|error\|unavailable`, ни одного через маску → `MASK_ALL_FALLBACK`; поза SAM3D в `<key>.pose.json` → `build.json assets.pose`), `resolvedAssets(..., sceneDir?)` | AssetReport | `assets-live.test.ts` (25), `build-assets.test.ts`, `asset-ref.test.ts`, `asset-mask.test.ts` |
 | `assets/batch.ts` | пул параллельных задач, `IMAGE_CONCURRENCY = 16` | `pool(items, limit, fn)` | — | `assets-live` |
 | `assets/glb.ts` | GLB 2.0 reader/writer + нормализация SAM3D: front -> +Z (`front_deg`), низ на y=0, центр по footprint | `readGlb`, `writeGlb`, `normalizeGlb` | .glb | `glb.test.ts` (18) |
 | `assets/tris.ts` | треугольники GLB | `glbTriangles(buf)` | — | `glb.test.ts` |
@@ -211,7 +211,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 
 | файл | что | заметка |
 |---|---|---|
-| `sam3d_modal.py` | Modal app `dreamer-sam3d`, H100, `Sam3D.run(name, png, with_ply)`, `scaledown_window=600`, без лимита контейнеров (N объектов -> N GPU); `watchdog` по расписанию каждые 2 мин; CLI `modal run h0/sam3d_modal.py --out D --pngs a.png,b.png` | единственный Modal app с моделью |
+| `sam3_modal.py` | Modal app SAM 3 (`SEG_APP` в `pipe2/assets.py`, заглушка `dreamer-sam3`, не развёрнут): `Sam3.mask(png, what) -> PNG` лучшего совпадения, пусто или < 0.5% кадра → `MaskEmpty` (`MASK_EMPTY`) | маска по тексту для Н2б |
+| `sam3d_modal.py` | Modal app `dreamer-sam3d`, H100, `Sam3D.run(name, png, with_ply, mask=None)` (с `mask` белый фон не ищется; `pose` из `out` в результате), `scaledown_window=600`, без лимита контейнеров (N объектов -> N GPU); `watchdog` по расписанию каждые 2 мин; CLI `modal run h0/sam3d_modal.py --out D --pngs a.png,b.png` | единственный Modal app с моделью |
 | `sam3d_buildcheck.py` | проверка импортов образа SAM3D на T4 | — |
 | `muapi_3d.py` | PNG -> GLB через muapi (Tripo/Meshy); читает ключ из `music-video/.env` | платный, $0.30-0.50 за меш |
 | `gen_images.py`, `h13_*.py`, `h16_*.py`, `actor_test.py`, `gate_test.py`, `hint_test.py`, `load_test.py` | эксперименты/ранние тесты (H13 небо+шов, H16 комната Сквидварда, дверь-гейт, лестница намёков) | `gate_test` импортируется `live/rt.py` |
@@ -254,7 +255,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | собрать dist из scene.json | `dreamer build --out D --assets none\|cache\|live`; `build/write.ts writeDist`; Python `Engine.build` |
 | снимки камер сцены | `dreamer shots <dist>` (`build/shots.ts runShots`) -> `dist/shots/<cam>.png`, `sheet.png`; Python `engine.shots_retry` |
 | имена файлов снимков | `build/shotnames.ts shotBaseNames`; в pipe2 `room.shot_filenames` |
-| предмет по картинке места (вырезать и перерисовать на белом → SAM3D) | `ref: {image, what}` у `object` в сцене; `ImageProvider.fromRef` (`MuseImageProvider.fromRef` = `edit` на `/v1/images/edits`); в pipe2 — `floor.py attach_refs` |
+| предмет по картинке места (вырезать и перерисовать на белом → SAM3D) | `ref: {image, what, mode: "redraw"}` у `object` в сцене; `ImageProvider.fromRef` (`MuseImageProvider.fromRef` = `edit` на `/v1/images/edits`); в pipe2 — `floor.py attach_refs` |
+| предмет прямо из кадра места по маске (SAM 3 → SAM3D, без перерисовки) | `ref: {image, what}` (mode `mask` по умолчанию); `ObjectProvider.fromScene`; в pipe2 — `ModalMesh.from_scene` / `AssetQueue` (`SEG_APP`), фейки `FakeSegmenter`/`FakeSam3D`/`FakeSceneMeshes` |
 | кэш-ключ ассета | `assets/cache.ts cacheKey(kind, prompt, aspect, ref?)`; из Python только через `pipe2/keys.ts` (`Engine.asset_keys`) |
 | пути файлов кэша ассета | `cachePaths(dir, key)` |
 | цена/потолок денег (engine) | `assets/cost.ts Budget`, `priceCents`, `CapError` |
