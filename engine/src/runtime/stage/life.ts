@@ -1,0 +1,87 @@
+import { Quaternion, Vector3, type Object3D } from "three";
+
+/** Procedural idle for any humanoid rig: breath in the chest, weight shift in the spine, the head looking
+ *  around, nods while talking. Koshakan (Nov 1): anymove gives verbs, never an idle, so between verbs the
+ *  cast stood as a still frame. The layer rides on top of whatever the mixer wrote and is undone before the
+ *  next mixer update, so it never accumulates, also on bones no clip animates. Arms and pelvis are left
+ *  alone: feet stay planted and a held pose stays held. */
+export interface Life {
+  /** undo the last offsets (call before mixer.update) */
+  before(): void;
+  /** lay new offsets; weight 0..1 scales breath/look, talking adds nods */
+  after(dt: number, o: { weight: number; talking: boolean }): void;
+}
+
+// per joint, candidate names in priority order (a rig with spine1/spine2/chest breathes in "chest", not spine2)
+const PICK: Record<string, string[]> = {
+  spine: ["spine1", "spine_01", "spine01", "spine"],
+  chest: ["chest", "upperchest", "upper_chest", "spine2", "spine_02", "spine02"],
+  neck: ["neck", "neck1", "neck_01"],
+  head: ["head"],
+};
+
+const hash = (s: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+};
+
+export function createLife(root: Object3D, seed = ""): Life | null {
+  const byName = new Map<string, Object3D>();
+  root.traverse((o) => {
+    const n = o.name.toLowerCase();
+    if (n && !byName.has(n)) byName.set(n, o);
+  });
+  const bones: Record<string, Object3D | undefined> = {};
+  for (const [k, names] of Object.entries(PICK)) bones[k] = names.map((n) => byName.get(n)).find(Boolean);
+  if (!bones.head && !bones.chest) return null;
+  // phases from the seed: two actors never breathe in lockstep
+  let h = hash(seed || "actor");
+  const ph = Array.from({ length: 8 }, () => ((h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0), (h / 4294967296) * Math.PI * 2));
+  const rate = 0.85 + (hash(seed + "rate") % 1000) / 1000 * 0.3;  // 0.85..1.15 tempo
+
+  const applied = new Map<Object3D, Quaternion>();
+  const R = new Vector3(), U = new Vector3(), F = new Vector3();
+  const rootQ = new Quaternion(), boneQ = new Quaternion(), d = new Quaternion(), step = new Quaternion(), ax = new Vector3();
+  let t = 0, w = 0, tw = 0;
+  const D = Math.PI / 180;
+  const S = (period: number, p: number): number => Math.sin((2 * Math.PI * t * rate) / period + p);
+
+  const lay = (b: Object3D | undefined, pitch: number, yaw: number, roll: number): void => {
+    if (!b || (!pitch && !yaw && !roll)) return;
+    b.getWorldQuaternion(boneQ).invert();
+    d.identity();
+    for (const [axis, a] of [[R, pitch], [U, yaw], [F, roll]] as Array<[Vector3, number]>) {
+      if (!a) continue;
+      ax.copy(axis).applyQuaternion(boneQ).normalize();  // world axis -> bone local: the same turn on any rig
+      d.multiply(step.setFromAxisAngle(ax, a * D));
+    }
+    b.quaternion.multiply(d);
+    applied.set(b, d.clone());
+  };
+
+  return {
+    before() {
+      for (const [b, q] of applied) b.quaternion.multiply(q.invert());
+      applied.clear();
+    },
+    after(dt, o) {
+      t += dt;
+      const k = Math.min(1, dt * 3);
+      w += (o.weight - w) * k;
+      tw += ((o.talking ? 1 : 0) - tw) * Math.min(1, dt * 6);
+      root.getWorldQuaternion(rootQ);
+      R.set(1, 0, 0).applyQuaternion(rootQ);
+      U.set(0, 1, 0).applyQuaternion(rootQ);
+      F.set(0, 0, 1).applyQuaternion(rootQ);
+      const breath = S(4.2, ph[0]);
+      const look = 0.6 * S(9.1, ph[1]) + 0.4 * S(5.3, ph[2]);
+      const nod = Math.sin(2 * Math.PI * t * 2.1 + ph[6]) * (0.6 + 0.4 * Math.sin(2 * Math.PI * t * 0.37 + ph[7]));
+      // parent first: each child reads the world turn its parent was just given
+      lay(bones.spine, 0, w * 1.6 * S(11, ph[3]), w * 1.3 * S(7.3, ph[4]));
+      lay(bones.chest, w * 1.5 * breath + tw * 0.8 * nod, 0, 0);
+      lay(bones.neck, w * -0.6 * breath, w * 2 * look, 0);
+      lay(bones.head, w * 2.2 * S(6.7, ph[5]) + tw * 4.5 * nod, w * 6 * look + tw * 2.5 * Math.sin(2 * Math.PI * t * 1.3 + ph[2]), w * 1.2 * S(8.3, ph[0]));
+    },
+  };
+}

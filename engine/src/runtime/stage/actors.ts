@@ -58,7 +58,8 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       loadClips(who, clipUrls),
     ]);
     body = b;
-    if (Object.keys(clips).length) animator = createAnimator(body, clips, { idle });
+    // always: with no clip the animator still runs the life layer (breath, look, nods) on a rigged body
+    animator = createAnimator(body, clips, { idle, seed: who });
   } catch (e) {
     console.warn(`stage: actor "${who}" GLB failed (${String(e)}), using a box`);
     body = new Group();
@@ -98,7 +99,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     const sway = moving ? Math.sin(now * 9) * 0.05 : 0;
     const talking = now < talkUntil;
     group.position.set(x, y + bob - (act === "sit" && !moving ? SIT_DROP : 0), z);
-    group.rotation.set(talking ? 0.04 + Math.sin(now * 6) * 0.05 : 0, (cur * Math.PI) / 180, sway);
+    // a rigged body nods with its head (life layer); a box or an unrigged mesh rocks as a whole
+    const rock = talking && !animator?.alive() ? 0.04 + Math.sin(now * 6) * 0.05 : 0;
+    group.rotation.set(rock, (cur * Math.PI) / 180, sway);
   };
   apply(0, false);
 
@@ -175,7 +178,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         if (m && !wasMoving) (animator.has("walk") ? animator.play("walk") : animator.idle());
         else if (!m && wasMoving) animator.idle();
         wasMoving = m;
-        animator.update(dt);
+        animator.update(dt, { talking: clock < talkUntil });
       }
     },
   };

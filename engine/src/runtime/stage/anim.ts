@@ -1,11 +1,15 @@
+import { createLife } from "./life.js";
 import { AnimationClip, AnimationMixer, LoopOnce, LoopRepeat, PropertyBinding, Quaternion, Vector3, type AnimationAction, type KeyframeTrack, type Object3D } from "three";
 
 export interface Animator {
   play(name: string, o?: { once?: boolean }): void;
-  update(dt: number): void;
+  /** advance; `talking` adds head nods to the life layer */
+  update(dt: number, o?: { talking?: boolean }): void;
   /** back to the idle pose (crossfade) */
   idle(): void;
   current(): string;
+  /** the body has a life layer (a rig with a head or chest) */
+  alive(): boolean;
   has(name: string): boolean;
   /** inspection helpers (tests, debugging) */
   weight(name: string): number;
@@ -172,7 +176,7 @@ function restPose(root: Object3D, reg: Map<string, AnimationClip>): { name: stri
 }
 
 /** One AnimationMixer per character: clips retargeted by bone name, calibration head cut, root walks in place, crossfades. */
-export function createAnimator(root: Object3D, clips: Record<string, AnimationClip>, opts: { idle?: string; fade?: number } = {}): Animator {
+export function createAnimator(root: Object3D, clips: Record<string, AnimationClip>, opts: { idle?: string; fade?: number; seed?: string; life?: boolean } = {}): Animator {
   const fade = opts.fade ?? 0.15;
   const mixer = new AnimationMixer(root);
   // bind pose of the upper arms, once, before the first update
@@ -255,6 +259,7 @@ export function createAnimator(root: Object3D, clips: Record<string, AnimationCl
     else hold = 0;
   }
 
+  const life = opts.life === false ? null : createLife(root, opts.seed);
   const warned = new Set<string>();
   let state: "idle" | "clip" = "idle";
   let cur: AnimationAction | null = null;
@@ -323,8 +328,14 @@ export function createAnimator(root: Object3D, clips: Record<string, AnimationCl
     idle() {
       if (state !== "idle") goIdle();
     },
-    update: (dt) => void mixer.update(dt),
+    update(dt, o = {}) {
+      life?.before();
+      mixer.update(dt);
+      // full life in idle; a clip keeps a little breath under it
+      life?.after(dt, { weight: state === "idle" ? 1 : 0.3, talking: !!o.talking });
+    },
     current: () => (state === "idle" ? idleName : curName),
+    alive: () => !!life,
     has: (n) => reg.has(n),
     weight: (n) => actions.get(n)?.getEffectiveWeight() ?? 0,
     time: (n) => actions.get(n)?.time ?? 0,
