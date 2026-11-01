@@ -2,9 +2,9 @@
 
 Вынесено из `specs/make-one-prompt.md` (хозяин 2026-10-31): блок Б идёт тремя параллельными прогонами tero — Б1 (`../meta-dream-b1`, ветка `tero/dream-b1`), Б2 (`../meta-dream-b2`, ветка `tero/dream-b2`) и Б3+Б4 в основном дереве `meta` (ветка `tero/make-engine-bugs`). Каждый прогон в своём worktree и своей ветке; хозяин сливает их после SHIP. Спека-основание та же: `specs/2026-10-31-dreamer-make.md` v0.6; описание багов — `bugs.md`, раздел «Охота 2026-10-31».
 
-**Игроки и раунды:** Sonnet ×1 → Muse contributor ×5 → Opus ×1 (`--player-schedule claude:claude-sonnet-5-5×1,muse:muse-spark-1.3-contributor×5,claude:claude-opus-5-5×1`), 7 раундов. Судья codex gpt-6-luna, тестера нет, эскалация claude:sonnet.
+**Игроки и раунды:** Sonnet ×1 → Muse Open (Baseten, opencode) ×2 → Opus ×1 (`--player-schedule claude:claude-sonnet-5-5×1,opencode:baseten/meta-models/muse-spark-open-1026×2,claude:claude-opus-5-5×1`), 4 раунда. Судья codex gpt-6-luna, тестера нет, эскалация claude:sonnet.
 
-**Фьюз:** нет SHIP за 7 раундов — хозяин доделывает фазу в дереве или записывает долг в `specs/make-debt.md`.
+**Фьюз:** нет SHIP за 4 раунда — хозяин доделывает фазу в дереве или записывает долг в `specs/make-debt.md`.
 
 **Общие правила.**
 - Сегодня (10-31) ни одного живого вызова: Spark, Muse Image, Modal, MuAPI, Fish, Commons/Fandom/Openverse/Tavily — даже бесплатного. В тестах сеть запрещена (`urllib.request.urlopen` → `AssertionError`, как в `h0/dream/test_freestyle.py`). Ключи не читать и не печатать.
