@@ -375,13 +375,18 @@ class Mind:
         if not got.get("so_far"):
             return False
         self.so_far = _words(got["so_far"], 90)
+        # B45: a reply cut before a label keeps that list; B44: the newest six stay
         for key in ("knows", "promised"):
-            items = [_words(x.strip(" ."), 25) for x in (got.get(key) or "").split(";")]
-            setattr(self, key, [x for x in items if x and x.lower() not in ("none", "nothing")][:6])
-        tried_raw = [x.strip(" .") for x in (got.get("tried") or "").split(";")]
+            if key not in got:
+                continue
+            items = [_words(x.strip(" ."), 25) for x in got[key].split(";")]
+            setattr(self, key, [x for x in items if x and x.lower() not in ("none", "nothing")][-6:])
+        if "tried" not in got:
+            return True
+        tried_raw = [x.strip(" .") for x in got["tried"].split(";")]
         tried_raw = [x for x in tried_raw if x and x.lower() not in ("none", "nothing")]
         if lines is None:
-            self.tried = [_words(x, 25) for x in tried_raw][:TRIED_KEEP]
+            self.tried = [_words(x, 25) for x in tried_raw][-TRIED_KEEP:]
             return True
         new = _scene_tried(tried_raw, lines, actors, names)
         merged = {who: list(items) for who, items in self.tried_by.items()}

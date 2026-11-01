@@ -333,6 +333,7 @@ class Sim:
         self._turn_epoch = 0
         self._last_tick = -1e9
         self._prepared_meta = None
+        self._prepared_taken = None  # B50: events the prepared line's worker took
         self._inbox = queue.Queue()
         self.stopped = False
         self.clock = Clock(speed=speed)
@@ -917,6 +918,7 @@ class Sim:
             self.prepared_npc = None
             self._prepared_meta = None
             self._prepared_audio_seconds = None
+            self._drop_prepared_taken()
         self._turn_epoch += 1
         self._discard_reason = "human"
         out.append({"type": "line_queued", "turn_owner": "human", "text": clean})
@@ -1402,6 +1404,7 @@ class Sim:
             queued = dict(self._prepared_meta or {}, owner="npc", text=self.prepared_npc)
             self.prepared_npc = None
             self._prepared_meta = None
+            self._prepared_taken = None
             audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
         if queued is not None:
             self._start_line(queued, audio_seconds)
@@ -1531,6 +1534,12 @@ class Sim:
         self._diagnostic({"type": "silence", "pressure": table})
         return None, None
 
+    def _drop_prepared_taken(self):
+        """B50: a prepared line thrown away gives its events back, as B47 does."""
+        taken, self._prepared_taken = self._prepared_taken, None
+        if taken is not None:
+            self._return_taken(taken)
+
     def _return_taken(self, taken):
         who, role, events = taken
         if not events:
@@ -1594,7 +1603,11 @@ class Sim:
                     self._diagnostic({"type": "narrator", "text": line["text"],
                                       "cause": line["cause"]})
             elif line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
-                self.npc_start(line)
+                ev = self.npc_start(line)
+                if ev[0]["type"] == "line_prepared":
+                    self._prepared_taken = taken
+                elif ev[0]["type"] == "line_discarded" and taken is not None:
+                    self._return_taken(taken)
             elif line is not None and epoch != self._turn_epoch:
                 # 1.2a: the turn moved on while this line was in flight -- a human
                 # line took it, or an event this speaker never saw changed the world
@@ -1607,10 +1620,11 @@ class Sim:
                 self._gen_not_before = self.clock.now() + self.clock.scale(TICK)
                 self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
-        # 1.2a: a free tick -- nothing playing, nothing queued, no worker running
+        # 1.2a: a free tick -- nothing queued, no worker running. B50: a playing line
+        # does not block it, so the next line is ready when this one ends
         # B43: a queued line waits for pending narration (_cycle_line), so the
         # narration must still be allowed to start here or both wait forever
-        if (busy or self.active_line is not None or self.prepared_npc is not None
+        if (busy or self.prepared_npc is not None
                 or (self.next_line is not None and not self._narrate)):
             return
         if self.fsm.awake or self.stopped or not self._budget_ok():
@@ -1693,6 +1707,7 @@ class Sim:
                 self.prepared_npc = None
                 self._prepared_meta = None
                 self._prepared_audio_seconds = None
+                self._drop_prepared_taken()
         out.append({"type": "pov", "hero_owner": owner})
         for e in out:
             self._emit(e)

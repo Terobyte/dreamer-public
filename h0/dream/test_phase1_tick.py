@@ -1,6 +1,6 @@
 """Phase 1.2a contract (spec 7.2 row 1.2a, debt D3): the tick decides when a line
-is generated. One generation at a time, no pre-generation ahead of the playing
-line, and the first free tick after a line ends happens on that same loop step.
+is generated. One generation at a time; B50: the next line is generated while the
+current one plays, so it starts on the very step the current line ends.
 usage: cd h0/dream && python3 -m unittest test_phase1_tick -q
 """
 
@@ -91,27 +91,30 @@ class TickTest(unittest.TestCase):
         self.assertEqual(len(self.gens), 2,
                          "no generation on the step the line ended")
 
-    def test_first_free_tick_immediate(self):
+    def test_next_line_prepared_while_line_plays(self):
         sim, transport = self._sim()
         start_turn(self, sim)
         self.assertEqual(len(self.gens), 1)
-        # the line is taken on the next step and starts playing
+        # the line is taken on the next step and starts playing; B50: the same
+        # free tick already generates the next line, which waits as prepared
         self.now += sim.clock.scale(TICK)
         self.step(sim)
         self.assertIsNotNone(sim.active_line)
-        self.assertEqual(len(self.gens), 1, "no pre-generation while a line plays")
-        for _ in range(2):
+        first = sim.active_line
+        self.assertEqual(len(self.gens), 2, "no pre-generation while a line plays")
+        sim._maybe_generate_line()
+        self.assertIsNotNone(sim.prepared_npc, "the pre-generated line is not prepared")
+        self.step(sim)
+        self.assertEqual(len(self.gens), 2, "a second pre-generation beside the prepared line")
+        for _ in range(3):
             self.now += sim.clock.scale(TICK)
             self.step(sim)
-            if sim.active_line is None:
+            if sim.active_line is not first and sim.prepared_npc is None:
                 break
-            self.assertEqual(len(self.gens), 1, "no pre-generation while a line plays")
         else:
-            self.fail("the line never ended")
-        # the step that ended the line is itself a free tick: generation started
-        self.assertEqual(len(self.gens), 2, "the first free tick was not immediate")
-        self.step(sim)
-        self.assertEqual(len(self.gens), 2, "a second generation inside one tick")
+            self.fail("the prepared line never started")
+        # the step that ended the line started the prepared one: no dead air
+        self.assertIsNotNone(sim.active_line, "a gap between the line and the prepared one")
 
     def test_human_discards_in_flight(self):
         gate = threading.Event()
