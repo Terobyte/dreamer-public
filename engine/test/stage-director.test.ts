@@ -175,6 +175,11 @@ describe("director frames", () => {
         const yaw = k * 45;
         const { step } = mk();
         const s = step(line("a", { shot: plan }), [A({ yaw }), B()]);
+        if (yaw === 180) {
+          // F2: the face cone (-z) and the room-center side (+z) do not intersect — the side wins
+          expect(s.cam[2] - 10).toBeGreaterThanOrEqual(-1e-9);
+          continue;
+        }
         const f = [Math.sin((yaw * Math.PI) / 180), Math.cos((yaw * Math.PI) / 180)];
         const dx = s.cam[0] - 9;
         const dz = s.cam[2] - 10;

@@ -1,4 +1,4 @@
-import { clampCamera, insideInset, roomRect, snapInside, type V3 } from "./camera.js";
+import { clampCamera, INSET, insideInset, roomRect, snapInside, type V3 } from "./camera.js";
 import type { V2 } from "./places.js";
 
 /** Pure camera director (A3a): which plan, and when. Where exactly the camera stands is kept simple here (A3b refines it). */
@@ -83,16 +83,17 @@ export function initialYaws(positions: V2[], firstCamera: V3): number[] {
   });
 }
 
-/** One smoothing step from `prev` toward `target` (k in 0..1); the blend is kept inside the room outline (F5: in an L room
- * the straight path between two inside frames can cross the notch). */
+/** One smoothing step from `prev` toward `target` (k in 0..1); the blend is kept inside the room outline with the
+ * 0.3 m inset (F5: in an L room the straight path between two inside frames can cross the notch or hug an edge). */
 export function smoothCam(prev: V3, target: V3, k: number, outline: V2[]): V3 {
   const p: V3 = [prev[0] + (target[0] - prev[0]) * k, prev[1] + (target[1] - prev[1]) * k, prev[2] + (target[2] - prev[2]) * k];
-  if (outline.length < 3 || insideInset(outline, [p[0], p[2]], 0)) return p;
-  const r = roomRect(outline, 0);
+  if (outline.length < 3 || insideInset(outline, [p[0], p[2]])) return p;
+  const r = roomRect(outline);
   const s = snapInside(outline, [p[0], p[2]], r);
-  if (insideInset(outline, s, 0)) return [s[0], p[1], s[1]];
-  const s0 = snapInside(outline, [p[0], p[2]], r, 0.01);
-  return insideInset(outline, s0, 0) ? [s0[0], p[1], s0[1]] : [target[0], p[1], target[2]];
+  if (insideInset(outline, s)) return [s[0], p[1], s[1]];
+  if (insideInset(outline, [target[0], target[2]])) return [target[0], p[1], target[2]];
+  if (insideInset(outline, [prev[0], prev[2]])) return [prev[0], p[1], prev[2]];
+  return p;
 }
 
 /** Ordered queue for line/narrator events (F5): two handlers before one update must both reach the director. */
@@ -110,7 +111,29 @@ export function createPendingQueue() {
   };
 }
 
-export function createDirector(defaultRng: () => number) {
+/** Fallback frame when no snapped point is inside: from the pair midpoint toward the room center in 0.25 m steps (up to 40),
+ * the first point inside the outline with `inset`; none (room narrower than 2*inset) -> the room center. Never throws. */
+export function fallbackFrame(mid: V2, center: V2, outline: V2[], inset: number, eye: number): V3 {
+  const dx = center[0] - mid[0];
+  const dz = center[1] - mid[1];
+  const L = Math.hypot(dx, dz);
+  const ux = L < 1e-9 ? 0 : dx / L;
+  const uz = L < 1e-9 ? 0 : dz / L;
+  let plain: V2 | null = insideInset(outline, mid, 0) ? mid : null;
+  for (let i = 0; i <= 40; i++) {
+    const pt: V2 = [mid[0] + ux * 0.25 * i, mid[1] + uz * 0.25 * i];
+    if (insideInset(outline, pt, inset)) return [pt[0], eye, pt[1]];
+    if (!plain && insideInset(outline, pt, 0)) plain = pt;
+  }
+  // no point with the inset: the room center; a concave room whose center is outside takes the nearest inside point
+  const fb = insideInset(outline, center, 0) ? center : (plain ?? snapInside(outline, mid, roomRect(outline, 0), 0));
+  return [fb[0], eye, fb[1]];
+}
+
+export type SnapFn = (outline: V2[], p: V2, r: ReturnType<typeof roomRect>, inset?: number) => V2;
+
+export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn } = {}) {
+  const snap: SnapFn = opts.snap ?? snapInside;
   let clock = 0;
   let count = 0;
   let plan: Plan | null = null;
@@ -131,8 +154,28 @@ export function createDirector(defaultRng: () => number) {
     const ev = inp.event;
     const all = [...inp.actors].sort(byName);
     if (!all.length) {
+      const floorY = inp.room.floorY ?? 0;
+      const height = inp.room.open ? floorY + OPEN_CEILING : inp.room.ceiling;
+      // F11: never above the ceiling — a 0.4 m room gets a 0.1 m eye, not the 0.5 m floor
+      const top = height - 0.3 - floorY;
+      const eye = Math.min(floorY + Math.min(1.5, Math.max(0.05, top)), height);
+      const lookY = Math.min(floorY + Math.min(1, Math.max(0.05, top)), height);
       const c = roomCenter(inp.room.outline);
-      return { plan: plan ?? "wide", cam: [c[0], 1.5, c[1]], look: [c[0], 1, c[1]], cut: cutSeq };
+      let xz: V2 = c;
+      if (inp.room.outline.length >= 3) {
+        const s = snap(inp.room.outline, c, roomRect(inp.room.outline));
+        if (insideInset(inp.room.outline, s)) xz = s;
+        else {
+          // no inset point (room narrower than 0.6 m): any inside point, still within the ceiling (F6)
+          const s0 = snap(inp.room.outline, c, roomRect(inp.room.outline, 0), 0);
+          if (insideInset(inp.room.outline, s0, 0)) xz = s0;
+          else {
+            const fb = snapInside(inp.room.outline, c, roomRect(inp.room.outline, 0), 0);
+            if (insideInset(inp.room.outline, fb, 0)) xz = fb;
+          }
+        }
+      }
+      return { plan: plan ?? "wide", cam: [xz[0], eye, xz[1]], look: [xz[0], lookY, xz[1]], cut: cutSeq };
     }
     const named = ev.kind === "line" ? all.find((a) => a.name === ev.speaker) : undefined;
     // narrator always pivots on the first actor by name, never on the stored focus (F1)
@@ -154,7 +197,8 @@ export function createDirector(defaultRng: () => number) {
       if (count === 1) return "wide";
       if (ev.kind === "narrator") return crew.length >= 2 && maxSpan(crew) <= 4 ? "two" : "wide";
       let pool: Plan[];
-      if (count % 5 === 0) pool = listener ? ["two", "orbit", "wide"] : ["orbit", "wide"];
+      // F15: rule 5 without a listener = its pool cut to the lone-actor plans (two/orbit/wide ∩ wide/close/follow)
+      if (count % 5 === 0) pool = listener ? ["two", "orbit", "wide"] : ["wide"];
       else if (!listener) pool = ["wide", "close", "follow"];
       else pool = BANK.filter((p) => p !== "low" || speaker.height > listener.height);
       let i = Math.floor(rng() * pool.length) % pool.length;
@@ -201,7 +245,7 @@ export function createDirector(defaultRng: () => number) {
     if (roomKey !== null && key !== roomKey && ev.kind !== "line" && ev.kind !== "narrator") cutSeq++;
     roomKey = key;
 
-    const out = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st);
+    const out = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker);
     // F12: a coerced plan (low -> close, ots -> close, two -> wide) is what the viewer saw: repeats compare to it
     if (ev.kind === "line" || ev.kind === "narrator") lastPlan = out.plan as Plan;
     return out;
@@ -236,7 +280,7 @@ function roomCenter(outline: V2[]): V2 {
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
 }
 
-function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null }): DirectorOut {
+function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null }, snap: SnapFn = snapInside, gaze: DActor = subj): DirectorOut {
   const room = inp.room;
   const floorY = room.floorY ?? 0;
   // open sky: the 3.5 m ceiling is above the floor, not an absolute world height (F3)
@@ -251,10 +295,11 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   const mid = (list: DActor[]): V2 => [list.reduce((s, a) => s + a.pos[0], 0) / list.length, list.reduce((s, a) => s + a.pos[1], 0) / list.length];
 
   // the pair and its axis: from the smaller name to the larger (a speaker change does not flip it);
-  // actors in one spot (< 0.3 m) take the speaker's gaze as the axis
+  // actors in one spot (< 0.3 m) take the original line speaker's gaze as the axis (F10: the listener
+  // reaction reframes the same speaker, so deriving it from the reaction subject would flip the side)
   const pair = other ? [subj, other].sort(byName) : [subj];
   const m = mid(pair);
-  const axis: V2 = pair.length > 1 ? (dist(pair[0].pos, pair[1].pos) < 0.3 ? faceOf(subj.yaw) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]])) : faceOf(subj.yaw);
+  const axis: V2 = pair.length > 1 ? (dist(pair[0].pos, pair[1].pos) < 0.3 ? faceOf(gaze.yaw) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]])) : faceOf(subj.yaw);
   const n: V2 = [-axis[1], axis[0]];
   // persistent 180° side: reselected only when the axis turned by more than 90°
   let side: 1 | -1 = 1;
@@ -267,7 +312,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       st.axis = axis;
     }
   }
-  const onSide = (pt: V2): boolean => ((pt[0] - m[0]) * n[0] + (pt[1] - m[1]) * n[1]) * side >= -1e-9;
+  const onSide = (pt: V2): boolean => ((pt[0] - m[0]) * n[0] + (pt[1] - m[1]) * n[1]) * side > 1e-9;
   const sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - m[0], center[1] - m[1]]);
   const span = pair.length > 1 ? dist(pair[0].pos, pair[1].pos) : 0;
   const meanH = pair.reduce((s, a) => s + a.height, 0) / pair.length;
@@ -277,24 +322,28 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   const place = (x: number, z: number, y: number): V3 => {
     const p = clampCamera([x, floorY + Math.min(y, top), z], rect, height, floorY);
     if (room.outline.length >= 3) {
-      const [sx, sz] = snapInside(room.outline, [p[0], p[2]], rect);
+      const [sx, sz] = snap(room.outline, [p[0], p[2]], rect);
       if (insideInset(room.outline, [sx, sz])) return [sx, p[1], sz];
-      const dx = center[0] - m[0];
-      const dz = center[1] - m[1];
-      const L = Math.hypot(dx, dz);
-      const ux = L < 1e-9 ? 0 : dx / L;
-      const uz = L < 1e-9 ? 0 : dz / L;
-      let plain: V2 | null = insideInset(room.outline, m, 0) ? [m[0], m[1]] : null;
-      for (let i = 0; i <= 40; i++) {
-        const pt: V2 = [m[0] + ux * 0.25 * i, m[1] + uz * 0.25 * i];
-        if (insideInset(room.outline, pt)) return [pt[0], p[1], pt[1]];
-        if (!plain && insideInset(room.outline, pt, 0)) plain = pt;
-      }
-      // no point with the 0.3 m inset: the room center (F7); a concave room whose center is outside takes the nearest inside point
-      const fb = insideInset(room.outline, center, 0) ? center : (plain ?? snapInside(room.outline, m, roomRect(room.outline, 0), 0));
-      return [fb[0], p[1], fb[1]];
+      return fallbackFrame(m, center, room.outline, INSET, p[1]);
     }
     return p;
+  };
+
+  /** Side wins over everything but orbit (F2): a non-orbit frame is never returned from the opposite side.
+   * A point pushed across the axis by the room clamp is mirrored back; if that is still off-side, the side
+   * direction from the pair midpoint is tried; the midpoint-to-center fallback is on-side by construction. */
+  const toSide = (cam: V3, yAboveFloor: number, dFallback: number): V3 => {
+    if (!other || onSide([cam[0], cam[2]])) return cam;
+    const perp = (cam[0] - m[0]) * n[0] + (cam[2] - m[1]) * n[1];
+    const mir = place(cam[0] - 2 * perp * n[0], cam[2] - 2 * perp * n[1], yAboveFloor);
+    if (onSide([mir[0], mir[2]])) return mir;
+    const along = place(m[0] + sideDir[0] * dFallback, m[1] + sideDir[1] * dFallback, yAboveFloor);
+    if (onSide([along[0], along[2]])) return along;
+    const fb = fallbackFrame(m, center, room.outline, INSET, cam[1]);
+    if (!other || onSide([fb[0], fb[2]])) return fb;
+    // the fallback landed on the axis (mid == room center): step strictly to the selected side (F7)
+    const nudge = place(m[0] + sideDir[0] * (dFallback + 0.4), m[1] + sideDir[1] * (dFallback + 0.4), yAboveFloor);
+    return onSide([nudge[0], nudge[2]]) ? nudge : fb;
   };
 
   /** camera on the face side of `s`: tries the distances until the clamped point is within 60 degrees of the gaze */
@@ -320,11 +369,15 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
           if (onSide([c[0], c[2]])) return c;
         }
     }
-    return faceOk ?? place(s.pos[0] + dir[0] * dists[dists.length - 1], s.pos[1] + dir[1] * dists[dists.length - 1], y);
+    // F2: the face cone and the selected side do not intersect — the side wins, never the opposite side
+    const fb = faceOk ?? place(s.pos[0] + dir[0] * dists[dists.length - 1], s.pos[1] + dir[1] * dists[dists.length - 1], y);
+    return toSide(fb, y, dists[0]);
   };
 
   let p: Plan = plan;
   if (!other && (p === "ots" || p === "two")) p = p === "ots" ? "close" : "wide";
+  // F13: one actor -> only wide/close/follow, explicit beat shots included (orbit -> wide, dolly -> close)
+  if (!other && (p === "orbit" || p === "dolly")) p = p === "orbit" ? "wide" : "close";
   if (p === "low" && (!other || subj.height <= other.height)) p = "close";
 
   switch (p) {
@@ -372,11 +425,13 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       // F6: no over-the-shoulder point on the 180° side — the plain face cone (no shoulder offset) before giving up the side
       const cone = faceCam(subj, f, [d0, 2, 1.4, 1, 0.6], y);
       if (onSide([cone[0], cone[2]]) && angleBetween(f, [cone[0] - subj.pos[0], cone[2] - subj.pos[1]]) <= 60 + 1e-9) return { plan: p, cut, cam: cone, look: head(subj) };
-      return { plan: p, cut, cam: faceOnly ?? first, look: head(subj) };
+      // F2: face cone and side do not intersect — the side wins, never the opposite side
+      return { plan: p, cut, cam: toSide(faceOnly ?? first, y, d0), look: head(subj) };
     }
     case "two": {
       const d = Math.max(3, span * 1.2 + 2.5);
-      return { plan: p, cut, cam: place(m[0] + sideDir[0] * d, m[1] + sideDir[1] * d, meanH * 0.8), look: at(m, meanH * 0.6) };
+      const y = meanH * 0.8;
+      return { plan: p, cut, cam: toSide(place(m[0] + sideDir[0] * d, m[1] + sideDir[1] * d, y), y, d), look: at(m, meanH * 0.6) };
     }
     case "wide": {
       // framed by the actors (+ 1.75 m margin) in camera coordinates, not by world X/Z span (F2)
@@ -402,7 +457,8 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       }
       const dV = minDepth + ht * 1.4 / (2 * tanV);
       const d = Math.max(dH, dV, 2.5);
-      return { plan: p, cut, cam: place(c[0] + du[0] * d, c[1] + du[1] * d, ht * 1.15 + 0.3), look: at(c, ht * 0.5) };
+      const wy = ht * 1.15 + 0.3;
+      return { plan: p, cut, cam: toSide(place(c[0] + du[0] * d, c[1] + du[1] * d, wy), wy, d), look: at(c, ht * 0.5) };
     }
     case "orbit": {
       const a0 = Math.atan2(sideDir[1], sideDir[0]) + 0.25 * t;
@@ -413,7 +469,8 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       const k = Math.min(1, t / 8);
       const d = 4.5 + (2.2 - 4.5) * k;
       const dir = other ? sideDir : faceOf(subj.yaw);
-      return { plan: p, cut, cam: place(subj.pos[0] + dir[0] * d, subj.pos[1] + dir[1] * d, subj.height * 0.8), look: head(subj) };
+      const dy = subj.height * 0.8;
+      return { plan: p, cut, cam: toSide(place(subj.pos[0] + dir[0] * d, subj.pos[1] + dir[1] * d, dy), dy, d), look: head(subj) };
     }
     case "low": {
       const lf = faceOf(subj.yaw);
@@ -429,6 +486,10 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       if (other) {
         const perp = (cam[0] - m[0]) * n[0] + (cam[2] - m[1]) * n[1];
         if (perp * side < 0) cam = place(cam[0] - 2 * perp * n[0], cam[2] - 2 * perp * n[1], cam[1] - floorY);
+        // a camera right on the axis (or just across it) is pushed strictly to the 180° side
+        const now = (cam[0] - m[0]) * n[0] * side + (cam[2] - m[1]) * n[1] * side;
+        if (now < 0.3) cam = place(cam[0] + (0.4 - now) * n[0] * side, cam[2] + (0.4 - now) * n[1] * side, cam[1] - floorY);
+        cam = toSide(cam, cam[1] - floorY, 2.5);
       }
       return { plan: p, cut, cam, look: at([w.pos[0] + f[0], w.pos[1] + f[1]], w.height * 0.8) };
     }
