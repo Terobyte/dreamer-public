@@ -46,6 +46,15 @@ def _fake_remark():
     return None
 
 
+def _fake_touch_reply():
+    """seed --fake: dialogue reply carrying the fixture's scripted touch tag."""
+    for c in json.loads(EXPECT.read_text())["cases"]:
+        line = c.get("line") or ""
+        if "[[TOUCH:" in line and c.get("place"):
+            return f"[warm] Let us look at the {c['place']}. {line}"
+    return '[warm] Let us look at the armchair. [[TOUCH:armchair]]'
+
+
 def _seed_reply(objects):
     return json.dumps({
         "destination": "a small house",
@@ -77,7 +86,7 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
         media = {"voice": Voice(pool={**load_pool(), **(sj.get("voices") or {})})}
     dlg = None
     if fake:
-        touch = "[warm] Let us look at the armchair. [[TOUCH:armchair]]"
+        touch = _fake_touch_reply()
         dlg = Dialogue(sim.load_profile(None), transport=FakeTransport(reply=lambda *a: touch),
                        rng=random.Random(0))
         dlg.background = False

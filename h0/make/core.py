@@ -168,6 +168,13 @@ def _run_world(ctx):
     return world.run_world(ctx)
 
 
+def _run_cast(ctx):
+    if not (ctx.params.get("fake") or ctx.opts.get("live")):
+        return _slow_stub(ctx)  # offline default: no host files in tests
+    from . import cast
+    return cast.run_cast(ctx)
+
+
 def _run_story(ctx):
     if not (ctx.params.get("fake") or ctx.opts.get("live")):
         return _slow_stub(ctx)  # offline default: no live pipe2 from tests
@@ -188,7 +195,7 @@ def default_stages():
         S("brief", (), 3, _run_brief, ("fake", "prompt", "book", "scene")),
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap")),
-        S("cast", ("refs",), 1, _slow_stub, ("fake", "cap")),
+        S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
         S("story", ("refs",), 2, _run_story, ("fake", "cap")),
         S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle")),
         S("check", ("world", "refs"), 1, _fast_stub, optional=True),
@@ -439,6 +446,15 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
                 for p in sorted(base.rglob("*")):
                     if p.is_file():
                         inputs.append([p.relative_to(run_dir).as_posix(), _sha_file(p)])
+            if sid == "cast":
+                # path A inputs live outside ancestors: the host's cast.src files
+                # (fake runs read the repo fixture, which needs no hashing).
+                src = run_dir / "cast.src"
+                if src.is_dir():
+                    for p in sorted(src.rglob("*")):
+                        if p.is_file():
+                            inputs.append([p.relative_to(run_dir).as_posix(), _sha_file(p)])
+                    inputs = sorted(inputs)
             if sid == "story":
                 # прямые входы story вне предков: score.edited.json и файлы книги
                 ed = run_dir / "story" / "score.edited.json"

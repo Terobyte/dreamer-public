@@ -74,7 +74,7 @@ class Story(NoNet):
 
 
 class Freestyle(NoNet):
-    def test_flag_in_stage_json_and_sim_run(self):
+    def test_flag_not_in_stage_json_but_reaches_sim_run(self):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "run"
             (run / "brief").mkdir(parents=True)
@@ -83,10 +83,11 @@ class Freestyle(NoNet):
                                 book=JANE, scene="tea")
             self.assertEqual(res["stage"], "ran", res)
             sj = json.loads((run / "stage" / "stage.json").read_text())
-            self.assertIs(sj["freestyle"], True)
+            self.assertNotIn("freestyle", sj)
             self.assertEqual(sj["mode"], "book")
             got = {}
-            story.run_sim(run / "stage" / "stage.json", run=lambda **kw: got.update(kw))
+            story.run_sim(run / "stage" / "stage.json", run=lambda **kw: got.update(kw),
+                          freestyle=True)
             self.assertIs(got["freestyle"], True)
             self.assertEqual(got["scenes"], ["tea"])
 
@@ -95,7 +96,11 @@ class Freestyle(NoNet):
             run = Path(tmp) / "run"
             core.run_make(run, "a room", fake=True, until="stage")
             sj = json.loads((run / "stage" / "stage.json").read_text())
-            self.assertIs(sj["freestyle"], False)
+            self.assertNotIn("freestyle", sj)
+            got = {}
+            story.run_sim(run / "stage" / "stage.json",
+                          run=lambda **kw: got.update(kw) or None)
+            self.assertIs(got["freestyle"], False)
 
 
 class NarratorFallback(NoNet):

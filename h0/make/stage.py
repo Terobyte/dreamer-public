@@ -203,7 +203,12 @@ def _book_voice(book_dir):
 
 
 def write_stage(run_dir, out, brief=None, freestyle=False):
-    """Writes out/places.json and out/stage.json; -> the stage.json dict."""
+    """Writes out/places.json and out/stage.json; -> the stage.json dict.
+
+    stage.json holds exactly the spec schema (dist, places, cast, mode, book,
+    seed, objects, voices, narrator_voice, start). `freestyle` is accepted for
+    backward compat with older callers but is NOT serialized: it is a play-time
+    flag (`make.play --freestyle`), not part of the place."""
     run_dir, out = Path(run_dir), Path(out)
     brief = brief or {}
     res = build_places(run_dir / "world" / "run")
@@ -212,7 +217,7 @@ def write_stage(run_dir, out, brief=None, freestyle=False):
     actors = _actors(run_dir, brief)
     start = {who: names[i % len(names)] for i, who in enumerate(actors)} if names else {}
     sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
-          "mode": brief.get("mode"), "book": None, "seed": None, "freestyle": bool(freestyle),
+          "mode": brief.get("mode"), "book": None, "seed": None,
           "objects": [p["name"] for p in res["places"]], "voices": _voices(run_dir),
           "narrator_voice": None, "start": start}
     if brief.get("mode") == "book" and brief.get("book"):

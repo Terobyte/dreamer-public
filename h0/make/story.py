@@ -43,7 +43,7 @@ def run_stage(ctx):
     brief = json.loads(brief_p.read_text()) if brief_p.is_file() else {}
     sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
           "mode": brief.get("mode"), "book": None, "seed": None,
-          "freestyle": bool(ctx.opts.get("freestyle")), "narrator_voice": None}
+          "narrator_voice": None}
     if brief.get("mode") == "book" and brief.get("book"):
         b = brief["book"]
         sj["book"] = {"dir": b["dir"], "scene": b["scene"], "score": "story/score.json"}
@@ -57,15 +57,16 @@ def run_stage(ctx):
         sj["seed"] = (rd / "story" / "seed.txt").read_text().strip()
     if (rd / "world" / "run" / "dist" / "geometry.json").is_file():
         from . import stage as _stage
-        extra = _stage.write_stage(rd, ctx.out, brief=brief, freestyle=sj["freestyle"])
+        extra = _stage.write_stage(rd, ctx.out, brief=brief)
         sj.update({k: extra[k] for k in ("objects", "voices", "start")})
     (ctx.out / "stage.json").write_text(json.dumps(sj, ensure_ascii=False, indent=2))
     (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time()}))
     return 0.0
 
 
-def run_sim(stage_json, run=None):
-    """stage.json -> sim.run(...): the freestyle flag goes through as is."""
+def run_sim(stage_json, run=None, freestyle=False):
+    """stage.json -> sim.run(...): freestyle is a play-time flag, not a stage.json field
+    (older stage.json files may still carry it; the explicit argument wins)."""
     stage_json = Path(stage_json)
     sj = json.loads(stage_json.read_text())
     # stage.json обычно симлинк run/stage -> .pub/stage-N: resolve() увёл бы
@@ -83,7 +84,7 @@ def run_sim(stage_json, run=None):
         if (c / "story" / "score.json").is_file() or (c / "make.json").is_file():
             root = c
             break
-    kw = {"freestyle": bool(sj.get("freestyle"))}
+    kw = {"freestyle": bool(freestyle or sj.get("freestyle"))}
     if sj.get("book"):
         kw["book"] = sj["book"]["dir"]
         kw["scenes"] = [sj["book"]["scene"]]
