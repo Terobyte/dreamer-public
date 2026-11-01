@@ -38,6 +38,8 @@ class Ledger:
         self.calls_by_kind = {}
         self.tokens_used = 0
         self.tokens_reserved = 0
+        #: dollars granted by `allow` and not yet charged: a dead process's share
+        self.usd_reserved = 0.0
         self.capped = False
         self.closed = False
         self._lock = threading.RLock()
@@ -45,14 +47,18 @@ class Ledger:
         self._budget_path = self.path.with_suffix(".budget.json")
         if resume and self._budget_path.exists():
             saved = json.loads(self._budget_path.read_text())
-            for key in ("spent", "calls", "calls_by_kind", "tokens_used", "tokens_reserved", "capped"):
+            for key in ("spent", "calls", "calls_by_kind", "tokens_used"):
                 setattr(self, key, saved[key])
+            # B18: reserves belonged to the dead process and `capped` to its old cap;
+            # the resumed run starts with none and re-checks against its own caps
+            self.spent -= saved.get("usd_reserved", 0.0)
         elif resume and self.path.exists() and self.path.stat().st_size:
             raise ValueError("cannot resume an event log without its budget checkpoint")
         self._save_budget()
 
     def _save_budget(self):
-        data = {k: getattr(self, k) for k in ("spent", "calls", "calls_by_kind", "tokens_used", "tokens_reserved", "capped")}
+        data = {k: getattr(self, k) for k in ("spent", "calls", "calls_by_kind", "tokens_used",
+                                              "tokens_reserved", "usd_reserved", "capped")}
         temporary = self._budget_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(data))
         temporary.replace(self._budget_path)
@@ -81,7 +87,11 @@ class Ledger:
         cost = self.cost_of(kind, units)
         with self._lock:
             self.spent += cost - reserved
+            self.usd_reserved = max(0.0, self.usd_reserved - reserved)
             self._save_budget()
+        if kind != "spark":
+            # B41: images and GPU seconds get their row too (Spark writes a richer one)
+            self.record({"kind": kind, "units": units, "cost_usd": cost})
         return cost
 
     def allow(self, kind, estimate_usd, reserve_tokens=0):
@@ -106,6 +116,7 @@ class Ledger:
             if kind == "spark":
                 self.calls += 1
             self.spent += estimate_usd
+            self.usd_reserved += estimate_usd
             self.tokens_reserved += reserve_tokens
             self._save_budget()
             return True

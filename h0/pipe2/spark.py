@@ -147,10 +147,12 @@ class Spark:
         self.jitter = jitter
 
     def ask(self, role: str, room: str, round_no: int, messages: list, effort: str) -> Answer:
-        estimate = self.ledger.cost_of("spark", {"effort": effort, "in": 0, "out": MAX_TOKENS})
         # One reserve per ask, retries included: the token cap must bound the call, not
         # each attempt. Released by the `settle` below whatever the answer turns out to be.
         reserve = reserve_of(messages)
+        # B40: the known prompt is priced too, not only the output ceiling
+        estimate = self.ledger.cost_of("spark", {"effort": effort, "in": reserve - MAX_TOKENS,
+                                                 "out": MAX_TOKENS})
         if not self.ledger.allow("spark", estimate, reserve_tokens=reserve):
             return Answer(valid=False, error="cap")
         actual = reserve

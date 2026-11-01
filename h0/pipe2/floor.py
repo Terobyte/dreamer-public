@@ -345,6 +345,10 @@ class Floor:
                   effort=self.deps.get("effort") or {}, flags=self.deps.get("flags"),
                   cache=getattr(self.deps["assets"], "cache", self.run_dir / "cache"))
         self.deps["assets"].put("skeleton", engine.asset_keys(skeleton))
+        # B25: the GPUs are warmed once the skeleton is green, not before the architect
+        warmth = self.deps.get("warmth")
+        if warmth is not None:
+            warmth.start()
 
         room_ids = [r.get("id") for r in skeleton.get("rooms") or []]
         room_results = self._build_rooms(room_ids, ctx)
@@ -495,8 +499,13 @@ class Floor:
                 try:
                     results[room] = future.result()
                 except Exception as exc:
-                    results[room] = RoomResult(room, "empty", 0,
-                                               {"crashed": type(exc).__name__})
+                    # B23: a crash after a green round keeps that green fragment
+                    kept = ctx.store.last_green(room)
+                    if kept:
+                        results[room] = RoomResult(room, "green", 0, kept)
+                    else:
+                        results[room] = RoomResult(room, "empty", 0,
+                                                   {"crashed": type(exc).__name__})
         return results
 
     # -- joint findings -----------------------------------------------------

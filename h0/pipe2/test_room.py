@@ -137,7 +137,9 @@ class TestRoom(RoomCase):
                         "critic_assets": [answer(partial())]},
                        reports=[GREEN, RED, GREEN])
         result = RoomPipeline("A", ctx).run()
-        self.assertEqual("rolled_back", result.status)
+        # B28: the layout critic was rolled back, but the accepted assets revision
+        # after it makes the room green again
+        self.assertEqual("green", result.status)
         self.assertEqual([], self.asked("fix"), "critics get no fix rounds")
         critic = self.asked("critic_assets")
         self.assertEqual(1, len(critic))
@@ -461,11 +463,13 @@ class TestRoom(RoomCase):
         def broken(*_args, **_kwargs):
             raise RuntimeError("build failed")
         self.engine.build = broken
-        RoomPipeline("A", ctx).run()
+        # B42: a failed preview stops the room with its cause
+        with self.assertRaisesRegex(RuntimeError, "build failed"):
+            RoomPipeline("A", ctx).run()
         for role in ("critic_layout", "critic_assets"):
-            shots = [p for p in self.asked(role)[0]["messages"][0]["content"]
-                     if p["type"] == "image_url"]
-            self.assertEqual([], shots, "%s got a picture of an older scene" % role)
+            for call in self.asked(role):
+                shots = [p for p in call["messages"][0]["content"] if p["type"] == "image_url"]
+                self.assertEqual([], shots, "%s got a picture of an older scene" % role)
 
     def test_critic_new_asset_is_queued(self):
         grown = partial()

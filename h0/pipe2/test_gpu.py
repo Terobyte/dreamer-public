@@ -18,7 +18,7 @@ class GpuTest(unittest.TestCase):
             def set(self, minimum, buffer, window):
                 calls.append((heartbeat.get('ts'), minimum, buffer, window))
         warmth = GpuWarmth(Scale(), assets, ledger, heartbeat, k=4, clock=lambda: now[0])
-        warmth.start(); self.assertEqual(calls, [(0, 4, 0, 600)])
+        warmth.start(); self.assertEqual(calls, [(0, 4, 0, 120)])  # B25: window <= 120 s
         now[0] = 30; warmth.tick()
         self.assertEqual(heartbeat['ts'], 30)
         self.assertEqual(len(calls), 1)

@@ -261,6 +261,8 @@ class RoomPipeline:
         self.rounds = 0
         self.status = "green" if self.partial else "empty"
         self.reissued = bool(saved.get("reissued", False))
+        #: the role whose answer the green file holds: a resume skips the critics it covers
+        self.green_role = saved.get("role") if self.partial else None
         #: the report of the last check, shown to the critics instead of a fresh run
         self.report: dict = saved.get("report") or {}
         self._counts: dict[str, int] = ctx.store.taken(room)
@@ -275,15 +277,21 @@ class RoomPipeline:
             return RoomResult(self.room, done.get("status", "empty"), done.get("rounds", 0),
                               done.get("partial") or {})
         if self._author():
+            done_role = self.green_role
             self._queue(self.partial.get("assets") or {})
-            self._preview("layout", "none")
-            self._critic("critic_layout")
-            self.ctx.assets.wait(self.room)
-            self._preview("assets", "cache")
-            self._critic("critic_assets", allow_reissue=True)
-        # only a run that got here is done: a crash leaves the green file to resume from
+            if done_role != "critic_assets":
+                if done_role != "critic_layout":
+                    self._preview("layout", "none")
+                    self._critic("critic_layout")
+                self.ctx.assets.wait(self.room)
+                self._preview("assets", "cache")
+                self._critic("critic_assets", allow_reissue=True)
         result = RoomResult(self.room, self.status, self.rounds, self.partial)
-        self.ctx.store.finish(self.room, result)
+        # only a run that got here is done: a crash leaves the green file to resume from.
+        # B17: an empty room (a capped or interrupted Spark answered nothing) stays
+        # resumable instead of being sealed as finished
+        if self.status != "empty":
+            self.ctx.store.finish(self.room, result)
         return result
 
     # -- builder and fix rounds ----------------------------------------------
@@ -357,10 +365,15 @@ class RoomPipeline:
             return
         candidate = answer.scene
         fresh = self._freeze(candidate, allow_reissue)
-        ok, _findings = self._accept(role, candidate)
+        ok, findings = self._accept(role, candidate)
         if not ok:
+            # B28: the engine's reasons for refusing the critic are kept, not dropped
+            self._record({"kind": "critic_rejected", "room": self.room, "role": role,
+                          "findings": findings, "errors": blocking(self.report)})
             self._rollback()
             return
+        # B28: an accepted later revision is green again, not stuck at rolled_back
+        self.status = "green"
         if fresh:
             self._queue(fresh)
 
@@ -434,10 +447,13 @@ class RoomPipeline:
             shots_retry(self.ctx.engine, dist)
             # the whole scene's camera list decides our own cameras' filenames
             self._shot_names[stage] = dict(zip(ids, shot_filenames(ids)))
-        except Exception as exc:  # the critics can still read the report without shots
+        except Exception as exc:
+            # B42 (lesson #35): failed shots stop the room with their cause, never
+            # a silent run on without pictures; the green file stays to resume from
             shutil.rmtree(dist / "shots", ignore_errors=True)
             self._record({"kind": "preview_failed", "room": self.room, "stage": stage,
-                          "error": type(exc).__name__})
+                          "error": "%s: %s" % (type(exc).__name__, exc)})
+            raise
 
     def _dist(self, stage: str) -> Path:
         return room_path(self.ctx.work / "rooms", self.room) / ("dist_" + stage)

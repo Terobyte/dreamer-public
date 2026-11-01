@@ -74,7 +74,7 @@ class CliTest(unittest.TestCase):
         scale = FakeAutoscaler(); order = []
         class SignalSpark(ScenarioSpark):
             def ask(self, role, *args):
-                self.assert_started = bool(scale.calls and scale.calls[0] == (3, 0, 600))
+                self.assert_started = bool(scale.calls and scale.calls[0] == (3, 0, 120))
                 order.append((role, self.assert_started))
                 if role == 'builder':
                     cli.on_signal(signal.SIGTERM, None)
@@ -84,6 +84,7 @@ class CliTest(unittest.TestCase):
              patch.object(cli, 'FakeAutoscaler', return_value=scale), contextlib.redirect_stdout(io.StringIO()):
             code = cli.main(['run', str(root), '--run-dir', str(root / 'run'), '--fake', '--k', '3'])
         self.assertEqual(code, 130)
-        self.assertTrue(all(started for role, started in order))
-        self.assertEqual(scale.calls, [(3, 0, 600), (0, 0, 120)])
+        # B25: the GPUs warm after the skeleton -- cold for the architect, warm for rooms
+        self.assertTrue(all(started == (role != 'architect') for role, started in order), order)
+        self.assertEqual(scale.calls, [(3, 0, 120), (0, 0, 120)])
         self.assertEqual(json.loads((root / 'run/report.json').read_text())['status'], 'interrupted')

@@ -66,7 +66,8 @@ def repair_seams(ctx, partials, *, max_rounds=3):
                     current[room] = candidate
         result.rounds += 1
     for room in result.unresolved:
-        if room != SKELETON and room in original:
+        # B29: only a room a seam fix touched has anything to roll back
+        if room != SKELETON and room in original and room in result.touched:
             current[room] = copy.deepcopy(original[room])
             result.rolled_back.append(room)
     return result

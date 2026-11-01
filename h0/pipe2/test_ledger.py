@@ -219,7 +219,7 @@ if __name__ == "__main__":
     unittest.main()
 
 class ResumeBudgetTest(unittest.TestCase):
-    def test_resume_keeps_spend_calls_and_token_reservations(self):
+    def test_resume_keeps_spend_and_calls_drops_reservations(self):
         from pathlib import Path
         root = Path(tempfile.mkdtemp()); path = root / 'events.jsonl'
         prices = {'image': 1, 'spark': {}}
@@ -233,5 +233,6 @@ class ResumeBudgetTest(unittest.TestCase):
         self.assertEqual(resumed.spent, 1)
         self.assertEqual(resumed.calls, 2)
         self.assertEqual(resumed.tokens_used, 40)
-        self.assertEqual(resumed.tokens_reserved, 200)
-        self.assertFalse(resumed.allow('spark', 0))
+        # B18: the 200-token reserve was the dead process's, it is not carried over
+        self.assertEqual(resumed.tokens_reserved, 0)
+        self.assertFalse(resumed.allow('spark', 0))  # the call cap still holds

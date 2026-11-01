@@ -96,7 +96,7 @@ def run(args):
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             old_handlers[sig] = signal.signal(sig, on_signal)
-        warmth.start()
+        # warmth.start() is the floor's, after the skeleton (B25)
         thread = threading.Thread(target=tick_loop, args=(warmth, stop, stop.wait), daemon=True)
         thread.start()
         result = floor.run()

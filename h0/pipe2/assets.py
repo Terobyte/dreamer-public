@@ -20,6 +20,7 @@ import os
 import threading
 import time
 import urllib.request
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
@@ -29,10 +30,34 @@ MUSE_MODEL = "muse-image-1.0"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
+def png_complete(data: bytes) -> bool:
+    """Every chunk whole with a matching CRC, IHDR first and IEND last: a cut-off
+    download still starts with the PNG magic, so the magic alone proves nothing."""
+    if data[:8] != PNG_MAGIC:
+        return False
+    at, first, kind = 8, True, b""
+    while at + 12 <= len(data):
+        size = int.from_bytes(data[at:at + 4], "big")
+        kind = data[at + 4:at + 8]
+        end = at + 12 + size
+        if end > len(data) or (first and kind != b"IHDR"):
+            return False
+        crc = int.from_bytes(data[end - 4:end], "big")
+        if zlib.crc32(data[at + 4:end - 4]) != crc:
+            return False
+        at, first = end, False
+        if kind == b"IEND":
+            return at == len(data)
+    return False
+
+
 def as_png(data: bytes) -> bytes:
     """The engine reads `<key>.png` with pngjs, but Muse Image answers WebP (seen Oct 30): a WebP under a .png
-    name makes `build` exit 2, every shot goes missing and every room stays red. PNG bytes pass untouched."""
+    name makes `build` exit 2, every shot goes missing and every room stays red. Whole PNG bytes pass untouched;
+    B39: a truncated PNG is refused instead of reaching the cache."""
     if data[:8] == PNG_MAGIC:
+        if not png_complete(data):
+            raise ValueError("truncated or corrupt PNG")
         return data
     import io
 
@@ -197,6 +222,13 @@ class AssetQueue:
 
     def _picture(self, asset: _Asset) -> bytes | None:
         spec = asset.spec
+        if spec["kind"] == "object":
+            # B27: a resumed run whose mesh failed already paid for this picture
+            src = self.cache / f"{spec['key']}.src.png"
+            if src.exists():
+                png = src.read_bytes()
+                if png[:8] == PNG_MAGIC:
+                    return png
         estimate = self.ledger.cost_of("image", 1)
         if not self.ledger.allow("image", estimate):
             self._failed(asset, "cap")
