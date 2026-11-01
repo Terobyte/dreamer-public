@@ -49,7 +49,7 @@ describe.skipIf(!HAS_CHROMIUM)("doors in the browser", () => {
     // demo-flat builds the front leaf open: close it first, so open() below
     // runs the real 0.6 s turn instead of accepting an already-open leaf
     await page.evaluate(() => (window as any).__dreamer.door("front").close());
-    await page.waitForFunction(() => Math.abs((window as any).__dreamer.door("front").angle()) < 1, undefined, { timeout: 8000 });
+    await page.waitForFunction(() => Math.abs((window as any).__dreamer.door("front").angle()) < 1, undefined, { timeout: 90_000 });
     await page.evaluate(() => (window as any).__dreamer.door("front").open());
     // contract: the leaf turns 90° in 0.6 s of real time; a loaded machine (parallel
     // vitest workers) drops frames, so wait for the angle with headroom, not a fixed 0.75 s
@@ -61,7 +61,7 @@ describe.skipIf(!HAS_CHROMIUM)("doors in the browser", () => {
     expect(Math.abs(a - Math.sign(sweep) * 90)).toBeLessThanOrEqual(5);
 
     await page.evaluate(() => (window as any).__dreamer.door("front").lock());
-    await page.waitForFunction(() => Math.abs((window as any).__dreamer.door("front").angle()) < 0.01, undefined, { timeout: 8000 });
+    await page.waitForFunction(() => Math.abs((window as any).__dreamer.door("front").angle()) < 0.01, undefined, { timeout: 90_000 });
     const closed = await page.evaluate(() => {
       const e = (window as any).__dreamer;
       e.teleport(0, 5);

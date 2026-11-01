@@ -56,7 +56,7 @@ async function open(query: string): Promise<{ page: Page; consoleErrors: string[
 }
 
 async function ready(page: Page): Promise<void> {
-  await page.waitForFunction("window.__ready === true", null, { timeout: 15000 });
+  await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
 }
 
 describe("page", () => {

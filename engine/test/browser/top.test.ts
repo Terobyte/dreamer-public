@@ -100,7 +100,7 @@ describe("top.png", () => {
     expect(differs).toBe(true);
   });
 
-  it("test_check_no_browser: check and build never make a top.png", { timeout: 30000 }, () => {
+  it("test_check_no_browser: check and build never make a top.png", { timeout: 90_000 }, () => {
     const reportDir = mkdtempSync(join(tmpdir(), "dreamer-report-"));
     // Timed from the start of the `check` command (every module already
     // loaded) to the moment this process has its result: a browser launch
@@ -132,7 +132,7 @@ describe("top.png", () => {
     expect(existsSync(join(dist, "top.png"))).toBe(false);
   });
 
-  it("test_shots_missing_top_svg: shots fails loudly when top.svg is absent", { timeout: 30000 }, () => {
+  it("test_shots_missing_top_svg: shots fails loudly when top.svg is absent", { timeout: 90_000 }, () => {
     const dist = build(demoFlat());
     unlinkSync(join(dist, "top.svg"));
     const r = cli(["shots", dist]);

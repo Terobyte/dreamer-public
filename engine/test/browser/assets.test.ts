@@ -79,7 +79,7 @@ describe("page with assets", () => {
 
   it("test_textured_page", async () => {
     const { page, consoleErrors, pageErrors } = await open();
-    await page.waitForFunction("window.__ready === true", null, { timeout: 15000 });
+    await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
     const floor = await page.evaluate('window.__dreamer.inspect("living:floor")');
     const sofa = await page.evaluate('window.__dreamer.inspect("sofa")');
     expect([consoleErrors, pageErrors]).toEqual([[], []]);

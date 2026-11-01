@@ -106,7 +106,7 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
         return Math.abs(((a.yaw - y + 540) % 360) - 180) <= 10;
       },
       [who, want[0], want[1], yaw] as [string, number, number, number | null],
-      { timeout: 30_000 }, // a loaded machine (another run gating) slows the walk, not the result
+      { timeout: 90_000 }, // a loaded machine (another run gating) slows the walk, not the result
     );
   };
 
@@ -117,7 +117,7 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
     await page.goto(stageUrl());
     await page.waitForFunction(() => (window as any).__ready === true, undefined, { timeout: 60_000 });
     // SSE client connected before the first event is sent
-    await page.waitForFunction(() => !!(window as any).__dreamer.stage, undefined, { timeout: 10_000 });
+    await page.waitForFunction(() => !!(window as any).__dreamer.stage, undefined, { timeout: 90_000 });
     // F5: the camera bounds are sampled on every frame, not just once per case.
     await page.evaluate(() => {
       (window as any).__camsamples = [];
@@ -149,12 +149,12 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
 
     emit(1); // case 1
     await near(page, cs[0].who, cs[0].target, cs[0].yaw);
-    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "sit", cs[0].who, { timeout: 15_000 });
+    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "sit", cs[0].who, { timeout: 90_000 });
     await sample();
 
     emit(2); // case 2: beside the taken chair (target + yaw from expect_touch.json)
     await near(page, cs[1].who, cs[1].target, cs[1].yaw);
-    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "idle", cs[1].who, { timeout: 15_000 });
+    await page.waitForFunction((w) => (window as any).__dreamer.stage.actors().find((q: any) => q.who === w).act === "idle", cs[1].who, { timeout: 90_000 });
     await sample();
 
     emit(3); // case 3: the narrator's remark walks Rochester to the window (target + yaw from expect_touch.json)

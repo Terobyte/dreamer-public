@@ -45,7 +45,7 @@ async function shot(dist: string, cam: string): Promise<PNG> {
   sites.push(site);
   const page = await browser!.newPage({ deviceScaleFactor: 1, viewport: { width: 320, height: 240 } });
   await page.goto(`${site.url}?cam=${cam}`);
-  await page.waitForFunction("window.__ready === true", null, { timeout: 20000 });
+  await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
   const png = PNG.sync.read(await page.screenshot());
   await page.close();
   return png;

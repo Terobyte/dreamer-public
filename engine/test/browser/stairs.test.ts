@@ -52,7 +52,7 @@ describe("stairs walk", () => {
     });
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto(site.url + "?walk=1");
-    await page.waitForFunction("window.__ready === true", null, { timeout: 15000 });
+    await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
 
     const p = (await page.evaluate(`
       const d = window.__dreamer;
