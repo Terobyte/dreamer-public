@@ -71,7 +71,8 @@ describe.skipIf(!HAS_CHROMIUM)("doors in the browser", () => {
     await page.waitForFunction(() => (window as any).__touches.length > 0, undefined, { timeout: 5000 });
     const after = await page.evaluate(() => ({ angle: (window as any).__dreamer.door("front").angle(), touches: (window as any).__touches }));
     expect(after.touches).toContain("front");
-    expect(after.angle).toBe(closed);
+    // the close tween can still be settling (4e-14 -> -0), so "did not open" is a tolerance, not equality
+    expect(Math.abs(after.angle - closed)).toBeLessThan(0.01);
     await page.close();
   }, 60_000);
 });

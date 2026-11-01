@@ -16,8 +16,8 @@ export function shotBaseNames(cameras: { id: string }[]): string[] {
     return safe === "" || safe === "." || safe === ".." ? `_${safe}` : safe;
   });
   const counts = new Map<string, number>();
-  // APFS and NTFS fold case: `A.png` and `a.png` are one file
-  const fold = (s: string): string => s.toLowerCase();
+  // APFS and NTFS fold case, APFS also folds NFC/NFD: `A.png`/`a.png`, `é`/`e\u0301` are one file
+  const fold = (s: string): string => s.normalize("NFC").toLowerCase();
   for (const b of base) counts.set(fold(b), (counts.get(fold(b)) ?? 0) + 1);
   const used = new Set<string>();
   return base.map((b, i) => {

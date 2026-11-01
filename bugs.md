@@ -175,8 +175,9 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 - **B35 — второй build с тем же ctx затирает `cam.ref`** · MINOR · `build/geometry.ts:295`, `build/write.ts:148-163`.
   - fixed: geometry копирует камеры, `copyRefs` больше не мутирует сцену.
 - **B36 — один GLB, который не загрузился в браузере, вешает `__ready`, и shots падают с exit 2** · MINOR · `runtime/main.ts:347-353`.
+  - fixed: упавший `loadGlb` ловится, остаётся коробка и warn `GLB failed`, `__ready` ставится (как у актёров в stage).
 - **B37 — имена снимков `A.png`/`a.png` совпадают на APFS** · MINOR · `build/shotnames.ts:13-26`.
-  - fixed: `shotBaseNames` сравнивает имена без учёта регистра.
+  - fixed: `shotBaseNames` сравнивает имена без учёта регистра и формы Unicode (NFC), APFS складывает и то и другое (нашла Луна на ревью Б4).
 - **B38 — клавиши залипают при потере фокуса окна** (нет сброса `down` на `blur`) · MINOR · `runtime/walk.ts:109-110`. **Статус: fixed** — `blur` очищает `down`.
 
 ### pipe2

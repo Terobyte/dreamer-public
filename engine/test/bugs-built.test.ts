@@ -37,4 +37,12 @@ describe("built regressions", () => {
     const files = [...html.matchAll(/class="pane" src="(shots\/[^\"]+)"/g)].map((m) => m[1]!.toLowerCase());
     expect(new Set(files).size).toBe(2);
   });
+
+  it("test_B37_shot_names_are_unique_across_unicode_forms", () => {
+    // APFS also folds NFC/NFD: precomposed é and e + combining acute are one file
+    const html = sheetHtml([{ id: "é" }, { id: "é" }], SHOTS_DEFAULTS);
+    const files = [...html.matchAll(/class="pane" src="(shots\/[^\"]+)"/g)]
+      .map((m) => decodeURIComponent(m[1]!).normalize("NFC").toLowerCase());
+    expect(new Set(files).size).toBe(2);
+  });
 });

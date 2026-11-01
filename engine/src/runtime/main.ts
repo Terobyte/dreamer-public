@@ -165,6 +165,9 @@ async function start(): Promise<void> {
           scene.remove(mesh);
           scene.add(root);
           objects.set(mesh.name, root);
+        }).catch((e) => {
+          // B36: a GLB that fails keeps its box, so __ready still fires
+          console.warn(`runtime: "${mesh.name}" GLB failed (${String(e)}), using a box`);
         }),
       );
     }
