@@ -146,6 +146,59 @@ describe("animator: idle pose", () => {
   });
 });
 
+describe("animator: rest pose (Koshakan T)", () => {
+  // arms with elbows: bind = T (left elbow at +X, right at -X); +d degrees lowers both arms
+  function armsBody(): { root: Group; bone: (n: string) => Bone } {
+    const root = new Group();
+    const pelvis = new Bone();
+    pelvis.name = "pelvis";
+    pelvis.position.y = 1;
+    for (const s of ["l", "r"]) {
+      const ua = new Bone();
+      ua.name = `upperarm_${s}`;
+      ua.position.y = 0.5;
+      const la = new Bone();
+      la.name = `lowerarm_${s}`;
+      la.position.x = s === "l" ? 0.3 : -0.3;
+      ua.add(la);
+      pelvis.add(ua);
+    }
+    root.add(pelvis);
+    return { root, bone: (n) => root.getObjectByName(n) as Bone };
+  }
+  const down = (times: number[], degs: number[]) => [qtrack("upperarm_l", times, degs.map((d) => -d)), qtrack("upperarm_r", times, degs)];
+  const drop = (root: Group, s: "l" | "r"): number => {
+    root.updateMatrixWorld(true);
+    const a = root.getObjectByName(`upperarm_${s}`)!.getWorldPosition(new Vector3());
+    const b = root.getObjectByName(`lowerarm_${s}`)!.getWorldPosition(new Vector3());
+    return (Math.asin((a.y - b.y) / a.distanceTo(b)) * 180) / Math.PI;  // degrees below horizontal
+  };
+
+  it("no idle -> holds the frame with both arms hanging, not the calibration edge", () => {
+    spyWarn();
+    const { root } = armsBody();
+    // clip 1 leaves the T pose (cut at 30°) and lowers the arms to 80°; clip 2 raises them
+    const first = new AnimationClip("first", -1, down([0, 0.5, 2], [0, 30, 80]));
+    const second = new AnimationClip("second", -1, down([0, 1], [40, -20]));
+    const a = createAnimator(root, { first, second }, {});
+    a.update(0.5);
+    expect(Math.min(drop(root, "l"), drop(root, "r"))).toBeGreaterThan(70);
+  });
+
+  it("never rests on a lying frame (pelvis near the floor)", () => {
+    spyWarn();
+    const { root } = armsBody();
+    const lie = new AnimationClip("fall", -1, [
+      ...down([0, 1, 2], [40, 60, 85]),
+      new VectorKeyframeTrack("pelvis.position", [0, 1, 2], [0, 1, 0, 0, 1, 0, 0, 0.2, 0]),
+    ]);
+    const a = createAnimator(root, { fall: lie }, {});
+    a.update(0.5);
+    expect(root.getObjectByName("pelvis")!.position.y).toBeGreaterThan(0.8);
+    expect(Math.min(drop(root, "l"), drop(root, "r"))).toBeGreaterThan(55);
+  });
+});
+
 describe("animator: calibration head", () => {
   const times = [0, 0.5, 1, 1.05, 2];
   const degs = [5, 5, 5, 60, 90];

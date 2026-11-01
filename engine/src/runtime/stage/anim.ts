@@ -1,4 +1,4 @@
-import { AnimationClip, AnimationMixer, LoopOnce, LoopRepeat, PropertyBinding, Quaternion, type AnimationAction, type KeyframeTrack, type Object3D } from "three";
+import { AnimationClip, AnimationMixer, LoopOnce, LoopRepeat, PropertyBinding, Quaternion, Vector3, type AnimationAction, type KeyframeTrack, type Object3D } from "three";
 
 export interface Animator {
   play(name: string, o?: { once?: boolean }): void;
@@ -119,6 +119,58 @@ function cutHead(track: KeyframeTrack, t0: number): KeyframeTrack {
   return cloneTrack(track, times, values);
 }
 
+const REST_STEP = 1 / 15;
+const UPRIGHT = 0.9;  // pelvis at least this share of its bind height = standing, not lying or crouched
+
+/** The standing frame (clip, time) where both upper arms hang lowest in world space; null when the body has
+ *  no upperarm->child pair to measure. Sampled on a throwaway mixer; the bind state is restored after. */
+function restPose(root: Object3D, reg: Map<string, AnimationClip>): { name: string; t: number } | null {
+  const arms: Array<[Object3D, Object3D]> = [];
+  root.traverse((o) => {
+    if (ARM.test(o.name) && o.children[0]) arms.push([o, o.children[0]]);
+  });
+  if (arms.length < 2 || !reg.size) return null;
+  let pelvis: Object3D | null = null;
+  root.traverse((o) => {
+    if (!pelvis && ROOT.test(o.name)) pelvis = o;
+  });
+  const saved: Array<[Object3D, Quaternion, Vector3, Vector3]> = [];
+  root.traverse((o) => saved.push([o, o.quaternion.clone(), o.position.clone(), o.scale.clone()]));
+  const a = new Vector3(), b = new Vector3();
+  const pelvisY = (): number => (pelvis as Object3D | null)?.getWorldPosition(a).y ?? 0;
+  root.updateMatrixWorld(true);
+  const bindY = pelvisY();
+  const mixer = new AnimationMixer(root);
+  let best: { name: string; t: number; score: number } | null = null;
+  for (const [name, clip] of reg) {
+    const act = mixer.clipAction(clip);
+    act.play();
+    for (let t = 0; t <= clip.duration + 1e-9; t += REST_STEP) {
+      act.time = t;
+      mixer.update(0);
+      root.updateMatrixWorld(true);
+      if (bindY > 1e-6 && pelvisY() < UPRIGHT * bindY) continue;
+      let score = Infinity;
+      for (const [ua, child] of arms) {
+        ua.getWorldPosition(a);
+        child.getWorldPosition(b);
+        const len = a.distanceTo(b);
+        score = Math.min(score, len > 1e-9 ? (a.y - b.y) / len : -1);  // sin of the drop below horizontal
+      }
+      if (!best || score > best.score + 1e-6) best = { name, t, score };
+    }
+    act.stop();
+  }
+  mixer.uncacheRoot(root);
+  for (const [o, q, p, s] of saved) {
+    o.quaternion.copy(q);
+    o.position.copy(p);
+    o.scale.copy(s);
+  }
+  root.updateMatrixWorld(true);
+  return best && best.score > 0 ? { name: best.name, t: best.t } : null;
+}
+
 /** One AnimationMixer per character: clips retargeted by bone name, calibration head cut, root walks in place, crossfades. */
 export function createAnimator(root: Object3D, clips: Record<string, AnimationClip>, opts: { idle?: string; fade?: number } = {}): Animator {
   const fade = opts.fade ?? 0.15;
@@ -195,7 +247,13 @@ export function createAnimator(root: Object3D, clips: Record<string, AnimationCl
     if (opts.idle !== undefined && idleName) console.warn(`anim: idle "${opts.idle}" not found, holding frame 0 of "${idleName}"`);
     hold = 0;
   }
-  if (!opts.idle && idleName) hold = 0;  // no idle: frame 0 of the first clip, never the bind T-pose
+  if (!opts.idle && idleName) {
+    // no idle: rest on the standing frame with both arms hanging lowest. Frame 0 of a clip is the
+    // calibration edge (arms just 30° off T), which reads as a stiff T on screen (Koshakan, Nov 1).
+    const rest = restPose(root, reg);
+    if (rest) [idleName, hold] = [rest.name, rest.t];
+    else hold = 0;
+  }
 
   const warned = new Set<string>();
   let state: "idle" | "clip" = "idle";
