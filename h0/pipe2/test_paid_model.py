@@ -1,5 +1,5 @@
 """No code calls the paid `muse-spark-1.3`: only `muse-spark-1.3-contributor` (it burned money twice).
-And pipe2 meshes default to TRELLIS.2 1024, not SAM3D."""
+And pipe2 meshes are SAM3D, the only mesh model."""
 import re
 import unittest
 from pathlib import Path
@@ -33,24 +33,12 @@ class PaidModel(unittest.TestCase):
 
 
 class MeshDefault(unittest.TestCase):
-    def test_trellis_is_the_default_mesh(self):
+    def test_sam3d_is_the_only_mesh(self):
         args = _parser().parse_args(["run", "task", "--run-dir", "r"])
-        self.assertEqual("trellis", args.mesh)
-        self.assertEqual(("dreamer-trellis", "Trellis"), MESH_APPS["trellis"])
-        self.assertEqual("dreamer-trellis", ModalMesh().app)
-        self.assertEqual("dreamer-trellis", ModalAutoscaler().app)
-        self.assertEqual("1024_cascade", re.search(r'PIPELINE = "([^"]+)"',
-                         (REPO / "h0/trellis_modal.py").read_text()).group(1))
-
-    def test_trellis_takes_the_budget_and_keeps_the_original(self):
-        src = (REPO / "h0/trellis_modal.py").read_text()
-        self.assertRegex(src, r"def run\(self, name: str, png: bytes, with_ply: bool = False, faces: int = FACES")
-        self.assertIn('"full": full', src)
-        self.assertIn("int(faces * MARGIN)", src)
-
-    def test_sam3d_is_still_selectable(self):
-        args = _parser().parse_args(["run", "task", "--run-dir", "r", "--mesh", "sam3d"])
-        self.assertEqual(("dreamer-sam3d", "Sam3D"), MESH_APPS[args.mesh])
+        self.assertEqual("sam3d", args.mesh)
+        self.assertEqual({"sam3d": ("dreamer-sam3d", "Sam3D")}, MESH_APPS)
+        self.assertEqual("dreamer-sam3d", ModalMesh().app)
+        self.assertEqual("dreamer-sam3d", ModalAutoscaler().app)
 
 
 if __name__ == "__main__":

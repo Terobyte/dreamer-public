@@ -1,4 +1,4 @@
-"""make --mesh sam3d|trellis reaches `pipe2 run --mesh` (live judge demo needs sam3d)."""
+"""make --mesh sam3d reaches `pipe2 run --mesh` (live judge demo needs sam3d)."""
 import tempfile
 import unittest
 from unittest import mock

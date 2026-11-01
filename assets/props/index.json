@@ -1,36 +1,28 @@
 {
- "note": "seed of the shared prop library (PROGRESS: parked item 4). Nov 1 A/B/C: each variant is a style — sam3d = cartoonish, trellis* = true to the Muse source. GLBs are not in git (110 MB): regenerate with anymove/runs/compare_sam3d_trellis2/props5/run_abc.py",
+ "note": "seed of the shared prop library (PROGRESS: parked item 4). SAM3D is the only mesh model; GLBs are not in git: regenerate from source.png with h0/sam3d_modal.py",
  "props": {
   "rock": {
    "source": "rock/source.png",
    "variants": {
-    "sam3d": "rock/sam3d.glb",
-    "trellis512": "rock/trellis512.glb",
-    "trellis1024": "rock/trellis1024.glb"
+    "sam3d": "rock/sam3d.glb"
    }
   },
   "flower_pot": {
    "source": "flower_pot/source.png",
    "variants": {
-    "sam3d": "flower_pot/sam3d.glb",
-    "trellis512": "flower_pot/trellis512.glb",
-    "trellis1024": "flower_pot/trellis1024.glb"
+    "sam3d": "flower_pot/sam3d.glb"
    }
   },
   "crate": {
    "source": "crate/source.png",
    "variants": {
-    "sam3d": "crate/sam3d.glb",
-    "trellis512": "crate/trellis512.glb",
-    "trellis1024": "crate/trellis1024.glb"
+    "sam3d": "crate/sam3d.glb"
    }
   },
   "chair": {
    "source": "chair/source.png",
    "variants": {
-    "sam3d": "chair/sam3d.glb",
-    "trellis512": "chair/trellis512.glb",
-    "trellis1024": "chair/trellis1024.glb"
+    "sam3d": "chair/sam3d.glb"
    }
   },
   "bush": {
@@ -41,8 +33,6 @@
   }
  },
  "styles": {
-  "sam3d": "cartoonish, darker, softer, squashed",
-  "trellis512": "true to source",
-  "trellis1024": "true to source"
+  "sam3d": "cartoonish, darker, softer, squashed"
  }
 }

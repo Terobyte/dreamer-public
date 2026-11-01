@@ -191,3 +191,7 @@ Ledger: **$3.4710** из $3.80 под потолком (потолок подн�
 - Найдено и починено: живой brief не видел схему (`make/brief.py`, тест `test_brief_schema_in_prompt`).
 - Костыль: хуки рантайма (`__dreamer.three`, `onFrame`, событие `stage_line`) + `anymove/runs/koshakan/kosh_anim.js` (клипы по словам строки). Видео `anymove/runs/koshakan/koshakan_book_v1.mp4` (5 мин, без звука в записи).
 - Ночь: `specs/2026-11-01-engine-anim-camera.md` (А1–А4 + находки живого прогона: двор-wide по актёрам, close со стороны лица, книга ждёт зрителя).
+
+## Меш: только SAM3D (Nov 1, решение хозяина)
+- Trellis убран из кода (`h0/trellis_modal.py` удалён, `--mesh` только `sam3d`, дефолт `sam3d`). Прежние строки про TRELLIS выше — история.
+- Остаётся от Trellis: резка меша под бюджет `tris` (`faces`) и `.full.glb` — у SAM3D этого нет, см. план 2026-11-02.

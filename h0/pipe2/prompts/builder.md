@@ -19,7 +19,7 @@ Answer with ONE json object in a ```json fenced block, no prose after it. Only t
   The engine screenshots them back to you, so every reference gets its own picture to compare
   against. Add more cameras if you want, always with the `{{ROOM}}_` prefix.
 - `assets` declares what the engine generates for you (tile/decal: Muse Image; object: Muse Image +
-  3D mesh (TRELLIS.2), scaled to your `size`). The engine adds its own framing template to your prompt.
+  3D mesh (SAM3D), scaled to your `size`). The engine adds its own framing template to your prompt.
 
 If your room is a yard or street (`open: true` in the skeleton): it has no walls or ceiling, so
 dress it with a few large objects (tree, lamp post, bench, cart), not dozens of small ones; props

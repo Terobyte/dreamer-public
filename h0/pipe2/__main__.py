@@ -50,7 +50,7 @@ def _parser():
     run.add_argument('--k', type=int, default=2)
     run.add_argument('--effort', nargs='+', default=[])
     run.add_argument('--resume', action='store_true'); run.add_argument('--fake', action='store_true')
-    run.add_argument('--mesh', choices=sorted(MESH_APPS), default='trellis')
+    run.add_argument('--mesh', choices=sorted(MESH_APPS), default='sam3d')
     bench = commands.add_parser('measure'); _caps(bench)
     bench.add_argument('--role', choices=['builder', 'critic_layout', 'critic_assets'], required=True)
     bench.add_argument('--effort', choices=['high', 'medium', 'max'], required=True)

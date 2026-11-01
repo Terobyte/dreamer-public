@@ -97,7 +97,7 @@ class EngineTest(unittest.TestCase):
         self.assertEqual(json.loads(out.stdout)[: len(rows)], [r["key"] for r in rows])
 
     def test_object_keys_carry_the_budget_of_their_smallest_prop(self):
-        # trellis decimates to this number, so `check` never fails on a mesh it was asked for
+        # the mesh is cut to this number, so `check` never fails on a mesh it was asked for
         scene = example("demo.scene.json")
         rows = {r["id"]: r for r in self.engine.asset_keys(scene)}
         self.assertEqual(1000, rows["p_vase"]["tris"])     # 0.4 m: small
