@@ -23,3 +23,7 @@
 - Чеклист закрыт кодом раунда 10 (снапшот `refs/tero/20261031-022642944859-make-one-prompt/phase-06-round10`): `make/cast.py` (путь A), `make/test_cast.py`, `make/test_e2e_fake.py`; make 203/203.
 - Раунды 7–9 судья держал NO_SHIP только на всё более узких краях валидации GLB (типы полей нод, огромный int в `height_m`, индексы не SCALAR/unsigned) — все закрыты с тестами F8–F10. Раунд 10 судья не видел.
 - Остаток: `_gltf_doc_ok` — не полный валидатор glTF (sparse-аксессоры, skins, morph targets, `KHR_*` расширения не проверяются). Для пути A хватает: файлы кладёт хозяин; полный валидатор — когда появится путь B.
+
+## Анимация и камера (11-01, не вошло в ночь)
+- Сквозная приёмка Кошакана в гейте: фейковый `make --fake` всегда берёт `testdata/cast` и `testdata/world_run` (`cast.py`, `world.py`), нужен выбор фикстуры `testdata/koshakan`; журнал `make.play --fake` пишется в `h0/out/`, для фикстуры `engine/test/fixtures/koshakan-bathroom.events.json` нужен путь вне `h0/out`; потом `stage-koshakan.test.ts` (pickClip + director без WebGL).
+- Книжный формат реплик для `dream/book.py`: строки вида `Mama: текст` движок читает как рассказчика; Кошакан переписан в прозу с кавычками (`"…" said Mama.`).
