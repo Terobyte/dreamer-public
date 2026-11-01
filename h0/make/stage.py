@@ -202,12 +202,34 @@ def _book_voice(book_dir):
         return None
 
 
-def pick_start(places, actors):
+def _scene_room(book_dir, scene_id):
+    """The world room a book scene plays in: the scene's `room`, else its id; None if the book is unreadable."""
+    try:
+        book = json.loads(Path(book_dir, "book.json").read_text())
+    except (OSError, ValueError):
+        return None
+    for ch in book.get("chapters") or []:
+        for sc in ch.get("scenes") or []:
+            if sc.get("id") == scene_id:
+                return sc.get("room") or scene_id
+    return scene_id
+
+
+def pick_start(places, actors, room=None):
     """{actor: place name}: the closest group of places, so the cast starts together.
+
+    `room` (the book scene's room) limits the choice to that room: on a one-place home the whole-world
+    tightest group put the meadow scene in the bathroom. A room with no places -> the whole world.
 
     Round-robin over the list put Mama and Mirai 18 m apart on the meadow. Each place in turn is an
     anchor with its nearest neighbours; the group with the smallest spread wins. More actors than
     places -> names repeat (runtime fallback handles the overlap)."""
+    if room is not None:
+        here = [q for q in places if q.get("room") == room]
+        if here:
+            places = here
+        else:
+            print(f"stage: no places in room {room!r}, start picked over the whole world")
     if not places or not actors:
         return {}
     k = min(len(actors), len(places))
@@ -237,7 +259,10 @@ def write_stage(run_dir, out, brief=None, freestyle=False):
     (out / "places.json").write_text(json.dumps(res, ensure_ascii=False, indent=2))
     names = [p["name"] for p in res["places"]]
     actors = _actors(run_dir, brief)
-    start = pick_start(res["places"], actors)
+    room = None
+    if brief.get("mode") == "book" and brief.get("book"):
+        room = _scene_room(brief["book"]["dir"], brief["book"]["scene"])
+    start = pick_start(res["places"], actors, room=room)
     sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
           "mode": brief.get("mode"), "book": None, "seed": None,
           "objects": [p["name"] for p in res["places"]], "voices": _voices(run_dir),
