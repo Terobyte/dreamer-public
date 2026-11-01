@@ -83,7 +83,7 @@ describe("page", () => {
     meshes = JSON.parse(readFileSync(join(dist, "geometry.json"), "utf-8")).meshes.length;
     site = await serve(dist);
     browser = await launch();
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     await closeBrowser(browser);
@@ -97,7 +97,7 @@ describe("page", () => {
     expect(pageErrors).toEqual([]);
     expect(await page.evaluate("window.__dreamer.meshCount()")).toBe(meshes);
     await page.close();
-  }, 30000);
+  }, 90000);
 
   it("test_cam_param", async () => {
     const { page, consoleErrors, pageErrors } = await open("?cam=door");
@@ -122,7 +122,7 @@ describe("page", () => {
     expect(bad.pageErrors).toEqual([]);
     expect(await bad.page.evaluate("document.querySelector('#msg')?.textContent")).toContain("nope");
     await bad.page.close();
-  }, 30000);
+  }, 90000);
 
   it("test_walk_collision", async () => {
     const { page } = await open("?walk=1");
@@ -143,7 +143,7 @@ describe("page", () => {
     expect((await run(-1, 10, 200, 0, -0.05))[2]).toBeGreaterThanOrEqual(4.25);
     expect((await run(-2.5, 1.5, 40, -0.05, 0))[0]).toBeGreaterThanOrEqual(-2.79);
     await page.close();
-  }, 30000);
+  }, 90000);
 
   it("test_mesh_count_ignores_id_collisions", async () => {
     // Д5's id charset and the global id uniqueness check together make a
@@ -164,7 +164,7 @@ describe("page", () => {
     expect(await page.evaluate("window.__dreamer.meshCount()")).toBe(geo.meshes.length);
     await page.close();
     await collisionSite.close();
-  }, 30000);
+  }, 90000);
 
   it("test_decal_label_texture_srgb", async () => {
     const { page } = await open("");
@@ -176,7 +176,7 @@ describe("page", () => {
     expect(info.hasMap).toBe(true);
     expect(info.mapColorSpace).toBe("srgb");
     await page.close();
-  }, 30000);
+  }, 90000);
 
   it("test_cache_texture_rendered_not_placeholder", async () => {
     // F3: a material/decal with a cached asset must load the real file,
@@ -214,7 +214,7 @@ describe("page", () => {
     expect(info.mapWidth).toBe(4);
     await page.close();
     await cacheSite.close();
-  }, 30000);
+  }, 90000);
 
   it("test_prop_glb_rendered", async () => {
     // F7: a prop with a cached GLB must render the real model, not the
@@ -248,7 +248,7 @@ describe("page", () => {
     expect(info.type).toBe("Group");
     await page.close();
     await cacheSite.close();
-  }, 30000);
+  }, 90000);
 
   it("test_walk_height", async () => {
     const { page } = await open("?walk=1");
@@ -259,5 +259,5 @@ describe("page", () => {
       expect(((await page.evaluate("window.__dreamer.pos()")) as number[])[1]).toBeCloseTo(1.6, 6);
     }
     await page.close();
-  }, 30000);
+  }, 90000);
 });

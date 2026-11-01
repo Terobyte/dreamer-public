@@ -39,6 +39,7 @@ export function scatterObjects(entries: ScatterEntryJson[], sources: Map<string,
     for (const part of parts) {
       const mesh = new InstancedMesh(part.geometry, part.material, e.count);
       mesh.name = `scatter:${e.i}:${e.asset}`;
+      mesh.userData.noblock = true;
       e.transforms.slice(0, e.count).forEach((t, k) => {
         dummy.position.set(t[0], t[1], t[2]);
         dummy.rotation.set(0, t[3], 0);

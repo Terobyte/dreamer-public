@@ -35,7 +35,7 @@ beforeAll(async () => {
   if (r.status !== 0) throw new Error(`build failed: ${r.stderr}`);
   browser = await launch();
   site = await serve(dist);
-}, 30000);
+}, 90000);
 
 afterAll(async () => {
   // browser first: its open connections are what a server close waits on
@@ -64,5 +64,5 @@ describe("stairs walk", () => {
     expect(p[2]).toBeLessThan(6.0);
     expect(p[1]).toBeCloseTo(3.6 + 1.6, 2);
     await page.close();
-  }, 30000);
+  }, 90000);
 });

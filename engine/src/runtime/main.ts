@@ -31,6 +31,7 @@ import { scatterObjects, toSources, type ScatterSource } from "./scatter.js";
 import { startStage, type Stage } from "./stage/index.js";
 
 import type { MaterialDef } from "./assets.js";
+import { markNoblock } from "./stage/sight.js";
 
 /** base64 → bytes without `Buffer`: the nav bitmap is read in the page. */
 function unbase64(s: string): Uint8Array {
@@ -161,6 +162,7 @@ async function start(): Promise<void> {
     const mesh = meshOf(src, material(String(src.material)));
     mesh.visible = !setup.hide.has(String(src.kind));
     objects.set(mesh.name, mesh);
+    markNoblock(mesh, mesh.name);
     scene.add(mesh);
     // the box is the OBB placeholder; once its real GLB is loaded it swaps
     // in for the box, same name and visibility, so every other lookup by
@@ -174,6 +176,7 @@ async function start(): Promise<void> {
           // the sun traverse below runs before the GLB lands: flag the real
           // meshes on swap, or they never cast/receive shadows (F4)
           if (sunShadows) root.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          markNoblock(root, mesh.name);
           scene.remove(mesh);
           scene.add(root);
           objects.set(mesh.name, root);

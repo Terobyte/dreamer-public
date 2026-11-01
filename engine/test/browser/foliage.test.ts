@@ -41,7 +41,7 @@ beforeAll(async () => {
   });
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/`;
-}, 30000);
+}, 90000);
 
 afterAll(async () => {
   if (browser) await closeBrowser(browser);

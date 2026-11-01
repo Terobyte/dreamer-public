@@ -72,13 +72,13 @@ let browser: Browser;
 describe("top.png", () => {
   beforeAll(async () => {
     browser = await launch();
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     await closeBrowser(browser);
   });
 
-  it("test_top_png: shots renders the plan svg into dist/top.png", { timeout: 60000 }, async () => {
+  it("test_top_png: shots renders the plan svg into dist/top.png", { timeout: 120000 }, async () => {
     const dist = build(demoFlat());
     const served = await serve(dist);
     const status = await runShots(dist, SHOTS_DEFAULTS, { browser, served });

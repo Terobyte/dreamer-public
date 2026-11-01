@@ -136,7 +136,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `stage/life.ts` | процедурный idle: дыхание (chest), перенос веса (spine), взгляд головой по сторонам, кивки при речи; кости по именам-кандидатам; руки/таз не трогает | `createLife(root, seed) -> Life{before, after}` | — | `stage-life.test.ts` |
 | `stage/director.ts` | чистый режиссёр камеры: банк планов `BANK = ots, close, two, wide, orbit, dolly, low, follow`; реакции, правило 180, очередь событий, сглаживание | `createDirector(rng, {snap})`, `step(DirectorInput) -> {plan,cam,look,cut}`, `createPendingQueue`, `initialYaws`, `smoothCam`, `fallbackFrame` | DEvent{line,narrator,walk,tick} | `stage-director` (38), `-room`, `-occlusion` |
 | `stage/camera.ts` | прямоугольник комнаты, зажим камеры внутрь (inset 0.3, ceil gap 0.3), кадр по виду плана | `roomRect`, `clampCamera`, `insideInset`, `snapInside`, `directShot(kind: wide\|two\|close)` | — | `stage-camera*.test.ts` |
-| `stage/sight.ts` | луч от камеры к цели: мешает ли мир (актёры не мешают), кэш на сетке 10 см | `createSight(world, skip) -> (cam, look) => clear` | — | `stage-sight.test.ts` |
+| `stage/sight.ts` | луч от камеры к цели: мешает ли мир (актёры не мешают), кэш на сетке 10 см; растительность (`noblock`) не мешает | `createSight(world, skip) -> (cam, look) => clear`, `markNoblock(root, id)`, `isPlantId(id)` | — | `stage-sight.test.ts` |
 | `stage/places.ts` | банк мест: `Place{name,id,kind: sit\|stand\|door,room,level,at,yaw,look,obstacle,size}`; `claims` (место занято -> встать сбоку `SIDE_M 0.8`); `stageRegex` (фраза -> {who,place}) | `resolveTouch`, `releaseClaim`, `stageRegex`, `yawTo`, `floorAt(floors,p,level)` | places.json | `stage-places`, `stage-touch-claim`, `stage-regex-unicode` |
 | `stage/path.ts` | BFS по nav-слою (8 соседей, без срезания углов), obstacles, открытые двери; межуровневый маршрут через рампы | `findPath(layer,bits,from,to,opts)`, `findStageRoute` | nav.json | `stage-path`, `stage-route(-hops)` |
 | `stage/touch.ts` | «подойди к объекту X»: маршрут, этажи, очередь, результат `walk\|skip\|unreachable\|queued\|no_actor` | `createToucher(ctx)` | — | `stage-touch-claim` |
@@ -392,7 +392,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | авто-риг, mocap-idle | НЕТ (L29, L31) | `life.ts` процедурно |
 | структурный бит `stage/gesture/shot` в движке | ЧАСТИЧНО: `gesture`, `shot`, `touch` читаются; `stage` — нет | L11 |
 | обход препятствий актёрами | ЕСТЬ в `path.ts` (obstacles из places). Проверка полноты — L13 | — |
-| траву не считать преградой для камеры | НЕТ (`sight.ts` считает кочки) | L14, Н12 |
+| траву не считать преградой для камеры | ЕСТЬ: `stage/sight.ts` `markNoblock`, `isPlantId` (`noblock = true`) | L14, Н12 |
 | `legalCameraPoint` | НЕТ одной функции (L16) | `camera.ts snapInside`, `director.ts unblock` |
 | автовыбор голоса по персонажу | НЕТ; голос в `book.json cast.<name>.voice` вручную; `author.py` подбирает через поиск Fish | L24 |
 | живая стройка во время сцены | НЕТ (М7 в спеке make) | — |

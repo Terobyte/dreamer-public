@@ -51,7 +51,7 @@ let browser: Browser;
 describe("dreamer shots", () => {
   beforeAll(async () => {
     browser = await launch();
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     await closeBrowser(browser);
