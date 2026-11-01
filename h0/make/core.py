@@ -489,6 +489,22 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
                                 _rel = _p.name
                             inputs.append([_rel, _sha_file(_p)])
                 inputs = sorted(inputs)
+            if sid == "stage":
+                # stage reads book.json (narrator_voice, the scene's room) and the voice pool: a voice change
+                # answered "cached" and the film kept the old narrator (Koshakan, Nov 1)
+                try:
+                    _bp = run_dir / "brief" / "brief.json"
+                    _bdir = (json.loads(_bp.read_text()).get("book") or {}).get("dir") \
+                        if _bp.is_file() else None
+                except (OSError, ValueError):
+                    _bdir = None
+                extra = [("voices.json", Path(__file__).resolve().parents[1] / "dream" / "voices.json")]
+                if _bdir:
+                    extra.append(("book/book.json", Path(_bdir) / "book.json"))
+                for _rel, _p in extra:
+                    if _p.is_file():
+                        inputs.append([_rel, _sha_file(_p)])
+                inputs = sorted(inputs)
             cap = None
             if max_dollars is not None:
                 cap = max_dollars * shares.get(sid, 0) / 100
