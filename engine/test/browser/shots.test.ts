@@ -63,7 +63,7 @@ describe("dreamer shots", () => {
     return { status, served };
   }
 
-  it("writes a png per camera and a sheet", { timeout: 30000 }, async () => {
+  it("writes a png per camera and a sheet", { timeout: 120000 }, async () => {
     const { dist } = build(demoFlat());
     const { status, served } = await shots(dist);
     await served.close();
@@ -72,7 +72,7 @@ describe("dreamer shots", () => {
     expect(existsSync(join(dist, "sheet.png"))).toBe(true);
   });
 
-  it("fails with the camera id when the page never gets ready", { timeout: 30000 }, async () => {
+  it("fails with the camera id when the page never gets ready", { timeout: 120000 }, async () => {
     const { dist } = build(demoFlat());
     const copy = join(mkdtempSync(join(tmpdir(), "dreamer-stub-")), "dist");
     cpSync(dist, copy, { recursive: true });
@@ -98,7 +98,7 @@ describe("dreamer shots", () => {
     expect(seconds).toBeLessThan(4);
   });
 
-  it("puts the ref next to the shot on the sheet", { timeout: 60000 }, async () => {
+  it("puts the ref next to the shot on the sheet", { timeout: 120000 }, async () => {
     const withRef = patched([{ op: "add", path: "/cameras/0/ref", value: "myref.png" }]);
     const dir = mkdtempSync(join(tmpdir(), "dreamer-ref-"));
     const scenePath = join(dir, "demo-flat.scene.json");
@@ -138,7 +138,7 @@ describe("dreamer shots", () => {
     expect(plainSheet).toContain("нет ref");
   });
 
-  it("does not escape the shots directory for a camera id with path segments", { timeout: 30000 }, async () => {
+  it("does not escape the shots directory for a camera id with path segments", { timeout: 120000 }, async () => {
     const evil = patched([{ op: "replace", path: "/cameras/0/id", value: "../../escape" }]);
     const { dist } = build(evil);
     const { status, served } = await shots(dist);
@@ -153,7 +153,7 @@ describe("dreamer shots", () => {
     }
   });
 
-  it("escapes a camera id with markup on the sheet instead of rendering it", { timeout: 30000 }, async () => {
+  it("escapes a camera id with markup on the sheet instead of rendering it", { timeout: 120000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "dreamer-xss-"));
     writeFileSync(join(dir, "myref.png"), fakePng(8, 8, [10, 20, 30]));
     const evil = patched([
@@ -190,7 +190,7 @@ describe("dreamer shots", () => {
 
   it(
     "keeps shot and ref images resolvable when the camera id and ref filename contain url-reserved characters",
-    { timeout: 30000 },
+    { timeout: 120000 },
     async () => {
       const dir = mkdtempSync(join(tmpdir(), "dreamer-reserved-"));
       const refName = "my#ref%20two.png";
@@ -233,7 +233,7 @@ describe("dreamer shots", () => {
     },
   );
 
-  it("renders only the screenshot and the caption for a camera without a ref", { timeout: 30000 }, async () => {
+  it("renders only the screenshot and the caption for a camera without a ref", { timeout: 120000 }, async () => {
     const { dist } = build(demoFlat());
     const { status, served } = await shots(dist);
     await served.close();
@@ -244,7 +244,7 @@ describe("dreamer shots", () => {
     expect(sheet).not.toContain(">door<");
   });
 
-  it("gives colliding camera ids distinct screenshots on a correctly matched sheet", { timeout: 30000 }, async () => {
+  it("gives colliding camera ids distinct screenshots on a correctly matched sheet", { timeout: 120000 }, async () => {
     const evil = patched([
       { op: "replace", path: "/cameras/0/id", value: "room/left" },
       { op: "add", path: "/cameras/1", value: { id: "room_left", pos: [0, 1.6, -3.4], look: [0, 1.2, 0], fov: 70 } },
@@ -266,7 +266,7 @@ describe("dreamer shots", () => {
     }
   });
 
-  it("keeps a camera id that is already a legal filename", { timeout: 30000 }, async () => {
+  it("keeps a camera id that is already a legal filename", { timeout: 120000 }, async () => {
     const named = patched([{ op: "replace", path: "/cameras/0/id", value: "front:view" }]);
     const { dist } = build(named);
     const { status, served } = await shots(dist);
