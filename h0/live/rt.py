@@ -152,10 +152,15 @@ class Session:
                 await self.send(type="sq", text=tail)
             await sentences.put(None)
             await speaker
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # B34: a failed Spark/Fish call still ends the turn
+            m["error"] = f"{type(e).__name__}: {e}"
         finally:
             speaker.cancel()
-        # history only gets finished turns, so a cancelled reply leaves no trace
-        self.history += [user, {"role": "assistant", "content": full}]
+        # history only gets finished turns, so a cancelled or empty reply leaves no trace
+        if full.strip() and "error" not in m:
+            self.history += [user, {"role": "assistant", "content": full}]
         await self.send(type="done", opened=OPEN in full, metrics=m)
 
 
@@ -186,7 +191,8 @@ class MetaTurns:
     async def feed(self, data):
         self.raw += data
         while len(self.raw) >= FRAME:
-            frame, self.raw = bytes(self.raw[:FRAME]), self.raw[FRAME:]
+            frame = bytes(self.raw[:FRAME])
+            del self.raw[:FRAME]  # B34: in place, not a fresh copy of the rest per frame
             x = np.frombuffer(frame, np.int16).astype(np.float32) / 32768
             rms = float(np.sqrt(np.mean(x * x)))
             loud = rms > LOUD
@@ -225,7 +231,7 @@ class MetaTurns:
         t = time.time()
         text = await meta_asr(self.s.http, pcm)
         if text:  # show what is heard so far: finished chunks of this turn plus this one
-            done = [c.result()[0] for c in self.chunks if c.done()]
+            done = [_text(c) for c in self.chunks if c.done()]
             await self.s.send(type="partial", text=join(done + [text]))
         return text, round((time.time() - t) * 1000), len(pcm) / 32000
 
@@ -234,7 +240,9 @@ class MetaTurns:
             await asyncio.sleep(0.05)
             if self.in_speech or not self.chunks or not all(c.done() for c in self.chunks):
                 continue
-            results = [c.result() for c in self.chunks]
+            # B34: a failed chunk counts as silence, it must not kill the watcher
+            results = [c.result() if not c.cancelled() and c.exception() is None else ("", 0, 0.0)
+                       for c in self.chunks]
             text = join(r[0] for r in results)
             gap = time.time() - self.last_speech
             if not text:
@@ -246,8 +254,18 @@ class MetaTurns:
                                         chunks=len(results))
 
 
+def _text(chunk):
+    return chunk.result()[0] if not chunk.cancelled() and chunk.exception() is None else ""
+
+
+# B31: only this page may open the socket (any tab could run ASR + Spark + Fish on our keys)
+ORIGINS = {"http://localhost:8091", "http://127.0.0.1:8091"}
+
+
 async def ws_handler(request):
-    ws = web.WebSocketResponse(max_msg_size=0)
+    if request.headers.get("Origin") not in ORIGINS:
+        raise web.HTTPForbidden(text="origin not allowed")
+    ws = web.WebSocketResponse(max_msg_size=1 << 20)  # B34: 0 meant no limit
     await ws.prepare(request)
     mode = request.query.get("asr", "meta")
     async with aiohttp.ClientSession() as http:

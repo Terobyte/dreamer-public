@@ -202,11 +202,11 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 
 ### Серверы (P3)
 - **B30 — dream/server.py: request smuggling мимо Origin-гарда через keep-alive** · CRIT · `h0/dream/server.py:145,162-172,437-448`. Сервер отвечает 403, не читая тело, и тело разбирается как следующий запрос без Origin. Воспроизведено: `SIM GOT: [('say','hello')]`. Фикс: `close_connection=True` на всех ранних выходах. **fixed** — do_POST ставит close_connection=True, пока тело не прочитано.
-- **B31 — rt.py `/ws` без проверки Origin/Host: любая вкладка гонит ASR+Spark+Fish** · CRIT · `h0/live/rt.py:249-251`. Открытый хвост PROGRESS подтверждён.
-- **B32 — live/server.py: CSRF и DNS-rebinding на `/turn` и `/asr`, плюс KeyError без ответа, гонки глобалов, пустой Fish на неизвестный id** · MAJOR · `h0/live/server.py:51-84`.
-- **B33 — squid_live/server.py `/api/talk`: CSRF, ввод без лимита длины, роль `system` от клиента** · MAJOR · `h0/squid_live/server.py:156-185`.
-- **B34 — rt.py: одно упавшее ASR-чанк-задание навсегда убивает детект хода; ошибка Spark пишет пустой ответ в history; ошибка Fish оставляет ход без `done`; `max_msg_size=0` и O(n²) срез** · MAJOR · `h0/live/rt.py:54-87,129-159,186-250`.
-- **B54 — squid_live TTS-кэш не атомарен (обрезанный mp3), листинг каталогов открыт** · MINOR · `h0/squid_live/server.py:128-165`.
+- **B31 — rt.py `/ws` без проверки Origin/Host: любая вкладка гонит ASR+Spark+Fish** · CRIT · `h0/live/rt.py:249-251`. Открытый хвост PROGRESS подтверждён. **Статус: fixed — `/ws` пускает только Origin `localhost:8091`/`127.0.0.1:8091`, иначе 403.**
+- **B32 — live/server.py: CSRF и DNS-rebinding на `/turn` и `/asr`, плюс KeyError без ответа, гонки глобалов, пустой Fish на неизвестный id** · MAJOR · `h0/live/server.py:51-84`. **Статус: fixed — Host и Origin только свои (403 и закрытие соединения), плохое тело → 400, история и `lines` под локом, неизвестный tts id → 404 без вызова Fish.**
+- **B33 — squid_live/server.py `/api/talk`: CSRF, ввод без лимита длины, роль `system` от клиента** · MAJOR · `h0/squid_live/server.py:156-185`. **Статус: fixed — Host/Origin только свои, тело ≤ 64 КБ, реплика ≤ 1000 символов, из истории проходят только `user`/`assistant`.**
+- **B34 — rt.py: одно упавшее ASR-чанк-задание навсегда убивает детект хода; ошибка Spark пишет пустой ответ в history; ошибка Fish оставляет ход без `done`; `max_msg_size=0` и O(n²) срез** · MAJOR · `h0/live/rt.py:54-87,129-159,186-250`. **Статус: fixed — упавший ASR-чанк считается тишиной, сторож живёт; ошибка Spark/Fish всё равно шлёт `done` и не пишет пустой ответ в history; `max_msg_size` 1 МБ, кадры режутся на месте. Тест ждёт сторожа до 2 с вместо 20 × sleep(0).**
+- **B54 — squid_live TTS-кэш не атомарен (обрезанный mp3), листинг каталогов открыт** · MINOR · `h0/squid_live/server.py:128-165`. **Статус: fixed — mp3 пишется во временный файл и переименовывается; листинг каталогов закрыт (404).**
 
 ### Уроки, которые код нарушает (anymove и дизайн будущих движков)
 - **B55 — лимиты суставов L/R по-прежнему копируются, а не зеркалятся; rig.json (источник) не исправлен, у demon тот же баг** · CRIT (для будущего движка анимации) · `anymove/blender/common.py:58-60`, `anymove/assets/{squidward,demon}/rig.json`. Урок ENGINE_NOTES.md:23-29. `assets/squidward/` не в git. Проверено.

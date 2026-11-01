@@ -12,6 +12,7 @@ import re
 import sys
 import time
 import urllib.request
+import uuid
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -139,13 +140,19 @@ def speak(line):
             print("fish", type(e).__name__, e, file=sys.stderr)
             return None
         out.parent.mkdir(exist_ok=True)
-        out.write_bytes(data)
+        # B54: write aside, then rename: a reader never sees a half-written mp3
+        tmp = out.with_name("%s.%s.tmp" % (name, uuid.uuid4().hex[:8]))
+        tmp.write_bytes(data)
+        os.replace(tmp, out)
     return "/tts/" + name
 
 
 def spoken(line):
     """What is heard, for the subtitle: no [directions], no <tags>."""
     return re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]|<[^>]+>", "", line)).strip()
+
+
+MAX_BODY, MAX_TEXT = 64 * 1024, 1000  # B33: one spoken line, not a book
 
 
 class Server(ThreadingHTTPServer):
@@ -164,13 +171,37 @@ class Handler(SimpleHTTPRequestHandler):
             return str(HERE / ("duo.html" if path == "/duo.html" else "index.html"))
         return str(HERE / "__nope__")
 
+    def list_directory(self, path):
+        self.send_error(404)  # B54: no directory listings
+
+    def trusted(self):
+        """B33: only our own page: a foreign Origin is CSRF, a foreign Host is DNS rebinding."""
+        port = self.server.server_address[1]
+        own = {f"localhost:{port}", f"127.0.0.1:{port}"}
+        origin = self.headers.get("Origin")
+        return self.headers.get("Host") in own and (origin is None or origin in {f"http://{h}" for h in own})
+
     def do_POST(self):
         if self.path != "/api/talk":
             return self.send_error(404)
-        req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if not self.trusted():
+            self.close_connection = True  # the unread body must not become the next request
+            return self.send_error(403)
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self.close_connection = True
+                return self.send_error(413)
+            req = json.loads(self.rfile.read(n))
+            text = str(req["text"])[:MAX_TEXT]
+            history = req.get("history") or []
+            # B33: the client sends only the dialogue; the system prompt is ours
+            msgs = [{"role": m["role"], "content": str(m.get("content", ""))[:MAX_TEXT]}
+                    for m in history[-12:] if isinstance(m, dict) and m.get("role") in ("user", "assistant")]
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return self.send_error(400)
         t0 = time.time()
-        msgs = [{"role": m["role"], "content": m["content"]} for m in req.get("history", [])[-12:]]
-        msgs.append({"role": "user", "content": req["text"]})
+        msgs.append({"role": "user", "content": text})
         gesture, action, place, line, model = think(msgs)
         t1 = time.time()
         audio = speak(line)

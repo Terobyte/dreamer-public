@@ -84,8 +84,8 @@ def test_B34_failed_asr_chunk_does_not_stop_later_turn_detection():
         turns.last_speech = 0
         watcher = asyncio.create_task(turns.watch())
         try:
-            for _ in range(20):
-                await asyncio.sleep(0)
+            for _ in range(200):  # watch() polls every 50 ms: wait up to 2 s
+                await asyncio.sleep(0.01)
                 if session.ended:
                     break
                 if watcher.done():

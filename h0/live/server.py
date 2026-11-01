@@ -8,6 +8,7 @@ usage: python server.py  ->  http://localhost:8090
 import json
 import os
 import sys
+import threading
 import time
 import urllib.request
 import uuid
@@ -25,6 +26,7 @@ PORT = 8090
 
 history = []  # Squidward's chat history, one live session
 lines = {}  # tts id -> spoken text
+lock = threading.Lock()  # B32: handler threads share history and lines
 
 
 def transcribe(wav):
@@ -51,6 +53,19 @@ class Handler(BaseHTTPRequestHandler):
     def body(self):
         return self.rfile.read(int(self.headers.get("Content-Length", 0)))
 
+    def trusted(self):
+        """B32: only our own page on localhost. A foreign Origin is CSRF; a foreign
+        Host is DNS rebinding. Either would spend ASR/Spark/Fish on our keys."""
+        port = self.server.server_address[1]
+        own = {f"localhost:{port}", f"127.0.0.1:{port}"}
+        origin = self.headers.get("Origin")
+        if self.headers.get("Host") not in own or (origin is not None and
+                                                    origin not in {f"http://{h}" for h in own}):
+            self.close_connection = True  # the unread body must not become the next request
+            self.send_error(403)
+            return False
+        return True
+
     def do_GET(self):
         if self.path == "/":
             data = (HERE / "index.html").read_bytes()
@@ -59,26 +74,42 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
         elif self.path.startswith("/tts/"):
-            self.stream_tts(lines.get(self.path[5:], ""))
+            if not self.trusted():
+                return
+            with lock:
+                text = lines.get(self.path[5:])  # get: the audio tag may fetch twice
+            if not text:
+                self.send_error(404)  # B32: no Fish call for an unknown id
+                return
+            self.stream_tts(text)
         else:
             self.send_error(404)
 
     def do_POST(self):
         t0 = time.time()
+        if not self.trusted():
+            return
         if self.path == "/asr":
             self.send_json({"text": transcribe(self.body()), "ms": round((time.time() - t0) * 1000)})
         elif self.path == "/turn":
-            req = json.loads(self.body())
-            history.append({"role": "user", "content": f"[STATE room_loading={req['progress']}%]\n{req['text']}"})
-            line, ttft, _ = chat(SQUIDWARD_LOAD, history)
-            history.append({"role": "assistant", "content": line})
-            spoken = line.replace(OPEN, "").strip()
-            tid = uuid.uuid4().hex[:8]
-            lines[tid] = spoken
+            try:
+                req = json.loads(self.body())
+                user = f"[STATE room_loading={int(req['progress'])}%]\n{str(req['text'])}"
+            except (ValueError, KeyError, TypeError):
+                self.send_error(400)  # B32: a bad body gets an answer, not a dead socket
+                return
+            with lock:  # one turn at a time: history is one live session
+                history.append({"role": "user", "content": user})
+                line, ttft, _ = chat(SQUIDWARD_LOAD, history)
+                history.append({"role": "assistant", "content": line})
+                spoken = line.replace(OPEN, "").strip()
+                tid = uuid.uuid4().hex[:8]
+                lines[tid] = spoken
             self.send_json({"line": spoken, "opened": OPEN in line, "tts": f"/tts/{tid}",
                             "ttft": round((ttft or 0) * 1000), "ms": round((time.time() - t0) * 1000)})
         elif self.path == "/reset":
-            history.clear()
+            with lock:
+                history.clear()
             self.send_json({"ok": True})
         else:
             self.send_error(404)
