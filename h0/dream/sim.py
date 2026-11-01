@@ -240,6 +240,7 @@ class Sim:
         self.profile = profile
         self.book = None  # K2: the score being played (see _book_step)
         self._book_hold_until = -1e9
+        self._book_voicing = None  # a narrator beat in Fish TTS (see _book_narrate)
         self.speed = speed
         self.fake = fake
         self.max_dollars = float(max_dollars)
@@ -1165,6 +1166,9 @@ class Sim:
         bk = self.book
         if bk["over"]:
             return
+        if self._book_voicing is not None:
+            self._book_narrated()
+            return
         if (self.active_line is not None or self.next_line is not None
                 or self._gen_thread is not None or self.clock.now() < self._book_hold_until):
             return
@@ -1191,9 +1195,49 @@ class Sim:
                             "shot": beat.get("shot")})
             return
         text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]
-        self._diagnostic({"type": "narrator", "cause": "book", "text": text,
-                          "voice": self.book.get("narrator_voice") or "old_man"})
+        voice = self.book.get("narrator_voice") or "old_man"
+        if (self._voice is not None and self.logger is not None and not self.fake
+                and not self.safety_paused and self._budget_ok()):
+            self._book_narrate(text, voice)
+            return
+        self._diagnostic({"type": "narrator", "cause": "book", "text": text, "voice": voice})
         self._book_hold_until = now + self.clock.scale(line_duration(text))
+
+    def _book_narrate(self, text, voice):
+        """The book's narration is voiced like a line: Fish runs off the loop thread (B49), the
+        score waits for it, the narrator event then carries the audio and the hold is its length."""
+        self._line_seq += 1
+        path = os.path.join(self._audio_dir, "line_%03d.wav" % self._line_seq)
+        job = {"text": text, "voice": voice, "done": threading.Event(), "res": None}
+
+        def synth():
+            try:
+                job["res"] = self._voice.synthesize(text, voice, path)
+            except Exception as e:
+                job["res"] = {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
+            finally:
+                job["done"].set()
+        self._book_voicing = job
+        threading.Thread(target=synth, daemon=True).start()
+
+    def _book_narrated(self):
+        job = self._book_voicing
+        if not job["done"].is_set():
+            return
+        self._book_voicing = None
+        res = job["res"] or {}
+        event = {"type": "narrator", "cause": "book", "text": job["text"], "voice": job["voice"]}
+        seconds = None
+        if res.get("ok") and res.get("audio"):
+            seconds = res.get("seconds", res.get("pause"))
+            event["audio"] = os.path.relpath(res["audio"], self.outdir)
+            event["dur"] = seconds
+        else:
+            err = res.get("error") or {}
+            self._diagnostic({"type": "tts_fail", "who": "narrator",
+                              "error": str(err.get("error") if isinstance(err, dict) else err)})
+        self._diagnostic(event)
+        self._book_hold_until = self.clock.now() + self.clock.scale(line_duration(job["text"], seconds))
 
     def _book_scene_end(self):
         bk = self.book
