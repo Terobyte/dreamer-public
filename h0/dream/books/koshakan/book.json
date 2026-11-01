@@ -1,0 +1,83 @@
+{
+ "title": "Koshakan",
+ "author": "Moldir",
+ "year": 2026,
+ "source": "family book, miray/story_en.md (see SOURCE.md)",
+ "pov": "Mirai",
+ "narrator_voice": "woman",
+ "style": "A hand-painted children's picture book world: loose watercolour washes on cold-pressed paper, wobbly ink outlines, muted earthy palette (moss, warm brown, soft grey, pale dandelion yellow), soft edges, plenty of air.",
+ "cast": {
+  "Mirai": {
+   "sex": "woman",
+   "voice": "child",
+   "look": "A small lamb girl standing upright: caramel-russet curly wool on head and ears, cream-ivory body, a pink ribbon bow on the right side of her head, a pink tutu skirt, cloven hooves, bright round eyes."
+  },
+  "Mama": {
+   "sex": "woman",
+   "voice": "woman",
+   "look": "An adult sheep mother standing upright: long soft-wavy dark-brown hair past her shoulders, gentle oval face, dark almond eyes, cream-ivory fleece, a dusty sage-green knee-length V-neck dress, cloven hooves."
+  }
+ },
+ "chapters": [
+  {
+   "n": 1,
+   "file": "koshakan.txt",
+   "title": "Koshakan",
+   "scenes": [
+    {
+     "id": "bedroom",
+     "paras": [
+      0,
+      6
+     ],
+     "title": "Mama wakes Mirai with the word",
+     "place": "Mirai's small bedroom in early morning, pale peach light before sunrise: a child's bed with a soft blanket, a window, a nightstand, a rug. A hand-painted children's picture book world: loose watercolour washes on cold-pressed paper, wobbly ink outlines, muted earthy palette (moss, warm brown, soft grey, pale dandelion yellow), soft edges, plenty of air.",
+     "cast": [
+      "Mirai",
+      "Mama"
+     ],
+     "aliases": {
+      "Mama": "Mama",
+      "Mirai": "Mirai",
+      "she": "Mirai"
+     }
+    },
+    {
+     "id": "bathroom",
+     "paras": [
+      6,
+      11
+     ],
+     "title": "Warm tap water and a drippy Koshakan",
+     "place": "A small cosy bathroom on a bright morning: a sink with a tap, a little step stool in front of it, a shelf with a yellow rubber duck, a towel, soft morning light. A hand-painted children's picture book world: loose watercolour washes on cold-pressed paper, wobbly ink outlines, muted earthy palette (moss, warm brown, soft grey, pale dandelion yellow), soft edges, plenty of air.",
+     "cast": [
+      "Mirai",
+      "Mama"
+     ],
+     "aliases": {
+      "Mama": "Mama",
+      "Mirai": "Mirai"
+     }
+    },
+    {
+     "id": "meadow",
+     "paras": [
+      11,
+      56
+     ],
+     "title": "The dandelion meadow: what Koshakan means",
+     "place": "An open dandelion meadow field outdoors on a warm afternoon turning to sunset: soft green grass, patches of yellow dandelions and white dandelion clocks, a few low bushes and stones, a wide pale sky, no fences, no buildings. A hand-painted children's picture book world: loose watercolour washes on cold-pressed paper, wobbly ink outlines, muted earthy palette (moss, warm brown, soft grey, pale dandelion yellow), soft edges, plenty of air.",
+     "cast": [
+      "Mirai",
+      "Mama"
+     ],
+     "aliases": {
+      "Mama": "Mama",
+      "Mirai": "Mirai",
+      "she": "Mirai"
+     }
+    }
+   ]
+  }
+ ]
+}

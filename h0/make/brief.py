@@ -238,8 +238,9 @@ def spark_ask(spark, effort='medium'):
 def make_brief(prompt, ask, book_note=None, expect_book=None):
     """ask(messages) -> str. One retry with the error text, then BriefFailed."""
     user = prompt if not book_note else f'{prompt}\n\n{book_note}'
-    messages = [{'role': 'system', 'content': 'JSON mode: answer with one JSON object only, matching '
-                 'make/schema/brief.json (keys title, mode, book, style, places, cast, scene).'},
+    schema = (Path(__file__).resolve().parent / 'schema' / 'brief.json').read_text(encoding='utf-8')
+    messages = [{'role': 'system', 'content': 'JSON mode: answer with one JSON object only, valid against '
+                 'this JSON Schema (exact keys, enum values only, no extra fields):\n' + schema},
                 {'role': 'user', 'content': user}]
     errs = []
     for attempt in range(2):
