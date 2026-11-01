@@ -1,6 +1,6 @@
 # Карта фич Dreamer (код на 2026-11-01, HEAD 9b118fd)
 
-Читай ДО того, как писать код. Идентификаторы оставлены как в коде. `?` = не проверено чтением кода. Не читались: `~/.dreamer-bench`, cache/, dist/, node_modules, h0/out, .env.
+Читай ДО того, как писать код. Порядок для любого агента: §3 «нужно X — используй Y» → §4 дубли (не добавляй пятый клиент Spark, третий поиск пути) → §5 чего нет → только потом новый код. Добавил модуль или публичную функцию — допиши строку в §2 и §3 в том же коммите. Ссылки `файл:строка` проверены скриптом 11-01 (42/42 файла, 35/35 символов на месте); строки сдвигаются, ищи по имени функции. Идентификаторы оставлены как в коде. `?` = не проверено чтением кода. Не читались: `~/.dreamer-bench`, cache/, dist/, node_modules, h0/out, .env.
 
 Пути: `E` = `engine/`, `H` = `h0/`. Все TS-пути относительно `engine/src/`, если не указано иное.
 
@@ -345,16 +345,16 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | клиент Spark | `pipe2/spark.py:42 HttpTransport` (contributor, ретраи, резерв токенов) | `dream/llm.py:303 _post` + `RealTransport`; `squid_live/server.py:67 _post`; `live/rt.py` | четыре HTTP-клиента Meta/Baseten |
 | ключи | `dream/llm.py:225 _baseten_key`, `voice.py:68 fish_key`, `images.py:26 _image_key` | `squid_live/server.py:76 _baseten_key`, `:115 _fish_key`; `live/rt.py` из `gate_test.fish_key` | читают .env каждый по-своему |
 | Fish TTS | `dream/voice.py:129 real_transport` (drama-3) | `squid_live/server.py:124 speak`; `live/rt.py` (PCM stream); вне repo `career/orchestration/tg.py` (s2-pro, Гаврилов) | разные модели: dream = `drama-3`, tg.py = `s2-pro` |
-| Muse Image | `engine/.../muse-image.ts:40` (`muse-image-1`, api.meta-models.ai) | `pipe2/assets.py:71 MuseImage` (`muse-image-1.0`, api.meta.ai); `dream/images.py:37`; `h0/gen_images.py` | разные endpoint и имена моделей |
-| SAM3D | `engine/.../sam3d.ts:17 Sam3dProvider` (HTTP meta-models) | `pipe2/assets.py:108 ModalMesh` (Modal `dreamer-sam3d`); `h0/world/twelve_oaks/sam3d_par.py` | боевой путь pipe2 = Modal; engine HTTP-провайдер = путь `--assets live` |
-| учёт денег | `engine/.../cost.ts:39 Budget` (центы) | `pipe2/ledger.py:24 Ledger` (usd/calls/tokens); `dream/llm.py:135 _charge`; `make/core.py Ctx.spend` | четыре счётчика, не связаны |
+| Muse Image | `engine/src/assets/providers/muse-image.ts:40` (`muse-image-1`, api.meta-models.ai) | `pipe2/assets.py:71 MuseImage` (`muse-image-1.0`, api.meta.ai); `dream/images.py:37`; `h0/gen_images.py` | разные endpoint и имена моделей |
+| SAM3D | `engine/src/assets/providers/sam3d.ts:17 Sam3dProvider` (HTTP meta-models) | `pipe2/assets.py:108 ModalMesh` (Modal `dreamer-sam3d`); `h0/world/twelve_oaks/sam3d_par.py` | боевой путь pipe2 = Modal; engine HTTP-провайдер = путь `--assets live` |
+| учёт денег | `engine/src/assets/cost.ts:39 Budget` (центы) | `pipe2/ledger.py:24 Ledger` (usd/calls/tokens); `dream/llm.py:135 _charge`; `make/core.py Ctx.spend` | четыре счётчика, не связаны |
 | выбор жеста/клипа по тексту | `runtime/stage/anim.ts:378 pickClip` | `squid_live/duo.html:205 pick` (по ремарке голоса); `dream/dialogue.py:433 remarks` | pick из squid в движок не перенесён |
 | «кто куда идёт» по тексту | `places.ts:94 stageRegex` | `squid_live/duo.html:329 stageFrom` (+STAGE регэкспы) | движок взял регэксп, структурное поле `stage` не читает |
 | камера-режиссёр | `runtime/stage/director.ts:140 createDirector` | `squid_live/duo.html:251 direct`; `engine/src/runtime/cams.ts` (камеры сцены) | squid — исходник идеи |
 | поиск объектов в тексте | `dream/dialogue.py:492 find_objects` | `places.ts stageRegex`; `make/refs` не связан | русские/английские имена: разные регэкспы |
 | длительность реплики | `dream/sim.py:151 line_duration` | `voice.py:45 wav_seconds`; `record.mjs` берёт `dur` из события | — |
 | карточка места из пропов | `make/stage.py:109 build_places` (Py, из geometry+scene) | `places.ts` (TS читает результат) | банк строится на стороне Python, рантайм только читает |
-| fake-провайдеры | `engine/.../fake.ts`, `engine/test/fake-shots.ts` | `pipe2/fakes.py`, `dream/fake.py`, `make/testkit.py`, `make/refs/fake.py` | пять независимых наборов |
+| fake-провайдеры | `engine/src/assets/providers/fake.ts`, `engine/test/fake-shots.ts` | `pipe2/fakes.py`, `dream/fake.py`, `make/testkit.py`, `make/refs/fake.py` | пять независимых наборов |
 | SSE-сервер/просмотрщик | `dream/server.py` | `squid_live/server.py`, `live/server.py` | три сервера |
 
 ---
