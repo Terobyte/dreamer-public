@@ -95,6 +95,8 @@ def run_world(ctx, runner=subprocess.run):
     else:
         # a pipe2 that died before its skeleton (e.g. bad argv) has nothing to resume
         resume = ctx.resume and (run / "skeleton.json").is_file()
+        if ctx.resume and not resume and run.exists():
+            shutil.rmtree(run)  # nothing to resume; pipe2 refuses a dir that holds a dead run
         argv = pipe2_argv(task, run, usd=ctx.budget_usd, effort=ctx.opts.get("effort"), resume=resume)
         r = runner(argv, cwd=str(H0))
         if r.returncode != 0:
