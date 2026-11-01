@@ -1,0 +1,3 @@
+{"Mama": {"glb": "body.glb", "height_m": 1.65, "voice": "woman", "sex": "female", "look": "kind cat mother",
+          "clips": {"wake": "wake.glb", "hug": "hug.glb"},
+          "verbs": {"hug": ["hug", "hugged", "hold", "held"]}}}
