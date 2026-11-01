@@ -56,7 +56,7 @@ class FixTest(unittest.TestCase):
 
     def test_f3_narration_carries_narrator_voice(self):
         plan = S._load_book_plan(BOOK, ["library"])
-        out, log = S.run(book=BOOK, fake=True, speed=50, scenes=["library"])
+        out, log = S.run(book=BOOK, fake=True, speed=1000, scenes=["library"])
         rows = rows_of(log)
         narr = [r for r in rows if r["type"] == "narrator" and r.get("cause") == "book"]
         self.assertTrue(narr)
