@@ -22,6 +22,7 @@ def main(argv=None):
     ap.add_argument("--max-dollars", type=float)
     ap.add_argument("--split")
     ap.add_argument("--effort")
+    ap.add_argument("--mesh", choices=["trellis", "sam3d"], help="pipe2 mesh model (default: pipe2's)")
     ap.add_argument("--pick", default="first", choices=["first", "vision"])
     ap.add_argument("--book", help="book dir with book.json, e.g. dream/books/gwtw")
     ap.add_argument("--scene", help="scene id in book.json")
@@ -32,7 +33,7 @@ def main(argv=None):
         res = core.run_make(run, a.prompt, only=a.only, from_=a.from_, until=a.until,
                             fresh=a.fresh, fake=a.fake, check=a.check,
                             max_dollars=a.max_dollars, split=a.split,
-                            effort=a.effort, pick=a.pick,
+                            effort=a.effort, pick=a.pick, mesh=a.mesh,
                             book=a.book, scene=a.scene, freestyle=a.freestyle, live=True)
     except (core.MissingInput, core.LockError) as e:
         print(e, file=sys.stderr)

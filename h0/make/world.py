@@ -60,7 +60,7 @@ def build_task_md(brief):
     return "\n".join(out) + "\n"
 
 
-def pipe2_argv(task_dir, run_dir, *, usd=None, calls=None, tokens=None, effort=None, resume=False):
+def pipe2_argv(task_dir, run_dir, *, usd=None, calls=None, tokens=None, effort=None, resume=False, mesh=None):
     """argv for `pipe2 run`: all three --cap-* always."""
     a = [sys.executable, "-m", "pipe2", "run", str(task_dir), "--run-dir", str(run_dir),
          "--cap-usd", str(float(usd if usd is not None else DEFAULT_CAPS["usd"])),
@@ -68,6 +68,8 @@ def pipe2_argv(task_dir, run_dir, *, usd=None, calls=None, tokens=None, effort=N
          "--cap-tokens", str(int(tokens if tokens is not None else DEFAULT_CAPS["tokens"]))]
     if effort:
         a += ["--effort", str(effort)]
+    if mesh:
+        a += ["--mesh", str(mesh)]
     if resume:
         a.append("--resume")
     return a
@@ -97,7 +99,8 @@ def run_world(ctx, runner=subprocess.run):
         resume = ctx.resume and (run / "skeleton.json").is_file()
         if ctx.resume and not resume and run.exists():
             shutil.rmtree(run)  # nothing to resume; pipe2 refuses a dir that holds a dead run
-        argv = pipe2_argv(task, run, usd=ctx.budget_usd, effort=ctx.opts.get("effort"), resume=resume)
+        argv = pipe2_argv(task, run, usd=ctx.budget_usd, effort=ctx.opts.get("effort"), resume=resume,
+                          mesh=ctx.opts.get("mesh"))
         r = runner(argv, cwd=str(H0))
         if r.returncode != 0:
             raise RuntimeError(f"pipe2 run failed (exit {r.returncode}); world.tmp kept for --resume")
