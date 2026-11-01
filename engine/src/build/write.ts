@@ -18,6 +18,7 @@ import { TRI_LIMITS, propClass, type TriCount } from "../budget.js";
 import { cutGlb } from "../assets/cut.js";
 import { shotBaseNames } from "./shotnames.js";
 import { doorDefs, type DoorJson } from "./doors.js";
+import { floorDecals } from "./decals.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -32,7 +33,11 @@ export interface BuildJson {
     pose?: Record<string, object | null>;
   };
   /** what each prop's model really measures, so `check --built` can use it */
-  props: Record<string, { fact: PropFact | null }>;
+  props: Record<string, { fact: PropFact | null; at?: [number, number] }>;
+  /** floor decals (`at` + `rotation`): a plane facing up on the room's floor + 0.005 */
+  decals: { i: number; room: string; asset: string; center: [number, number, number]; normal: [number, number, number]; size: { w: number; h: number }; rotation: number }[];
+  /** every scene light as the page gets it; a `sun` is one directional light */
+  lights: Geometry["lights"];
   warnings: string[];
   /** triangles of the built scene: engine geometry plus every placed model */
   tris: TriCount;
@@ -63,13 +68,22 @@ function rawPropId(meshId: string, propIds: Set<string>): string {
   return meshId.replace(/\.\d+$/, "");
 }
 
-function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbSize>): BuildJson["props"] {
+export function propFacts(
+  scene: any,
+  geometry: Geometry,
+  glbSizes: Record<string, GlbSize>,
+  moved: Record<string, [number, number]> = {},
+): BuildJson["props"] {
   const propIds = new Set(((scene?.props ?? []) as any[]).map((r) => String(r?.id)));
   const scaleOf = new Map<string, number>();
+  const scaleYOf = new Map<string, number>();
   for (const m of geometry.meshes as any[]) {
     if (m.kind !== "prop" || m.glb === undefined || typeof m.scale !== "number") continue;
     const id = rawPropId(String(m.id), propIds);
-    if (!scaleOf.has(id)) scaleOf.set(id, m.scale);
+    if (!scaleOf.has(id)) {
+      scaleOf.set(id, m.scale);
+      if (typeof m.scaleY === "number") scaleYOf.set(id, m.scaleY);
+    }
   }
   // no prototype: an id literally named "__proto__" must stay an own key
   const out: BuildJson["props"] = Object.create(null);
@@ -77,7 +91,11 @@ function propFacts(scene: any, geometry: Geometry, glbSizes: Record<string, GlbS
     const id = String(raw?.id);
     const glb = glbSizes[String(raw?.asset)];
     const scale = scaleOf.get(id);
-    out[id] = { fact: glb !== undefined && scale !== undefined ? factOf(glb, scale) : null };
+    out[id] = {
+      fact: glb !== undefined && scale !== undefined ? { ...factOf(glb, scale), h: glb.h * (scaleYOf.get(id) ?? scale) } : null,
+      // where the prop stands after `--apply-fixes` moved it
+      ...(Object.prototype.hasOwnProperty.call(moved, id) ? { at: moved[id] } : {}),
+    };
   }
   return out;
 }
@@ -253,7 +271,7 @@ export async function writeDist(
   ctx: Ctx,
   report: Report,
   outDir: string,
-  opts: { startedAt: number; assets?: AssetReport; cacheDir?: string; scenePath?: string },
+  opts: { startedAt: number; assets?: AssetReport; cacheDir?: string; scenePath?: string; fixes?: string[]; moved?: Record<string, [number, number]> },
 ): Promise<BuildJson> {
   // Assets the cache could not provide stay coloured placeholders, and the
   // build says so instead of failing: a half-generated world is still walkable.
@@ -294,8 +312,10 @@ export async function writeDist(
       ...(Object.keys(cut).length > 0 ? { cut } : {}),
       pose: posesOf(ctx, opts.cacheDir, assets.used, opts.scenePath),
     },
-    props: propFacts(ctx.scene, geometry, glbSizes),
+    props: propFacts(ctx.scene, geometry, glbSizes, opts.moved),
     doors: doorDefs(ctx),
+    decals: floorDecals(ctx).map((d) => ({ i: d.i, room: d.room, asset: d.asset, center: d.center, normal: d.normal, size: d.size, rotation: d.rotation })),
+    lights: geometry.lights,
     tris: countTris(
       geometry,
       outDir,
@@ -310,6 +330,7 @@ export async function writeDist(
       ...(assets.warnings ?? []).map(warningText),
       ...assets.missing.map((id) => `assets: no cached asset for ${id}, drawing a placeholder`),
       ...refWarnings,
+      ...(opts.fixes ?? []),
     ],
   };
   writeFileSync(join(outDir, "build.json"), JSON.stringify(out, null, 2));

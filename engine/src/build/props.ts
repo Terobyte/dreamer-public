@@ -3,6 +3,9 @@ import type { V2 } from "../geom/vec.js";
 import type { AssetFiles, GlbSizes, Mesh } from "./geometry.js";
 import { boxMesh } from "./beams.js";
 
+/** below this height (m) a prop is flat and is scaled by its footprint, not its height */
+export const FLAT_H = 0.05;
+
 interface PassProp {
   id: string;
   obb: V2[];
@@ -48,7 +51,21 @@ export function propMeshes(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: GlbS
       // author is held to, and fitting the widest axis instead would shrink
       // a prop whose generated model happens to have a broad base
       const size = glbSizes[asset];
-      if (size !== undefined && size.h > 0) mesh.scale = (p.y[1] - p.y[0]) / size.h;
+      const h = p.y[1] - p.y[0];
+      if (h < FLAT_H) {
+        // a flat thing (rug, mat): its height says nothing about its footprint,
+        // so the scale fits `w` and `d` and the height is scaled on its own
+        const raw = raws[g.src]?.size;
+        const fits = [
+          size && size.w > 0 && raw?.w > 0 ? raw.w / size.w : Infinity,
+          size && size.d > 0 && raw?.d > 0 ? raw.d / size.d : Infinity,
+        ];
+        const s = Math.min(fits[0], fits[1]);
+        if (Number.isFinite(s) && s > 0) {
+          mesh.scale = s;
+          if (size !== undefined && size.h > 0) mesh.scaleY = h / size.h;
+        } else if (size !== undefined && size.h > 0) mesh.scale = h / size.h;
+      } else if (size !== undefined && size.h > 0) mesh.scale = h / size.h;
     }
     out.push(mesh);
   }

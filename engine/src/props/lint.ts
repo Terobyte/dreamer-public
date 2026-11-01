@@ -242,7 +242,7 @@ export function lintProps(ctx: Ctx): Issue[] {
     // one point at the field; copies of `around` get no `fix` and no `at`
     const path = g.copy === undefined ? `/props/${g.src}/at` : `/props/${g.src}`;
     const copy = g.copy === undefined ? {} : { copy: g.copy };
-    const add = (code: Issue["code"], params: Record<string, string>, fix?: Record<string, unknown>): void => {
+    const add = (code: Issue["code"], params: Record<string, string>, fix?: Record<string, unknown>, data?: Record<string, unknown>): void => {
       issues.push({
         code,
         stage: "props",
@@ -250,6 +250,7 @@ export function lintProps(ctx: Ctx): Issue[] {
         msg: msg(code, { id: g.id, ...params }),
         ...copy,
         ...(fix && g.copy === undefined ? { fix } : {}),
+        ...(data ? { data } : {}),
       });
     };
 
@@ -384,6 +385,10 @@ export function lintProps(ctx: Ctx): Issue[] {
             ? { edge: hitFree.id, d: String(round3(hitFree.d)) }
             : { edge: near ? near.e.id : room.id, d: String(round3(depth)) },
           hitFree ? undefined : fix,
+          // the exact penetration past the inner face: on an arc the travel
+          // to `fix.at` runs longer (corners meet the curve at other
+          // normals), so the --apply-fixes limit reads this, not the travel
+          { depth: hitFree ? hitFree.d : depth },
         );
         continue;
       }

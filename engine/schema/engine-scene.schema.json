@@ -353,6 +353,7 @@
           "room": { "type": "string" },
           "at": { "$ref": "#/$defs/point2" },
           "on": { "$ref": "#/$defs/on" },
+          "rotation": { "type": "number" },
           "y": { "type": "number", "default": 1.6 },
           "size": {
             "type": "object",
@@ -375,15 +376,22 @@
         "required": ["kind"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["point", "hemi"] },
+          "kind": { "enum": ["point", "hemi", "sun"] },
           "pos": { "$ref": "#/$defs/point3" },
           "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#ffffff" },
-          "power": { "type": "number", "default": 1.0 }
+          "power": { "type": "number", "default": 1.0 },
+          "dir": { "$ref": "#/$defs/point3" },
+          "intensity": { "type": "number", "minimum": 0 },
+          "castShadow": { "type": "boolean" }
         },
         "allOf": [
           {
             "if": { "required": ["kind"], "properties": { "kind": { "const": "point" } } },
             "then": { "required": ["pos"] }
+          },
+          {
+            "if": { "required": ["kind"], "properties": { "kind": { "const": "sun" } } },
+            "then": { "required": ["dir"] }
           }
         ]
       }

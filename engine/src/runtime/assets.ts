@@ -19,6 +19,15 @@ export interface GlbSrc {
   glbPos?: [number, number, number];
   glbYaw?: number;
   scale?: number;
+  /** flat props scale Y on its own (see build/props.ts): the footprint scale must not stretch the height */
+  scaleY?: number;
+}
+
+/** Runtime model scale: footprint `scale` on X/Z, `scaleY` on Y (falls back to `scale`). */
+export function glbScale(src: GlbSrc): [number, number, number] {
+  const s = Number(src.scale ?? 1);
+  const sy = typeof src.scaleY === "number" ? Number(src.scaleY) : s;
+  return [s, sy, s];
 }
 
 /**
@@ -111,7 +120,7 @@ export async function loadGlb(src: GlbSrc, box: { min: Vector3; max: Vector3 }):
   const root = gltf.scene;
   cutDarkTexels(root);
   if (typeof src.scale === "number" && src.glbPos) {
-    root.scale.setScalar(src.scale);
+    root.scale.set(...glbScale(src));
     root.rotation.y = Number(src.glbYaw ?? 0);
     root.position.set(src.glbPos[0], src.glbPos[1], src.glbPos[2]);
   } else {

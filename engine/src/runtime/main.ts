@@ -1,5 +1,4 @@
 import {
-  AmbientLight,
   Box3,
   BufferAttribute,
   CanvasTexture,
@@ -7,11 +6,9 @@ import {
   DoubleSide,
   Float32BufferAttribute,
   Group,
-  HemisphereLight,
   NeutralToneMapping,
   Mesh,
   MeshStandardMaterial,
-  PointLight,
   RepeatWrapping,
   Scene,
   BufferGeometry,
@@ -25,6 +22,7 @@ import { loadGlb, loadMaps } from "./assets.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { addOutdoor } from "./outdoor.js";
+import { addSceneLights } from "../build/lights.js";
 import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
@@ -153,6 +151,7 @@ async function start(): Promise<void> {
     return m;
   };
 
+  const sunShadows = ((geo.lights ?? []) as any[]).some((l) => l.kind === "sun" && l.castShadow === true);
   const setup = pickCamera(geo, params, window.innerWidth / Math.max(window.innerHeight, 1));
   const objects = new Map<string, Mesh | Group>();
   const meshTotal = (geo.meshes as any[]).length;
@@ -171,6 +170,9 @@ async function start(): Promise<void> {
         loadGlb(src, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max }).then((root) => {
           root.name = mesh.name;
           root.visible = mesh.visible;
+          // the sun traverse below runs before the GLB lands: flag the real
+          // meshes on swap, or they never cast/receive shadows (F4)
+          if (sunShadows) root.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
           scene.remove(mesh);
           scene.add(root);
           objects.set(mesh.name, root);
@@ -185,17 +187,17 @@ async function start(): Promise<void> {
   // a scene with a street gets its sky dome, ground disc and sun before the
   // first frame, so __ready never fires on a bare `exterior` background
   if (geo.outdoor) await addOutdoor(scene, geo.outdoor, material(String(geo.outdoor.ground.material)));
-  scene.add(new AmbientLight(0xffffff, 0.4 * Number(geo.style?.ambient ?? 1)));
-  for (const l of (geo.lights ?? []) as any[]) {
-    if (l.kind === "hemi") {
-      const h = new HemisphereLight(new Color(l.color), new Color(0x404040), 1.0 * Number(l.power ?? 1));
-      if (l.pos) h.position.set(l.pos[0], l.pos[1], l.pos[2]);
-      scene.add(h);
-    } else {
-      const p = new PointLight(new Color(l.color), 15 * Number(l.power ?? 1));
-      p.position.set(l.pos[0], l.pos[1], l.pos[2]);
-      scene.add(p);
-    }
+  // ambient, hemi, point and sun lights: one function the node tests read too
+  addSceneLights(scene, geo);
+  // a sun with `castShadow` needs the shadow map on, or its shadows never draw
+  if (sunShadows) {
+    renderer.shadowMap.enabled = true;
+    scene.traverse((o: any) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
   }
 
   // layers[0] is the spawn level (`buildLayers`); the rest are reachable by a

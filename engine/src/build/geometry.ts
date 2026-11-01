@@ -13,6 +13,7 @@ import type { WallRoom } from "./walls.js";
 import { meshBBox } from "./mesh.js";
 import { propMeshes } from "./props.js";
 import { decalMeshes } from "./decals.js";
+import { sunOf, type SunLight } from "./lights.js";
 import { doorMeshes } from "./doors.js";
 import { fixtureMeshes } from "./fixtures.js";
 import { stairMeshes } from "./stairs.js";
@@ -52,6 +53,8 @@ export interface Mesh {
   glbPos?: [number, number, number];
   glbYaw?: number;
   scale?: number;
+  /** vertical scale of a flat prop when it differs from `scale` (see props.ts) */
+  scaleY?: number;
 }
 
 export interface MaterialDef {
@@ -63,7 +66,8 @@ export interface MaterialDef {
 
 export type Light =
   | { kind: "point"; pos: [number, number, number]; color: string; power: number }
-  | { kind: "hemi"; pos?: [number, number, number]; color: string; power: number };
+  | { kind: "hemi"; pos?: [number, number, number]; color: string; power: number }
+  | SunLight;
 
 export interface Camera {
   id: string;
@@ -292,7 +296,8 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     meshes,
     floors,
     materials: materialTable(scene, assetFiles, free, glassIds),
-    lights: (scene.lights ?? []) as Light[],
+    // a sun keeps only dir/intensity/castShadow: the schema's color/power defaults are not its fields
+    lights: ((scene.lights ?? []) as any[]).map((l) => (l?.kind === "sun" ? sunOf(l) : l)) as Light[],
     cameras: ((scene.cameras ?? []) as Camera[]).map((c) => ({ ...c })),
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },
     style: { ambient: Number(scene.style?.ambient ?? 1.0), exterior: String(scene.style?.exterior ?? "#808080") },

@@ -9,6 +9,7 @@ import { edgeNormal, edgePoint, fracOf, isClosed, mOnEdge, nearestEdge, onWallAx
 import { msg } from "../report/messages.js";
 import { round3 } from "../report/report.js";
 import { FREE } from "../plan/merge.js";
+import { isFloorDecal } from "../build/decals.js";
 
 const STAGE: Stage = "decals";
 /** flat things sit this far off the inner face of the wall */
@@ -216,6 +217,8 @@ export function placeDecals(ctx: Ctx): DecalGeo[] {
 
   for (let i = 0; i < list.length; i++) {
     const raw = list[i];
+    // a floor decal has no wall to sit on: `build` lays it flat (build/decals.ts)
+    if (isFloorDecal(raw)) continue;
     const roomId = String(raw?.on?.room ?? raw?.room ?? "");
     const room = roomById.get(roomId);
     if (!room) continue;

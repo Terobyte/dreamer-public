@@ -66,7 +66,7 @@
 |---|---|---|---|---|
 | `bin/dreamer.ts` | CLI. `check <scene> [--report p] [--built dist]`; `build <scene> --out d [--assets none\|cache\|live] [--cache d] [--max-dollars n]`; `shots <dist> [--size WxH] [--ready-timeout s]`. Код выхода 0/1/2, diff с прошлым report | `main`, `runBuild`, `runShotsCmd`, `reportDiff` | in scene.json; out check.json | `build-cli.test.ts`, `demo.test.ts` |
 | `bin/record.mjs` | Playwright пишет webm страницы + `events.json` (ms,type,who,text,audio,dur,"ready"). `node record.mjs <url> <out> [maxS] [WxH]`; exit 3 = нет book_end/stop | — | `<page>.webm`, `events.json`, `last.png` | `browser/stage.test.ts` ? (косвенно) |
-| `check.ts` | прогон стадий `STAGES = schema, plan, openings, stairs, props, decals, cameras, nav` | `runCheck(raw, {until, builtNav, facts, tris, ...}) -> {report, ctx}` | Report/Passport | `schema.test.ts`, `bugs-*.test.ts` |
+| `check.ts` | прогон стадий `STAGES = schema, plan, openings, stairs, props, decals, cameras, nav`; `applyFixes` для `build --apply-fixes` (сдвиг `PROP_HITS_WALL` ≤ 0.1 м в `fix.at`, `WARN` с id) | `runCheck(raw, {until, builtNav, facts, tris, ...}) -> {report, ctx}`, `applyFixes(raw) -> {raw, report, ctx, warns, moved}` | Report/Passport | `schema.test.ts`, `bugs-*.test.ts` |
 | `types.ts`, `ctx.ts` | `Issue`, `Code` (все коды ошибок), `Report`, `Ctx{scene,rooms,levels,openings,graph,props,decals,nav,facts,passport}` | — | — | — |
 | `budget.ts` | лимиты: `TRI_LIMITS {small 1000, furniture 5000, large 8000}`, `SCENE_TRI_LIMIT 300000`, `ROOM_POINT_LIGHTS 2` | `propClass(size)`, `budgetIssues(ctx, tris)` | build.json.tris | `budget.test.ts`, `bugs-budget.test.ts` |
 | `schema/{parse,validate,refs}.ts` | JSON parse с позициями; ajv-валидация + `applyDefaults`; ссылки по id (`checkRefs`), `sortIssues`, `escapePtr` | `parseScene`, `validate`, `applyDefaults`, `checkRefs` | scene.json | `schema.test.ts` |
@@ -85,7 +85,10 @@
 
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
-| `build/write.ts` | оркестрация build: пишет `check.json, top.svg, nav.json, geometry.json, index.html, runtime.js (esbuild), build.json` | `writeDist`, `bundleRuntime`, `countTris`, `cutPlaced`, `BuildJson{ok,seconds,assets{used,fallback,missing,cut?{id:{from,to}}},props{fact},tris,doors[]}` | dist/ | `build-cli.test.ts`, `build-geometry.test.ts`, `asset-cut.test.ts` |
+| `build/write.ts` | оркестрация build: пишет `check.json, top.svg, nav.json, geometry.json, index.html, runtime.js (esbuild), build.json` | `writeDist`, `bundleRuntime`, `countTris`, `cutPlaced`, `propFacts`, `BuildJson{ok,seconds,assets{used,fallback,missing,cut?{id:{from,to}}},props{fact,at?},tris,doors[],decals[] (пол),lights[]}` | dist/ | `build-cli.test.ts`, `build-geometry.test.ts`, `asset-cut.test.ts` |
+| `build/decals.ts` | наклейки: на стене по паспорту; на полу (`at` + `rotation`) плоскость нормалью вверх на полу + 0.005 | `decalMeshes`, `floorDecals`, `isFloorDecal`, `FLOOR_LIFT` | Mesh[] | `decals.test.ts`, `floor-decal.test.ts` |
+| `build/lights.ts` | свет страницы: ambient, hemi, point, `sun` → `DirectionalLight` (тени); общая для `runtime/main.ts` и node-тестов | `addSceneLights`, `sunLight`, `sunOf` | three Scene | `sun.test.ts` |
+| `build/props.ts` | меш пропа по паспорту; плоский (`h` < `FLAT_H` 0.05 м) масштаб по `w`,`d`, высота отдельно (`scaleY`) | `propMeshes`, `FLAT_H` | Mesh[] | `build-assets.test.ts`, `flat-prop.test.ts` |
 | `build/geometry.ts` | вся геометрия: `Geometry{meshes, floors[{room,level,y,outline}], materials, lights, cameras, spawn, style, outdoor}` | `buildGeometry(ctx, assetFiles, glbSizes)`, `materialTable` | geometry.json | `build-geometry.test.ts` |
 | `build/{walls,slab,floors,roof,beams,stairs,doors,fixtures,decals,props,mesh,color,materials,page,shots,shotnames}.ts` | стены с вырезами, плиты/дыры, earClip, крыша, балки, лестницы+перила, двери (`doorDefs`), окна-фикстуры, MeshBuilder, цвет-заглушка по id (`grayOf`), `placeAssets` (GLB в dist + размеры), html-страница, `runShots` (Playwright, лист `sheet.png`), `shotBaseNames` | `intervalMeshes`, `extrudeFace`, `earClip`, `roofMeshes`, `stairMeshes`, `doorMeshes`, `fixtureGeos`, `propMeshes`, `planeMesh`, `boxMesh`, `placeAssets`, `runShots`, `serveDist`, `sheetHtml` | dist/shots/`<cam>`.png | `build-geometry`, `walls-fixtures`, `build-things`, `build-shots`, `browser/shots.test.ts` |
 
@@ -115,7 +118,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | файл | что делает | ключевое | тесты |
 |---|---|---|---|
 | `runtime/main.ts` | старт страницы: three-сцена из geometry.json, текстуры/GLB, свет (point + hemi), ходьба, двери, outdoor, stage | `start()` | `browser/page.test.ts` |
-| `runtime/assets.ts` | загрузка текстур/GLB, подгонка GLB в бокс, вырезание тёмных текселей | `loadMaps`, `loadGlb`, `fitGlb`, `cutDarkTexels` | `browser/assets.test.ts`, `walk-look` |
+| `runtime/assets.ts` | загрузка текстур/GLB, подгонка GLB в бокс, вырезание тёмных текселей | `loadMaps`, `loadGlb`, `fitGlb`, `glbScale`, `cutDarkTexels` | `browser/assets.test.ts`, `walk-look` |
 | `runtime/walk.ts` | игрок: `EYE 1.6`, `SPEED 1.4`, капсула по nav, мышь | `makeWalker`, `controls`, `mouseLook` | `bugs-walk`, `walk-look` |
 | `runtime/doors.ts` | дверь вращается вокруг петли, блокирует клетки nav, «касание» лучом | `makeDoor`, `touchTarget`, `setCells`, `sweepOf`, `TURN_S 0.6`, `TOUCH_M 1.2` | `door-runtime`, `door-blockers` |
 | `runtime/cams.ts` | выбор камеры страницы (walk / cam / top) | `pickCamera`, `yawDir`, `lookDir` | `cams.test.ts` |
@@ -321,7 +324,11 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | нормализовать GLB (перёд на +Z, низ в 0) | `assets/glb.ts normalizeGlb` (поворот только по авторскому `front_deg`) |
 | число треугольников GLB | `assets/tris.ts glbTriangles` |
 | урезать меш под бюджет пропа | `assets/cut.ts cutGlb` (в сборке: `build/write.ts cutPlaced`) |
+| наклейка на пол (ковёр, лужа, тень) | `decals[]` с `at` + `rotation` + `size` → `build/decals.ts floorDecals` |
+| солнце / тени | `lights[]` `{kind: "sun", dir, intensity, castShadow}` → `build/lights.ts sunLight` (рантайм через `addSceneLights`) |
+| пропы чуть в стене — поправить сборкой | `dreamer build --apply-fixes` → `check.ts applyFixes` |
 | размер/класс пропа | `budget.ts propClass`; категории `props/cats.ts CATS` |
+| масштабирование плоского пропа (`h` < `FLAT_H`) | `build/props.ts propMeshes` (`scale` по `w`,`d`, высота в `scaleY`), рантайм `runtime/assets.ts glbScale` |
 | пересечение объектов (OBB) | `geom/obb.ts obbIntersects`, `obbPolyIntersects` |
 | дуги/кривые стены | `geom/arc.ts arcFromBulge`, `discretizeArc` |
 | вид сверху плана | `report/topsvg.ts topSvg` -> `dist/top.svg` |

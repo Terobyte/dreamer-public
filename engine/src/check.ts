@@ -155,3 +155,55 @@ export function runCheck(
 }
 
 
+
+/** `build --apply-fixes` moves a prop out of a wall only up to this far (m) */
+export const FIX_MAX = 0.1;
+
+/**
+ * `build --apply-fixes`: runs `check`, moves every prop a `PROP_HITS_WALL`
+ * error reaches into the wall by at most FIX_MAX to the error's `fix.at`, and
+ * checks again (a shift can uncover the next one, so a few passes). A deeper
+ * hit is left alone and stays an error. Returns the patched scene, the last
+ * check and one `WARN` line per moved prop.
+ */
+export function applyFixes(raw: unknown): {
+  raw: unknown;
+  report: Report;
+  ctx: Ctx;
+  warns: string[];
+  /** prop id → where it stands now */
+  moved: Record<string, [number, number]>;
+} {
+  const scene = JSON.parse(JSON.stringify(raw ?? null));
+  const warns: string[] = [];
+  const moved: Record<string, [number, number]> = Object.create(null);
+  let run = runCheck(scene);
+  for (let pass = 0; pass < 5; pass++) {
+    let again = false;
+    for (const e of run.report.errors) {
+      if (e.code !== "PROP_HITS_WALL") continue;
+      const m = /^\/props\/(\d+)\/at$/.exec(e.path);
+      const to = (e.fix as { at?: unknown } | undefined)?.at;
+      if (!m || !Array.isArray(to) || to.length !== 2) continue;
+      const p = scene?.props?.[Number(m[1])];
+      if (!p || !Array.isArray(p.at)) continue;
+      // the limit reads the exact penetration from lint, not the travel:
+      // on an arc `fix.at` runs longer than the depth (corners meet the
+      // curve at other normals), so travel minus clearance would refuse a
+      // hit that fits the limit
+      const d = (e.data as { depth?: unknown } | undefined)?.depth;
+      const deep = typeof d === "number" && Number.isFinite(d)
+        ? d > FIX_MAX
+        : Math.hypot(Number(to[0]) - p.at[0], Number(to[1]) - p.at[1]) - 0.01 > FIX_MAX;
+      if (deep) continue;
+      const shift = Math.hypot(Number(to[0]) - p.at[0], Number(to[1]) - p.at[1]);
+      warns.push(`WARN PROP_HITS_WALL ${String(p.id)}: at [${p.at.join(", ")}] -> [${to.join(", ")}] (${shift.toFixed(3)} m)`);
+      p.at = [Number(to[0]), Number(to[1])];
+      moved[String(p.id)] = p.at;
+      again = true;
+    }
+    if (!again) break;
+    run = runCheck(scene);
+  }
+  return { raw: scene, report: run.report, ctx: run.ctx, warns, moved };
+}

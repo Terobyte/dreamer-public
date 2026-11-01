@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
 import { parseScene } from "../src/schema/parse.js";
 import { emptyPassport, makeReport } from "../src/report/report.js";
-import { runCheck } from "../src/check.js";
+import { runCheck, applyFixes } from "../src/check.js";
 import type { TriCount } from "../src/budget.js";
 import { topSvg } from "../src/report/topsvg.js";
 import { buildNav } from "../src/nav/grid.js";
@@ -19,7 +19,7 @@ import type { PropFact } from "../src/props/fact.js";
 
 const USAGE =
   "usage: dreamer check <scene> [--report <path>] [--built <dist>]\n" +
-  "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>]\n" +
+  "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>] [--apply-fixes]\n" +
   "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]";
 
 /**
@@ -273,7 +273,10 @@ async function runBuild(args: string[]): Promise<number> {
       console.log(JSON.stringify(parseFailReport(issues), null, 2));
       return 1;
     }
-    const { report, ctx } = runCheck(raw);
+    // `--apply-fixes`: small wall hits are moved to their `fix.at`, said as WARN
+    const fixed = args.includes("--apply-fixes") ? applyFixes(raw) : null;
+    for (const w of fixed?.warns ?? []) console.log(w);
+    const { report, ctx } = fixed ?? runCheck(raw);
     if (report.errors.length > 0) {
       console.log(JSON.stringify(report, null, 2));
       return 1;
@@ -295,6 +298,8 @@ async function runBuild(args: string[]): Promise<number> {
       assets: assetReport,
       cacheDir: cacheFlag,
       scenePath,
+      fixes: fixed?.warns,
+      moved: fixed?.moved,
     });
     return 0;
   } catch (e) {
