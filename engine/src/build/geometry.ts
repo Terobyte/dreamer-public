@@ -1,3 +1,4 @@
+import { scatterEntries, type ScatterEntry } from "./scatter.js";
 import type { Ctx } from "../ctx.js";
 import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
@@ -89,6 +90,9 @@ export interface Geometry {
   style: { ambient: number; exterior: string };
   /** sky dome + fading ground disc, only for a scene with `outdoor` (В2) */
   outdoor?: Outdoor;
+  /** `scatter` sets, one InstancedMesh per entry (spec "scatter") */
+  scatter?: ScatterEntry[];
+  scatterWarnings?: string[];
 }
 
 export interface Outdoor {
@@ -291,10 +295,13 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
   const spawnRoom = geoRooms.find((r) => r.id === String(scene.spawn?.room));
   const spawnY = levelY.get(String(spawnRoom?.level)) ?? 0;
 
+  const sc = scatterEntries(scene, assetFiles, glbSizes);
+
   return {
     version: 0,
     meshes,
     floors,
+    ...(sc.entries.length > 0 ? { scatter: sc.entries, scatterWarnings: sc.warnings } : {}),
     materials: materialTable(scene, assetFiles, free, glassIds),
     // a sun keeps only dir/intensity/castShadow: the schema's color/power defaults are not its fields
     lights: ((scene.lights ?? []) as any[]).map((l) => (l?.kind === "sun" ? sunOf(l) : l)) as Light[],

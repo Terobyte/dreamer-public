@@ -74,6 +74,7 @@ export function sceneAssets(scene: Scene): AssetRef[] {
   for (const m of Object.values((scene?.materials ?? {}) as Record<string, any>)) want(m?.tile);
   for (const p of (scene?.props ?? []) as any[]) want(p?.asset);
   for (const d of (scene?.decals ?? []) as any[]) want(d?.asset);
+  for (const sc of (scene?.scatter ?? []) as any[]) for (const a of sc?.assets ?? []) want(a);
   want((scene as any)?.outdoor?.sky);
   for (const o of (scene?.openings ?? []) as any[]) {
     want(o?.leaf?.decal);

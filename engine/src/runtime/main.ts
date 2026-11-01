@@ -27,6 +27,7 @@ import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
 import { connectSim, createBridge, simPost, type StageHandlers } from "./bridge.js";
+import { scatterObjects, toSources, type ScatterSource } from "./scatter.js";
 import { startStage, type Stage } from "./stage/index.js";
 
 import type { MaterialDef } from "./assets.js";
@@ -198,6 +199,37 @@ async function start(): Promise<void> {
         o.receiveShadow = true;
       }
     });
+  }
+
+  // `scatter`: one InstancedMesh per asset, read from the built page data
+  // (`geo.scatter`, fallback `built.scatter`); without this the build writes
+  // the rosette but the page never shows it (F1)
+  const scatterEntries = ((geo as any).scatter ?? (built as any).scatter ?? []) as any[];
+  if (scatterEntries.length > 0) {
+    // an entry with a GLB instances the model's geometry, not the olive
+    // placeholder box: load each asset's GLB before building the meshes
+    const scatterSources = new Map<string, ScatterSource[]>();
+    await Promise.all(
+      [...new Set(scatterEntries.map((e: any) => String(e.asset)))].map(async (asset) => {
+        const glb = scatterEntries.find((e: any) => String(e.asset) === asset)?.glb;
+        if (typeof glb !== "string" || !glb) return;
+        try {
+          const gltf = await new GLTFLoader().loadAsync(glb);
+          gltf.scene.updateMatrixWorld(true);
+          const found: any[] = [];
+          gltf.scene.traverse((o: any) => {
+            if (o.isMesh) found.push(o);
+          });
+          const parts: ScatterSource[] = toSources(found);
+          if (parts.length > 0) scatterSources.set(asset, parts);
+        } catch (e) {
+          console.warn(`runtime: scatter "${asset}" GLB failed (${String(e)}), using a box`);
+        }
+      }),
+    );
+    const scatterGroup = scatterObjects(scatterEntries, scatterSources);
+    if (sunShadows) scatterGroup.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(scatterGroup);
   }
 
   // layers[0] is the spawn level (`buildLayers`); the rest are reachable by a

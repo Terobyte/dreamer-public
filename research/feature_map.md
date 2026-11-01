@@ -88,6 +88,7 @@
 | `build/write.ts` | оркестрация build: пишет `check.json, top.svg, nav.json, geometry.json, index.html, runtime.js (esbuild), build.json` | `writeDist`, `bundleRuntime`, `countTris`, `cutPlaced`, `propFacts`, `BuildJson{ok,seconds,assets{used,fallback,missing,cut?{id:{from,to}}},props{fact,at?},tris,doors[],decals[] (пол),lights[]}` | dist/ | `build-cli.test.ts`, `build-geometry.test.ts`, `asset-cut.test.ts` |
 | `build/decals.ts` | наклейки: на стене по паспорту; на полу (`at` + `rotation`) плоскость нормалью вверх на полу + 0.005 | `decalMeshes`, `floorDecals`, `isFloorDecal`, `FLOOR_LIFT` | Mesh[] | `decals.test.ts`, `floor-decal.test.ts` |
 | `build/lights.ts` | свет страницы: ambient, hemi, point, `sun` → `DirectionalLight` (тени); общая для `runtime/main.ts` и node-тестов | `addSceneLights`, `sunLight`, `sunOf` | three Scene | `sun.test.ts` |
+| `build/scatter.ts`, `runtime/scatter.ts` | россыпь `scatter`: точки с шагом 0.8 м по сиду, `avoid`, `SCATTER_EMPTY/FEWER`; на странице один `InstancedMesh` на ассет | `scatterPoints`, `scatterEntries`, `scatterObjects`, `SCATTER_STEP` | `build.json.scatter[]` | `scatter.test.ts`, `scatter-runtime.test.ts` |
 | `build/props.ts` | меш пропа по паспорту; плоский (`h` < `FLAT_H` 0.05 м) масштаб по `w`,`d`, высота отдельно (`scaleY`) | `propMeshes`, `FLAT_H` | Mesh[] | `build-assets.test.ts`, `flat-prop.test.ts` |
 | `build/geometry.ts` | вся геометрия: `Geometry{meshes, floors[{room,level,y,outline}], materials, lights, cameras, spawn, style, outdoor}` | `buildGeometry(ctx, assetFiles, glbSizes)`, `materialTable` | geometry.json | `build-geometry.test.ts` |
 | `build/{walls,slab,floors,roof,beams,stairs,doors,fixtures,decals,props,mesh,color,materials,page,shots,shotnames}.ts` | стены с вырезами, плиты/дыры, earClip, крыша, балки, лестницы+перила, двери (`doorDefs`), окна-фикстуры, MeshBuilder, цвет-заглушка по id (`grayOf`), `placeAssets` (GLB в dist + размеры), html-страница, `runShots` (Playwright, лист `sheet.png`), `shotBaseNames` | `intervalMeshes`, `extrudeFace`, `earClip`, `roofMeshes`, `stairMeshes`, `doorMeshes`, `fixtureGeos`, `propMeshes`, `planeMesh`, `boxMesh`, `placeAssets`, `runShots`, `serveDist`, `sheetHtml` | dist/shots/`<cam>`.png | `build-geometry`, `walls-fixtures`, `build-things`, `build-shots`, `browser/shots.test.ts` |
@@ -325,6 +326,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | число треугольников GLB | `assets/tris.ts glbTriangles` |
 | урезать меш под бюджет пропа | `assets/cut.ts cutGlb` (в сборке: `build/write.ts cutPlaced`) |
 | наклейка на пол (ковёр, лужа, тень) | `decals[]` с `at` + `rotation` + `size` → `build/decals.ts floorDecals` |
+| много мелких копий (кочки, трава) на лугу | `scatter[]` → `build/scatter.ts scatterEntries`, `runtime/scatter.ts scatterObjects` (InstancedMesh) |
 | солнце / тени | `lights[]` `{kind: "sun", dir, intensity, castShadow}` → `build/lights.ts sunLight` (рантайм через `addSceneLights`) |
 | пропы чуть в стене — поправить сборкой | `dreamer build --apply-fixes` → `check.ts applyFixes` |
 | размер/класс пропа | `budget.ts propClass`; категории `props/cats.ts CATS` |

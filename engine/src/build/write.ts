@@ -36,6 +36,8 @@ export interface BuildJson {
   props: Record<string, { fact: PropFact | null; at?: [number, number] }>;
   /** floor decals (`at` + `rotation`): a plane facing up on the room's floor + 0.005 */
   decals: { i: number; room: string; asset: string; center: [number, number, number]; normal: [number, number, number]; size: { w: number; h: number }; rotation: number }[];
+  /** `scatter`: one entry per asset, `transforms` = `[x, y, z, yaw, scale]` per copy */
+  scatter: NonNullable<Geometry["scatter"]>;
   /** every scene light as the page gets it; a `sun` is one directional light */
   lights: Geometry["lights"];
   warnings: string[];
@@ -315,6 +317,7 @@ export async function writeDist(
     props: propFacts(ctx.scene, geometry, glbSizes, opts.moved),
     doors: doorDefs(ctx),
     decals: floorDecals(ctx).map((d) => ({ i: d.i, room: d.room, asset: d.asset, center: d.center, normal: d.normal, size: d.size, rotation: d.rotation })),
+    scatter: geometry.scatter ?? [],
     lights: geometry.lights,
     tris: countTris(
       geometry,
@@ -323,6 +326,7 @@ export async function writeDist(
     ),
     warnings: [
       ...assetWarnings,
+      ...(geometry.scatterWarnings ?? []),
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
       // a generated asset its post-step rejected (a sky that is not 2:1)
       ...(assets.failed ?? []).map((w) => `${w.code}: ${w.msg}`),

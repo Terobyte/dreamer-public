@@ -91,6 +91,7 @@ export function checkRefs(raw: any): Issue[] {
   (raw.props ?? []).forEach((p: any, i: number) => typeof p?.id === "string" && reg(p.id, `/props/${i}/id`));
   (raw.cameras ?? []).forEach((c: any, i: number) => typeof c?.id === "string" && reg(c.id, `/cameras/${i}/id`));
   (raw.routes ?? []).forEach((r: any, i: number) => typeof r?.id === "string" && reg(r.id, `/routes/${i}/id`));
+
   (raw.stairs ?? []).forEach((st: any, i: number) => typeof st?.id === "string" && reg(st.id, `/stairs/${i}/id`));
 
 
@@ -100,6 +101,17 @@ export function checkRefs(raw: any): Issue[] {
   };
 
   if (raw.spawn && typeof raw.spawn.room === "string") ref("/spawn/room", "room", raw.spawn.room, roomIds);
+
+  (raw.scatter ?? []).forEach((sc: any, i: number) => {
+    (Array.isArray(sc?.assets) ? sc.assets : []).forEach((a: unknown, j: number) => {
+      if (typeof a !== "string") return;
+      if (!assetIds.has(a)) ref(`/scatter/${i}/assets/${j}`, "asset", a, assetIds);
+      else if (assetKind.get(a) !== "object") {
+        const path = `/scatter/${i}/assets/${j}`;
+        out.push({ code: "REF_KIND", stage: "schema", path, msg: msg("REF_KIND", { path, v: a, got: assetKind.get(a) ?? "?", want: "object" }) });
+      }
+    });
+  });
 
   (raw.stairs ?? []).forEach((st: any, i: number) => {
     if (!st || typeof st !== "object") return;

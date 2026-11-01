@@ -341,6 +341,22 @@
         ]
       }
     },
+    "scatter": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["assets", "count", "area", "seed"],
+        "additionalProperties": false,
+        "properties": {
+          "assets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "count": { "type": "integer", "minimum": 1 },
+          "area": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } },
+          "seed": { "type": "integer" },
+          "avoid": { "type": "array", "items": { "$ref": "#/$defs/point2" } }
+        }
+      }
+    },
     "decals": {
       "type": "array",
       "default": [],
