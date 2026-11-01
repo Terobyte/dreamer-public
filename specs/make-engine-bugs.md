@@ -36,7 +36,7 @@
 
 Файлы тестов: `engine/test/bugs-budget.test.ts`, `bugs-built.test.ts`, `bugs-camera.test.ts`. Зоны: `engine/src/build/**`, `engine/src/assets/**`, `engine/src/cameras/**`, `engine/src/budget*`, `engine/bin/dreamer.ts`, `bugs.md`, `tools/gate_skip.txt`.
 
-- [ ] B20: нечитаемый или отсутствующий GLB — ошибка бюджета, не 0 треугольников
+- [x] B20: нечитаемый или отсутствующий GLB — ошибка бюджета, не 0 треугольников
 - [ ] B21: лимит point-light на сцену и на комнату, уровень error
 - [ ] B19: `check --built` берёт камеры из сцены и не принимает устаревшие снимки; B37: имена снимков уникальны без учёта регистра
 - [ ] B22: камера над низкой стеной не считается внутри стены (учёт высоты); B35: второй `writeDist` с тем же ctx сохраняет `cam.ref`
