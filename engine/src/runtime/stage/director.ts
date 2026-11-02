@@ -150,6 +150,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
   // F1: the room the frame is built in; crossing into another room/level is a cut, never a smooth glide through the wall
   let roomKey: string | null = null;
   let focus: string | null = null;
+  let closeLineAxis: V2 | null = null;
+  let closeLineOrigin: V2 | null = null;
+  let explicitPlan = false;
   let pending: Array<{ at: number; plan: Plan; listener: boolean }> = [];
   // persistent 180° side (F7): reselected only when the pair axis turns by more than 90°
   const st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2 } = { side: null, axis: null };
@@ -199,7 +202,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       else if (!listener) pool = ["wide", "close", "follow"];
       else pool = BANK.filter((p) => p !== "low" || speaker.height > listener.height);
       // nobody walks: "follow" would film the back of the speaker's head and the floor ahead (Koshakan)
-      pool = pool.filter((p) => p !== "follow");
+      if (listener) pool = pool.filter((p) => p !== "follow");
       let i = Math.floor(rng() * pool.length) % pool.length;
       if (pool[i] === lastPlan) i = (i + 1) % pool.length;
       return pool[i];
@@ -215,10 +218,15 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     if (ev.kind === "line" || ev.kind === "narrator") {
       count++;
       pending = [];
+      explicitPlan = Boolean(ev.shot && (BANK as readonly string[]).includes(ev.shot));
       const p = choose();
       lastPlan = p;
       cut(p);
       focus = ev.kind === "line" ? speaker.name : focus;
+      const otherActor = nearestOther(crew, speaker);
+      const isClose = Boolean(ev.kind === "line" && otherActor && dist(speaker.pos, otherActor.pos) < 0.3);
+      closeLineAxis = isClose ? faceOf(speaker.yaw) : null;
+      closeLineOrigin = isClose ? [speaker.pos[0], speaker.pos[1]] : null;
       const dur = ev.durationS ?? 0;
       if (ev.kind === "line" && listener && dur > LONG_LINE && p !== "orbit" && p !== "dolly") {
         pending = [
@@ -229,12 +237,13 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     } else {
       if (plan === null) cut("wide");
       if (sig !== walkSig) {
-        pending = [];
+        explicitPlan = false;
         const p: Plan = walkers.length === 1 ? "follow" : "wide";
         lastPlan = p;
         cut(p);
       }
       while (pending.length && pending[0].at <= clock) {
+        explicitPlan = false;
         const r = pending.shift()!;
         cut(r.plan, r.listener);
       }
@@ -244,7 +253,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     if (roomKey !== null && key !== roomKey && ev.kind !== "line" && ev.kind !== "narrator") cutSeq++;
     roomKey = key;
 
-    const out0 = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker);
+    const out0 = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker, closeLineAxis, explicitPlan, closeLineOrigin);
     const floorY = inp.room.floorY ?? 0;
     const height = inp.room.open ? floorY + OPEN_CEILING : inp.room.ceiling;
     const cameraLaw: CameraLaw = {
@@ -321,7 +330,7 @@ function roomCenter(outline: V2[]): V2 {
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
 }
 
-function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2 }, snap: SnapFn = snapInside, gaze: DActor = subj): DirectorOut {
+function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2 }, snap: SnapFn = snapInside, gaze: DActor = subj, closeAxis: V2 | null = null, explicitPlan = false, closeOrigin: V2 | null = null): DirectorOut {
   const room = inp.room;
   const floorY = room.floorY ?? 0;
   // open sky: the 3.5 m ceiling is above the floor, not an absolute world height (F3)
@@ -340,30 +349,31 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   // reaction reframes the same speaker, so deriving it from the reaction subject would flip the side)
   const pair = other ? [subj, other].sort(byName) : [subj];
   const m = mid(pair);
-  const axis: V2 = pair.length > 1 ? (dist(pair[0].pos, pair[1].pos) < 0.3 ? faceOf(gaze.yaw) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]])) : faceOf(subj.yaw);
+  const axis: V2 = pair.length > 1 ? (closeAxis ?? (dist(pair[0].pos, pair[1].pos) < 0.3 ? faceOf(gaze.yaw) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]]))) : faceOf(subj.yaw);
+  const origin: V2 = pair.length > 1 && closeOrigin ? closeOrigin : m;
   const n: V2 = [-axis[1], axis[0]];
   // persistent 180° side: reselected only when the axis turned by more than 90°
   let side: 1 | -1 = 1;
   if (pair.length > 1) {
     if (st.axis && st.side !== null && angleBetween(axis, st.axis) <= 90) side = st.side;
     else {
-      const toCenter = (center[0] - m[0]) * n[0] + (center[1] - m[1]) * n[1];
+      const toCenter = (center[0] - origin[0]) * n[0] + (center[1] - origin[1]) * n[1];
       side = toCenter < 0 ? -1 : 1;
       st.side = side;
       st.axis = axis;
     }
-    st.origin = m;
+    st.origin = origin;
     st.normal = n;
   } else {
     st.origin = undefined;
     st.normal = undefined;
   }
-  const onSide = (pt: V2): boolean => ((pt[0] - m[0]) * n[0] + (pt[1] - m[1]) * n[1]) * side > 1e-6;
-  const sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - m[0], center[1] - m[1]]);
+  const onSide = (pt: V2): boolean => ((pt[0] - origin[0]) * n[0] + (pt[1] - origin[1]) * n[1]) * side > 1e-6;
+  const sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - origin[0], center[1] - origin[1]]);
   const span = pair.length > 1 ? dist(pair[0].pos, pair[1].pos) : 0;
   const meanH = pair.reduce((s, a) => s + a.height, 0) / pair.length;
   const head = (a: DActor, k = 0.9): V3 => at(a.pos, a.height * k);
-  const cameraSide: CameraSide | undefined = pair.length > 1 ? { origin: m, normal: n, sign: side } : undefined;
+  const cameraSide: CameraSide | undefined = pair.length > 1 ? { origin, normal: n, sign: side } : undefined;
 
   /** camera point (x, z, height above the floor) clamped into the room; fallback walks from the pair midpoint to the room center (F8) */
   const place = (x: number, z: number, y: number): V3 => {
@@ -373,7 +383,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       height,
       floorY,
       side: cameraSide,
-      fallback: fallbackFrame(m, center, room.outline, INSET, floorY + Math.min(y, top)),
+      fallback: fallbackFrame(origin, center, room.outline, INSET, floorY + Math.min(y, top)),
     });
   };
 
@@ -382,16 +392,16 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
    * direction from the pair midpoint is tried; the midpoint-to-center fallback is on-side by construction. */
   const toSide = (cam: V3, yAboveFloor: number, dFallback: number): V3 => {
     if (!other || onSide([cam[0], cam[2]])) return cam;
-    const perp = (cam[0] - m[0]) * n[0] + (cam[2] - m[1]) * n[1];
+    const perp = (cam[0] - origin[0]) * n[0] + (cam[2] - origin[1]) * n[1];
     const mir = place(cam[0] - 2 * perp * n[0], cam[2] - 2 * perp * n[1], yAboveFloor);
     if (onSide([mir[0], mir[2]])) return mir;
-    const along = place(m[0] + sideDir[0] * dFallback, m[1] + sideDir[1] * dFallback, yAboveFloor);
+    const along = place(origin[0] + sideDir[0] * dFallback, origin[1] + sideDir[1] * dFallback, yAboveFloor);
     if (onSide([along[0], along[2]])) return along;
-    const rawFb = fallbackFrame(m, center, room.outline, INSET, cam[1]);
+    const rawFb = fallbackFrame(origin, center, room.outline, INSET, cam[1]);
     const fb = legalCameraPoint(rawFb, { outline: room.outline, rect, height, floorY, side: cameraSide });
     if (onSide([fb[0], fb[2]])) return fb;
     // the fallback landed on the axis (mid == room center): step strictly to the selected side (F7)
-    const nudge = place(m[0] + sideDir[0] * (dFallback + 0.4), m[1] + sideDir[1] * (dFallback + 0.4), yAboveFloor);
+    const nudge = place(origin[0] + sideDir[0] * (dFallback + 0.4), origin[1] + sideDir[1] * (dFallback + 0.4), yAboveFloor);
     return onSide([nudge[0], nudge[2]]) ? nudge : (onSide([fb[0], fb[2]]) ? fb : place(center[0] + sideDir[0] * 0.4, center[1] + sideDir[1] * 0.4, yAboveFloor));
   };
 
@@ -437,7 +447,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       // Analytical boundary checks for the 180° side
       if (other) {
         const n_side: V2 = [n[0] * side, n[1] * side];
-        const s_dot = (s.pos[0] - m[0]) * n[0] + (s.pos[1] - m[1]) * n[1];
+        const s_dot = (s.pos[0] - origin[0]) * n[0] + (s.pos[1] - origin[1]) * n[1];
         const req = 1e-6 - s_dot * side;
         const ang_n = Math.atan2(n_side[1], n_side[0]);
         const ang_f = Math.atan2(f[1], f[0]);
@@ -541,10 +551,14 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   };
 
   let p: Plan = plan;
-  if (!other && (p === "ots" || p === "two")) p = p === "ots" ? "close" : "wide";
-  // F13: one actor -> only wide/close/follow, explicit beat shots included (orbit -> wide, dolly -> close)
-  if (!other && (p === "orbit" || p === "dolly")) p = p === "orbit" ? "wide" : "close";
-  if (p === "low" && (!other || subj.height <= other.height)) p = "close";
+  // Н7б: explicit shot from bank is kept as is, including orbit and dolly for a single actor
+  const isExplicit = explicitPlan || Boolean(inp.event.shot && (BANK as readonly string[]).includes(inp.event.shot) && p === inp.event.shot);
+  if (!isExplicit) {
+    if (!other && (p === "ots" || p === "two")) p = p === "ots" ? "close" : "wide";
+    if (!other && (p === "orbit" || p === "dolly")) p = p === "orbit" ? "wide" : "close";
+    if (p === "low" && !other) p = "close";
+  }
+  if (p === "low" && other && subj.height <= other.height) p = "close";
 
   switch (p) {
     case "close": {
@@ -608,10 +622,10 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       const f = faceOf(w.yaw);
       let cam = place(w.pos[0] - f[0] * 2.5, w.pos[1] - f[1] * 2.5, w.height * 0.9);
       if (other) {
-        const perp = (cam[0] - m[0]) * n[0] + (cam[2] - m[1]) * n[1];
+        const perp = (cam[0] - origin[0]) * n[0] + (cam[2] - origin[1]) * n[1];
         if (perp * side <= 1e-6) cam = place(cam[0] - 2 * perp * n[0], cam[2] - 2 * perp * n[1], cam[1] - floorY);
         // a camera right on the axis (or just across it) is pushed strictly to the 180° side
-        const now = (cam[0] - m[0]) * n[0] * side + (cam[2] - m[1]) * n[1] * side;
+        const now = (cam[0] - origin[0]) * n[0] * side + (cam[2] - origin[1]) * n[1] * side;
         if (now <= 1e-6) cam = place(cam[0] + (0.4 - now) * n[0] * side, cam[2] + (0.4 - now) * n[1] * side, cam[1] - floorY);
         cam = toSide(cam, cam[1] - floorY, 2.5);
       }

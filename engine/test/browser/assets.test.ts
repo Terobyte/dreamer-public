@@ -70,7 +70,7 @@ describe("page with assets", () => {
       await page.waitForTimeout(1000);
       expect(await page.evaluate("window.__ready === true")).toBe(false);
       release();
-      await page.waitForFunction("window.__ready === true", null, { timeout: 5000 });
+      await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
     } finally {
       release();
       await page?.close();

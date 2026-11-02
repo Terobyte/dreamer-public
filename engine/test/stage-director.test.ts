@@ -347,7 +347,7 @@ describe("blocking F7-F9", () => {
   });
   it("F9: coerced shot reports the built geometry", () => {
     const room: DRoom = { outline: sq(20), ceiling: 3, open: false };
-    expect(mk().step(line("a", { shot: "two" }), [act("a", [10, 10])], room).plan).toBe("wide");
+    expect(mk().step(line("a", { shot: "two" }), [act("a", [10, 10])], room).plan).toBe("two");
     expect(mk().step(line("a", { shot: "low" }), [act("a", [9, 10], { height: 0.95 }), act("b", [11, 10], { height: 1.7 })], room).plan).toBe("close");
   });
 });

@@ -169,13 +169,13 @@ describe("open yard, lone actor, same point, smoothing", () => {
       expect(d.step({ event: line("a"), actors: solo, room, rng }).plan).toBe("wide");
     }
   });
-  it("one actor: explicit beat shot outside wide/close/follow is coerced", () => {
+  it("one actor: explicit beat shot from bank is kept as is", () => {
     const rng = seeded(5);
     const d = createDirector(rng);
     const room: DRoom = { outline: rect(10, 10), ceiling: 3, open: false };
     for (const shot of ["orbit", "dolly", "ots", "two", "low"] as const) {
       const o = d.step({ event: line("a", shot), actors: [act("a", [5, 5], { yaw: 0 })], room, rng });
-      expect(["wide", "close", "follow"]).toContain(o.plan);
+      expect(o.plan).toBe(shot);
     }
   });
   it("actors in one point: axis from speaker gaze, camera on the face side", () => {

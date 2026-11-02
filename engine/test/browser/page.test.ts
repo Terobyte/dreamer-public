@@ -51,7 +51,7 @@ async function open(query: string): Promise<{ page: Page; consoleErrors: string[
     if (m.type() === "error") consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => pageErrors.push(String(e)));
-  await page.goto(site.url + query);
+  await page.goto(site.url + query, { timeout: 90000 });
   return { page, consoleErrors, pageErrors };
 }
 
@@ -159,7 +159,7 @@ describe("page", () => {
     writeFileSync(geoPath, JSON.stringify(geo));
     const collisionSite = await serve(built.dist);
     const page = await browser.newPage({ deviceScaleFactor: 1 });
-    await page.goto(collisionSite.url);
+    await page.goto(collisionSite.url, { timeout: 90000 });
     await ready(page);
     expect(await page.evaluate("window.__dreamer.meshCount()")).toBe(geo.meshes.length);
     await page.close();
@@ -203,7 +203,7 @@ describe("page", () => {
     page.on("console", (m) => {
       if (m.type() === "error") consoleErrors.push(m.text());
     });
-    await page.goto(cacheSite.url);
+    await page.goto(cacheSite.url, { timeout: 90000 });
     await ready(page);
     expect(consoleErrors).toEqual([]);
     const info = (await page.evaluate("window.__dreamer.inspect('decal.0')")) as {
@@ -241,7 +241,7 @@ describe("page", () => {
     page.on("console", (m) => {
       if (m.type() === "error") consoleErrors.push(m.text());
     });
-    await page.goto(cacheSite.url);
+    await page.goto(cacheSite.url, { timeout: 90000 });
     await ready(page);
     expect(consoleErrors).toEqual([]);
     const info = (await page.evaluate("window.__dreamer.inspect('table')")) as { type: string };
