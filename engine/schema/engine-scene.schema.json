@@ -307,6 +307,15 @@
                 "properties": {
                   "top_of": { "type": "string" }
                 }
+              },
+              {
+                "type": "object",
+                "required": ["tier_of", "tier"],
+                "additionalProperties": false,
+                "properties": {
+                  "tier_of": { "type": "string" },
+                  "tier": { "type": "integer", "minimum": 0 }
+                }
               }
             ],
             "default": "floor"

@@ -150,7 +150,7 @@ function applyExclusiveAndRequired(raw: any, slots: Map<string, Slot>): void {
         if ("at" in o && "on" in o) exclusive(`/${arr}/${i}`);
         else if (!("at" in o) && !("on" in o)) {
           if (arr === "openings" || arr === "decals") required(`/${arr}/${i}/at`);
-          else if (!("around" in o) && !(isObj(o.mount) && "top_of" in o.mount)) required(`/${arr}/${i}/at`);
+          else if (!("around" in o) && !(isObj(o.mount) && ("top_of" in o.mount || "tier_of" in o.mount))) required(`/${arr}/${i}/at`);
         }
       });
     }

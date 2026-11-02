@@ -302,7 +302,7 @@ export function lintProps(ctx: Ctx): Issue[] {
     }
 
     // 4. standing on a support smaller than its own footprint
-    const topOf = raw.mount && typeof raw.mount === "object" ? raw.mount.top_of : undefined;
+    const topOf = raw.mount && typeof raw.mount === "object" ? (raw.mount.top_of ?? raw.mount.tier_of) : undefined;
     if (topOf) {
       const support = geos.find((s) => s.id === String(topOf));
       if (support) {
@@ -410,7 +410,7 @@ export function lintProps(ctx: Ctx): Issue[] {
         const o = geos[j];
         if (!o.solid) continue;
         const oRaw = list[o.src];
-        const oTopOf = oRaw?.mount && typeof oRaw.mount === "object" ? oRaw.mount.top_of : undefined;
+        const oTopOf = oRaw?.mount && typeof oRaw.mount === "object" ? (oRaw.mount.top_of ?? oRaw.mount.tier_of) : undefined;
         if (String(topOf ?? "") === o.id || String(oTopOf ?? "") === g.id) continue;
         if (!yHits(g.y, o.y)) continue;
         if (!obbIntersects(g.obb, o.obb)) continue;

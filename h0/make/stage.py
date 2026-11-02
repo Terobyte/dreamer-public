@@ -102,6 +102,46 @@ def _centre(m):
     return (min(xs) + max(xs)) / 2, (min(zs) + max(zs)) / 2
 
 
+def _model_to_world(m, x, z):
+    """a point of the model system -> world XZ, as engine worldSurfaces does."""
+    sc = m.get("scale") or 1
+    yaw = m.get("glbYaw") or 0
+    px, _, pz = m.get("glbPos") or [0, 0, 0]
+    sx, sz = x * sc, z * sc
+    return [sx * math.cos(yaw) + sz * math.sin(yaw) + px, -sx * math.sin(yaw) + sz * math.cos(yaw) + pz]
+
+
+def _pick_surface(surfs, level_y, poses):
+    """first pose in lie, sit, stand_on that finds a surface -> that surface; surfaces carry world y."""
+    open_ = [s for s in surfs if s.get("open", True)]
+    for pose in ("lie", "sit", "stand_on"):
+        if pose not in poses:
+            continue
+        if pose == "lie":
+            c = [s for s in open_ if s["y"] - level_y < 1.2 and s["area"] >= 0.6]
+        elif pose == "sit":
+            c = [s for s in open_ if s["y"] - level_y < 1.2 and s["area"] >= 0.1]
+        else:
+            c = [s for s in open_ if s["area"] >= 0.1]
+        if not c:
+            continue
+        if pose == "stand_on":
+            return max(c, key=lambda s: s["y"])
+        return max(c, key=lambda s: s["area"])
+    return None
+
+
+def _lie_centre(m, surf):
+    """centre (world) of the surface's cell nearest to the centre of its model-system rect."""
+    cells = surf["cells"]
+    ox, oz = surf["origin"]
+    is_, js = [c[0] for c in cells], [c[1] for c in cells]
+    cx = ox + (min(is_) + max(is_) + 1) / 2 * 0.05
+    cz = oz + (min(js) + max(js) + 1) / 2 * 0.05
+    best = min(cells, key=lambda c: (math.hypot(ox + (c[0] + 0.5) * 0.05 - cx, oz + (c[1] + 0.5) * 0.05 - cz), c[0], c[1]))
+    return _model_to_world(m, ox + (best[0] + 0.5) * 0.05, oz + (best[1] + 0.5) * 0.05)
+
+
 def _obstacle(cx, cz, w, d, yaw):
     r = math.radians(yaw)
     ex = abs(w / 2 * math.cos(r)) + abs(d / 2 * math.sin(r))
@@ -130,6 +170,8 @@ def build_places(world_run):
     build = _load(wr / "dist" / "build.json") if (wr / "dist" / "build.json").is_file() else {}
     props = {p["id"]: p for p in scene.get("props", [])}
     rooms = {r["id"]: r for r in scene.get("rooms", [])}
+    level_y = {l["id"]: float(l.get("y") or 0) for l in scene.get("levels", []) if isinstance(l, dict) and "id" in l}
+    surf_map = build.get("surfaces") or {}
     warnings, items = [], []
     for m in geo.get("meshes", []):
         if m.get("kind") != "prop":
@@ -156,7 +198,7 @@ def build_places(world_run):
         at = nav.snap(level, cx + fx * off, cz + fz * off)
         poses = _poses(_last_word(pid), s["h"])
         items.append({"poses": poses, "id": m["id"], "base": _last_word(pid), "room": room, "kind": kind, "yaw": yaw,
-                      "center": [cx, cz], "at": at, "level": level,
+                      "center": [cx, cz], "at": at, "level": level, "mesh": m,
                       "size": {"w": s["w"], "d": s["d"], "h": s["h"]},
                       "obstacle": _obstacle(cx, cz, w, d, yaw)})
     _name_places(items)
@@ -170,8 +212,18 @@ def build_places(world_run):
               "look": it["center"] if it["kind"] != "sit" else None,
               "size": it["size"], "obstacle": it["obstacle"], "poses": it["poses"]}
         cx, cz = it["center"]
+        ly0 = level_y.get(it["level"], 0.0)
+        surfs = surf_map.get(it["id"]) or []
+        chosen = _pick_surface(surfs, ly0, it["poses"])
         if any(q in it["poses"] for q in ("lie", "sit", "stand_on")):
-            pl["top"] = it["size"]["h"]
+            if chosen is not None:
+                pl["top"] = round(chosen["y"] - ly0, 4)
+            else:
+                pl["top"] = it["size"]["h"]
+                warnings.append(f"PLACE_NO_SURFACES {it['id']}")
+        tiers = sorted((s for s in surfs if s["area"] >= 0.05), key=lambda s: s["y"])
+        if len(tiers) > 1:
+            pl["tiers"] = [{"y": round(s["y"] - ly0, 4), "rect": s["rect"]} for s in tiers]
         if "stand_on" in it["poses"]:
             pl["stand_on"] = {"at": [cx, cz]}
         if "lie" in it["poses"]:
@@ -183,7 +235,8 @@ def build_places(world_run):
             if d < w:
                 # long side runs across the front: head to the side whose front is `ly` back
                 fx, fz = -fx, -fz
-            pl["lie"] = {"at": [cx, cz], "yaw": round(ly, 3), "head": [cx - fx * half, cz - fz * half]}
+            lat = _lie_centre(it["mesh"], chosen) if chosen is not None else [cx, cz]
+            pl["lie"] = {"at": lat, "yaw": round(ly, 3), "head": [cx - fx * half, cz - fz * half]}
         pl["slots"] = {q: (2 if (q == "sit" and "lie" in it["poses"]) else 1) for q in it["poses"] if q != "stand_at"}
         places.append(pl)
     for d in build.get("doors", []):
