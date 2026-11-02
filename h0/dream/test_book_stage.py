@@ -1,186 +1,229 @@
+"""N10 staging contract: fake director, real Koshakan book and book runtime."""
 import json
 import os
 import shutil
-import sys
 import tempfile
 import unittest
+from unittest import mock
+
+import book
+import sim as S
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
-
-from book import score_scene, load_book
+KOSHAKAN = os.path.join(HERE, "books", "koshakan")
 
 
 class TestBookStage(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        self.koshakan_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "books", "koshakan")
+        self.enterContext(mock.patch("urllib.request.urlopen",
+                                     side_effect=AssertionError("network forbidden")))
+        self.tmp = tempfile.mkdtemp(prefix="book-stage-")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
+        S.use_scene("start")
 
-    def test_koshakan_bedroom_staging(self):
-        """спальня Кошакана -> start Мирай bed/lie, Мама offstage; бит «Мама входит» -> enter"""
-        places = {
-            "bed": {"room": "bedroom", "poses": ["lie", "sit"]},
+    def _places(self):
+        return {
+            "bed": {"room": "bedroom", "poses": ["lie", "sit", "stand"]},
             "door_bedroom": {"room": "bedroom", "poses": ["stand"]},
-            "sink": {"room": "bathroom", "poses": ["stand"]}
-        }
-        calls = []
-
-        def fake_director(prompt):
-            calls.append(prompt)
-            return json.dumps({
-                "start": [
-                    {"who": "Мирай", "place": "bed", "pose": "lie"},
-                    {"who": "Мама", "place": "door_bedroom", "pose": "stand", "offstage": True}
-                ],
-                "stage": [
-                    {"beat_id": 0, "who": "Мирай", "action": "stay"},
-                    {"beat_id": 1, "who": "Мама", "action": "enter", "place": "door_bedroom"}
-                ]
-            })
-
-        score = score_scene(self.koshakan_dir, "bedroom_morning", places=places, director=fake_director)
-        self.assertEqual(len(calls), 1)
-        self.assertIn("start", score)
-        mirai_start = next(s for s in score["start"] if s["who"] == "Мирай")
-        mama_start = next(s for s in score["start"] if s["who"] == "Мама")
-        self.assertEqual(mirai_start["place"], "bed")
-        self.assertEqual(mirai_start["pose"], "lie")
-        self.assertTrue(mama_start.get("offstage"))
-
-        # beat enter
-        beats_with_stage = [b for b in score["beats"] if b.get("stage")]
-        self.assertTrue(len(beats_with_stage) > 0)
-        mama_stage = next(st for b in beats_with_stage for st in b["stage"] if st["who"] == "Мама")
-        self.assertEqual(mama_stage["action"], "enter")
-        self.assertEqual(mama_stage["place"], "door_bedroom")
-
-    def test_invalid_place_and_pose(self):
-        """место moon -> stay и предупреждение; lie на раковине -> stand"""
-        places = {
             "sink": {"room": "bathroom", "poses": ["stand"]},
-            "bed": {"room": "bedroom", "poses": ["lie", "sit"]}
+            "door_bathroom": {"room": "bathroom", "poses": ["stand"]},
         }
 
-        def fake_director(prompt):
-            return json.dumps({
-                "start": [
-                    {"who": "Мирай", "place": "sink", "pose": "lie"}
-                ],
-                "stage": [
-                    {"beat_id": 0, "who": "Мирай", "action": "goto", "place": "moon"}
-                ]
-            })
-
-        score = score_scene(self.koshakan_dir, "bedroom_morning", places=places, director=fake_director)
-        mirai_start = next(s for s in score["start"] if s["who"] == "Мирай")
-        # lie on sink is not in poses of sink -> stand
-        self.assertEqual(mirai_start["pose"], "stand")
-
-        # beat 0 had goto moon -> moon is not in places -> stay with warning
-        beat0 = score["beats"][0]
-        self.assertEqual(beat0["stage"][0]["action"], "stay")
-        self.assertTrue(any("moon" in w or "place" in w for w in score.get("warnings", [])))
-
-    def test_hand_edited_book_no_model_called(self):
-        """ручной start в book.json -> модель не вызвана"""
-        temp_book_dir = os.path.join(self.tmp, "book")
-        shutil.copytree(self.koshakan_dir, temp_book_dir)
-        book_json_path = os.path.join(temp_book_dir, "book.json")
-        with open(book_json_path, encoding="utf-8") as f:
-            data = json.load(f)
-
-        # specify full start and stage for all beats in scene
-        for ch in data["chapters"]:
-            for sc in ch["scenes"]:
-                if sc["id"] == "bedroom_morning":
-                    sc["start"] = [{"who": "Мирай", "place": "bed", "pose": "lie"}]
-                    sc["stage"] = {
-                        "0": [{"who": "Мирай", "action": "stay"}]
-                    }
-
-        with open(book_json_path, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-
-        called = []
-
-        def fake_director(prompt):
-            called.append(prompt)
-            return "{}"
-
-        score = score_scene(temp_book_dir, "bedroom_morning", director=fake_director)
-        self.assertEqual(len(called), 0)
-        self.assertEqual(score["start"][0]["who"], "Мирай")
-        self.assertEqual(score["start"][0]["place"], "bed")
-
-    def test_broken_json_retry(self):
-        """битый JSON -> один повтор того же вызова, потом сцена без постановки и предупреждение"""
+    def _director(self, response):
         calls = []
 
         def fake_director(prompt):
             calls.append(prompt)
-            return "broken { json"
+            return response
 
-        score = score_scene(self.koshakan_dir, "bedroom_morning", places={"bed": {"room": "bedroom", "poses": ["lie"]}}, director=fake_director)
+        return fake_director, calls
+
+    def test_koshakan_bedroom_start_and_mama_enters(self):
+        """Real bedroom beat 2 is Mama bending down to Mirai; place her at the door first."""
+        response = {
+            "start": [
+                {"who": "Mirai", "place": "bed", "pose": "lie"},
+                {"who": "Mama", "place": "door_bedroom", "pose": "stand", "offstage": True},
+            ],
+            # In bedroom, beat 2 is the actual narration: "Mama bent down and whispered..."
+            "stage": [
+                {"beat_id": 2, "who": "Mama", "action": "enter", "place": "door_bedroom"},
+            ],
+        }
+        director, calls = self._director(json.dumps(response))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+
+        self.assertEqual(len(calls), 1)
+        mirai = next(x for x in score["start"] if x["who"] == "Mirai")
+        mama = next(x for x in score["start"] if x["who"] == "Mama")
+        self.assertEqual((mirai["place"], mirai["pose"]), ("bed", "lie"))
+        self.assertEqual(mama["place"], "door_bedroom")
+        self.assertTrue(mama["offstage"])
+        beat = score["beats"][2]
+        self.assertIn("Mama bent down", beat["text"])
+        self.assertEqual(beat["stage"], [
+            {"who": "Mama", "action": "enter", "place": "door_bedroom"}
+        ])
+
+    def test_unknown_place_falls_back_to_stay_with_beat_id_warning(self):
+        director, _ = self._director(json.dumps({
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "goto", "place": "moon"}]
+        }))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertEqual(score["beats"][2]["stage"][0]["action"], "stay")
+        self.assertTrue(any("2" in warning and "moon" in warning
+                            for warning in score["warnings"]))
+
+    def test_pose_not_available_at_sink_falls_back_to_stand(self):
+        director, _ = self._director(json.dumps({
+            "start": [{"who": "Mirai", "place": "sink", "pose": "lie"}]
+        }))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        mirai = next(x for x in score["start"] if x["who"] == "Mirai")
+        self.assertEqual(mirai["pose"], "stand")
+
+    def _copy_book_with_scene(self):
+        target = os.path.join(self.tmp, "book")
+        shutil.copytree(KOSHAKAN, target)
+        path = os.path.join(target, "book.json")
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        scene = next(s for c in data["chapters"] for s in c["scenes"]
+                     if s["id"] == "bedroom")
+        return target, path, data, scene
+
+    def _write_book(self, path, data):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+
+    def test_manual_start_and_stage_skip_model(self):
+        target, path, data, scene = self._copy_book_with_scene()
+        scene["start"] = [{"who": "Mirai", "place": "bed", "pose": "lie"}]
+        # Beat ids are indices into score["beats"].
+        scene["stage"] = {"2": [{"who": "Mama", "action": "stay"}]}
+        self._write_book(path, data)
+        director, calls = self._director("{}")
+
+        score = book.score_scene(target, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertEqual(calls, [])
+        self.assertEqual(score["start"], scene["start"])
+        self.assertEqual(score["beats"][2]["stage"], scene["stage"]["2"])
+
+    def test_manual_start_wins_while_missing_stage_is_generated(self):
+        target, path, data, scene = self._copy_book_with_scene()
+        scene["start"] = [{"who": "Mirai", "place": "bed", "pose": "sit"}]
+        director, calls = self._director(json.dumps({
+            "start": [{"who": "Mirai", "place": "sink", "pose": "stand"}],
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "enter",
+                       "place": "door_bedroom"}],
+        }))
+        self._write_book(path, data)
+
+        score = book.score_scene(target, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(score["start"][0]["pose"], "sit")
+        self.assertEqual(score["beats"][2]["stage"][0]["action"], "enter")
+
+    def test_broken_json_retries_once_then_has_no_staging(self):
+        director, calls = self._director("broken { json")
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
         self.assertEqual(len(calls), 2)
-        self.assertTrue(any("JSON" in w or "director" in w or "broken" in w or "failed" in w for w in score.get("warnings", [])))
+        self.assertNotIn("start", score)
+        self.assertFalse(any(beat.get("stage") for beat in score["beats"]))
+        self.assertTrue(any("retry" in warning.lower() or "failed" in warning.lower()
+                            for warning in score["warnings"]))
 
-    def test_sim_step_stage_e2e(self):
-        """сквозной красный тест: бит со stage из score.json -> _book_step -> событие рантайма"""
-        from sim import Sim
+    def test_unknown_who_is_dropped_with_warning_and_beat_id(self):
+        director, _ = self._director(json.dumps({
+            "stage": [{"beat_id": 3, "who": "Visitor", "action": "enter",
+                       "place": "door_bedroom"}]
+        }))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertFalse(score["beats"][3].get("stage"))
+        self.assertTrue(any("3" in warning and "Visitor" in warning
+                            for warning in score["warnings"]))
 
-        score_data = {
-            "scene_id": "bedroom_morning",
-            "start": [{"who": "Мирай", "place": "bed", "pose": "lie"}],
-            "beats": [
-                {
-                    "id": 0,
-                    "text": "Мама заходит в комнату.",
-                    "stage": [{"who": "Мама", "action": "enter", "place": "door_bedroom"}],
-                    "line": {"who": "Мама", "text": "Доброе утро!", "remarks": "smiling"}
-                }
-            ]
-        }
-        sim = Sim(mode="book")
-        plan = sim._load_book_plan(score_data)
-        self.assertIn("start", plan)
-        self.assertEqual(plan["start"][0]["who"], "Мирай")
-        self.assertEqual(plan["beats"][0]["stage"][0]["action"], "enter")
+    def test_unknown_action_becomes_stay(self):
+        director, _ = self._director(json.dumps({
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "teleport"}]
+        }))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertEqual(score["beats"][2]["stage"][0]["action"], "stay")
+        self.assertTrue(any("2" in warning and "teleport" in warning
+                            for warning in score["warnings"]))
 
-        # Check scene open sends start events
-        open_events = sim._book_open_scene("bedroom_morning", plan)
-        start_events = [e for e in open_events if e.get("type") == "start"]
-        self.assertTrue(len(start_events) > 0)
-        self.assertEqual(start_events[0]["who"], "Мирай")
-        self.assertEqual(start_events[0]["place"], "bed")
-        self.assertEqual(start_events[0]["pose"], "lie")
+    def test_unknown_look_is_removed_with_warning(self):
+        director, _ = self._director(json.dumps({
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "stay",
+                       "look": "the moon"}]
+        }))
+        score = book.score_scene(KOSHAKAN, "bedroom", places=self._places(),
+                                 director=director, cache_dir=self.tmp)
+        self.assertNotIn("look", score["beats"][2]["stage"][0])
+        self.assertTrue(any("2" in warning and "the moon" in warning
+                            for warning in score["warnings"]))
 
-        # Check step sends stage before line, remarks preserved in line
-        step_events = sim._book_step()
-        stage_events = [e for e in step_events if e.get("type") == "stage"]
-        line_events = [e for e in step_events if e.get("type") == "line"]
-        self.assertTrue(len(stage_events) > 0)
-        self.assertEqual(stage_events[0]["who"], "Мама")
-        self.assertEqual(stage_events[0]["action"], "enter")
-        self.assertEqual(stage_events[0]["place"], "door_bedroom")
-        self.assertTrue(len(line_events) > 0)
-        self.assertEqual(line_events[0]["who"], "Мама")
-        self.assertEqual(line_events[0]["remarks"], "smiling")
+    @staticmethod
+    def _score(scene, beats, start):
+        return {"scene": scene, "place": scene, "cast": ["Mirai", "Mama"],
+                "start": start, "beats": beats}
 
-        # Changing scene applies start again
-        next_score = {
-            "scene_id": "bathroom_wash",
-            "start": [{"who": "Мирай", "place": "sink", "pose": "stand"}],
-            "beats": []
-        }
-        next_plan = sim._load_book_plan(next_score)
-        next_open_events = sim._book_open_scene("bathroom_wash", next_plan)
-        next_start = [e for e in next_open_events if e.get("type") == "start"]
-        self.assertTrue(len(next_start) > 0)
-        self.assertEqual(next_start[0]["place"], "sink")
+    def test_score_runs_through_book_events_and_scene_change(self):
+        """Use score -> real plan loader -> Sim diagnostics for start, stage and line."""
+        bedroom = self._score("bedroom", [{
+            "id": 0, "kind": "line", "who": "Mama", "text": "Wake up.",
+            "stage": [{"who": "Mama", "action": "enter", "place": "door_bedroom"}],
+            "remarks": "smiling",
+        }], [{"who": "Mirai", "place": "bed", "pose": "lie"}])
+        bathroom = self._score("bathroom", [{
+            "id": 0, "kind": "line", "who": "Mama", "text": "Wash up.",
+        }], [{"who": "Mirai", "place": "sink", "pose": "stand"}])
+        score_path = os.path.join(self.tmp, "score.json")
+        with open(score_path, "w", encoding="utf-8") as f:
+            json.dump([bedroom, bathroom], f)
+        plan = S._load_book_plan(KOSHAKAN, ["bedroom", "bathroom"], score_path)
+        S.use_scene(plan["scenes"][0]["dict"])
+        sim = S.Sim(profile=None, fake=True, speed=1.0, outdir=self.tmp,
+                    book=plan, script=[])
+        self.addCleanup(sim.close)
+
+        log_path = os.path.join(self.tmp, "log.jsonl")
+
+        def rows():
+            with open(log_path, encoding="utf-8") as f:
+                return [json.loads(line) for line in f if line.strip()]
+
+        initial = rows()
+        start0 = next(i for i, event in enumerate(initial)
+                      if event["type"] == "start" and event["place"] == "bed")
+
+        sim._book_step()
+        played = rows()
+        stage_i = next(i for i, event in enumerate(played)
+                       if event["type"] == "stage" and event.get("action") == "enter")
+        line_i = next(i for i, event in enumerate(played)
+                      if event["type"] == "line" and event.get("text") == "Wake up.")
+        self.assertLess(start0, stage_i)
+        self.assertLess(stage_i, line_i)
+        self.assertEqual(played[line_i]["remarks"], "smiling")
+
+        sim._book_scene_end()  # advance the real book transition and open bathroom
+        switched = rows()
+        bathroom_start = next(i for i, event in enumerate(switched)
+                              if event["type"] == "start" and event["place"] == "sink")
+        transition = next(i for i, event in enumerate(switched)
+                          if event["type"] == "transition" and event["scene"] == "bathroom")
+        self.assertGreater(bathroom_start, transition)
 
 
 if __name__ == "__main__":

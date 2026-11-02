@@ -209,3 +209,50 @@ def validate_and_merge_staging(
             existing_for_beat.append(item)
 
     return final_start, final_stage
+
+
+def _cache_path(cache_dir: str, key: str) -> str:
+    return os.path.join(cache_dir, "stage_%s.json" % key)
+
+
+def run_staging(
+    book_dir: str,
+    paragraphs: List[str],
+    cast: List[str],
+    places: Optional[Dict[str, Any]],
+    scene: Dict[str, Any],
+    director: Optional[Callable[[str], str]],
+    warnings: List[str],
+    cache_dir: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]]]:
+    """One director call per scene; hand-authored `start`/`stage` of the scene win.
+
+    The model is called only when the scene lacks `start` or `stage`. Answers are
+    cached by sha256(paragraphs + places + model) in `cache_dir` when it is given."""
+    hand_start = scene.get("start") or None
+    hand_stage: Dict[int, List[Dict[str, Any]]] = {}
+    for k, v in (scene.get("stage") or {}).items():
+        try:
+            hand_stage[int(k)] = list(v) if isinstance(v, list) else [v]
+        except (TypeError, ValueError):
+            warnings.append("stage: bad beat id %r in book.json ignored" % (k,))
+    output = None
+    need_model = director is not None and (not hand_start or not hand_stage)
+    if need_model:
+        key = compute_director_cache_key(paragraphs, places or {}, "spark-contributor")
+        path = _cache_path(cache_dir, key) if cache_dir else None
+        if path and os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    output = json.load(f)
+            except (OSError, ValueError):
+                output = None
+        if output is None:
+            prompt = build_director_prompt(paragraphs, list(cast or []), places or {})
+            output = call_director_with_retry(director, prompt, warnings)
+            if output is not None and path:
+                os.makedirs(cache_dir, exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(output, f, ensure_ascii=False)
+    return validate_and_merge_staging(
+        output, paragraphs, list(cast or []), places or {}, hand_start, hand_stage, warnings)

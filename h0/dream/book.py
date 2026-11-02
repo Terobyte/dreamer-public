@@ -338,7 +338,7 @@ def warnings_for(beats):
             for b in beats if b["kind"] == "line" and b["who"] is None]
 
 
-def score_scene(dir, scene_id, places=None, director=None):
+def score_scene(dir, scene_id, places=None, director=None, cache_dir=None):
     book = load_book(dir)
     ch, sc = find_scene(book, scene_id)
     with open(os.path.join(dir, ch["file"]), encoding="utf-8") as f:
@@ -358,7 +358,8 @@ def score_scene(dir, scene_id, places=None, director=None):
         places,
         sc,
         director,
-        extra_warnings
+        extra_warnings,
+        cache_dir,
     )
 
     for b in beats:
