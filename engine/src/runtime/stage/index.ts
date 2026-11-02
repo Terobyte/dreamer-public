@@ -10,6 +10,7 @@ import { floorAt, stageRegex, startSpot, yawTo, type Claims, type Place, type V2
 import { createToucher } from "./touch.js";
 import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
+import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -476,6 +477,35 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const self = cast.find((o) => o.who === a.who);
     return self ? resolveGaze(gazeBeat, nowT, self, cast, placePoint) : null;
   };
+  // the film critic's facts (every 0.5 s -> window.__critic, read by bin/record.mjs)
+  let lastPlan = "wide";
+  const critic = typeof window !== "undefined"
+    ? createCritic(((window as any).__critic ??= []) as CriticFact[], () => {
+        const cam = c.camera.position;
+        const on = [...actors.values()].filter((a) => !offstageActors.has(a.who));
+        // F12: lines can overlap in dur — the latest line's speaker wins while still speaking, not the first timer
+        const late = gazeBeat?.speaker && nowT < (gazeBeat?.until ?? 0) ? on.find((a) => a.who === gazeBeat.speaker) : undefined;
+        const sp = (late?.speaking() ? late : undefined) ?? on.find((a) => a.speaking());
+        return {
+          plan: lastPlan,
+          cam: [cam.x, cam.y, cam.z] as [number, number, number],
+          look: [look.x, look.y, look.z] as [number, number, number],
+          speaker: sp?.who ?? null,
+          fov: c.camera.fov,
+          aspect: c.camera.aspect,
+          actors: on.map((a) => {
+            const e = a.eye();
+            const h = heightOf(a.who);
+            const g = gazeOf(a, on);
+            // measured head bone after animation (F10/F11); unrigged stand-ins keep the gaze/yaw fallback
+            const hp = headPose(a.group);
+            const faceYaw = hp?.faceYaw ?? (g ? (Math.atan2(g[0] - e[0], g[2] - e[2]) * 180) / Math.PI : a.yaw());
+            // rendered feet (group.position.y carries SIT_DROP and bob), head from the bone so sit follows the pose
+            return { who: a.who, pos: a.pos(), y: a.group.position.y, yaw: a.yaw(), faceYaw, facePitch: hp?.facePitch, headPos: hp?.pos, headY: e[1], height: h, clear: sight([cam.x, cam.y, cam.z], e), boneSig: boneSig(a.group) };
+          }),
+        };
+      })
+    : null;
   const update = (dt: number, now: number): void => {
     nowT = now;
     {
@@ -554,6 +584,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     look.set(look.x + (s.look[0] - look.x) * k, look.y + (s.look[1] - look.y) * k, look.z + (s.look[2] - look.z) * k);
     c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();
+    lastPlan = s.plan;
+    critic?.tick(dt, now);
   };
 
   return {

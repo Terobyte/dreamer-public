@@ -16,12 +16,14 @@ import sys
 import threading
 from pathlib import Path
 
+from make import critic
 from make.play import static_url
 
 H0 = Path(__file__).resolve().parents[1]
 ENGINE = H0.parent / "engine"
 TAIL_MS = 2500
 READY_MS = 300  # after the page is ready (world built) the first frame is drawn; the head before it is black
+critic_code = 0  # worst critic exit code of the last film() run
 END = ("book_end", "stop")
 
 
@@ -123,12 +125,30 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
     return dst
 
 
-def film(runs, out, max_s=600, size="1280x720", lang="en"):
+def _video_duration(p):
+    """Real mp4 length in seconds (ffprobe); None when it cannot be read."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", str(p)], capture_output=True, text=True)
+        return float(r.stdout.strip())
+    except Exception:
+        return None
+
+
+def film(runs, out, max_s=600, size="1280x720", lang="en", strict=False):
+    """Returns the output path; the critic's worst exit code (0, or 3/4 under strict) lands in film.critic_code."""
+    global critic_code
+    critic_code = 0
     out = Path(out).resolve()
     parts = []
     for i, run in enumerate(runs):
         print(f"film: scene {i + 1}/{len(runs)} {run}", flush=True)
         parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size, lang))
+        jl = Path(run).resolve() / "film" / "critic.jsonl"
+        if jl.exists():
+            critic_code = max(critic_code, critic.run(jl, strict=strict, duration=_video_duration(parts[-1])))
+        elif strict:
+            critic_code = max(critic_code, 3)
     if len(parts) == 1:
         shutil.move(parts[0], out)
     else:
@@ -147,9 +167,10 @@ def main(argv=None):
     ap.add_argument("--max", type=int, default=600, help="seconds per scene before giving up")
     ap.add_argument("--size", default="1280x720")
     ap.add_argument("--lang", choices=["en", "ru"], default="en")
+    ap.add_argument("--strict", action="store_true", help="exit 3 when the critic finds a bad film, 4 on CRITIC_GAPS")
     a = ap.parse_args(argv)
-    film(a.runs, a.out, a.max, a.size, lang=a.lang)
-    return 0
+    film(a.runs, a.out, a.max, a.size, lang=a.lang, strict=a.strict)
+    return critic_code if a.strict else 0
 
 
 if __name__ == "__main__":

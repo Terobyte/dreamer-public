@@ -131,6 +131,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
 | `stage/index.ts` | `startStage`: читает `stage.json`, `places.json`, `cast.json`; ставит актёров на `start`; обработчики событий (`start`, `stage`, `line`, `narrator`, `touch`); offstage-актеры и переходы enter/exit; кадр `update(dt)`: актёры, toucher, очередь режиссёра, плавная камера; `warnings()` — предупреждения сцены (фолбэк позы) | `startStage(StageCtx) -> {handlers, update, warnings(), api{actors,camera,subs}}`; кнопка freestyle и ticker (кроме `?film=1`) | stage.json | `browser/stage.test.ts`, `stage-round8.test.ts`, `stage-blocking.test.ts` |
+| `stage/critic.ts` | факт кадра для критика фильма: `computeFact` (head_ndc, height_frac, face_deg, clear, bone_sig), `boneSig`, `createCritic` пишет в `window.__critic` каждые 0.5 с; `record.mjs` сохраняет `critic.jsonl` | `computeFact(CriticIn) -> CriticFact`, `createCritic(sink, build).tick(dt, now)` | stage/sight.ts | `stage-critic.test.ts` |
 | `stage/actors.ts` | актёр: GLB + высота `height_m`, ходьба по путям, поворот, поза `idle\|sit` (`SIT_DROP 0.45`), `speak(sec)`, `play(clip)`; запасной ящик если GLB не грузится | `createActor`, `Actor{go,moving,speak,speaking,play,y,pos,yaw,act,update}`, `WALK_SPEED 1.4` | cast.json | `stage-anim`, `stage-round8` |
 | `stage/anim.ts` | AnimationMixer на персонажа: ретаргет по имени кости, срез калибровочной T-позы (`calibrationEnd`), root на месте, кроссфейд, rest-поза (`UPRIGHT`), выбор клипа по тексту | `createAnimator`, `Animator{play,idle,update,has,current,alive,...}`, `pickClip(text, who, cast, aliases)`, `clipForBeat(beat, cast)`, `DEFAULT_VERBS` (wake,hug,flick,stroke,leap,fall,sit,walk) | cast `clips`,`verbs`,`idle` | `stage-anim` (19), `stage-anim-pick` |
 | `stage/life.ts` | процедурный idle: дыхание (chest), перенос веса (spine), взгляд: свободный по сторонам + целевой `look` (yaw ≤60°, pitch ≤30°, τ 0.3 с, новая цель ≥1 с, оглядыш ≤2°), кивки при речи; кости по именам-кандидатам; руки/таз не трогает | `createLife(root, seed) -> Life{before, after(dt, {weight, talking, look?})}` | — | `stage-life.test.ts` |
@@ -261,6 +262,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 
 | Нужно | Используй |
 |---|---|
+| оценить фильм автоматически (лицо видно, спина, серии планов, статуи) | `h0/make/critic.py` (`python3 -m make.critic critic.jsonl --strict`, `make.film --strict`); факты пишет `engine/src/runtime/stage/critic.ts` |
 | проверить сцену (ошибки/варнинги) | `node --import tsx engine/bin/dreamer.ts check scene.json`; в коде `runCheck` (`check.ts`); из Python `pipe2.engine.Engine.check` |
 | собрать dist из scene.json | `dreamer build --out D --assets none\|cache\|live`; `build/write.ts writeDist`; Python `Engine.build` |
 | снимки камер сцены | `dreamer shots <dist>` (`build/shots.ts runShots`) -> `dist/shots/<cam>.png`, `sheet.png`; Python `engine.shots_retry` |

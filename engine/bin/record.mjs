@@ -1,7 +1,7 @@
 // Record one stage page: a video (no sound, Playwright never captures audio) plus the moment the page got every
 // sim event, so make.film lays each voice wav under the picture at the time it played live.
 //   node bin/record.mjs <page url> <out dir> [max seconds] [WxH]
-// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur}], plus {ms, type: "ready"} when the world is built), last.png. Exit 3: no book_end/stop.
+// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur}], plus {ms, type: "ready"} when the world is built), last.png, critic.jsonl (window.__critic facts). Exit 3: no book_end/stop.
 import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 
@@ -43,6 +43,13 @@ while (Date.now() < until && !over()) await page.waitForTimeout(500);
 await page.waitForTimeout(3000);  // the last line's tail
 writeFileSync(`${outDir}/events.json`, JSON.stringify(events, null, 1));
 await page.screenshot({ path: `${outDir}/last.png` });
+// the runtime writes one fact per 0.5 s into window.__critic (stage/critic.ts); make/critic.py judges them
+// stage `t` runs on performance.now (seconds since navigation), events `ms` on Date.now - t0:
+// shift facts onto the events clock so reply intervals match their frames
+const timeOrigin = await page.evaluate(() => performance.timeOrigin).catch(() => t0);
+const facts = await page.evaluate(() => window.__critic ?? []).catch(() => []);
+for (const f of facts) f.t = Math.round((f.t + (timeOrigin - t0) / 1000) * 100) / 100;
+writeFileSync(`${outDir}/critic.jsonl`, facts.map((f) => JSON.stringify(f)).join("\n") + (facts.length ? "\n" : ""));
 await ctx.close();
 await browser.close();
 console.log(`record: ${events.length} events, ${events.filter((e) => e.audio).length} voiced, ${Math.round((Date.now() - t0) / 1000)} s`);
