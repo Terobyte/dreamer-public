@@ -201,3 +201,155 @@ export function worldSurfaces(local: Surface[], mesh: SurfaceMesh): WorldSurface
     };
   });
 }
+
+/** The prop a mount stands on: `top_of` or `tier_of`. */
+function supportOf(mount: any): { id: string; tier?: number } | undefined {
+  if (mount === null || typeof mount !== "object") return undefined;
+  if (typeof mount.top_of === "string") return { id: mount.top_of };
+  if (typeof mount.tier_of === "string") return { id: mount.tier_of, tier: typeof mount.tier === "number" ? mount.tier : -1 };
+  return undefined;
+}
+
+/** A world point in the model system of a mesh (inverse of `worldSurfaces`' placement). */
+function toModel(mesh: SurfaceMesh, x: number, z: number): [number, number] {
+  const s = mesh.scale ?? 1;
+  const yaw = mesh.glbYaw ?? 0;
+  const [px, , pz] = mesh.glbPos ?? [0, 0, 0];
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const dx = x - px;
+  const dz = z - pz;
+  return [(dx * c - dz * sn) / s, (dx * sn + dz * c) / s];
+}
+
+function toWorld(mesh: SurfaceMesh, x: number, z: number): [number, number] {
+  const s = mesh.scale ?? 1;
+  const yaw = mesh.glbYaw ?? 0;
+  const [px, , pz] = mesh.glbPos ?? [0, 0, 0];
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  return [x * s * c + z * s * sn + px, -x * s * sn + z * s * c + pz];
+}
+
+/**
+ * Props standing on a model with known surfaces are lowered or raised onto the real surface
+ * (a mattress, a shelf board) instead of the top of the support's box. Props go in graph order
+ * (supports first); each shift also moves the prop's own surfaces in `surfaces` (in place), so what
+ * stands on it follows. Returns the geometry with moved meshes and warnings `REMOUNT`/`TIER_MISSING`.
+ */
+export function remount(
+  geometry: { meshes: any[] } & Record<string, any>,
+  scene: any,
+  surfaces: Record<string, WorldSurface[]>,
+): { geometry: any; warnings: string[] } {
+  const warnings: string[] = [];
+  const props: any[] = Array.isArray(scene?.props) ? scene.props : [];
+  const propById = new Map<string, any>(props.map((p) => [String(p?.id), p]));
+  const propIds = new Set(props.map((p) => String(p?.id)));
+  const meshes: any[] = geometry.meshes.map((m) => m);
+  const meshIdx = new Map<string, number>();
+  meshes.forEach((m, k) => {
+    if (m.kind === "prop" && !meshIdx.has(String(m.id))) meshIdx.set(String(m.id), k);
+  });
+  const shifts = new Map<string, [number, number, number]>();
+  const done = new Set<string>();
+
+  const rawPropId = (meshId: string): string => {
+    if (propIds.has(meshId)) return meshId;
+    let best: string | null = null;
+    for (const id of propIds) {
+      if (meshId.startsWith(`${id}.`) && (best === null || id.length > best.length)) best = id;
+    }
+    if (best !== null) return best;
+    return meshId.replace(/\.\d+$/, "");
+  };
+
+  const process = (id: string): void => {
+    if (done.has(id)) return;
+    done.add(id);
+    const sourceId = rawPropId(id);
+    const prop = propById.get(sourceId);
+    const sup = supportOf(prop?.mount);
+    if (sup === undefined || !propById.has(sup.id)) return;
+    if (meshIdx.has(sup.id)) process(sup.id);
+    const mi = meshIdx.get(id);
+    const si = meshIdx.get(sup.id);
+    if (mi === undefined || si === undefined) return;
+    const m = meshes[mi];
+    const supMesh = meshes[si];
+    const list = surfaces[sup.id];
+    const ys = (m.positions as number[]).filter((_, i) => i % 3 === 1);
+    const oldY = ys.length > 0 ? Math.min(...ys) : (m.glbPos?.[1] ?? 0);
+    const xs = (m.positions as number[]).filter((_, i) => i % 3 === 0);
+    const zs = (m.positions as number[]).filter((_, i) => i % 3 === 2);
+    const isCopy = id !== prop?.id;
+    const oldAt: [number, number] = !isCopy && Array.isArray(prop?.at)
+      ? [prop.at[0], prop.at[1]]
+      : m.glbPos
+        ? [m.glbPos[0], m.glbPos[2]]
+        : [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
+    let d: [number, number, number] = [0, 0, 0];
+    if (list === undefined || list.length === 0) {
+      const carried = shifts.get(sup.id);
+      if (sup.tier !== undefined) warnings.push(`TIER_MISSING ${id}`);
+      if (carried !== undefined) d = [...carried];
+    } else {
+      const inside = (s: WorldSurface, at: [number, number]): boolean => {
+        const [mx, mz] = toModel(supMesh, at[0], at[1]);
+        const i = Math.floor((mx - s.origin[0]) / CELL);
+        const j = Math.floor((mz - s.origin[1]) / CELL);
+        return s.cells.some((c) => c[0] === i && c[1] === j);
+      };
+      const byHeight = [...list].sort((a, b) => b.y - a.y);
+      let chosen: WorldSurface | undefined;
+      if (sup.tier !== undefined) {
+        const asc = [...list].sort((a, b) => a.y - b.y);
+        chosen = asc[sup.tier];
+        if (chosen === undefined) warnings.push(`TIER_MISSING ${id}`);
+      }
+      if (chosen === undefined) {
+        const open = byHeight.filter((s) => s.open);
+        const pool = open.length > 0 ? open : byHeight;
+        chosen = pool.find((s) => inside(s, oldAt));
+        if (chosen === undefined) chosen = pool[0];
+      }
+      let at = oldAt;
+      if (!inside(chosen, oldAt)) {
+        const [mx, mz] = toModel(supMesh, oldAt[0], oldAt[1]);
+        let best: [number, number] | undefined;
+        let bestD = Infinity;
+        for (const c of chosen.cells) {
+          const dist = Math.hypot(chosen.origin[0] + (c[0] + 0.5) * CELL - mx, chosen.origin[1] + (c[1] + 0.5) * CELL - mz);
+          const b = best;
+          if (dist < bestD - 1e-12 || (Math.abs(dist - bestD) <= 1e-12 && b !== undefined && (c[0] < b[0] || (c[0] === b[0] && c[1] < b[1])))) {
+            best = [c[0], c[1]];
+            bestD = dist;
+          }
+        }
+        if (best !== undefined) at = toWorld(supMesh, chosen.origin[0] + (best[0] + 0.5) * CELL, chosen.origin[1] + (best[1] + 0.5) * CELL);
+      }
+      d = [at[0] - oldAt[0], chosen.y - oldY, at[1] - oldAt[1]];
+    }
+    if (d[0] === 0 && d[1] === 0 && d[2] === 0) return;
+    shifts.set(id, d);
+    const pos = (m.positions as number[]).map((v, i) => v + d[i % 3]);
+    const moved: any = { ...m, positions: pos };
+    if (m.glbPos) moved.glbPos = [m.glbPos[0] + d[0], m.glbPos[1] + d[1], m.glbPos[2] + d[2]];
+    meshes[mi] = moved;
+    const own = surfaces[id];
+    if (own !== undefined) {
+      surfaces[id] = own.map((s) => ({
+        ...s,
+        y: s.y + d[1],
+        rect: [s.rect[0] + d[0], s.rect[1] + d[2], s.rect[2] + d[0], s.rect[3] + d[2]] as [number, number, number, number],
+        poly: s.poly.map((p) => [p[0] + d[0], p[1] + d[2]] as [number, number]),
+      }));
+    }
+    if (Math.hypot(d[0], d[1], d[2]) > 0.02) warnings.push(`REMOUNT ${id} ${d[1].toFixed(3)}`);
+  };
+  for (const m of meshes) {
+    if (m.kind === "prop") process(String(m.id));
+  }
+  for (const p of props) process(String(p?.id));
+  return { geometry: { ...geometry, meshes }, warnings };
+}

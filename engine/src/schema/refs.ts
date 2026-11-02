@@ -255,16 +255,17 @@ export function checkRefs(raw: any): Issue[] {
         out.push({ code: "ROOM_REF_MISMATCH", stage: "schema", path: `/props/${i}`, msg: msg("ROOM_REF_MISMATCH", { path: `/props/${i}`, a: p.room, b: p.on.room }) });
       }
     }
-    if (p.mount && typeof p.mount === "object" && typeof p.mount.top_of === "string") {
-      if (!propById.has(p.mount.top_of)) ref(`/props/${i}/mount/top_of`, "prop", p.mount.top_of, new Set(propIds));
+    const supKey = p.mount && typeof p.mount === "object" ? (typeof p.mount.top_of === "string" ? "top_of" : typeof p.mount.tier_of === "string" ? "tier_of" : undefined) : undefined;
+    if (supKey !== undefined) {
+      if (!propById.has(p.mount[supKey])) ref(`/props/${i}/mount/${supKey}`, "prop", p.mount[supKey], new Set(propIds));
       // one cycle, one record: on its first member in scene order; a prop that
       // only stands on a cycle is not itself a defect
-      let cur: string | undefined = p.mount.top_of;
+      let cur: string | undefined = p.mount[supKey];
       const chain: string[] = [p.id];
       while (typeof cur === "string" && propById.has(cur)) {
         if (cur === p.id) {
           if (chain.every((id) => propById.get(id)! >= i)) {
-            const path = `/props/${i}/mount/top_of`;
+            const path = `/props/${i}/mount/${supKey}`;
             out.push({
               code: "REF_UNKNOWN",
               stage: "schema",
@@ -277,7 +278,7 @@ export function checkRefs(raw: any): Issue[] {
         if (chain.includes(cur)) break;
         chain.push(cur);
         const nxt = (raw.props as any[])[propById.get(cur)!]?.mount;
-        cur = nxt && typeof nxt === "object" ? nxt.top_of : undefined;
+        cur = nxt && typeof nxt === "object" ? (nxt.top_of ?? nxt.tier_of) : undefined;
       }
     }
     // a face target may be a prop, a room or an opening (placement resolves all three)
@@ -421,7 +422,7 @@ export function checkRefs(raw: any): Issue[] {
     // a wall mount moves off its authored `at` onto the wall: only placement knows where
     if (p.mount === "wall") return undefined;
     if (Array.isArray(p.at)) return p.at as number[];
-    const sup = p.mount && typeof p.mount === "object" ? p.mount.top_of : undefined;
+    const sup = p.mount && typeof p.mount === "object" ? (p.mount.top_of ?? p.mount.tier_of) : undefined;
     if (typeof sup === "string" && propById.has(sup)) return posOf((raw.props as any[])[propById.get(sup)!], depth + 1);
     return undefined;
   };

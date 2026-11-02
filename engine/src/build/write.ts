@@ -19,7 +19,7 @@ import { cutGlb } from "../assets/cut.js";
 import { shotBaseNames } from "./shotnames.js";
 import { doorDefs, type DoorJson } from "./doors.js";
 import { floorDecals } from "./decals.js";
-import { surfacesOf, worldSurfaces, type Surface, type WorldSurface } from "./surfaces.js";
+import { remount, surfacesOf, worldSurfaces, type Surface, type WorldSurface } from "./surfaces.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -330,10 +330,14 @@ export async function writeDist(
   }
   const cut = await cutPlaced(ctx, outDir, Object.keys(glbSizes), assetWarnings);
 
-  const geometry = buildGeometry(ctx, assetFiles, glbSizes);
+  const built = buildGeometry(ctx, assetFiles, glbSizes);
   const nav = ctx.nav ?? buildNav(ctx);
   const surfaceWarnings: string[] = [];
-  const surfaces = meshSurfaces(geometry, outDir, assetFiles, glbSizes, surfaceWarnings);
+  const surfaces = meshSurfaces(built, outDir, assetFiles, glbSizes, surfaceWarnings);
+  // props on a model with surfaces go onto the real surface; `surfaces` shifts with them
+  const mounted = remount(built, ctx.scene, surfaces);
+  const geometry = mounted.geometry as Geometry;
+  surfaceWarnings.push(...mounted.warnings);
   mkdirSync(outDir, { recursive: true });
   const refWarnings = copyRefs(geometry.cameras, outDir, opts.scenePath);
   writeFileSync(join(outDir, "check.json"), JSON.stringify(report, null, 2));

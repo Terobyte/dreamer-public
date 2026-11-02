@@ -14,3 +14,14 @@
 | поверхности предмета (верх матраса, доски полки) | `build.json.surfaces[<id меша>]` (пишет `writeDist`), в коде — `surfacesOf` + `worldSurfaces` |
 | треугольники GLB в системе модели | `sceneTriangles(json, bin)` из `assets/glb.ts` |
 | пустая поверхность у предмета | предупреждение `SURFACES_EMPTY <id>` в `build.json.warnings` |
+
+Г3 (добавлено в §2/§3 этой полосы):
+
+| модуль | что делает |
+|---|---|
+| `engine/src/build/surfaces.ts` `remount` | ставит `top_of`/`tier_of` проп на реальную поверхность опоры (матрас, ярус полки), двигает `glbPos`/`positions`, пишет `REMOUNT`/`TIER_MISSING` |
+| `h0/make/stage.py` `build_places` | `top`, `lie.at`, `tiers` из `build.json.surfaces` (от уровня), `PLACE_NO_SURFACES` |
+
+| нужно | используй |
+|---|---|
+| проп на ярус полки | `mount: {tier_of: id, tier: n}` (0 — нижний) |

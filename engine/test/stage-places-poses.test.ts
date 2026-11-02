@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { PerspectiveCamera, Scene } from "three";
+import { startStage } from "../src/runtime/stage/index.js";
 import { resolveTouch, startSpot, SIDE_M, type Place } from "../src/runtime/stage/places.js";
 
 const BED: Place = {
@@ -79,5 +81,43 @@ describe("startSpot: where an actor starts on a place", () => {
   it("no pose, or a pose the place lacks: the place spot on the floor", () => {
     expect(startSpot(bed)).toEqual({ at: [-0.3, -0.42], yaw: 0, y: 0 });
     expect(startSpot({ ...bed, lie: undefined }, "lie")).toEqual({ at: [-0.3, -0.42], yaw: 0, y: 0 });
+  });
+});
+
+describe("stage places: lie height from surfaces", () => {
+  it("lie on a place whose top is the mattress: the body stands at the top (0.45), not the box (0.75)", () => {
+    const bed: Place = { ...BED, top: 0.45, lie: { at: [2, 2], yaw: 0, head: [2, 1] } };
+    expect(startSpot(bed, "lie").y).toBeCloseTo(0.45, 5);
+    // the level's own y is added by the runtime on top of this number
+    const upstairs: Place = { ...bed, level: "L1" };
+    expect(startSpot(upstairs, "lie").y).toBeCloseTo(0.45, 5);
+  });
+
+  it("runtime start with pose lie on a level at y=3.0 puts the actor body at world y=3.45", async () => {
+    const scene = new Scene();
+    const bed: Place = {
+      name: "bed", id: "room_bed", kind: "sit", room: "room", level: "L1", at: [2, 2], yaw: 0, look: null, obstacle: null,
+      poses: ["lie"], top: 0.45, lie: { at: [2, 2], yaw: 0, head: [2, 1] },
+    };
+    const navLayer = { level: "L1", y: 3.0, origin: [0, 0], w: 250, h: 250 };
+    const navBits = new Uint8Array(Math.ceil((250 * 250) / 8)).fill(255);
+    const stage = await startStage({
+      scene,
+      camera: new PerspectiveCamera(50, 1, 0.1, 100),
+      stageUrl: "stage/stage.json",
+      sim: null,
+      stage: { mode: "book", places: "stage/places.json", cast: "cast/cast.json", start: { Mama: "bed" }, start_pose: { Mama: "lie" } },
+      places: [bed],
+      cast: { Mama: { glb: "missing.glb", height_m: 1.7 } },
+      geo: { spawn: { at: [2, 2] }, floors: [{ room: "room", level: "L1", outline: [[0, 0], [10, 0], [10, 10], [0, 10]] }], meshes: [] },
+      layers: [{ layer: navLayer, bits: navBits }],
+      nav: { ramps: [], doors: {} },
+      doorOpen: () => false,
+    } as any);
+    stage.handlers.start!({ type: "start", who: "Mama", place: "bed", pose: "lie" });
+    stage.update(1 / 60, 0);
+    const g = scene.getObjectByName("actor:Mama")!;
+    expect(g).toBeTruthy();
+    expect(g.position.y).toBeCloseTo(3.45, 2);
   });
 });

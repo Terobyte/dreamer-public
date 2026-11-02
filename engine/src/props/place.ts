@@ -375,10 +375,11 @@ export function placeProps(ctx: Ctx): PropGeo[] {
       // `around` copies keep their own mount: on top_of they sit on the support,
       // not on the floor (the ring only gives the footprint)
       let topOfBase: number | null = null;
-      if (mount && typeof mount === "object" && mount.top_of) {
-        const support = byId.get(String(mount.top_of));
+      const supId = mount && typeof mount === "object" ? (mount.top_of ?? mount.tier_of) : undefined;
+      if (supId) {
+        const support = byId.get(String(supId));
         if (!support) {
-          if (propIds.has(String(mount.top_of))) return null;
+          if (propIds.has(String(supId))) return null;
           return 0;
         }
         topOfBase = support.y[1];
@@ -462,10 +463,11 @@ export function placeProps(ctx: Ctx): PropGeo[] {
       return 1;
     }
 
-    if (mount && typeof mount === "object" && mount.top_of) {
-      const support = byId.get(String(mount.top_of));
+    const supId2 = mount && typeof mount === "object" ? (mount.top_of ?? mount.tier_of) : undefined;
+    if (supId2) {
+      const support = byId.get(String(supId2));
       if (!support) {
-        if (typeof mount.top_of === "string" && propIds.has(String(mount.top_of))) return null;
+        if (typeof supId2 === "string" && propIds.has(String(supId2))) return null;
         return 0;
       }
       const at: V2 = Array.isArray(raw.at)
