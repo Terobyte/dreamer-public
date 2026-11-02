@@ -452,11 +452,12 @@ export function clipForBeat(
   }
   const hit = pickClip(text, who, cast, aliases);
   if (hit) return hit;
-  if (!who || !Object.keys(cast[who].clips ?? {}).length) return null;  // no bank at all: stays on the life nods
   const rm = typeof beat.remarks === "string" ? beat.remarks : Array.isArray(beat.remarks) ? beat.remarks.filter((r) => typeof r === "string").join("\n") : "";
   const signal = `${rm}\n${text}`;
   const verb = GESTURE_TABLE.find(([, re]) => re.test(signal))?.[0];
-  if (!verb) return null;
+  // Н17: no verb -> no gesture, the life nods stay; a matching verb with an
+  // empty or verb-less bank is a bounded procedural gesture (F3)
+  if (!who || !verb) return null;
   const lying = typeof beat.pose === "string" && beat.pose !== "" && beat.pose !== "stand" && beat.pose !== "stand_at";
   const variants = Object.keys(cast[who].clips ?? {}).filter((k) => k === verb || new RegExp(`^${verb}[_\\d]`).test(k)).sort();
   if (lying || !variants.length) return { who, clip: verb, procedural: true };

@@ -25,8 +25,8 @@ describe("gesture from voice remarks and text", () => {
   it("no match -> no gesture", () => {
     expect(clipForBeat({ who: "Mama", text: "Well.", remarks: "flatly" }, cast)).toBeNull();
   });
-  it("empty bank -> no gesture even on a matching remark, life nods stay", () => {
-    expect(clipForBeat({ who: "Bare", text: "Well.", remarks: "sighs" }, cast)).toBeNull();
+  it("empty bank with a matching remark -> procedural gesture (the verb is absent from the bank, F3)", () => {
+    expect(clipForBeat({ who: "Bare", text: "Well.", remarks: "sighs" }, cast)).toEqual({ who: "Bare", clip: "shrug", procedural: true });
   });
   it("verb missing from the bank -> procedural gesture, no throw", () => {
     expect(clipForBeat({ who: "Mama", text: "Well.", remarks: "gasps" }, cast)).toEqual({ who: "Mama", clip: "react", procedural: true });

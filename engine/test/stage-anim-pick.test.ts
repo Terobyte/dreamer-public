@@ -52,9 +52,9 @@ describe("clipForBeat", () => {
     expect(clipForBeat({ who: "Mama", text: "hi", gesture: "flicked" }, cast)).toEqual({ who: "Mama", clip: "flick" });
     expect(clipForBeat({ who: "Mama", text: "I woke", gesture: "dance" }, cast)).toEqual({ who: "Mama", clip: "wake" });
   });
-  it("narrator uses text only; no clip -> null", () => {
+  it("narrator uses text only; empty bank with a matching verb -> procedural (F3)", () => {
     expect(clipForBeat({ who: null, text: "Mama woke", gesture: "hug" }, cast)).toEqual({ who: "Mama", clip: "wake" });
-    expect(clipForBeat({ who: "Bare", text: "hello" }, cast)).toBeNull();
+    expect(clipForBeat({ who: "Bare", text: "hello" }, cast)).toEqual({ who: "Bare", clip: "wave", procedural: true });
   });
 });
 
