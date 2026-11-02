@@ -18,3 +18,11 @@
 | Нужно | Используй |
 |---|---|
 | проп-контейнер рисуется целиком с содержимым; проп на нём не выносится | `pipe2.floor.attach_refs` (`CONTAINERS`, `ref.mode=redraw`, предупреждения `CONTAINED` → `FloorResult.warnings` → `report.json`) |
+
+| §2 модуль | что делает |
+|---|---|
+| `h0/pipe2/surface_rule.py` | `plain_surfaces(scene, room, has_ref)`: `PLAIN_SURFACE` на пол/стены без `tile` у комнаты с картинкой |
+
+| §3 нужно X | используй Y |
+|---|---|
+| проверить, что пол и стены комнаты с картинкой плиточные | `pipe2.surface_rule.plain_surfaces` |

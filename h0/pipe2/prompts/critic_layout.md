@@ -1,3 +1,6 @@
+<!-- inventory -->
+Опись. Сначала перечисли каждый видимый на картинке предмет: мебель, то, что на ней, на стенах, на полу. Всё, чего нет в сцене, добавь, если это не содержимое контейнера.
+<!-- /inventory -->
 The engine built room `{{ROOM}}` without generated assets: every asset is a placeholder box, so judge
 LAYOUT only - positions, sizes, rotations, what is missing, what collides, light placement.
 

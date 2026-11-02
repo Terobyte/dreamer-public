@@ -16,6 +16,7 @@ from typing import Any
 from pipe2.blame import blame_room
 from pipe2.engine import blocking, green, shots_retry
 from pipe2.merge import PARTIAL_KEYS, merge
+from pipe2.surface_rule import plain_surfaces
 
 DROPPABLE = {"DECAL_OVERLAP", "DECAL_OFF_WALL", "DECAL_ON_OPENING"}
 
@@ -362,7 +363,9 @@ class RoomPipeline:
     def _findings(self, scene: dict, violations: list, report: dict) -> list:
         """This room's blocking findings: the linter's, blamed on us, plus merge refusals."""
         mine = blame_room(scene, blocking(report), self.room).get(self.room, [])
-        return mine + [v for v in violations if v.get("owner") == self.room]
+        row = (self.ctx.plan.get("rooms") or {}).get(self.room) or {}
+        plain = plain_surfaces(scene, self.room, bool(row.get("refs")))
+        return mine + [v for v in violations if v.get("owner") == self.room] + plain
 
     # -- critics --------------------------------------------------------------
 
@@ -596,14 +599,23 @@ class RoomPipeline:
                        REPORT=_pretty(report),
                        SKELETON=_pretty(self.ctx.skeleton))
         assert NOT_YOURS in text
+        row = (self.ctx.plan.get("rooms") or {}).get(self.room) or {}
+        text = _inventory(text, role == "critic_layout" and bool(row.get("refs")))
         if findings is not None:
             lines = ["- code: %s, path: %s" % (f.get("code"), f.get("path")) for f in findings]
             text += ("\n\nYour previous answer was refused by the check. Fix only this, "
                      "return everything else as it was:\n\n" + "\n\n".join(lines))
         # references first, then our shots: without them the critic judges a picture against nothing
         # (Twelve Oaks: "green" on a scene that looked nothing like its references)
-        row = (self.ctx.plan.get("rooms") or {}).get(self.room) or {}
         return [_user(text, self._refs(row) + self._shots())]
+
+
+def _inventory(text: str, keep: bool) -> str:
+    """The inventory block of critic_layout.md: kept (markers off) with a picture, cut without."""
+    m = re.search(r"<!-- inventory -->\n(.*?)<!-- /inventory -->\n", text, re.S)
+    if not m:
+        return text
+    return text[:m.start()] + (m.group(1) if keep else "") + text[m.end():]
 
 
 def _find_decal(decal, own: list):
