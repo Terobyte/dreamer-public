@@ -51,3 +51,7 @@
 
 - **Н16** (прогон C) — `FUSED_WITH_DEBT`: 6 раундов без SHIP, ship хозяина. Открыто (судья r6, minor): `h0/llm_http.py:132` — `post()` пропускает truthy не-строковый `content` (dict); **закрыто хозяином 11-01**: не-строка → `TransportError` (не ретраится), тест `test_non_string_content_is_a_non_retryable_transport_error`; заодно гейт стал гонять тесты корня `h0/` (`test_llm_http.py` раньше в гейт не попадал). Блокеры r5 закрыты: редирект https→http с Authorization, ключ Fish из `career/.env`, кэш `h13_sky.KEY`.
 - **Н14** (прогон C) — `SHIP`.
+- **Н8** (прогон A) — `FUSED_WITH_DEBT`: 6 раундов без SHIP, судья не видел Н8; гейты красные по таймаутам под нагрузкой. Хозяин после слияния (c81a44e): гейт зелёный, кроме флака `shots.test.ts` (wall-clock < 4 с, красный и на чистом HEAD); диф `places.ts`/`touch.ts` просмотрен.
+- **Н9** (прогон A) — `FUSED_WITH_DEBT`: правки раунда 6 (`separate()` за один проход, угол колена sit ~85°, поворот груди) судья не видел. Открыто: ревью сходимости `separate()` до чистоты и тестов `stage-pose` / `stage-collide` — хозяин ещё не сделал.
+- **Н17** (прогон A) — `FUSED_WITH_DEBT`: судья не видел правки раунда 6. Открыто: ревью `anim.ts` `GESTURE_TABLE` (детерминизм выбора, процедурный жест лёжа/без клипа) и `sim.py` `_book_step` (remarks в npc_start).
+- **Флак гейта (долг хозяина):** `engine/test/browser/shots.test.ts` «fails with the camera id when the page never gets ready» меряет wall-clock < 4 с, под нагрузкой 7–13 с; перевести на фейковые часы.
