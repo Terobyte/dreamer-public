@@ -72,7 +72,7 @@ def _run_floor(tmp_path, monkeypatch, finish_times):
     monkeypatch.setattr(floor_mod, "repair_seams",
                         lambda ctx, partials: SimpleNamespace(partials={}, rounds=0, rolled_back=[]))
     monkeypatch.setattr(floor_mod, "degrade", lambda *a, **k: ({"props": []}, []))
-    monkeypatch.setattr(floor_mod, "attach_refs", lambda scene, plan, d: scene)
+    monkeypatch.setattr(floor_mod, "attach_refs", lambda scene, plan, d, warnings=None: scene)
 
     fl.run()
     return now, engine

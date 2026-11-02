@@ -71,7 +71,7 @@ def test_warmth_cost_included_in_result_and_report(tmp_path, monkeypatch):
     monkeypatch.setattr(floor_mod, "repair_seams",
                         lambda ctx, partials: SimpleNamespace(partials={}, rounds=0, rolled_back=[]))
     monkeypatch.setattr(floor_mod, "degrade", lambda *a, **k: ({"props": []}, []))
-    monkeypatch.setattr(floor_mod, "attach_refs", lambda scene, plan, d: scene)
+    monkeypatch.setattr(floor_mod, "attach_refs", lambda scene, plan, d, warnings=None: scene)
 
     result = fl.run()
 

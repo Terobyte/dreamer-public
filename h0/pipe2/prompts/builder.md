@@ -18,6 +18,7 @@ Answer with ONE json object in a ```json fenced block, no prose after it. Only t
 - Add one camera per attached reference frame, at that frame's viewpoint, named: {{REF_CAMERAS}}.
   The engine screenshots them back to you, so every reference gets its own picture to compare
   against. Add more cameras if you want, always with the `{{ROOM}}_` prefix.
+- Если у комнаты есть картинка, то, что стоит на мебели или внутри неё, не выноси отдельным предметом.
 - `assets` declares what the engine generates for you (tile/decal: Muse Image; object: Muse Image +
   3D mesh (SAM3D), scaled to your `size`). The engine adds its own framing template to your prompt.
 
