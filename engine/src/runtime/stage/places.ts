@@ -24,9 +24,57 @@ export interface Place {
   stand_on?: { at: V2 };
 }
 
-/** where an actor starts on a place: `lie` = on the top along the long side at the height of the top */
-export function startSpot(place: Place, pose?: string): { at: V2; yaw: number; y: number } {
-  if (pose === "lie" && place.lie) return { at: place.lie.at, yaw: place.lie.yaw, y: place.top ?? 0 };
+/** a sleeper lies in the bed, not on the blanket: the body sinks this far below the top (Koshakan, Nov 2) */
+export const BED_TUCK_M = 0.1;
+/** a bed sitter's pelvis is this far in from the long edge */
+export const BED_EDGE_IN_M = 0.15;
+/** ...and this far from the sleeper's spot toward the foot, so the two bodies do not overlap */
+export const BED_SIT_FOOTWARD_M = 0.35;
+/** the sitter faces out of the bed (legs hang off it) turned this far toward its head, where the sleeper's face is */
+export const BED_SIT_TURN_DEG = 45;
+/** the floor point beside the edge she walks to (the nav has no cells under a bed); also the side's "is it free" probe */
+const BED_SIDE_FLOOR_M = 0.35;
+
+/**
+ * Sitting on a bed (a place with a `lie` spot and a size): on a long edge beside the sleeper, not at `place.at`
+ * (that spot is outside the footboard). Sides are ordered free first, then nearer to `from`; `slot` picks one.
+ */
+export function bedSitSpot(place: Place, from: V2, places: Place[], slot: number): { at: V2; yaw: number; approach: V2 } | null {
+  const lie = place.lie;
+  if (!lie || !place.size) return null;
+  // the long axis is the lie yaw (exact), turned to point at the head
+  const r = (lie.yaw * Math.PI) / 180;
+  let u: V2 = [Math.sin(r), Math.cos(r)];
+  if ((lie.head[0] - lie.at[0]) * u[0] + (lie.head[1] - lie.at[1]) * u[1] < 0) u = [-u[0], -u[1]];
+  const p: V2 = [u[1], -u[0]];
+  const o = place.obstacle;
+  const c: V2 = o && o.length === 4 ? [(o[0]! + o[2]!) / 2, (o[1]! + o[3]!) / 2] : lie.at;
+  const halfW = Math.min(place.size.w, place.size.d) / 2;
+  const along = (lie.at[0] - c[0]) * u[0] + (lie.at[1] - c[1]) * u[1] - BED_SIT_FOOTWARD_M;
+  const pt = (side: number, off: number): V2 => [c[0] + u[0] * along + p[0] * side * off, c[1] + u[1] * along + p[1] * side * off];
+  const blocked = (q: V2): boolean =>
+    places.some((pl) => pl !== place && pl.obstacle && pl.obstacle.length === 4 &&
+      q[0] >= pl.obstacle[0]! && q[0] <= pl.obstacle[2]! && q[1] >= pl.obstacle[1]! && q[1] <= pl.obstacle[3]!);
+  const sides = [1, -1]
+    .map((s) => ({ s, at: pt(s, halfW - BED_EDGE_IN_M), floor: pt(s, halfW + BED_SIDE_FLOOR_M) }))
+    .map((q) => ({ ...q, blocked: blocked(q.floor) }))
+    .sort((a, b) => Number(a.blocked) - Number(b.blocked) || Math.hypot(a.at[0] - from[0], a.at[1] - from[1]) - Math.hypot(b.at[0] - from[0], b.at[1] - from[1]));
+  const pick = sides[Math.abs(slot) % 2]!;
+  const t = (BED_SIT_TURN_DEG * Math.PI) / 180;
+  const f: V2 = [p[0] * pick.s * Math.cos(t) + u[0] * Math.sin(t), p[1] * pick.s * Math.cos(t) + u[1] * Math.sin(t)];
+  return { at: pick.at, yaw: yawTo([0, 0], f), approach: pick.floor };
+}
+
+/**
+ * where an actor starts on a place: `lie` = in the bed along the long side, BED_TUCK_M under the top;
+ * `sit` on a bed = its edge beside the sleeper (bedSitSpot, `from` picks the side)
+ */
+export function startSpot(place: Place, pose?: string, from?: V2, places?: Place[]): { at: V2; yaw: number; y: number } {
+  if (pose === "lie" && place.lie) return { at: place.lie.at, yaw: place.lie.yaw, y: Math.max(0, (place.top ?? 0) - BED_TUCK_M) };
+  if (pose === "sit") {
+    const s = bedSitSpot(place, from ?? place.at, places ?? [place], 0);
+    if (s) return { at: s.at, yaw: s.yaw, y: 0 };
+  }
   return { at: place.at, yaw: place.yaw, y: 0 };
 }
 
@@ -41,6 +89,10 @@ export interface Walk {
   pose?: string;
   /** claims key this walk booked, if any */
   claim?: string;
+  /** the finish yaw is the spot's own (a bed edge): a look target turns the head, not the body */
+  keepYaw?: boolean;
+  /** walkable floor point the route ends on when `target` is off the nav (a bed edge); the last step goes to `target` */
+  approach?: V2;
 }
 export type Skip = { skip: "unknown" | "already_there" };
 
@@ -80,6 +132,8 @@ export function resolveTouch(a: {
     const free = keys.find((k) => a.claims[k] === undefined);
     if (free) {
       a.claims[free] = a.actor.who;
+      const edge = pose === "sit" ? bedSitSpot(place, a.actor.at, a.places, keys.indexOf(free)) : null;
+      if (edge) return { place, target: edge.at, yaw: edge.yaw, act: "sit", pose, claim: free, keepYaw: true, approach: edge.approach };
       const spot = pose === "lie" ? place.lie : pose === "stand_on" ? place.stand_on : undefined;
       const yaw = pose === "lie" && place.lie ? place.lie.yaw : place.yaw;
       return { place, target: spot?.at ?? place.at, yaw, act: pose === "sit" ? "sit" : "idle", pose, claim: free };

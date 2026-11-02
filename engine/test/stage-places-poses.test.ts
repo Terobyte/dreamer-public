@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { PerspectiveCamera, Scene } from "three";
 import { startStage } from "../src/runtime/stage/index.js";
-import { resolveTouch, startSpot, SIDE_M, type Place } from "../src/runtime/stage/places.js";
+import { BED_TUCK_M, resolveTouch, startSpot, SIDE_M, type Place } from "../src/runtime/stage/places.js";
 
 const BED: Place = {
   name: "bed", id: "room_bed", kind: "sit", room: "room", level: "L0", at: [2, 2], yaw: 0, look: null, obstacle: null,
@@ -75,8 +75,8 @@ describe("stage places: poses", () => {
 
 describe("startSpot: where an actor starts on a place", () => {
   const bed: any = { name: "bed", at: [-0.3, -0.42], yaw: 0, top: 0.75, poses: ["lie", "sit"], lie: { at: [-0.3, -1.15], yaw: 90, head: [0.6, -1.15] } };
-  it("lie: on the top, along the long side, at the height of the top", () => {
-    expect(startSpot(bed, "lie")).toEqual({ at: [-0.3, -1.15], yaw: 90, y: 0.75 });
+  it("lie: in the bed along the long side, BED_TUCK_M under the top (L156)", () => {
+    expect(startSpot(bed, "lie")).toEqual({ at: [-0.3, -1.15], yaw: 90, y: 0.75 - BED_TUCK_M });
   });
   it("no pose, or a pose the place lacks: the place spot on the floor", () => {
     expect(startSpot(bed)).toEqual({ at: [-0.3, -0.42], yaw: 0, y: 0 });
@@ -85,15 +85,15 @@ describe("startSpot: where an actor starts on a place", () => {
 });
 
 describe("stage places: lie height from surfaces", () => {
-  it("lie on a place whose top is the mattress: the body stands at the top (0.45), not the box (0.75)", () => {
+  it("lie on a place whose top is the mattress: the body goes by the top (0.45), not the box (0.75)", () => {
     const bed: Place = { ...BED, top: 0.45, lie: { at: [2, 2], yaw: 0, head: [2, 1] } };
-    expect(startSpot(bed, "lie").y).toBeCloseTo(0.45, 5);
+    expect(startSpot(bed, "lie").y).toBeCloseTo(0.45 - BED_TUCK_M, 5);
     // the level's own y is added by the runtime on top of this number
     const upstairs: Place = { ...bed, level: "L1" };
-    expect(startSpot(upstairs, "lie").y).toBeCloseTo(0.45, 5);
+    expect(startSpot(upstairs, "lie").y).toBeCloseTo(0.45 - BED_TUCK_M, 5);
   });
 
-  it("runtime start with pose lie on a level at y=3.0 puts the actor body at world y=3.45", async () => {
+  it("runtime start with pose lie on a level at y=3.0 puts the actor body at world y=3.45 less the tuck", async () => {
     const scene = new Scene();
     const bed: Place = {
       name: "bed", id: "room_bed", kind: "sit", room: "room", level: "L1", at: [2, 2], yaw: 0, look: null, obstacle: null,
@@ -118,6 +118,6 @@ describe("stage places: lie height from surfaces", () => {
     stage.update(1 / 60, 0);
     const g = scene.getObjectByName("actor:Mama")!;
     expect(g).toBeTruthy();
-    expect(g.position.y).toBeCloseTo(3.45, 2);
+    expect(g.position.y).toBeCloseTo(3.45 - BED_TUCK_M, 2);
   });
 });

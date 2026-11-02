@@ -4,7 +4,7 @@ import { createBridge } from "../src/runtime/bridge.js";
 import { startStage } from "../src/runtime/stage/index.js";
 import { interRoomDoorStep } from "../src/runtime/stage/path.js";
 import { findPath } from "../src/runtime/stage/path.js";
-import { yawTo, resolveTouch } from "../src/runtime/stage/places.js";
+import { BED_TUCK_M, yawTo, resolveTouch } from "../src/runtime/stage/places.js";
 
 const outline: Array<[number, number]> = [[0, 0], [10, 0], [10, 10], [0, 10]];
 const places: any[] = [
@@ -76,7 +76,8 @@ describe("stage blocking runtime actions", () => {
     stage.update(1 / 60, 0);
     const g = scene.getObjectByName("actor:Mama")!;
     expect(g).toBeTruthy();
-    expect(g.position.y).toBeCloseTo(0.75, 2);
+    // in the bed: the tuck under the top (L156), still far above the floor
+    expect(g.position.y).toBeCloseTo(0.75 - BED_TUCK_M, 2);
   });
 
   it("goto/come faces along the final route segment without an explicit look", async () => {

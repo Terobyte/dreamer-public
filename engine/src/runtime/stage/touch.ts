@@ -65,7 +65,7 @@ export function createToucher(c: ToucherCtx) {
       const lvl = d.level ?? from;
       (openCells[lvl] ??= []).push(...d.cells);
     }
-    const route = findStageRoute(c.levels, c.ramps, a.pos(), from, r.target, to, {
+    const route = findStageRoute(c.levels, c.ramps, a.pos(), from, r.approach ?? r.target, to, {
       obstacles: c.places.map((p) => ({ level: p.level, rect: p.obstacle })),
       openCells,
     });
@@ -75,12 +75,17 @@ export function createToucher(c: ToucherCtx) {
       return "unreachable";
     }
     for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== (r.claim ?? r.place.name)) delete c.claims[k];
+    // a bed edge is off the nav: the route ends on the floor beside it, one more step onto the seat
+    if (r.approach) {
+      route.path.push(r.target);
+      if (route.ys && route.ys.length) route.ys.push(route.ys[route.ys.length - 1]!);
+    }
     // "along": face the way the last leg of the route points (a goto with no look target)
     const along = (): number => {
       const n = route.path.length;
       return n >= 2 ? yawTo(route.path[n - 2]!, route.path[n - 1]!) : r.yaw;
     };
-    const fin = finishYaw === "along" ? along() : finishYaw;
+    const fin = r.keepYaw ? r.yaw : finishYaw === "along" ? along() : finishYaw;
     a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys, r.act === "sit" ? r.place.top : undefined);
     return "walk";
   };

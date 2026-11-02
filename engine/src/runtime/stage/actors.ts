@@ -1,4 +1,5 @@
 import { AnimationClip, Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Object3D } from "three";
+import { bindHeadToHead } from "./headbind.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
@@ -138,6 +139,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       loadClips(who, clipUrls),
     ]);
     body = b;
+    // a face vertex the auto-rig left on the neck turns with the head (headbind.ts, Koshakan Mama's mouth)
+    const moved = bindHeadToHead(body);
+    if (moved) console.warn(`stage: actor "${who}": ${moved} face vertices were bound to the neck, now to the head`);
     // always: with no clip the animator still runs the life layer (breath, look, nods) on a rigged body
     animator = createAnimator(body, clips, { idle, seed: who });
   } catch (e) {

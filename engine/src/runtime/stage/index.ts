@@ -168,7 +168,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   for (const who of names) {
     const startName = stage.start?.[who];
     const sp = places.find((p) => p.name === startName) ?? fallback;
-    const spot = sp && sp.name === startName ? startSpot(sp, stage.start_pose?.[who]) : null;
+    const spot = sp && sp.name === startName ? startSpot(sp, stage.start_pose?.[who], sp.at, places) : null;
     const at: V2 = spot ? spot.at : sp ? sp.at : [c.geo.spawn.at[0], c.geo.spawn.at[1]];
     const url = new URL(cast[who].glb, castUrl).href;
     const clipUrls: Record<string, string> = {};
@@ -385,8 +385,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           const pl = places.find((p) => p.name === it.place || p.id === it.place);
           if (pl) {
             const pose = typeof it.pose === "string" ? it.pose : undefined;
-            // lie: the same spot and height (bed top) as the stage.json start (startSpot), one rule for both
-            const ss = startSpot(pl, pose);
+            // lie / sit on a bed: the same spot and height as the stage.json start (startSpot), one rule for both
+            const ss = startSpot(pl, pose, a.pos(), places);
             const spot = pose === "stand_on" && pl.stand_on ? pl.stand_on.at : ss.at;
             const yaw = ss.yaw;
             const act = pose === "sit" ? "sit" : "idle";
