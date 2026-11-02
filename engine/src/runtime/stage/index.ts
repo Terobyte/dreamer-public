@@ -5,7 +5,8 @@ import { aliasesOf, clipForBeat } from "./anim.js";
 import { createActor, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
-import { floorAt, stageRegex, startSpot, type Claims, type Place, type V2 } from "./places.js";
+import { interRoomDoorStep } from "./path.js";
+import { floorAt, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
@@ -40,14 +41,21 @@ const SPEAK_SECONDS = 3;
 
 /** Reads stage.json + places + cast, puts the cast on its start places and returns the event handlers and the frame step. */
 export async function startStage(c: StageCtx): Promise<Stage> {
-  const stageAbs = new URL(c.stageUrl, location.href);
-  const stage = await fetch(stageAbs).then((r) => r.json());
+  const locHref = typeof location !== "undefined" ? location.href : "http://localhost/";
+  const stageAbs = new URL(c.stageUrl || "stage/stage.json", locHref);
+  const stage: any = (c as any).stage ?? (await fetch(stageAbs).then((r) => r.json()));
   // paths inside stage.json are relative to the run folder: the parent of stage/
   const runBase = new URL("../", stageAbs);
-  const placesJson = await fetch(new URL(stage.places, runBase)).then((r) => r.json());
-  const places: Place[] = placesJson.places ?? placesJson;
-  const castUrl = new URL(stage.cast, runBase);
-  const cast: Record<string, { glb: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[] }> = await fetch(castUrl).then((r) => r.json());
+  let places: Place[];
+  if ((c as any).places) {
+    places = (c as any).places;
+  } else {
+    const placesJson = await fetch(new URL(stage.places, runBase)).then((r) => r.json());
+    places = placesJson.places ?? placesJson;
+  }
+  const castUrl = stage.cast ? new URL(stage.cast, runBase) : new URL("cast/cast.json", locHref);
+  const cast: Record<string, { glb?: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[] }> =
+    (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
 
   const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
@@ -86,12 +94,24 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const director = createDirector(rng);
   // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
   const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
+  const offstageActors = new Set<string>();
+  /** actors walking to a door on `exit`: they become offstage only once they stop there */
+  const exiting = new Set<string>();
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
       const lvl = toucherLevel(a.who);
       const f = roomOfActor(a, lvl);
-      return { name: a.who, pos: a.pos(), yaw: a.yaw(), height: heightOf(a.who), level: lvl, room: f?.room ?? null, walking: a.moving() };
+      return {
+        name: a.who,
+        pos: a.pos(),
+        yaw: a.yaw(),
+        height: heightOf(a.who),
+        level: lvl,
+        room: f?.room ?? null,
+        walking: a.moving(),
+        offstage: offstageActors.has(a.who),
+      };
     });
   const heightOf = (who: string): number => Number(cast[who].height_m ?? 1.7);
   let toucherLevel: (who: string) => string | null = () => null;
@@ -135,7 +155,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     actor: (w) => actors.get(w),
   });
   toucherLevel = (who) => toucher.levelOf(who);
-  const touch = (who: string, name: string): void => void toucher.touch(who, name);
+  const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): void => void toucher.touch(who, name, pose, finishYaw);
 
   const whoOf = (e: StageEvent): string | null => {
     const w = e.who ?? e.actor ?? e.turn_owner;
@@ -149,42 +169,53 @@ export async function startStage(c: StageCtx): Promise<Stage> {
 
   // ---- freestyle button + story ticker (duo.html's, only here: no ?stage= -> none of this exists) ----
   let mode: string | null = null;
-  const btn = document.createElement("button");
-  btn.id = "free";
-  btn.hidden = true;
-  btn.style.cssText = "position:fixed;top:8px;right:8px;z-index:3;font:14px system-ui,sans-serif;padding:6px 10px";
+  const doc = typeof document !== "undefined" ? document : null;
+  const btn = doc ? doc.createElement("button") : null;
+  if (btn) {
+    btn.id = "free";
+    btn.hidden = true;
+    btn.style.cssText = "position:fixed;top:8px;right:8px;z-index:3;font:14px system-ui,sans-serif;padding:6px 10px";
+  }
   // only a book run has the button (F27): seed / free scenes never show it; freestyle is one-way
   const bookRun = stage.mode === "book";
   const setMode = (m: string): void => {
     if (c.film || !bookRun || m === mode || mode === "freestyle" || (m !== "book" && m !== "freestyle")) return;
     mode = m;
-    btn.hidden = false;
-    btn.classList.toggle("on", m === "freestyle");
-    btn.textContent = m === "freestyle" ? "⚡ фристайл: импровизируют" : "⚡ Фристайл [G]";
+    if (btn) {
+      btn.hidden = false;
+      btn.classList.toggle("on", m === "freestyle");
+      btn.textContent = m === "freestyle" ? "⚡ фристайл: импровизируют" : "⚡ Фристайл [G]";
+    }
   };
   const goFree = (): void => {
-    if (c.film || mode !== "book" || !c.sim) return;
+    if (c.film || mode !== "book" || !c.sim || !btn) return;
     btn.textContent = "⚡ переключаю…";
     fetch(`${c.sim.replace(/\/$/, "")}/freestyle`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(
       () => (btn.textContent = "⚡ Фристайл [G] (движок не ответил)"),
     );
   };
-  btn.onclick = goFree;
-  addEventListener("keydown", (e) => {
-    if (e.code === "KeyG" && !e.repeat) goFree();
-  });
-  document.body.appendChild(btn);
-  const ticker = document.createElement("div");
-  ticker.id = "story";
-  ticker.hidden = true;
-  ticker.style.cssText = "position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(720px,90vw);color:#fff;font:14px system-ui,sans-serif;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;z-index:2";
-  // a running line (F28): the text enters on the right and leaves fully on the left, then again
-  const css = document.createElement("style");
-  css.textContent = "@keyframes stage-ticker{from{transform:translateX(0)}to{transform:translateX(-100%)}}#story>span{display:inline-block;padding-left:100%;animation:stage-ticker linear infinite}";
-  document.head.appendChild(css);
-  const tickerText = document.createElement("span");
-  ticker.appendChild(tickerText);
-  document.body.appendChild(ticker);
+  if (btn) {
+    btn.onclick = goFree;
+    doc?.body.appendChild(btn);
+  }
+  if (typeof addEventListener !== "undefined") {
+    addEventListener("keydown", (e) => {
+      if (e.code === "KeyG" && !e.repeat) goFree();
+    });
+  }
+  const ticker = doc ? doc.createElement("div") : null;
+  const tickerText = doc ? doc.createElement("span") : null;
+  if (doc && ticker && tickerText) {
+    ticker.id = "story";
+    ticker.hidden = true;
+    ticker.style.cssText = "position:fixed;top:52px;left:50%;transform:translateX(-50%);width:min(720px,90vw);color:#fff;font:14px system-ui,sans-serif;text-shadow:0 1px 3px #000;white-space:nowrap;overflow:hidden;z-index:2";
+    // a running line (F28): the text enters on the right and leaves fully on the left, then again
+    const css = doc.createElement("style");
+    css.textContent = "@keyframes stage-ticker{from{transform:translateX(0)}to{transform:translateX(-100%)}}#story>span{display:inline-block;padding-left:100%;animation:stage-ticker linear infinite}";
+    doc.head?.appendChild(css);
+    ticker.appendChild(tickerText);
+    doc.body?.appendChild(ticker);
+  }
   // the run's own mode first: a book run shows the button before any event (F35)
   setMode(stage.freestyle ? "freestyle" : String(stage.mode ?? ""));
   let pieces = 0;
@@ -203,13 +234,131 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     return best;
   };
   let lastSpeaker: string | null = null;
+  let lastBeatHadStage = false;
   const handlers: StageHandlers = {
+    start(e) {
+      const items = Array.isArray((e as any).start) ? (e as any).start : [e];
+      for (const it of items) {
+        if (!it || typeof it !== "object") continue;
+        const who = typeof it.who === "string" ? it.who : null;
+        if (!who || !actors.has(who)) continue;
+        const a = actors.get(who)!;
+        exiting.delete(who);
+        if (it.offstage) {
+          offstageActors.add(who);
+        } else {
+          offstageActors.delete(who);
+        }
+        if (it.place) {
+          const pl = places.find((p) => p.name === it.place || p.id === it.place);
+          if (pl) {
+            const pose = typeof it.pose === "string" ? it.pose : undefined;
+            const spot = pose === "lie" && pl.lie ? pl.lie.at : pose === "stand_on" && pl.stand_on ? pl.stand_on.at : pl.at;
+            const yaw = pose === "lie" && pl.lie ? pl.lie.yaw : pl.yaw;
+            const act = pose === "sit" ? "sit" : "idle";
+            const lvl = pl.level ?? null;
+            const y = layerOf(lvl).layer.y ?? 0;
+            claims[pl.name] = who;
+            a.teleport(spot, yaw, act, y);
+          }
+        }
+      }
+    },
+    stage(e) {
+      lastBeatHadStage = true;
+      const who = typeof e.who === "string" ? e.who : null;
+      if (!who || !actors.has(who)) {
+        warnings.push(`stage: actor "${String(e.who)}" unknown`);
+        return;
+      }
+      const a = actors.get(who)!;
+      const action = typeof e.action === "string" ? e.action : "stay";
+      const placeName = typeof e.place === "string" ? e.place : undefined;
+      const lookTarget = typeof e.look === "string" ? e.look : undefined;
+      const pose = typeof e.pose === "string" ? e.pose : undefined;
+
+      const getTargetPos = (tgt?: string): V2 | null => {
+        if (!tgt) return null;
+        if (actors.has(tgt)) return actors.get(tgt)!.pos();
+        const pl = places.find((p) => p.name === tgt || p.id === tgt);
+        return pl ? pl.at : null;
+      };
+
+      if (action === "stay") {
+        return;
+      }
+      if (action === "turn_away") {
+        const tgtPos = getTargetPos(lookTarget);
+        if (tgtPos) {
+          const targetYaw = yawTo(a.pos(), tgtPos);
+          const turnYaw = (targetYaw + 180) % 360;
+          a.go([], turnYaw, a.act());
+        } else {
+          warnings.push(`stage: turn_away requires look target`);
+        }
+        return;
+      }
+      if (action === "come" || action === "goto") {
+        if (!placeName) {
+          warnings.push(`stage: ${action} requires place -> stay`);
+          return;
+        }
+        const pl = places.find((p) => p.name === placeName || p.id === placeName);
+        if (!pl) {
+          warnings.push(`stage: place "${placeName}" not in places bank -> stay`);
+          return;
+        }
+        const tgtPos = getTargetPos(lookTarget);
+        const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
+        touch(who, pl.name, pose, lookYaw);
+        return;
+      }
+      if (action === "enter") {
+        if (!placeName) {
+          warnings.push(`stage: enter requires door place -> stay`);
+          return;
+        }
+        const door = places.find((p) => p.name === placeName || p.id === placeName);
+        if (!door) {
+          warnings.push(`stage: door place "${placeName}" not in places bank -> stay`);
+          return;
+        }
+        exiting.delete(who);
+        offstageActors.delete(who);
+        const lvl = door.level ?? null;
+        const y = layerOf(lvl).layer.y ?? 0;
+        const step = interRoomDoorStep(door.at, door.yaw, 1.0);
+        a.teleport(step.doorPos, step.yaw, "idle", y);
+        const tgtPos = getTargetPos(lookTarget);
+        const faceYaw = tgtPos ? yawTo(step.insidePos, tgtPos) : step.yaw;
+        a.go([step.insidePos], faceYaw, "idle", y);
+        return;
+      }
+      if (action === "exit") {
+        const lvl = toucher.levelOf(who);
+        const curRoom = roomAt(a.pos(), lvl)?.room;
+        const door = places.find((p) => (p.room === curRoom || !curRoom) && (p.kind === "door" || p.poses?.includes("door")));
+        if (!door) {
+          warnings.push(`stage: exit finds no door in room "${curRoom ?? "?"}" -> stay`);
+          return;
+        }
+        const res = toucher.touch(who, door.name, "door");
+        if (res === "walk") exiting.add(who);
+        else if (res === "skip") offstageActors.add(who);
+        else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
+        return;
+      }
+      warnings.push(`stage: unknown action "${action}" -> stay`);
+    },
     line(e) {
+      lastBeatHadStage = false;
       const who = whoOf(e);
       if (who) lastSpeaker = who;
       pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
-      window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
+      if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+        window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
+      }
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
       const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks }, cast, aliases);
       if (pick && !pick.procedural) actors.get(pick.who)?.play(pick.clip, { once: true });
@@ -219,11 +368,17 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     narrator(e) {
       pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0 });
       subs.narrator({ text: e.text, audio: e.audio });
-      window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
+      if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+        window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
+      }
       const pick = clipForBeat({ who: null, text: e.text }, cast, aliases);
       if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
-      const hit = remark(String(e.text ?? ""));
-      if (hit) touch(hit.who, hit.place);
+      const hadStage = lastBeatHadStage || !!(e as any).stage;
+      lastBeatHadStage = false;
+      if (!hadStage) {
+        const hit = remark(String(e.text ?? ""));
+        if (hit) touch(hit.who, hit.place);
+      }
     },
     touch(e) {
       const who = whoOf(e);
@@ -241,9 +396,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         told++;
         if (c.film) return;
         const w = String(e.what ?? "").replace(/^The story moves on:? ?/, "");
-        ticker.hidden = false;
-        tickerText.textContent = `📖 ${told}/${pieces || "?"} · ${w}`;
-        tickerText.style.animationDuration = `${Math.max(8, tickerText.textContent.length * 0.18)}s`;
+        if (ticker && tickerText) {
+          ticker.hidden = false;
+          tickerText.textContent = `📖 ${told}/${pieces || "?"} · ${w}`;
+          tickerText.style.animationDuration = `${Math.max(8, tickerText.textContent.length * 0.18)}s`;
+        }
       }
     },
   };
@@ -255,6 +412,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const look = new Vector3();
   const update = (dt: number, now: number): void => {
     for (const a of actors.values()) a.update(dt, now);
+    for (const who of [...exiting]) {
+      if (!actors.get(who)?.moving()) {
+        exiting.delete(who);
+        offstageActors.add(who);
+      }
+    }
     toucher.tick();
     const list = [...actors.values()];
     const sorted = [...list].sort((x, y) => (x.who < y.who ? -1 : 1));
@@ -269,10 +432,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       // F1: a line always leads with its own speaker (ignoring stale speaking timers);
       // a narrator leads with the first actor by name; ticks keep the current talker
       let focus: Actor | undefined;
-      if (ev.kind === "line" && ev.speaker) focus = list.find((a) => a.who === ev.speaker) ?? list.find((a) => a.speaking()) ?? sorted[0];
-      else if (ev.kind === "narrator") focus = list.find((a) => a.who === ev.about) ?? sorted[0];
-      else focus = list.find((a) => a.speaking()) ?? list.find((a) => a.who === (ev.speaker ?? lastSpeaker)) ?? sorted[0];
-      focus ??= sorted[0];
+      const onstageList = list.filter((a) => !offstageActors.has(a.who));
+      const onstageSorted = sorted.filter((a) => !offstageActors.has(a.who));
+      if (ev.kind === "line" && ev.speaker) focus = list.find((a) => a.who === ev.speaker) ?? onstageList.find((a) => a.speaking()) ?? onstageSorted[0] ?? sorted[0];
+      else if (ev.kind === "narrator") focus = (ev.about && !offstageActors.has(ev.about) ? list.find((a) => a.who === ev.about) : undefined) ?? onstageSorted[0] ?? sorted[0];
+      else focus = onstageList.find((a) => a.speaking()) ?? (ev.speaker && !offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? (lastSpeaker && !offstageActors.has(lastSpeaker) ? list.find((a) => a.who === lastSpeaker) : undefined) ?? onstageSorted[0] ?? sorted[0];
+      focus ??= onstageSorted[0] ?? sorted[0];
       if (!focus) {
         if (!queued.length) return;
         continue;
@@ -325,7 +490,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     handlers,
     update,
     api: {
-      actors: () => [...actors.values()].map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), act: a.act() })),
+      actors: () => [...actors.values()].map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), act: a.act(), offstage: offstageActors.has(a.who) })),
       camera: () => ({ pos: [c.camera.position.x, c.camera.position.y, c.camera.position.z], room: camRoom, height: camHeight }),
       subs: () => subs.log(),
     },

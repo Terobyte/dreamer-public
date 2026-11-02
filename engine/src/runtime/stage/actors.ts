@@ -18,6 +18,7 @@ export interface Actor {
   /** walk the waypoints, then turn to `yaw` and take `act`. `ys` = feet height at each waypoint (the height
    * changes only along a segment whose ends differ, i.e. a ramp, F24); a single number = height of the last one */
   go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number | number[]): void;
+  teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number): void;
   /** still walking or turning */
   moving(): boolean;
   speak(seconds: number): void;
@@ -119,6 +120,19 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       segFrom = [x, z];
       segY = y;
       if (fa === "idle" || path.length) act = "idle";
+    },
+    teleport(at: V2, newYaw: number, newAct: "idle" | "sit" = "idle", newY?: number) {
+      x = at[0];
+      z = at[1];
+      cur = newYaw;
+      act = newAct;
+      if (newY !== undefined) {
+        y = newY;
+        segY = newY;
+      }
+      path = [];
+      finish = null;
+      apply(clock, false);
     },
     moving: () => path.length > 0 || finish !== null,
     play(clip, o) {

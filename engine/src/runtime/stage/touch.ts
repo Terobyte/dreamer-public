@@ -1,6 +1,6 @@
 import type { NavRamp } from "../../nav/floor.js";
 import { findStageRoute, type StageLevel } from "./path.js";
-import { releaseClaim, resolveTouch, type Claims, type Place, type V2 } from "./places.js";
+import { releaseClaim, resolveTouch, yawTo, type Claims, type Place, type V2 } from "./places.js";
 
 export interface TouchActor {
   pos(): V2;
@@ -42,7 +42,7 @@ export function createToucher(c: ToucherCtx) {
     return l ? String((l.layer as { level?: unknown }).level ?? "") : null;
   };
 
-  const touch = (who: string, name: string, pose?: string): TouchResult => {
+  const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): TouchResult => {
     const a = c.actor(who);
     if (!a) {
       console.warn(`stage: touch by "${who}", who is not in the cast`);
@@ -74,7 +74,13 @@ export function createToucher(c: ToucherCtx) {
       return "unreachable";
     }
     for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== (r.claim ?? r.place.name)) delete c.claims[k];
-    a.go(route.path, r.yaw, r.act, route.ys);
+    // "along": face the way the last leg of the route points (a goto with no look target)
+    const along = (): number => {
+      const n = route.path.length;
+      return n >= 2 ? yawTo(route.path[n - 2]!, route.path[n - 1]!) : r.yaw;
+    };
+    const fin = finishYaw === "along" ? along() : finishYaw;
+    a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys);
     return "walk";
   };
 
