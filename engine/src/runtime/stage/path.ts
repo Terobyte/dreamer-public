@@ -177,3 +177,17 @@ export function findStageRoute(
   }
   return null;
 }
+
+/**
+ * Inter-room transitions: exit walks to the room's door and marks offstage;
+ * enter positions the actor at the scene room's door and steps inside.
+ * No path is built through neighboring rooms.
+ */
+export function interRoomDoorStep(doorAt: V2, doorYaw: number, stepDist = 1.0): { doorPos: V2; insidePos: V2; yaw: number } {
+  const rad = (doorYaw * Math.PI) / 180;
+  return {
+    doorPos: [doorAt[0], doorAt[1]],
+    insidePos: [doorAt[0] + Math.sin(rad) * stepDist, doorAt[1] + Math.cos(rad) * stepDist],
+    yaw: doorYaw,
+  };
+}

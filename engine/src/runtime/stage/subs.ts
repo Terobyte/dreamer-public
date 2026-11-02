@@ -13,7 +13,7 @@ export function audioUrl(sim: string, live: string | null, audio: string): strin
   return `${sim.replace(/\/$/, "")}/out/${enc(live)}/${enc(audio)}`;
 }
 
-export function createSubs(sim: string | null, doc: Document = document): Subs {
+export function createSubs(sim: string | null, doc: Document | null = typeof document !== "undefined" ? document : null): Subs {
   // which run the sim plays: /api/status -> {"live": "<profile>/<run>"}; asked once, again if it was not live yet
   let live: string | null = null;
   const status = async (): Promise<string | null> => {
@@ -26,18 +26,22 @@ export function createSubs(sim: string | null, doc: Document = document): Subs {
     }
     return live;
   };
-  const box = doc.createElement("div");
-  box.id = "subs";
-  box.style.cssText =
-    "position:fixed;left:50%;bottom:36px;transform:translateX(-50%);width:min(820px,92vw);color:#fff;font:18px system-ui,sans-serif;text-align:center;text-shadow:0 1px 4px #000;z-index:2";
-  doc.body.appendChild(box);
+  const box = doc?.createElement("div");
+  if (box && doc) {
+    box.id = "subs";
+    box.style.cssText =
+      "position:fixed;left:50%;bottom:36px;transform:translateX(-50%);width:min(820px,92vw);color:#fff;font:18px system-ui,sans-serif;text-align:center;text-shadow:0 1px 4px #000;z-index:2";
+    doc.body.appendChild(box);
+  }
   const seen: string[] = [];
   const show = (cls: string, text: string, audio: unknown): void => {
-    const d = doc.createElement("div");
-    d.className = cls;
-    d.textContent = text;
-    if (cls === "narrator") d.style.fontStyle = "italic";
-    box.replaceChildren(d);
+    if (box && doc) {
+      const d = doc.createElement("div");
+      d.className = cls;
+      d.textContent = text;
+      if (cls === "narrator") d.style.fontStyle = "italic";
+      box.replaceChildren(d);
+    }
     seen.push(text);
     if (typeof audio === "string" && audio && sim) {
       void status().then((run) => {

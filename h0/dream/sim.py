@@ -189,17 +189,19 @@ def _load_book_plan(book_dir, scene_ids=None, score=None):
     for sid in scene_ids:
         sc = scores.get(sid) or bookmod.score_scene(book_dir, sid)
         speaking = {b["who"] for b in sc["beats"] if b["kind"] == "line" and b.get("who")}
+        cast_names = sc.get("cast") or list(cast.keys())
         actors = [{"name": n, "look": cast[n]["look"], "voice": cast[n]["voice"],
                    **({"persona": cast[n]["persona"]} if cast[n].get("persona") else {})}
-                  for n in sc["cast"] if n in speaking]
+                  for n in cast_names if n in speaking]
         pov = book["pov"]
         hero = {"name": pov, "voice": cast[pov]["voice"], "look": cast[pov]["look"]}
         if cast[pov].get("soul"):
             hero["soul"] = cast[pov]["soul"]
         objects = [str(o) for o in bookmod.find_scene(book, sid)[1].get("objects") or []]
-        scenes.append({"scene": sid, "place": sc["place"], "beats": list(sc["beats"]),
+        scenes.append({"scene": sid, "place": sc.get("place", ""), "beats": list(sc["beats"]),
+                       "start": list(sc.get("start") or []),
                        "actors": actors,
-                       "dict": {"place": sc["place"], "hero": hero,
+                       "dict": {"place": sc.get("place", ""), "hero": hero,
                                 "actors": actors, "objects": objects, "events": [], "soul": {}}})
     return {"scenes": scenes, "narrator_voice": book.get("narrator_voice") or "old_man"}
 
@@ -1138,6 +1140,8 @@ class Sim:
         self._diagnostic({"type": "book", "scene": sc["scene"],
                           "beats": [{"kind": b["kind"], "who": b.get("who"), "text": b["text"]}
                                     for b in sc["beats"]]})
+        for st in sc.get("start") or []:
+            self._emit({"type": "start", **st})
 
     def _book_waiting(self):
         """K3: the prompter is waiting for the human hero (inside the window)."""
@@ -1188,6 +1192,13 @@ class Sim:
             bk["wait_since"] = None
             self._diagnostic(self.status())
         bk["cursor"] += 1
+        if beat.get("stage"):
+            stage_items = beat["stage"] if isinstance(beat["stage"], list) else [beat["stage"]]
+            for st in stage_items:
+                if isinstance(st, dict):
+                    self._emit({"type": "stage", **st})
+                elif isinstance(st, str):
+                    self._emit({"type": "stage", "action": st})
         if beat["kind"] == "line" and beat.get("who"):
             self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
                             "text": beat["text"], "source": "book", "para": beat.get("para"),

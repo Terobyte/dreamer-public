@@ -28,8 +28,10 @@ export interface StageHandlers {
   touch?(e: StageEvent): void;
   mode?(e: StageEvent): void;
   story?(e: StageEvent): void;
+  start?(e: StageEvent): void;
+  stage?(e: StageEvent): void;
 }
-const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story"] as const;
+const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage"] as const;
 /** the sim's own names for what the stage calls `mode` / `story` (snapshot carries the mode; schedule and story events the pieces) */
 const ALIAS: Record<string, (typeof STAGE_TYPES)[number]> = { snapshot: "mode", schedule: "story", event: "story" };
 

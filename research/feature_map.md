@@ -124,13 +124,13 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `runtime/doors.ts` | дверь вращается вокруг петли, блокирует клетки nav, «касание» лучом | `makeDoor`, `touchTarget`, `setCells`, `sweepOf`, `TURN_S 0.6`, `TOUCH_M 1.2` | `door-runtime`, `door-blockers` |
 | `runtime/cams.ts` | выбор камеры страницы (walk / cam / top) | `pickCamera`, `yawDir`, `lookDir` | `cams.test.ts` |
 | `runtime/outdoor.ts` | небо-купол + круглая земля с затуханием | `addOutdoor` | `browser/outdoor.test.ts` |
-| `runtime/bridge.ts` | sim <-> engine: SSE `/events` sim -> `StageHandlers {line,narrator,touch,mode,story}`; алиасы `snapshot->mode`, `schedule/event->story`; обратно `simPost` | `createBridge`, `connectSim`, `simPost` | `stage-bridge.test.ts` |
+| `runtime/bridge.ts` | sim <-> engine: SSE `/events` sim -> `StageHandlers {line,narrator,touch,mode,story,start,stage}`; алиасы `snapshot->mode`, `schedule/event->story`; обратно `simPost` | `createBridge`, `connectSim`, `simPost` | `stage-bridge.test.ts` |
 
 ### 2.5 engine/ runtime/stage (книжная сцена: актёры, камера, жизнь)
 
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
-| `stage/index.ts` | `startStage`: читает `stage.json`, `places.json`, `cast.json`; ставит актёров на `start`; обработчики событий; кадр `update(dt)`: актёры, toucher, очередь режиссёра, плавная камера; `warnings()` — предупреждения сцены (фолбэк позы) | `startStage(StageCtx) -> {handlers, update, warnings(), api{actors,camera,subs}}`; кнопка freestyle и ticker (кроме `?film=1`) | stage.json | `browser/stage.test.ts`, `stage-round8.test.ts` |
+| `stage/index.ts` | `startStage`: читает `stage.json`, `places.json`, `cast.json`; ставит актёров на `start`; обработчики событий (`start`, `stage`, `line`, `narrator`, `touch`); offstage-актеры и переходы enter/exit; кадр `update(dt)`: актёры, toucher, очередь режиссёра, плавная камера; `warnings()` — предупреждения сцены (фолбэк позы) | `startStage(StageCtx) -> {handlers, update, warnings(), api{actors,camera,subs}}`; кнопка freestyle и ticker (кроме `?film=1`) | stage.json | `browser/stage.test.ts`, `stage-round8.test.ts`, `stage-blocking.test.ts` |
 | `stage/actors.ts` | актёр: GLB + высота `height_m`, ходьба по путям, поворот, поза `idle\|sit` (`SIT_DROP 0.45`), `speak(sec)`, `play(clip)`; запасной ящик если GLB не грузится | `createActor`, `Actor{go,moving,speak,speaking,play,y,pos,yaw,act,update}`, `WALK_SPEED 1.4` | cast.json | `stage-anim`, `stage-round8` |
 | `stage/anim.ts` | AnimationMixer на персонажа: ретаргет по имени кости, срез калибровочной T-позы (`calibrationEnd`), root на месте, кроссфейд, rest-поза (`UPRIGHT`), выбор клипа по тексту | `createAnimator`, `Animator{play,idle,update,has,current,alive,...}`, `pickClip(text, who, cast, aliases)`, `clipForBeat(beat, cast)`, `DEFAULT_VERBS` (wake,hug,flick,stroke,leap,fall,sit,walk) | cast `clips`,`verbs`,`idle` | `stage-anim` (19), `stage-anim-pick` |
 | `stage/life.ts` | процедурный idle: дыхание (chest), перенос веса (spine), взгляд головой по сторонам, кивки при речи; кости по именам-кандидатам; руки/таз не трогает | `createLife(root, seed) -> Life{before, after}` | — | `stage-life.test.ts` |
@@ -201,7 +201,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | `llm.py` | обёртка LLM: роли -> (модель, effort), ретрай пустого ответа с большим лимитом, счётчик денег, потолок | `call(role, system, messages, max_tokens, fake, _transport)`, `resolve(role)`, `set_cap`, `get_spent`, `charge_fish`, `charge_image`, `set_talk_model`, `RealTransport`, `ROLE_TABLE`, `TALK_MODELS` | — | `test_llm`, `test_baseten`, `test_bugs_llm_bench` |
 | `voice.py` | Fish TTS: `Voice.synthesize(text, label, out_path)`, `strip_tags`, `wav_seconds`, тишина при 3 провалах; `MODEL = "drama-3"`; пул `voices.json` (old_woman, old_man, woman, man, child, creature, scarlett, rhett ...) | `Voice`, `real_transport`, `fake_transport`, `load_pool`, `fish_key`, `character_reference_id` | wav | `test_contract_fish*`, `test_bugs_voice` |
 | `images.py` | Muse Image фон/портрет, макс 2 одновременно, fallback | `Images.generate`, `background_prompt`, `portrait_prompt`, `real_transport` | png | `test_media` |
-| `book.py` | глава -> черновой score без LLM (beats `line`/`narration`, поле `who/text/tag/para`; в sim пробрасываются `stage/gesture/shot`) | `load_book`, `find_scene`, `parse_scene`, `score_scene`, `split_narration`, `split_paras`, `stats` | book.json, score.json | `test_book`, `test_jane_eyre_book`, `test_book_play` |
+| `book.py` | глава -> черновой score без LLM (beats `line`/`narration`, поле `who/text/tag/para`; в sim пробрасываются `stage/gesture/shot`) | `load_book`, `find_scene`, `parse_scene`, `score_scene`, `split_narration`, `split_paras`, `stats` | book.json, score.json | `test_book`, `test_jane_eyre_book`, `test_book_play`, `test_book_stage` |
+| `stage_director.py` | мизансцена моделью-директором: `start` и `stage` битов, валидация по банку мест/поз, кэш `story/director-*.json`, слияние с ручным book.json | `run_staging`, `validate_and_merge_staging`, `call_director_with_retry`, `compute_director_cache_key`, `build_director_prompt` | score.json | `test_book_stage` |
 | `author.py` | Wonder пишет целую сцену (душа героя, актёры, подбор голоса Fish через `fish_search`) | `author_scene`, `write_scene`, `cast`, `to_scene` | scenes/*.json | `test_author` |
 | `bank.py` | прогон банка сцен текстом + метрики (MATTR, молчания, серии) | `run_scene`, `score`, `mattr` | `h0/out/dream/bank/sheet_*.md` | `test_ab`? |
 | `dub.py` | озвучить и нарисовать текстовый прогон постфактум | `dub`, `cast_of` | — | `test_dub` |
@@ -397,7 +398,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | пространства имён сцен (namespaces) | НЕТ в движке. В pipe2 соглашение: id комнаты-автора с префиксом `<room>_` (`RoomPipeline.prefix`), владельцы в `merge._record_contributor`; одна сцена = один мир | L23 |
 | генерация персонажей в make | НЕТ. `cast` — путь A: хост кладёт `cast.json`+GLB в `run/cast.src` | `make/cast.py` |
 | авто-риг, mocap-idle | НЕТ (L29, L31) | `life.ts` процедурно |
-| структурный бит `stage/gesture/shot` в движке | ЧАСТИЧНО: `gesture`, `shot`, `touch` читаются; `stage` — нет | L11 |
+| структурный бит `stage/gesture/shot` в движке | СДЕЛАНО: `start` и `stage` читаются движком через bridge (`stage/index.ts`) | H10 |
 | обход препятствий актёрами | ЕСТЬ в `path.ts` (obstacles из places). Проверка полноты — L13 | — |
 | траву не считать преградой для камеры | НЕТ (`sight.ts` считает кочки) | L14, Н12 |
 | `legalCameraPoint` | НЕТ одной функции (L16) | `camera.ts snapInside`, `director.ts unblock` |

@@ -42,7 +42,7 @@ export function createToucher(c: ToucherCtx) {
     return l ? String((l.layer as { level?: unknown }).level ?? "") : null;
   };
 
-  const touch = (who: string, name: string, pose?: string): TouchResult => {
+  const touch = (who: string, name: string, pose?: string, finishYaw?: number): TouchResult => {
     const a = c.actor(who);
     if (!a) {
       console.warn(`stage: touch by "${who}", who is not in the cast`);
@@ -74,7 +74,7 @@ export function createToucher(c: ToucherCtx) {
       return "unreachable";
     }
     for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== (r.claim ?? r.place.name)) delete c.claims[k];
-    a.go(route.path, r.yaw, r.act, route.ys);
+    a.go(route.path, finishYaw !== undefined ? finishYaw : r.yaw, r.act, route.ys);
     return "walk";
   };
 

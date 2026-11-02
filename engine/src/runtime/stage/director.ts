@@ -13,6 +13,7 @@ export interface DActor {
   level: string | null;
   room: string | null;
   walking: boolean;
+  offstage?: boolean;
 }
 export interface DEvent {
   kind: "line" | "narrator" | "walk" | "tick";
@@ -157,7 +158,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
   const step = (inp: DirectorInput): DirectorOut => {
     const rng = inp.rng ?? defaultRng;
     const ev = inp.event;
-    const all = [...inp.actors].sort(byName);
+    const all = inp.actors.filter((a) => !a.offstage).sort(byName);
     if (!all.length) {
       const floorY = inp.room.floorY ?? 0;
       const height = inp.room.open ? floorY + OPEN_CEILING : inp.room.ceiling;

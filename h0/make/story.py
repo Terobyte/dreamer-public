@@ -77,7 +77,17 @@ def run_story(ctx):
         _dream()
         import book as _book
         b = brief["book"]
-        score = _book.score_scene(b["dir"], b["scene"])
+        places = None
+        places_p = ctx.run_dir / "stage" / "places.json"
+        if places_p.is_file():
+            try:
+                places = json.loads(places_p.read_text())
+            except Exception:
+                pass
+        director = None
+        if ctx.params.get("fake"):
+            director = lambda p: json.dumps({"start": [], "stage": []})
+        score = _book.score_scene(b["dir"], b["scene"], places=places, director=director)
         edited = ctx.run_dir / "story" / "score.edited.json"
         if edited.is_file():
             ed = json.loads(edited.read_text())

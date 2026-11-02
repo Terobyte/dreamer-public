@@ -9,6 +9,11 @@ import re
 import sys
 from collections import Counter
 
+try:
+    from .stage_director import run_staging
+except ImportError:
+    from stage_director import run_staging
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 SPEECH_VERBS = ["said", "asked", "cried", "whispered", "hissed", "shouted", "answered", "replied",
@@ -75,6 +80,10 @@ def find_scene(book, scene_id):
     for ch in book["chapters"]:
         for sc in ch["scenes"]:
             if sc["id"] == scene_id:
+                return ch, sc
+    for ch in book["chapters"]:
+        for sc in ch["scenes"]:
+            if scene_id.startswith(sc["id"]) or sc["id"].startswith(scene_id):
                 return ch, sc
     raise ValueError(f"scene: {scene_id!r} not in book")
 
@@ -329,14 +338,46 @@ def warnings_for(beats):
             for b in beats if b["kind"] == "line" and b["who"] is None]
 
 
-def score_scene(dir, scene_id):
+def score_scene(dir, scene_id, places=None, director=None):
     book = load_book(dir)
     ch, sc = find_scene(book, scene_id)
     with open(os.path.join(dir, ch["file"]), encoding="utf-8") as f:
-        beats = parse_scene(f.read(), sc, book)
-    return {"book": book.get("title", ""), "chapter": ch["n"], "scene": sc["id"],
-            "place": sc.get("place", ""), "cast": list(sc["cast"]), "beats": beats,
-            "warnings": warnings_for(beats)}
+        raw_text = f.read()
+        beats = parse_scene(raw_text, sc, book)
+
+    for i, b in enumerate(beats):
+        b["id"] = i
+
+    paras = split_paras(raw_text)[sc["paras"][0]:sc["paras"][1]]
+    extra_warnings = []
+
+    final_start, final_stage = run_staging(
+        dir,
+        paras,
+        sc["cast"],
+        places,
+        sc,
+        director,
+        extra_warnings
+    )
+
+    for b in beats:
+        bid = b["id"]
+        if bid in final_stage and final_stage[bid]:
+            b["stage"] = final_stage[bid]
+
+    score = {
+        "book": book.get("title", ""),
+        "chapter": ch["n"],
+        "scene": sc["id"],
+        "place": sc.get("place", ""),
+        "cast": list(sc["cast"]),
+        "beats": beats,
+        "warnings": warnings_for(beats) + extra_warnings
+    }
+    if final_start:
+        score["start"] = final_start
+    return score
 
 
 def stats(score):
