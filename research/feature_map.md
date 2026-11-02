@@ -38,6 +38,7 @@
         |  {dist, places, cast, mode, book{dir,scene,score}, seed, objects[], voices{}, narrator_voice, start{}}
         v
  [play]   make/play.py : stage.json -> dream/sim.run(...) (Spark Open диалог, Fish голос, SSE /events)
+ [book]   make/book.py : python3 -m make.book book.txt --out film.mp4 (read, voices, world, cast, story, stage, film; кэш по хешу, потолок --max-dollars; Spark только через llm_http.post; pick_voice — голос по полу и возрасту) (§3: книга -> фильм)
         |  + статика: страница движка dist/index.html?stage=...&sim=...   (runtime/stage/*)
         |  события sim -> bridge.ts -> StageHandlers (line/narrator/touch/mode/story)
         v
@@ -161,6 +162,7 @@ CLI: `cd h0 && python3 -m make "<промпт>" [--book DIR --scene ID] [--run D
 | `stage.py` | банк мест из построенного мира: позиция/yaw из geometry.json, размер из scene.json, двери из build.json, snap на nav; `SIT = sofa,couch,chair,armchair,bench,bed,stool,seat` -> kind `sit`, остальное `stand`; двери `door`; таблица поз `_poses` по последнему слову id: bed/sofa/couch -> lie+sit, chair/bench/armchair -> sit, stool/step -> stand_on+sit (h<=0.6) иначе sit, остальное -> stand_at, двери -> door; `top=size.h`, `lie{at,yaw,head}`, `slots{lie:1,sit:2}` у кровати/дивана; `pick_start` | `build_places(world_run)`, `write_stage`, `pick_start`, `_pick_voice` (`<метка>@ru`, иначе основной голос + предупреждение), `_poses`, `_Nav.snap`, `_name_places` | places.json, stage.json | `test_stage_places`, `test_stage_snap`, `test_stage_start_*`, `test_stage_fix` |
 | `play.py` | stage.json -> `sim.run`, статик-сервер dist, ожидание зрителя | `play`, `serve_static`, `static_url` | log.jsonl | `test_play`, `test_play_wait`, `test_e2e_fake` |
 | `film.py` | запись сцен в mp4: record.mjs + ffmpeg adelay для wav | `film`, `record_scene`, `mux_cmd`, `concat_cmd`, `page_url`, `TAIL_MS 2500` | film.mp4 | `test_film.py` |
+| `book.py` | книга -> фильм за 7 шагов (read, voices, world, cast, story, stage, film), кэш по хешу входа, потолок `--max-dollars`, Spark только через `llm_http.post` | `run_book`, `spark_call`, `pick_voice` | book.json, places.json, score.json, events.json, film.mp4 | `test_make_book` |
 
 ### 2.7 h0/pipe2 (строитель мира)
 
@@ -323,6 +325,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | субтитры | `stage/subs.ts createSubs` (подписи + озвучка), `audioUrl` |
 | связь sim <-> страница | `runtime/bridge.ts createBridge/connectSim/simPost`; SSE `/events` в `dream/server.py` |
 | запись фильма | `python3 -m make.film runs/<id> --out f.mp4` (`record.mjs` + ffmpeg) |
+| книга -> фильм целиком (7 шагов, кэш, потолок) | `make/book.py run_book` (шаги read, voices, world, cast, story, stage, film) |
 | сыграть сцену make-прогона | `python3 -m make.play runs/<id> [--fake]` |
 | партитура сцены из книги | `dream/book.py score_scene(dir, scene_id)`; руками править -> `story/score.edited.json` |
 | перевести партитуру на язык (кэш sha256) | `make/story.py translate_score(ctx, score, lang)` — один вызов Spark, кэш `story/tr-<sha256>.json` |
