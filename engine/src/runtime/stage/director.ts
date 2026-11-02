@@ -13,8 +13,15 @@ export interface DActor {
   level: string | null;
   room: string | null;
   walking: boolean;
+  /** metres of route still ahead while walking; none = unknown (counts as a long walk) */
+  walkLeft?: number;
+  /** measured head point (world, smoothed): seated or lying, the head is not at height × 0.9 above `pos` */
+  head?: V3;
   offstage?: boolean;
 }
+/** a walk with less route than this left when it starts gets no `follow` cut (and its end no cut): a 1 s walk cut in
+ *  and out gave 0.5–1.5 s shots (Koshakan bedroom, Nov 2) */
+export const FOLLOW_MIN_M = 2.5;
 export interface DEvent {
   kind: "line" | "narrator" | "walk" | "tick";
   speaker?: string;
@@ -148,6 +155,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
   let cutSeq = 0;
   let subjectIsListener = false;
   let walkSig = "";
+  const following = new Set<string>();
+  let wideLock: { cut: number; cam: V3 } | null = null;
   // F1: the room the frame is built in; crossing into another room/level is a cut, never a smooth glide through the wall
   let roomKey: string | null = null;
   let focus: string | null = null;
@@ -181,7 +190,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     const listener = ev.kind === "narrator" ? undefined : nearestOther(crew, speaker);
     // F6: narrator has no reaction listener, but a `two` still frames the speaker pair
     const frameOther = listener ?? (ev.kind === "narrator" ? nearestOther(crew, speaker) : undefined);
-    const walkers = crew.filter((a) => a.walking);
+    // only a long walk is a shot; once in, a walker stays in until it stops (its route running short is no cut)
+    for (const a of crew) {
+      if (!a.walking) following.delete(a.name);
+      else if ((a.walkLeft ?? Infinity) >= FOLLOW_MIN_M) following.add(a.name);
+    }
+    const walkers = crew.filter((a) => a.walking && following.has(a.name));
     const sig = walkers.map((a) => a.name).join(",");
     clock += ev.dt;
 
@@ -265,7 +279,11 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
       fallback: out0.cam,
     };
-    const out = unblock(out0, inp, snap, cameraLaw);
+    let out = unblock(out0, inp, snap, cameraLaw);
+    // a wide is locked off: the cut places it, then only the look pans after whoever moves (a wide re-framed every
+    // tick slid 2.5 m across the Koshakan bedroom while Mama walked, Nov 2)
+    if (out.plan === "wide" && wideLock && wideLock.cut === out.cut) out = { ...out, cam: wideLock.cam };
+    wideLock = out.plan === "wide" ? { cut: out.cut, cam: out.cam } : null;
     // F12: a coerced plan (low -> close, ots -> close, two -> wide) is what the viewer saw: repeats compare to it
     if (ev.kind === "line" || ev.kind === "narrator") lastPlan = out.plan as Plan;
     return out;
@@ -373,7 +391,9 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   const sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - origin[0], center[1] - origin[1]]);
   const span = pair.length > 1 ? dist(pair[0].pos, pair[1].pos) : 0;
   const meanH = pair.reduce((s, a) => s + a.height, 0) / pair.length;
-  const head = (a: DActor, k = 0.9): V3 => at(a.pos, a.height * k);
+  const head = (a: DActor, k = 0.9): V3 => a.head ?? at(a.pos, a.height * k);
+  /** camera height above the floor a little under the eyes: the measured head when known */
+  const eyeCam = (a: DActor): number => (a.head ? Math.max(0.5, a.head[1] - floorY - 0.1 * a.height) : a.height * 0.8);
   const cameraSide: CameraSide | undefined = pair.length > 1 ? { origin, normal: n, sign: side } : undefined;
 
   /** camera point (x, z, height above the floor) clamped into the room; fallback walks from the pair midpoint to the room center (F8) */
@@ -563,7 +583,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
 
   switch (p) {
     case "close": {
-      return { plan: p, cut, cam: bestFacePoint(subj, subj.height * 0.8, [1.6, 1.2, 0.9]), look: head(subj) };
+      return { plan: p, cut, cam: bestFacePoint(subj, eyeCam(subj), [1.6, 1.2, 0.9]), look: head(subj) };
     }
     case "ots": {
       const d0 = other ? dist(other.pos, subj.pos) + 1 : 2.5;
@@ -611,7 +631,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       const k = Math.min(1, t / 8);
       const d = 4.5 + (2.2 - 4.5) * k;
       const dir = other ? sideDir : faceOf(subj.yaw);
-      const dy = subj.height * 0.8;
+      const dy = eyeCam(subj);
       return { plan: p, cut, cam: toSide(place(subj.pos[0] + dir[0] * d, subj.pos[1] + dir[1] * d, dy), dy, d), look: head(subj) };
     }
     case "low": {

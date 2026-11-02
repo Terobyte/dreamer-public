@@ -59,6 +59,8 @@ export interface Actor {
   teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number, seat?: number): void;
   /** still walking or turning */
   moving(): boolean;
+  /** metres of route still ahead (0 when standing or only turning) */
+  walkLeft(): number;
   /** collision capsule radius (Н9, `capsuleRadius`) */
   radius(): number;
   /** put the actor on a point (collision push, Н9): no walking, the walk goes on from there */
@@ -258,6 +260,12 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       apply(clock, false);
     },
     moving: () => path.length > 0 || finish !== null,
+    walkLeft: () => {
+      let s = 0;
+      let p: V2 = [x, z];
+      for (const q of path) (s += Math.hypot(q[0] - p[0], q[1] - p[1])), (p = q);
+      return s;
+    },
     radius: () => radius,
     shove(nx, nz) {
       x = nx;

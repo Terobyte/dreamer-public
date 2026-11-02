@@ -48,6 +48,8 @@ export interface Stage {
 }
 
 const SPEAK_SECONDS = 3;
+/** time constant of the head point the camera frames (DActor.head) */
+const HEAD_SMOOTH_S = 1;
 /** actor capsule radius, m; exit walks this far (+ margin) past the door plane */
 const CAPSULE_R = 0.3;
 const EXIT_PAST_M = CAPSULE_R + 0.1;
@@ -199,11 +201,25 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     exitSettled.delete(who);
   };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
+  // measured head bone, low-passed (~1 s): the camera frames a seated / lying head, but does not bob with a nod
+  const headSmooth = new Map<string, { p: V3; t: number }>();
+  // own clock: dActors runs in the start-up probe, before `nowT` below exists
+  let headT = 0;
+  const smoothHead = (a: Actor): V3 | undefined => {
+    const hp = headPose(a.group);
+    if (!hp) return undefined;
+    const prev = headSmooth.get(a.who);
+    const k = prev ? 1 - Math.exp(-Math.max(0, headT - prev.t) / HEAD_SMOOTH_S) : 1;
+    const p: V3 = prev ? [prev.p[0] + (hp.pos[0] - prev.p[0]) * k, prev.p[1] + (hp.pos[1] - prev.p[1]) * k, prev.p[2] + (hp.pos[2] - prev.p[2]) * k] : hp.pos;
+    headSmooth.set(a.who, { p, t: headT });
+    return p;
+  };
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
       const lvl = toucherLevel(a.who);
       const f = roomOfActor(a, lvl);
       return {
+        head: smoothHead(a),
         name: a.who,
         pos: a.pos(),
         yaw: a.yaw(),
@@ -211,6 +227,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         level: lvl,
         room: f?.room ?? null,
         walking: a.moving(),
+        walkLeft: a.walkLeft?.(),
         offstage: offstageActors.has(a.who),
       };
     });
@@ -742,6 +759,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   const update = (dt: number, now: number): void => {
     nowT = now;
+    headT = now;
     shots?.tick(now);
     {
       const all = [...actors.values()];
