@@ -28,7 +28,7 @@ def skeleton():
         ],
         "stairs": [], "spawn": {"room": "A", "at": [1, 1], "yaw": 0},
         "style": {"ambient": 1.0},
-        "materials": {"white": {"color": "#eeeae0"}, "grey": {"color": "#888888"}},
+        "materials": {"white": {"tile": "w.png"}, "grey": {"tile": "g.png"}},
         "assets": {}, "props": [],
         "lights": [{"kind": "hemi", "pos": [0, 3, 0], "color": "#ffffff", "power": 0.8}],
         "routes": [],
@@ -495,6 +495,24 @@ class TestRoom(RoomCase):
         queued = [spec["id"] for _room, specs in self.assets.puts for spec in specs]
         self.assertIn("A_rug", queued, "a key the critic added must reach the queue")
         self.assertEqual(1, queued.count("A_rug"), "queued once, not again by the next critic")
+
+    def test_plain_inherited_surfaces_reach_fix(self):
+        ref = Path(tempfile.mkdtemp()) / "ref.png"
+        ref.write_bytes(b"\x89PNG\r\n\x1a\nREF")
+        plain_skel = skeleton()
+        plain_skel["materials"] = {"white": {"color": "#eeeae0"}, "grey": {"color": "#888888"}}
+        plan = json.loads(json.dumps(PLAN))
+        plan["rooms"]["A"]["refs"] = [str(ref)]
+        ctx = self.ctx({"builder": [answer(partial())], "fix": [answer(partial()), answer(partial())]},
+                       reports=[GREEN, GREEN, GREEN])
+        ctx.skeleton = plain_skel
+        ctx.plan = plan
+        RoomPipeline("A", ctx).run()
+        fix = self.asked("fix")
+        self.assertGreater(len(fix), 0, "plain inherited surfaces must trigger a fix round")
+        body = self.texts(fix[0])
+        self.assertIn("PLAIN_SURFACE", body)
+        self.assertIn("/materials/", body)
 
 
 if __name__ == "__main__":

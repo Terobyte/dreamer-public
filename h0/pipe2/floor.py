@@ -47,6 +47,7 @@ class FloorResult:
     rolled_back: list = field(default_factory=list)
     sheets: dict = field(default_factory=dict)
     final_errors: list = field(default_factory=list)
+    warnings: list = field(default_factory=list)
 
 
 def _contains(room: dict, x: float, z: float) -> bool:
@@ -236,7 +237,11 @@ def skeleton_defects(skeleton, plan) -> list:
     return defects
 
 
-def attach_refs(scene: dict, plan: dict, scene_dir) -> dict:
+CONTAINERS = {"shelf", "shelves", "bookshelf", "bookcase", "nightstand", "dresser", "cabinet",
+              "cupboard", "sideboard", "desk", "table", "windowsill"}
+
+
+def attach_refs(scene: dict, plan: dict, scene_dir, warnings=None) -> dict:
     """Every `object` in a room that has a reference frame gets `ref`: the frame is
     copied next to the scene (`refs/<room><ext>`, relative, never `../`) and `what`
     is the prop's name. The engine then cuts the thing out of the picture instead of
@@ -276,8 +281,45 @@ def attach_refs(scene: dict, plan: dict, scene_dir) -> dict:
                 else:
                     rel = None
             images[rid] = rel.as_posix() if rel is not None else None
-        if images[rid] is not None:
-            asset["ref"] = {"image": images[rid], "what": str(prop.get("id") or aid)}
+        if images[rid] is None:
+            continue
+        short = str(prop.get("id") or aid).rsplit("_", 1)[-1]
+        ref = {"image": images[rid], "what": short}
+        if short in CONTAINERS:
+            ref["mode"] = "redraw"
+            ref["what"] = short + " with everything standing on it and inside it"
+        have = asset.get("ref")
+        if not isinstance(have, dict):
+            asset["ref"] = ref
+        elif have.get("image") != ref["image"]:
+            # the asset is shared by rooms with different frames: this prop gets its own copy
+            copy_id = aid + "__" + rid
+            copy = assets.get(copy_id)
+            if not isinstance(copy, dict):
+                copy = dict(asset)
+                copy["ref"] = ref
+                assets[copy_id] = copy
+            prop["asset"] = copy_id
+    containers = {}
+    for prop in scene.get("props") or []:
+        if isinstance(prop, dict) and isinstance(prop.get("id"), str):
+            asset = assets.get(prop.get("asset"))
+            ref = asset.get("ref") if isinstance(asset, dict) else None
+            if isinstance(ref, dict) and ref.get("mode") == "redraw":
+                containers[prop["id"]] = True
+    kept = []
+    for prop in scene.get("props") or []:
+        mount = prop.get("mount") if isinstance(prop, dict) else None
+        host = None
+        if isinstance(mount, dict):
+            host = mount.get("top_of") or mount.get("tier_of")
+        if isinstance(host, str) and host in containers:
+            if warnings is not None:
+                warnings.append("CONTAINED %s in %s" % (prop.get("id"), host))
+            continue
+        kept.append(prop)
+    if "props" in scene:
+        scene["props"][:] = kept
     return scene
 
 
@@ -402,7 +444,8 @@ class Floor:
         seam = repair_seams(ctx, partials)
         scene, removed = degrade(engine, work, skeleton, seam.partials, plan)
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        attach_refs(scene, plan, self.run_dir)
+        warnings = []
+        attach_refs(scene, plan, self.run_dir, warnings)
         # F1: финальные ref-aware ключи уходят в очередь до close, иначе сборка
         # ищет в кэше ключ с байтами кадра, которого очередь никогда не видела
         self.deps["assets"].put("floor", engine.asset_keys(scene, self.run_dir))
@@ -432,7 +475,7 @@ class Floor:
             status="interrupted" if self.interrupted.is_set() else ("failed" if final_errors else "done"),
             rooms=room_results, skeleton_defects=defects + post_defects,
             rounds=self.rounds, removed=removed, seam_rounds=seam.rounds,
-            rolled_back=seam.rolled_back, sheets=sheets, final_errors=final_errors,
+            rolled_back=seam.rolled_back, sheets=sheets, final_errors=final_errors, warnings=warnings,
             **self._report_fields())
         return self._finish(result)
 

@@ -105,11 +105,6 @@ def run_story(ctx):
         if (world_run / "dist" / "geometry.json").is_file():
             from . import stage as _stage
             places = _stage.build_places(world_run)
-        elif (ctx.run_dir / "stage" / "places.json").is_file():
-            try:
-                places = json.loads((ctx.run_dir / "stage" / "places.json").read_text())
-            except Exception:
-                pass
         director = None
         if ctx.params.get("fake"):
             director = lambda p: json.dumps({"start": [], "stage": []})
@@ -117,6 +112,9 @@ def run_story(ctx):
             director = _spark_director(ctx)
         score = _book.score_scene(b["dir"], b["scene"], places=places, director=director,
                                   cache_dir=ctx.run_dir / "story")
+        if places is None:
+            score = dict(score, warnings=list(score.get("warnings") or [])
+                         + ["story: no world, staging without places"])
         edited = ctx.run_dir / "story" / "score.edited.json"
         if edited.is_file():
             ed = json.loads(edited.read_text())

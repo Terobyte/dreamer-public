@@ -7,7 +7,8 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from make import story
+from make import stage, story
+from make.testdata import synth_world
 from make.test_story import BOOK, JANE, NoNet, _ctx, _prep
 
 if str(story.DREAM) not in sys.path:
@@ -19,10 +20,8 @@ class StoryDirector(NoNet):
     def test_non_fake_run_passes_real_director_and_run_cache_to_score(self):
         with tempfile.TemporaryDirectory() as tmp:
             run, out = _prep(tmp, BOOK)
-            (run / "stage").mkdir()
-            places = {"places": [{"name": "chair", "room": "hall", "poses": ["sit"]}],
-                      "warnings": []}
-            (run / "stage" / "places.json").write_text(json.dumps(places))
+            synth_world.write(run / "world" / "run", glb=False)
+            places = stage.build_places(run / "world" / "run")
             ctx = _ctx(run, out)
             seen = {}
 
@@ -43,8 +42,7 @@ class StoryDirector(NoNet):
         with tempfile.TemporaryDirectory() as tmp:
             brief = dict(BOOK, book={"dir": JANE, "scene": "tea"})
             run, first_out = _prep(tmp, brief)
-            (run / "stage").mkdir()
-            (run / "stage" / "places.json").write_text(json.dumps({"places": [], "warnings": []}))
+            synth_world.write(run / "world" / "run", glb=False)
             calls = []
             response = '{"start":[],"stage":[]}'
             def director_fn(prompt):
