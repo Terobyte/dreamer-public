@@ -90,3 +90,27 @@ describe("aliasesOf: names in the book language", () => {
     expect(clipForBeat({ who: null, text: "А внутри Мирай ещё спала." }, ru)).toBeNull();
   });
 });
+
+describe("narration picks respect the actor's pose (Koshakan bedroom, Nov 2)", () => {
+  // "Mama bent down and whispered" fired bend_whisper, a standing clip, on Mama seated on the bed: she hunched over Mirai
+  const bank = {
+    Mama: { clips: { bend_whisper: "m/b.glb" }, verbs: { bend_whisper: ["bent"] } },
+    Mirai: { clips: { sleep_curled: "r/s.glb" }, verbs: { sleep_curled: ["asleep"] } },
+  };
+  const poses: Record<string, string> = { Mama: "sit", Mirai: "lie" };
+  const lyingClips = new Set(["sleep_curled"]);
+  const fits = (_who: string, clip: string, pose: string): boolean => (pose === "lie" ? lyingClips.has(clip) : false);
+  const poseOf = (who: string): string | undefined => poses[who];
+
+  it("a standing clip named by narration on a seated actor becomes a procedural gesture", () => {
+    expect(clipForBeat({ who: null, text: "Mama bent down and whispered." }, bank, {}, { poseOf, fits }))
+      .toEqual({ who: "Mama", clip: "bend_whisper", procedural: true });
+  });
+  it("a lying clip on a lying actor still plays", () => {
+    expect(clipForBeat({ who: null, text: "Mirai was still asleep." }, bank, {}, { poseOf, fits })).toEqual({ who: "Mirai", clip: "sleep_curled" });
+  });
+  it("a standing actor plays the clip as before", () => {
+    expect(clipForBeat({ who: null, text: "Mama bent down and whispered." }, bank, {}, { poseOf: () => "stand", fits }))
+      .toEqual({ who: "Mama", clip: "bend_whisper" });
+  });
+});

@@ -17,6 +17,10 @@ export interface DActor {
   walkLeft?: number;
   /** measured head point (world, smoothed): seated or lying, the head is not at height × 0.9 above `pos` */
   head?: V3;
+  /** measured face yaw (head bone), same convention as yaw; none = the body yaw */
+  faceYaw?: number;
+  /** lying down: the face looks up, yaw is where the head points, so a face angle off yaw means nothing */
+  lying?: boolean;
   offstage?: boolean;
 }
 /** a walk with less route than this left when it starts gets no `follow` cut (and its end no cut): a 1 s walk cut in
@@ -63,6 +67,10 @@ const OPEN_CEILING = 3.5;
 const REACT_AT = 0.45;
 const BACK_AT = 0.75;
 const LONG_LINE = 7;
+/** a wide whose worst pair face is under this many degrees off the camera is kept square to the side */
+const WIDE_FACE_OK = 100;
+/** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
+const WIDE_SWING = 60;
 
 const dist = (a: V2, b: V2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const norm = (v: V2, fallback: V2 = [0, 1]): V2 => {
@@ -165,7 +173,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
   let explicitPlan = false;
   let pending: Array<{ at: number; plan: Plan; listener: boolean }> = [];
   // persistent 180° side (F7): reselected only when the pair axis turns by more than 90°
-  const st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2 } = { side: null, axis: null };
+  const st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2; wideCut?: number } = { side: null, axis: null };
 
   const step = (inp: DirectorInput): DirectorOut => {
     const rng = inp.rng ?? defaultRng;
@@ -349,7 +357,7 @@ function roomCenter(outline: V2[]): V2 {
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
 }
 
-function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2 }, snap: SnapFn = snapInside, gaze: DActor = subj, closeAxis: V2 | null = null, explicitPlan = false, closeOrigin: V2 | null = null): DirectorOut {
+function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor[], walkers: DActor[], inp: DirectorInput, t: number, clock: number, cut: number, st: { side: 1 | -1 | null; axis: V2 | null; origin?: V2; normal?: V2; wideCut?: number }, snap: SnapFn = snapInside, gaze: DActor = subj, closeAxis: V2 | null = null, explicitPlan = false, closeOrigin: V2 | null = null): DirectorOut {
   const room = inp.room;
   const floorY = room.floorY ?? 0;
   // open sky: the 3.5 m ceiling is above the floor, not an absolute world height (F3)
@@ -388,13 +396,19 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
     st.normal = undefined;
   }
   const onSide = (pt: V2): boolean => ((pt[0] - origin[0]) * n[0] + (pt[1] - origin[1]) * n[1]) * side > 1e-6;
-  const sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - origin[0], center[1] - origin[1]]);
+  let sideDir: V2 = pair.length > 1 ? [n[0] * side, n[1] * side] : norm([center[0] - origin[0], center[1] - origin[1]]);
   const span = pair.length > 1 ? dist(pair[0].pos, pair[1].pos) : 0;
   const meanH = pair.reduce((s, a) => s + a.height, 0) / pair.length;
   const head = (a: DActor, k = 0.9): V3 => a.head ?? at(a.pos, a.height * k);
   /** camera height above the floor a little under the eyes: the measured head when known */
   const eyeCam = (a: DActor): number => (a.head ? Math.max(0.5, a.head[1] - floorY - 0.1 * a.height) : a.height * 0.8);
-  const cameraSide: CameraSide | undefined = pair.length > 1 ? { origin, normal: n, sign: side } : undefined;
+  let cameraSide: CameraSide | undefined = pair.length > 1 ? { origin, normal: n, sign: side } : undefined;
+  /** cross the line: only a fresh wide does it (it re-establishes the geography); every closure reads the new side */
+  const setSide = (sg: 1 | -1): void => {
+    side = sg;
+    sideDir = [n[0] * sg, n[1] * sg];
+    cameraSide = { origin, normal: n, sign: sg };
+  };
 
   /** camera point (x, z, height above the floor) clamped into the room; fallback walks from the pair midpoint to the room center (F8) */
   const place = (x: number, z: number, y: number): V3 => {
@@ -602,25 +616,63 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       const c: V2 = [(Math.max(...xs) + Math.min(...xs)) / 2, (Math.max(...zs) + Math.min(...zs)) / 2];
       const ht = Math.max(...crew.map((a) => a.height));
       const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
-      const dir0 = crew.length > 1 ? sideDir : norm([center[0] - c[0], center[1] - c[1]]);
-      const du = norm(dir0);
-      const right: V2 = [-du[1], du[0]];
       const tanH = Math.tan(hfov / 2);
       const tanV = Math.tan(vfov / 2);
-      let dH = 2.5;
-      let minDepth = 0;
-      for (const a of crew) {
-        const ox = a.pos[0] - c[0];
-        const oz = a.pos[1] - c[1];
-        const lat = ox * right[0] + oz * right[1];
-        const dep = ox * du[0] + oz * du[1];
-        if (dep < minDepth) minDepth = dep;
-        dH = Math.max(dH, dep + (Math.abs(lat) + 1.75) / tanH);
-      }
-      const dV = minDepth + ht * 1.4 / (2 * tanV);
-      const d = Math.max(dH, dV, 2.5);
       const wy = ht * 1.15 + 0.3;
-      return { plan: p, cut, cam: toSide(place(c[0] + du[0] * d, c[1] + du[1] * d, wy), wy, d), look: at(c, ht * 0.5) };
+      const shoot = (du: V2): V3 => {
+        const right: V2 = [-du[1], du[0]];
+        let dH = 2.5;
+        let minDepth = 0;
+        for (const a of crew) {
+          const ox = a.pos[0] - c[0];
+          const oz = a.pos[1] - c[1];
+          const lat = ox * right[0] + oz * right[1];
+          const dep = ox * du[0] + oz * du[1];
+          if (dep < minDepth) minDepth = dep;
+          dH = Math.max(dH, dep + (Math.abs(lat) + 1.75) / tanH);
+        }
+        const d = Math.max(dH, minDepth + ht * 1.4 / (2 * tanV), 2.5);
+        return toSide(place(c[0] + du[0] * d, c[1] + du[1] * d, wy), wy, d);
+      };
+      // the worst face of the pair, measured where the walls really put the camera (Koshakan: Mama on the bed edge
+      // faces Mirai along the axis; the square-on wide hit the wall and slid behind her, 130–150° off her face)
+      const faces = pair.filter((a) => !a.lying);
+      const worstFace = (cam: V3): number => Math.max(0, ...faces.map((a) => angleBetween(faceOf(a.faceYaw ?? a.yaw), [cam[0] - a.pos[0], cam[2] - a.pos[1]])));
+      // 2 m, or less in a small room (a 3.6 m bedroom has no 2 m point in front of a seated Mama)
+      const minWide = Math.min(2, 0.5 * Math.min(rect.maxx - rect.minx, rect.maxz - rect.minz));
+      /** square to the side; when that misses the faces, swing inside the half-plane (never closer than 2 m) */
+      const onThisSide = () => {
+        const dir0 = norm(crew.length > 1 ? sideDir : [center[0] - c[0], center[1] - c[1]]);
+        let best = { cam: shoot(dir0), face: 0, swing: 0 };
+        best.face = worstFace(best.cam);
+        if (best.face <= WIDE_FACE_OK) return best;
+        // a lone subject has no 180° line: the wide may turn all the way round to the face
+        const swing = pair.length > 1 ? WIDE_SWING : 180;
+        for (let s = -swing; s <= swing; s += 15) {
+          if (s === 0) continue;
+          const r = s * DEG;
+          const du: V2 = [dir0[0] * Math.cos(r) - dir0[1] * Math.sin(r), dir0[0] * Math.sin(r) + dir0[1] * Math.cos(r)];
+          const cam = shoot(du);
+          if (dist([cam[0], cam[2]], c) < minWide) continue; // a wide is a wide: no swing that lands at the actors' elbows
+          const face = worstFace(cam);
+          if (face < best.face - 1e-6 || (Math.abs(face - best.face) < 1e-6 && Math.abs(s) < Math.abs(best.swing))) best = { cam, face, swing: s };
+        }
+        return best;
+      };
+      let best = onThisSide();
+      // the first frame of a wide cut may cross the line when no camera on this side sees the faces and the other
+      // side does (Koshakan: the room-center side was wholly behind Mama's face); later shots keep the new side
+      if (pair.length > 1 && best.face > WIDE_FACE_OK && st.wideCut !== cut) {
+        const keep = side;
+        setSide(side === 1 ? -1 : 1);
+        const alt = onThisSide();
+        if (alt.face <= WIDE_FACE_OK) {
+          best = alt;
+          st.side = side;
+        } else setSide(keep);
+      }
+      st.wideCut = cut;
+      return { plan: p, cut, cam: best.cam, look: at(c, ht * 0.5) };
     }
     case "orbit": {
       const a0 = Math.atan2(sideDir[1], sideDir[0]) + 0.25 * t;

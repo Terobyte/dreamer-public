@@ -41,6 +41,10 @@ export interface CriticActor {
   face_deg: number;
   clear: boolean;
   bone_sig: number;
+  /** floor position and body yaw, and the measured face yaw when known: the trace replays a frame in a director test */
+  pos?: V2;
+  yaw?: number;
+  face_yaw?: number;
 }
 export interface CriticFact {
   t: number;
@@ -126,6 +130,9 @@ export function computeFact(i: CriticIn): CriticFact {
       face_deg: round((Math.acos(dot) * 180) / Math.PI, 10),
       clear: a.clear,
       bone_sig: a.boneSig,
+      pos: [round(a.pos[0], 100), round(a.pos[1], 100)],
+      yaw: round(a.yaw, 10),
+      ...(a.faceYaw !== undefined ? { face_yaw: round(a.faceYaw, 10) } : {}),
     };
   });
   let overlap = false;

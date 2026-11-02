@@ -127,7 +127,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
   // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
-  const clipfacts: Record<string, Record<string, { contact_y?: number }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+  const clipfacts: Record<string, Record<string, { contact_y?: number; lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
     .catch(() => null);
@@ -202,24 +202,31 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   // measured head bone, low-passed (~1 s): the camera frames a seated / lying head, but does not bob with a nod
-  const headSmooth = new Map<string, { p: V3; t: number }>();
+  const headSmooth = new Map<string, { p: V3; yaw: number; t: number }>();
   // own clock: dActors runs in the start-up probe, before `nowT` below exists
   let headT = 0;
-  const smoothHead = (a: Actor): V3 | undefined => {
+  /** smoothed head point and face yaw (where the head looks, not the body: a seated Mama turns her head to Mirai) */
+  const smoothHead = (a: Actor): { p: V3; yaw: number } | undefined => {
     const hp = headPose(a.group);
     if (!hp) return undefined;
     const prev = headSmooth.get(a.who);
     const k = prev ? 1 - Math.exp(-Math.max(0, headT - prev.t) / HEAD_SMOOTH_S) : 1;
     const p: V3 = prev ? [prev.p[0] + (hp.pos[0] - prev.p[0]) * k, prev.p[1] + (hp.pos[1] - prev.p[1]) * k, prev.p[2] + (hp.pos[2] - prev.p[2]) * k] : hp.pos;
-    headSmooth.set(a.who, { p, t: headT });
-    return p;
+    const dy = prev ? ((((hp.faceYaw - prev.yaw) % 360) + 540) % 360) - 180 : 0;
+    const yaw = prev ? (((prev.yaw + dy * k) % 360) + 360) % 360 : hp.faceYaw;
+    headSmooth.set(a.who, { p, yaw, t: headT });
+    return { p, yaw };
   };
+  /** last known pose per actor (start/stage carry it): the line event passes it to clipForBeat (Н17 F2) */
+  const poseOf = new Map<string, string>();
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
       const lvl = toucherLevel(a.who);
       const f = roomOfActor(a, lvl);
+      const h = smoothHead(a);
       return {
-        head: smoothHead(a),
+        head: h?.p,
+        faceYaw: h?.yaw,
         name: a.who,
         pos: a.pos(),
         yaw: a.yaw(),
@@ -228,6 +235,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         room: f?.room ?? null,
         walking: a.moving(),
         walkLeft: a.walkLeft?.(),
+        lying: poseOf.get(a.who) === "lie" && !a.moving(),
         offstage: offstageActors.has(a.who),
       };
     });
@@ -375,8 +383,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const floorY = typeof layer === "number" ? layer : layer?.layer?.y ?? (layer as { y?: number } | undefined)?.y ?? 0;
     return placeGazePoint(p, Number.isFinite(floorY) ? (floorY as number) : 0);
   };
-  /** last known pose per actor (start/stage carry it): the line event passes it to clipForBeat (Н17 F2) */
-  const poseOf = new Map<string, string>();
+  // a clip fits a non-standing pose only when it was made for it (clipfacts `lying` for "lie"; no seated clip facts yet)
+  const clipPose = {
+    poseOf: (w: string): string | undefined => poseOf.get(w),
+    fits: (w: string, clip: string, pose: string): boolean => pose === "lie" && clipfacts?.[w]?.[clip]?.lying === true,
+  };
   // F6: the initial poses (stage.start_pose) count from the first line, before any start/stage event
   for (const [who, p] of Object.entries((stage as any).start_pose ?? {})) {
     if (typeof p === "string" && p && actors.has(who)) poseOf.set(who, p);
@@ -558,7 +569,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
-      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases);
+      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
       if (pick?.procedural) actors.get(pick.who)?.gesture();
       else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
@@ -575,8 +586,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
-      const pick = clipForBeat({ who: null, text: e.text }, cast, aliases);
-      if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
+      const pick = clipForBeat({ who: null, text: e.text }, cast, aliases, clipPose);
+      if (pick?.procedural) actors.get(pick.who)?.gesture();
+      else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const hadStage = lastBeatHadStage || !!(e as any).stage;
       lastBeatHadStage = false;
       if (!hadStage) {

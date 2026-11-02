@@ -448,12 +448,21 @@ export function clipForBeat(
   beat: { who?: string | null; text?: unknown; gesture?: unknown; remarks?: unknown; pose?: unknown; seed?: unknown },
   cast: Record<string, CastClips>,
   aliases: Record<string, string> = {},
+  /** `poseOf`: the pose of the actor a pick lands on (a narration names its actor only in the text);
+   *  `fits`: the clip was made for that pose (clipfacts `lying` for "lie"); none = no clip fits a non-standing pose */
+  o: { poseOf?: (who: string) => string | undefined; fits?: (who: string, clip: string, pose: string) => boolean } = {},
 ): GesturePick | null {
   const who = typeof beat.who === "string" && beat.who in cast ? beat.who : null;
   const text = typeof beat.text === "string" ? beat.text : "";
-  // a lying actor never plays a standing clip: every pick below becomes a procedural gesture
-  const lying = typeof beat.pose === "string" && beat.pose !== "" && beat.pose !== "stand" && beat.pose !== "stand_at";
-  const done = (p: ClipPick): GesturePick => (lying ? { ...p, procedural: true } : p);
+  const standing = (pose: unknown): boolean => typeof pose !== "string" || pose === "" || pose === "stand" || pose === "stand_at";
+  // a lying / seated actor never plays a standing clip: such a pick becomes a procedural gesture
+  // (Koshakan, Nov 2: the narration "Mama bent down and whispered" hunched seated Mama with a standing clip)
+  const lying = !standing(beat.pose);
+  const done = (p: ClipPick): GesturePick => {
+    const pose = beat.pose !== undefined ? beat.pose : o.poseOf?.(p.who);
+    if (standing(pose)) return p;
+    return o.fits?.(p.who, p.clip, pose as string) ? p : { ...p, procedural: true };
+  };
   if (who && typeof beat.gesture === "string" && beat.gesture.trim()) {
     const g = beat.gesture.trim().toLowerCase();
     const key = Object.keys(cast[who].clips ?? {}).find((k) => k.toLowerCase() === g);

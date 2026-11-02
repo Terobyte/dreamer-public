@@ -73,8 +73,6 @@ describe("camera debt: legalCameraPoint", () => {
   it("rule 3: L room, wide across the axis stays inside the outline on the required side", () => {
     const room: DRoom = { outline: L, ceiling: 3, open: false };
     for (const pair of [[[8, 1], [8, 3]], [[1, 8], [3, 8]], [[1, 1], [8, 1]], [[2, 2], [2, 8]], [[8, 3], [2, 9]]] as Array<Array<[number, number]>>) {
-      const s = step(line("a", "wide"), [act("a", pair[0]), act("b", pair[1])], room);
-      expect(insideInset(L, [s.cam[0], s.cam[2]])).toBe(true);
       const m: [number, number] = [(pair[0][0] + pair[1][0]) / 2, (pair[0][1] + pair[1][1]) / 2];
       const d: [number, number] = [pair[1][0] - pair[0][0], pair[1][1] - pair[0][1]];
       const len = Math.hypot(d[0], d[1]);
@@ -82,6 +80,11 @@ describe("camera debt: legalCameraPoint", () => {
       const norm: [number, number] = [-axis[1], axis[0]];
       const toCenter = (5 - m[0]) * norm[0] + (5 - m[1]) * norm[1];
       const side = toCenter < 0 ? -1 : 1;
+      // the pair faces the room-center side, so that side stays required (a fresh wide crosses the line only when
+      // this side is behind the faces, stage-director-faces.test.ts); the rule here is the L outline
+      const yaw = (Math.atan2(norm[0] * side, norm[1] * side) * 180) / Math.PI;
+      const s = step(line("a", "wide"), [act("a", pair[0], { yaw }), act("b", pair[1], { yaw })], room);
+      expect(insideInset(L, [s.cam[0], s.cam[2]])).toBe(true);
       const signedDot = ((s.cam[0] - m[0]) * norm[0] + (s.cam[2] - m[1]) * norm[1]) * side;
       expect(signedDot).toBeGreaterThan(1e-6);
     }
