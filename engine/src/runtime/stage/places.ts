@@ -68,9 +68,11 @@ export function resolveTouch(a: {
     console.warn(`stage: touch "${a.name}" is not a place of this scene`);
     return { skip: "unknown" };
   }
-  if (a.pose === "stand_at" || (a.pose === "door" && place.poses?.includes("door")))
+  // an empty list is not "anything goes": it counts as ["stand_at"]
+  const poses = place.poses && place.poses.length === 0 ? ["stand_at"] : place.poses;
+  if (a.pose === "stand_at" || (a.pose === "door" && poses?.includes("door")))
     return { ...beside(place, a.actor.at), pose: a.pose };
-  if (a.pose && place.poses?.includes(a.pose)) {
+  if (a.pose && poses?.includes(a.pose)) {
     const pose = a.pose;
     const n = place.slots?.[pose] ?? 1;
     const keys = Array.from({ length: n }, (_, i) => `${place.name}|${pose}|${i}`);
@@ -112,7 +114,7 @@ export function resolveTouch(a: {
 /** stand beside the place, on the side nearer to the actor; the claim stays */
 function beside(place: Place, from: V2): Walk {
   const faceYaw = (at: V2): number => (place.kind === "sit" || !place.look ? place.yaw : yawTo(at, place.look));
-  const r = (place.yaw * Math.PI) / 180;
+  const r = ((Number.isFinite(place.yaw) ? place.yaw : 0) * Math.PI) / 180;
   const px = Math.cos(r);
   const pz = -Math.sin(r);
   const side = (s: number): V2 => [place.at[0] + s * SIDE_M * px, place.at[1] + s * SIDE_M * pz];

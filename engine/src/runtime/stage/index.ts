@@ -39,6 +39,9 @@ export interface Stage {
 }
 
 const SPEAK_SECONDS = 3;
+/** actor capsule radius, m; exit walks this far (+ margin) past the door plane */
+const CAPSULE_R = 0.3;
+const EXIT_PAST_M = CAPSULE_R + 0.1;
 
 /** a speech beat for gaze: who speaks, who/which place the speaker's `look` bit names, until when (4 s of silence after -> nobody looks at anything) */
 export interface GazeBeat {
@@ -145,6 +148,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const offstageActors = new Set<string>();
   /** actors walking to a door on `exit`: they become offstage only once they stop there */
   const exiting = new Set<string>();
+  /** exit: door each actor still has to walk through before going offstage */
+  const exitThrough = new Map<string, Place>();
+  /** exit while the actor is on a ramp (`touch` -> queued): the door waits here until the actor steps off */
+  const exitPending = new Map<string, { door: Place; noSide: boolean }>();
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
@@ -302,6 +309,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         if (!who || !actors.has(who)) continue;
         const a = actors.get(who)!;
         exiting.delete(who);
+        exitThrough.delete(who);
+        exitPending.delete(who);
         if (it.offstage) {
           offstageActors.add(who);
         } else {
@@ -382,6 +391,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           return;
         }
         exiting.delete(who);
+        exitThrough.delete(who);
+        exitPending.delete(who);
         offstageActors.delete(who);
         const lvl = door.level ?? null;
         const y = layerOf(lvl).layer.y ?? 0;
@@ -400,9 +411,29 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: exit finds no door in room "${curRoom ?? "?"}" -> stay`);
           return;
         }
+        const sideKnown = typeof door.yaw === "number" && Number.isFinite(door.yaw);
+        if (!sideKnown) {
+          warnings.push(`stage: exit door "${door.name}" has no known exit side -> stops at the door`);
+          const r0 = toucher.touch(who, door.name, "door", 0); // door yaw is unusable, face a fixed way
+          if (r0 === "walk") exiting.add(who);
+          else if (r0 === "skip") offstageActors.add(who);
+          else if (r0 === "queued") {
+            exitPending.set(who, { door, noSide: true });
+            warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
+          }
+          else warnings.push(`stage: exit to "${door.name}" is ${r0} -> stay`);
+          return;
+        }
         const res = toucher.touch(who, door.name, "door");
-        if (res === "walk") exiting.add(who);
+        if (res === "walk") {
+          exiting.add(who);
+          exitThrough.set(who, door);
+        }
         else if (res === "skip") offstageActors.add(who);
+        else if (res === "queued") {
+          exitPending.set(who, { door, noSide: false });
+          warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
+        }
         else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
         return;
       }
@@ -514,10 +545,35 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     }
     for (const a of actors.values()) a.update(dt, now);
     for (const who of [...exiting]) {
-      if (!actors.get(who)?.moving()) {
+      const act = actors.get(who);
+      if (!act?.moving()) {
+        const door = exitThrough.get(who);
+        if (door && act) {
+          // second leg: into the door point, then past the door plane by the capsule radius (+ margin), against the inward yaw
+          exitThrough.delete(who);
+          const rad = (door.yaw * Math.PI) / 180;
+          const out = EXIT_PAST_M;
+          const beyond: V2 = [door.at[0] - Math.sin(rad) * out, door.at[1] - Math.cos(rad) * out];
+          const lvl = door.level ?? toucher.levelOf(who) ?? null;
+          const y = layerOf(lvl).layer.y ?? 0;
+          act.go([door.at, beyond], yawTo(door.at, beyond), "idle", y);
+          continue;
+        }
         exiting.delete(who);
         offstageActors.add(who);
       }
+    }
+    for (const [who, p] of [...exitPending]) {
+      if (toucher.levelOf(who) === null) continue;
+      const res = p.noSide ? toucher.touch(who, p.door.name, "door", 0) : toucher.touch(who, p.door.name, "door");
+      if (res === "queued") continue;
+      exitPending.delete(who);
+      if (res === "walk") {
+        exiting.add(who);
+        if (!p.noSide) exitThrough.set(who, p.door);
+      }
+      else if (res === "skip") offstageActors.add(who);
+      else warnings.push(`stage: exit to "${p.door.name}" is ${res} -> stay`);
     }
     toucher.tick();
     const list = [...actors.values()];
