@@ -116,6 +116,22 @@ describe("stage blocking runtime actions", () => {
     expect(last.pos[0]).toBeLessThanOrEqual(places[2].at[0] - R);
   });
 
+  it("F5: every moving exit frame remains onstage until movement stops", async () => {
+    const stage = await runtime();
+    stage.handlers.start!({ type: "start", who: "Mama", place: "chair" });
+    await runUntilStopped(stage);
+    stage.handlers.stage!({ type: "stage", who: "Mama", action: "exit" });
+    const frames: Array<{ pos: [number, number]; offstage: boolean }> = [];
+    for (let i = 0; i < 600; i++) {
+      stage.update(1 / 60, i / 60);
+      const a = actor(stage) as any;
+      frames.push({ pos: [...a.pos] as [number, number], offstage: a.offstage });
+    }
+    const movedFrames = frames.filter((frame, i) => i > 0 &&
+      Math.hypot(frame.pos[0] - frames[i - 1]!.pos[0], frame.pos[1] - frames[i - 1]!.pos[1]) > 1e-6);
+    expect(movedFrames.every(f => !f.offstage)).toBe(true);
+  });
+
   it("exit is visible mid-way: walks through the door plane onstage, no teleport", async () => {
     const stage = await runtime();
     stage.handlers.start!({ type: "start", who: "Mama", place: "chair" });

@@ -37,7 +37,9 @@ _SEX = {"woman": "woman", "female": "woman", "man": "man", "male": "man"}
 def spark_call(system, user, *, model=SPARK_MODEL, key=None, timeout=300):
     if _PAID.match(model.replace("muse:", "").strip().lower()):
         raise ValueError("paid model refused: use muse-spark-1.3-contributor")
-    key = key if key is not None else os.environ.get("META_API_KEY", "")
+    if key is None:
+        import keys
+        key = keys.get("META") or ""
     payload = {"model": model, "messages": [{"role": "system", "content": system},
                                             {"role": "user", "content": user}]}
     return llm_http.post(SPARK_URL, "Bearer " + key, payload, timeout, 1)["content"]
@@ -160,6 +162,19 @@ def _validate_book_or_raise(book):
     cast = book.get("cast")
     if not isinstance(cast, dict) or not cast:
         raise StepError("read/book.json has no cast")
+    places = book.get("places")
+    if not isinstance(places, dict) or not places:
+        raise StepError("read/book.json has no places")
+    chapters = book.get("chapters")
+    if not isinstance(chapters, list) or not chapters:
+        raise StepError("read/book.json has no chapters")
+    for ch in chapters:
+        scenes = ch.get("scenes") if isinstance(ch, dict) else None
+        if not isinstance(scenes, list) or not scenes:
+            raise StepError("read/book.json chapter without scenes")
+        for sc in scenes:
+            if not isinstance(sc, dict) or sc.get("place") not in places:
+                raise StepError("read/book.json scene place %r not in places" % (sc.get("place") if isinstance(sc, dict) else sc))
     for name, c in cast.items():
         if not isinstance(c, dict):
             raise StepError("read/book.json cast %s: not an object" % name)
@@ -199,7 +214,12 @@ def _step_read(ctx):
     for ch in book.get("chapters") or []:
         f = ch.get("file") if isinstance(ch, dict) else None
         if f and f != "book.txt":
-            (ctx.out / f).write_text(text, encoding="utf-8")
+            if not isinstance(f, str) or f != Path(f).name or not re.fullmatch(r"[A-Za-z0-9._-]+", f) or f.startswith("."):
+                raise StepError("read/book.json chapter file %r is not a plain file name" % (f,))
+            dest = (ctx.out / f).resolve()
+            if not dest.is_relative_to(ctx.out.resolve()):
+                raise StepError("read/book.json chapter file %r leaves the step dir" % f)
+            dest.write_text(text, encoding="utf-8")
     (ctx.out / "book.json").write_text(json.dumps(book, ensure_ascii=False, indent=2), encoding="utf-8")
     return usd
 
@@ -279,9 +299,10 @@ def _step_story(ctx):
         else:
             try:
                 done = _translate_live([b["text"] for b in beats], ctx.lang)
-            except Exception:
-                from . import story as _story
-                done = _story.fake_translate([b["text"] for b in beats], ctx.lang)
+            except Exception as e:
+                raise StepError("story: live translation failed: %s" % e)
+            if len(done) != len(beats) or not all(isinstance(t, str) for t in done):
+                raise StepError("story: live translation returned %d items for %d beats" % (len(done), len(beats)))
         ru = [dict(b, text=t) for b, t in zip(beats, done)]
         (ctx.out / ("score.%s.json" % ctx.lang)).write_text(
             json.dumps({"beats": ru, "lang": ctx.lang}, ensure_ascii=False))

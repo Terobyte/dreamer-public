@@ -58,6 +58,20 @@ describe("clipForBeat", () => {
   });
 });
 
+describe("clipForBeat lying pose review regressions", () => {
+  const bank = { Mama: { clips: { jump: "m/jump.glb" }, verbs: { jump: ["jumped"] } } };
+
+  it("F12: explicit gesture clip on a lying pose is procedural", () => {
+    expect(clipForBeat({ who: "Mama", text: "Well.", gesture: "jump", pose: "lie" },
+      { Mama: { clips: { jump: "m/jump.glb" } } })).toEqual({ who: "Mama", clip: "jump", procedural: true });
+  });
+
+  it("F12: text-selected clip on a lying pose is procedural", () => {
+    expect(clipForBeat({ who: "Mama", text: "Mama jumped", pose: "lie" }, bank))
+      .toEqual({ who: "Mama", clip: "jump", procedural: true });
+  });
+});
+
 describe("aliasesOf: names in the book language", () => {
   const ru = {
     Mirai: { clips: { sleep: "r/sleep.glb" }, verbs: { sleep: ["спала"] }, aliases: ["Мирай", "Мирай "] },

@@ -443,22 +443,24 @@ export function clipForBeat(
 ): GesturePick | null {
   const who = typeof beat.who === "string" && beat.who in cast ? beat.who : null;
   const text = typeof beat.text === "string" ? beat.text : "";
+  // a lying actor never plays a standing clip: every pick below becomes a procedural gesture
+  const lying = typeof beat.pose === "string" && beat.pose !== "" && beat.pose !== "stand" && beat.pose !== "stand_at";
+  const done = (p: ClipPick): GesturePick => (lying ? { ...p, procedural: true } : p);
   if (who && typeof beat.gesture === "string" && beat.gesture.trim()) {
     const g = beat.gesture.trim().toLowerCase();
     const key = Object.keys(cast[who].clips ?? {}).find((k) => k.toLowerCase() === g);
-    if (key) return { who, clip: key };
+    if (key) return done({ who, clip: key });
     const hit = pickClip(beat.gesture, who, cast, aliases);
-    if (hit) return hit;
+    if (hit) return done(hit);
   }
   const hit = pickClip(text, who, cast, aliases);
-  if (hit) return hit;
+  if (hit) return done(hit);
   const rm = typeof beat.remarks === "string" ? beat.remarks : Array.isArray(beat.remarks) ? beat.remarks.filter((r) => typeof r === "string").join("\n") : "";
   const signal = `${rm}\n${text}`;
   const verb = GESTURE_TABLE.find(([, re]) => re.test(signal))?.[0];
   // Н17: no verb -> no gesture, the life nods stay; a matching verb with an
   // empty or verb-less bank is a bounded procedural gesture (F3)
   if (!who || !verb) return null;
-  const lying = typeof beat.pose === "string" && beat.pose !== "" && beat.pose !== "stand" && beat.pose !== "stand_at";
   const variants = Object.keys(cast[who].clips ?? {}).filter((k) => k === verb || new RegExp(`^${verb}[_\\d]`).test(k)).sort();
   if (lying || !variants.length) return { who, clip: verb, procedural: true };
   const seed = typeof beat.seed === "string" ? beat.seed : "";

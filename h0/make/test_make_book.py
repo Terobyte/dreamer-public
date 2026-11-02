@@ -238,10 +238,13 @@ class TestBookContractsRed(Base):
 
     def test_runbook_translation_uses_llm_post(self):
         calls = []
+        translated = ["Переведённый абзац %d" % i
+                      for i, _ in enumerate(mb._paras(self.txt.read_text(encoding="utf-8")), 1)]
 
         def fake_post(url, auth, payload, timeout, retries):
             calls.append(payload)
-            return {"content": "{}", "usage": {}, "raw": {}}
+            return {"content": json.dumps({"texts": translated}, ensure_ascii=False),
+                    "usage": {}, "raw": {}}
         real_read = mb._read_live
         book = {"pov": "Hero", "narrator_voice": "man",
                 "cast": {"Hero": {"sex": "woman", "age": 9, "look": "x"}},
@@ -255,6 +258,103 @@ class TestBookContractsRed(Base):
                                   live=True, cast_dir=self.cast)
         self.assertIsNone(res["failed"], res["reason"])
         self.assertTrue(calls, "story translation must go through llm_http.post")
+        run = mb.run_dir_for(self.out)
+        score = json.loads((run / "story" / "score.ru.json").read_text(encoding="utf-8"))
+        self.assertEqual([beat["text"] for beat in score["beats"]], translated)
+
+
+class TestBookReviewRed(Base):
+    def _book(self, *, chapters=None, places=None, scene_place="p"):
+        return {"pov": "M", "narrator_voice": "man",
+                "cast": {"M": {"sex": "woman", "age": 20, "look": "x"}},
+                "places": places if places is not None else {"p": {"desc": "x", "exits": []}},
+                "chapters": chapters if chapters is not None else [
+                    {"n": 1, "file": "book.txt", "title": "t",
+                     "scenes": [{"id": "s", "paras": [0, 1], "place": scene_place, "cast": ["M"]}]}]}
+
+    def _read_ctx(self, out=None):
+        out = out or self.tmp
+        out.mkdir(parents=True, exist_ok=True)
+        return mb.Ctx(self.tmp, out, TEXT, self.txt, "en", False, None)
+
+    def _assert_f34_read_and_check_reject(self, book, label):
+        out = self.tmp / ("read-" + label)
+        out.mkdir()
+        read_rejected = False
+        with mock.patch.object(mb, "_read_live", return_value=book):
+            try:
+                mb._step_read(self._read_ctx(out))
+            except mb.StepError:
+                read_rejected = True
+        check_dir = self.tmp / ("check-" + label)
+        check_dir.mkdir()
+        (check_dir / "book.json").write_text(json.dumps(book), encoding="utf-8")
+        check_rejected = False
+        try:
+            mb._check_book(check_dir, "review")
+        except mb.StepError:
+            check_rejected = True
+        self.assertEqual((read_rejected, check_rejected), (True, True))
+
+    def test_f34_read_rejects_empty_chapters(self):
+        self._assert_f34_read_and_check_reject(self._book(chapters=[]), "empty-chapters")
+
+    def test_f34_read_rejects_book_without_places(self):
+        self._assert_f34_read_and_check_reject(self._book(places={}), "no-places")
+
+    def test_f34_read_rejects_unknown_scene_place(self):
+        self._assert_f34_read_and_check_reject(self._book(scene_place="missing"), "unknown-place")
+
+    def _live_book(self):
+        return self._book()
+
+    def test_f35_live_translation_error_fails_story_without_fake_fallback(self):
+        with mock.patch.object(mb, "_read_live", return_value=self._live_book()), \
+             mock.patch.object(llm_http, "post", side_effect=RuntimeError("translation unavailable")):
+            result = mb.run_book(self.txt, self.out, fake=False, lang="ru", live=True, cast_dir=self.cast)
+        self.assertEqual(result["failed"], "story")
+
+    def test_f35_short_live_translation_fails_story(self):
+        def short_translation(url, auth, payload, timeout, retries):
+            return {"content": '{"texts": []}', "usage": {}, "raw": {}}
+
+        with mock.patch.object(mb, "_read_live", return_value=self._live_book()), \
+             mock.patch.object(llm_http, "post", short_translation):
+            result = mb.run_book(self.txt, self.out, fake=False, lang="ru", live=True, cast_dir=self.cast)
+        self.assertEqual(result["failed"], "story")
+
+    def test_f38_read_rejects_file_paths_outside_output_dir(self):
+        cases = (self.tmp / "absolute.txt", "../traversal.txt")
+        for file_name in cases:
+            with self.subTest(file=file_name):
+                out = self.tmp / ("out-abs" if isinstance(file_name, Path) else "out-parent")
+                out.mkdir(exist_ok=True)
+                outside = file_name if isinstance(file_name, Path) else out.parent / "traversal.txt"
+                book = self._book(chapters=[{"n": 1, "file": str(file_name), "title": "t",
+                                             "scenes": [{"id": "s", "paras": [0, 1], "place": "p", "cast": ["M"]}]}])
+                try:
+                    raised = False
+                    with mock.patch.object(mb, "_read_live", return_value=book):
+                        try:
+                            mb._step_read(self._read_ctx(out))
+                        except mb.StepError:
+                            raised = True
+                    self.assertEqual((raised, outside.exists()),
+                                     (True, False), "read step must reject paths outside ctx.out without writing them")
+                finally:
+                    outside.unlink(missing_ok=True)
+
+    def test_f39_spark_uses_meta_model_api_key_as_bearer(self):
+        calls = []
+
+        def fake_post(url, auth, payload, timeout, retries):
+            calls.append(auth)
+            return {"content": "{}", "usage": {}, "raw": {}}
+
+        with mock.patch.dict(mb.os.environ, {"META_MODEL_API_KEY": "test-only-key"}, clear=True), \
+             mock.patch.object(llm_http, "post", fake_post):
+            mb.spark_call("sys", "user")
+        self.assertEqual(calls, ["Bearer test-only-key"])
 
 
 if __name__ == "__main__":

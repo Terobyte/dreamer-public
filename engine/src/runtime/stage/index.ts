@@ -161,6 +161,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const exitThrough = new Map<string, Place>();
   /** exit while the actor is on a ramp (`touch` -> queued): the door waits here until the actor steps off */
   const exitPending = new Map<string, { door: Place; noSide: boolean }>();
+  /** exiting actors seen standing still once: they go offstage on the next update */
+  const exitSettled = new Set<string>();
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
@@ -331,6 +333,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         exiting.delete(who);
         exitThrough.delete(who);
         exitPending.delete(who);
+        exitSettled.delete(who);
         if (it.offstage) {
           offstageActors.add(who);
         } else {
@@ -416,6 +419,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         exiting.delete(who);
         exitThrough.delete(who);
         exitPending.delete(who);
+        exitSettled.delete(who);
         offstageActors.delete(who);
         const lvl = door.level ?? null;
         const y = layerOf(lvl).layer.y ?? 0;
@@ -585,9 +589,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           act.go([door.at, beyond], yawTo(door.at, beyond), "idle", y);
           continue;
         }
+        // the last step and the stop land in one update: go offstage on the next one,
+        // so no frame both moves and is offstage
+        if (!exitSettled.has(who)) {
+          exitSettled.add(who);
+          continue;
+        }
+        exitSettled.delete(who);
         exiting.delete(who);
         offstageActors.add(who);
-      }
+      } else exitSettled.delete(who);
     }
     for (const [who, p] of [...exitPending]) {
       if (toucher.levelOf(who) === null) continue;
