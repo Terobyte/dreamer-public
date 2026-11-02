@@ -6,7 +6,8 @@ export interface TouchActor {
   pos(): V2;
   /** feet height right now: tells the level the actor really stands on */
   y(): number;
-  go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number[]): void;
+  /** `seat` = the place's `top` when `act` is "sit" (L154: the pelvis lands on it) */
+  go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number[], seat?: number): void;
 }
 
 export interface ToucherCtx {
@@ -80,7 +81,7 @@ export function createToucher(c: ToucherCtx) {
       return n >= 2 ? yawTo(route.path[n - 2]!, route.path[n - 1]!) : r.yaw;
     };
     const fin = finishYaw === "along" ? along() : finishYaw;
-    a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys);
+    a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys, r.act === "sit" ? r.place.top : undefined);
     return "walk";
   };
 

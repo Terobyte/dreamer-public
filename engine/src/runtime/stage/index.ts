@@ -176,7 +176,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
     if (sp && sp.name === startName) claims[sp.name] = who;
     // start_pose sit seats the actor at load, the same rule as a start event with pose sit (else it stands by the seat)
-    if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y());
+    if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y(), sp.top);
     actors.set(who, a);
   }
   const director = createDirector(rng);
@@ -393,7 +393,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
             const lvl = pl.level ?? null;
             const y = (layerOf(lvl).layer.y ?? 0) + ss.y;
             claims[pl.name] = who;
-            a.teleport(spot, yaw, act, y);
+            a.teleport(spot, yaw, act, y, act === "sit" ? pl.top : undefined);
           }
         }
       }
@@ -687,7 +687,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
             // measured head bone after animation (F10/F11); unrigged stand-ins keep the gaze/yaw fallback
             const hp = headPose(a.group);
             const faceYaw = hp?.faceYaw ?? (g ? (Math.atan2(g[0] - e[0], g[2] - e[2]) * 180) / Math.PI : a.yaw());
-            // rendered feet (group.position.y carries SIT_DROP and bob), head from the bone so sit follows the pose
+            // rendered feet (group.position.y carries the actor's sit drop `Actor.drop()` and bob; eye() lowers by the
+            // same drop), head from the bone so sit follows the pose
             return { who: a.who, pos: a.pos(), y: a.group.position.y, yaw: a.yaw(), faceYaw, facePitch: hp?.facePitch, headPos: hp?.pos, headY: e[1], height: h, clear: sight([cam.x, cam.y, cam.z], e), boneSig: boneSig(a.group) };
           }),
         };

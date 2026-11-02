@@ -3,9 +3,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
 import type { V2 } from "./places.js";
-import { sitLegs } from "./pose.js";
+import { legHeights, sitDrop, sitLegs } from "./pose.js";
 
-export const SIT_DROP = 0.45;
 export const WALK_SPEED = 1.4;
 /** the animator crossfade (`createAnimator` default fade): the contact_y shift follows it */
 const CLIP_FADE = 0.15;
@@ -49,10 +48,14 @@ export interface Actor {
   /** height of the feet right now (climbs along the walk when `go` gets a `yEnd`) */
   y(): number;
   act(): "idle" | "sit";
+  /** how far the feet go down while seated now (L154 `sitDrop`: standing hip height − seat height) */
+  drop(): number;
   /** walk the waypoints, then turn to `yaw` and take `act`. `ys` = feet height at each waypoint (the height
-   * changes only along a segment whose ends differ, i.e. a ramp, F24); a single number = height of the last one */
-  go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number | number[]): void;
-  teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number): void;
+   * changes only along a segment whose ends differ, i.e. a ramp, F24); a single number = height of the last one.
+   * `seat` = seat height above the feet level for `act` "sit" (the place's `top`); none = the rig's shin.
+   * A turn in place of a seated actor (`go([], yaw, "sit")`) keeps its seat. */
+  go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number | number[], seat?: number): void;
+  teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number, seat?: number): void;
   /** still walking or turning */
   moving(): boolean;
   /** collision capsule radius (Н9, `capsuleRadius`) */
@@ -145,6 +148,8 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     body.add(m);
   }
   const { holder } = prepareActorBody(body, heightM);
+  // L154: hip height and shin of the standing body, once (feet on 0 here, before the contact_y shift)
+  const legs = legHeights(holder, 0);
   group.add(holder);
   const radius = capsuleRadius(holder);
   // Г4: the group stays on the support; the holder shifts by -contact_y of the current clip (metres, the
@@ -176,7 +181,14 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let cur = yaw;
   let act: "idle" | "sit" = "idle";
   let path: V2[] = [];
-  let finish: { yaw: number; act: "idle" | "sit" } | null = null;
+  let finish: { yaw: number; act: "idle" | "sit"; seat?: number } | null = null;
+  // seat height of the current sit (undefined = the shin) and the drop it gives
+  let seat: number | undefined;
+  let drop = sitDrop(legs, heightM);
+  const sitOn = (s: number | undefined): void => {
+    seat = s;
+    drop = sitDrop(legs, heightM, s);
+  };
   let heights: number[] = [];
   let segFrom: V2 = [x, z];
   let segY = y;
@@ -203,7 +215,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     const talking = now < talkUntil;
     // Н17: procedural gesture — a bounded 1.5 s nod (never a bone out of range, F8)
     const nod = nodBones.length ? 0 : nodAmp(now);
-    group.position.set(x, y + bob - (act === "sit" && !moving ? SIT_DROP : 0), z);
+    group.position.set(x, y + bob - (act === "sit" && !moving ? drop : 0), z);
     // a rigged body nods with its head (life layer); a box or an unrigged mesh rocks as a whole
     const rock = talking && !animator?.alive() ? 0.04 + Math.sin(now * 6) * 0.05 : 0;
     group.rotation.set(rock + nod, (cur * Math.PI) / 180, sway);
@@ -217,19 +229,22 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     yaw: () => ((cur % 360) + 360) % 360,
     y: () => y,
     act: () => act,
-    go(p: V2[], fy: number, fa: "idle" | "sit", ys?: number | number[]) {
+    drop: () => drop,
+    go(p: V2[], fy: number, fa: "idle" | "sit", ys?: number | number[], st?: number) {
       path = [...p];
-      finish = { yaw: fy, act: fa };
+      // a turn in place keeps the seat it sits on
+      finish = { yaw: fy, act: fa, seat: st ?? (fa === "sit" && !p.length && act === "sit" ? seat : undefined) };
       heights = Array.isArray(ys) ? [...ys] : path.map((_, k) => (k === path.length - 1 && ys !== undefined ? ys : y));
       segFrom = [x, z];
       segY = y;
       if (fa === "idle" || path.length) act = "idle";
     },
-    teleport(at: V2, newYaw: number, newAct: "idle" | "sit" = "idle", newY?: number) {
+    teleport(at: V2, newYaw: number, newAct: "idle" | "sit" = "idle", newY?: number, st?: number) {
       x = at[0];
       z = at[1];
       cur = newYaw;
       act = newAct;
+      sitOn(st);
       if (newY !== undefined) {
         y = newY;
         segY = newY;
@@ -257,7 +272,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       gestureUntil = clock + 1.5;
     },
     speaking: () => clock < talkUntil,
-    eye: () => [x, y + heightM * (act === "sit" ? 0.65 : 0.92), z],
+    eye: () => [x, y + heightM * 0.92 - (act === "sit" ? drop : 0), z],
     look(p) {
       gaze = p;
     },
@@ -302,6 +317,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         if (Math.abs(dy) < 1) {
           cur = finish.yaw;
           act = finish.act;
+          sitOn(finish.seat);
           finish = null;
         }
       }
