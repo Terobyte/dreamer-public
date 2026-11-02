@@ -61,6 +61,16 @@ class Post(Base):
         self.assertEqual({}, out["usage"])
         self.assertIn("choices", out["raw"])
 
+    def test_non_string_content_is_a_non_retryable_transport_error(self):
+        for bad in ({"text": "hi"}, 5):
+            with self.subTest(content=bad):
+                self.calls.clear()
+                self.script = [Resp({"choices": [{"message": {"content": bad}}]})]
+                with self.assertRaises(llm_http.TransportError) as cm:
+                    llm_http.post(META, "Bearer k", {"model": "m"}, 5, 0)
+                self.assertIs(cm.exception.retryable, False)
+                self.assertEqual(1, len(self.calls))
+
     def test_ok(self):
         self.script = [Resp(OK_BODY)]
         out = llm_http.post(META, "Bearer k", {"model": "m"}, 5, 0)
