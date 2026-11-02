@@ -100,6 +100,54 @@ class Places(unittest.TestCase):
         self.assertEqual(c4["skip"], "unknown")
 
 
+def _pose_world(stool_h=0.3):
+    d = Path(tempfile.mkdtemp())
+    synth_world.write(d)
+    sc = json.loads((d / "scene.json").read_text())
+    sc["props"] = [
+        {"id": "living_bed", "room": "living", "yaw": 0, "size": {"w": 0.6, "h": 0.6, "d": 1.9}, "at": [2.0, 3.0]},
+        {"id": "living_stool", "room": "living", "yaw": 0, "size": {"w": 0.4, "h": stool_h, "d": 0.4}, "at": [4.0, 3.0]},
+        {"id": "living_sink", "room": "living", "yaw": 0, "size": {"w": 0.6, "h": 0.9, "d": 0.5}, "at": [5.0, 2.0]},
+    ]
+    (d / "scene.json").write_text(json.dumps(sc))
+    g = json.loads((d / "dist" / "geometry.json").read_text())
+    g["meshes"] = [{"id": p["id"], "kind": "prop", "room": "living", "glb": "a.glb",
+                    "glbPos": [p["at"][0], 0, p["at"][1]], "glbYaw": 0.0} for p in sc["props"]]
+    (d / "dist" / "geometry.json").write_text(json.dumps(g))
+    return _by_name(stage.build_places(d))
+
+
+class Poses(unittest.TestCase):
+    def test_poses_and_tops(self):
+        p = _pose_world()
+        bed = p["bed"]
+        self.assertEqual(bed["poses"], ["lie", "sit"])
+        self.assertAlmostEqual(bed["top"], 0.6, delta=0.01)
+        self.assertEqual(bed["slots"], {"lie": 1, "sit": 2})
+        self.assertEqual(bed["kind"], "sit")
+        self.assertEqual(p["stool"]["poses"], ["stand_on", "sit"])
+        self.assertAlmostEqual(p["stool"]["top"], 0.3, delta=0.01)
+        self.assertEqual(p["stool"]["slots"], {"stand_on": 1, "sit": 1})
+        self.assertEqual(p["sink"]["poses"], ["stand_at"])
+        self.assertNotIn("top", p["sink"])
+
+    def test_lie_yaw_and_head(self):
+        bed = _pose_world()["bed"]  # long side along z, front +z, headboard at -z
+        self.assertAlmostEqual(bed["lie"]["at"][0], 2.0, delta=0.01)
+        self.assertAlmostEqual(bed["lie"]["at"][1], 3.0, delta=0.01)
+        self.assertAlmostEqual(bed["lie"]["yaw"] % 180, 0.0, delta=0.5)
+        self.assertLess(bed["lie"]["head"][1], 3.0 - 0.5)
+        self.assertAlmostEqual(bed["lie"]["head"][0], 2.0, delta=0.01)
+
+    def test_high_stool_has_no_stand_on(self):
+        self.assertEqual(_pose_world(0.8)["stool"]["poses"], ["sit"])
+
+    def test_door_pose(self):
+        door = _by_name(_places())["living door"]
+        self.assertEqual(door["poses"], ["door"])
+        self.assertEqual(door.get("slots", {}), {})
+
+
 class StageJson(unittest.TestCase):
     def test_write_stage_files(self):
         d = Path(tempfile.mkdtemp())

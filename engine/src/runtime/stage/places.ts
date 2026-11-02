@@ -15,6 +15,13 @@ export interface Place {
   /** [minx, minz, maxx, maxz] */
   obstacle: number[] | null;
   size?: { w: number; d: number; h: number };
+  /** lie | sit | stand_on | stand_at | door */
+  poses?: string[];
+  top?: number;
+  slots?: Record<string, number>;
+  /** per-pose spot: lie = centre of the top, yaw along the long side, head point; stand_on = centre of the top */
+  lie?: { at: V2; yaw: number; head: V2 };
+  stand_on?: { at: V2 };
 }
 
 export type Claims = Record<string, string>;
@@ -24,6 +31,10 @@ export interface Walk {
   target: V2;
   yaw: number;
   act: "sit" | "idle";
+  /** pose actually granted (only when one was requested) */
+  pose?: string;
+  /** claims key this walk booked, if any */
+  claim?: string;
 }
 export type Skip = { skip: "unknown" | "already_there" };
 
@@ -43,11 +54,38 @@ export function resolveTouch(a: {
   actor: { who: string; at: V2 };
   name: string;
   clips?: string[];
+  pose?: string;
+  warnings?: string[];
 }): Walk | Skip {
   const place = a.places.find((p) => norm(p.name) === norm(a.name));
   if (!place) {
     console.warn(`stage: touch "${a.name}" is not a place of this scene`);
     return { skip: "unknown" };
+  }
+  if (a.pose === "stand_at" || (a.pose === "door" && place.poses?.includes("door")))
+    return { ...beside(place, a.actor.at), pose: a.pose };
+  if (a.pose && place.poses?.includes(a.pose)) {
+    const pose = a.pose;
+    const n = place.slots?.[pose] ?? 1;
+    const keys = Array.from({ length: n }, (_, i) => `${place.name}|${pose}|${i}`);
+    if (keys.some((k) => a.claims[k] === a.actor.who)) return { skip: "already_there" };
+    const free = keys.find((k) => a.claims[k] === undefined);
+    if (free) {
+      a.claims[free] = a.actor.who;
+      const spot = pose === "lie" ? place.lie : pose === "stand_on" ? place.stand_on : undefined;
+      const yaw = pose === "lie" && place.lie ? place.lie.yaw : place.yaw;
+      return { place, target: spot?.at ?? place.at, yaw, act: pose === "sit" ? "sit" : "idle", pose, claim: free };
+    }
+    const taken = `${a.actor.who}: pose "${pose}" of "${place.name}" is taken, stands beside it`;
+    a.warnings?.push(taken);
+    console.warn(`stage: ${taken}`);
+    return { ...beside(place, a.actor.at), pose: "stand_at" };
+  }
+  if (a.pose && a.pose !== "stand_at") {
+    const miss = `${a.actor.who}: "${place.name}" has no pose "${a.pose}", stands beside it`;
+    a.warnings?.push(miss);
+    console.warn(`stage: ${miss}`);
+    return { ...beside(place, a.actor.at), pose: "stand_at" };
   }
   const holder = a.claims[place.name];
   if (holder === a.actor.who) return { skip: "already_there" };
@@ -62,12 +100,17 @@ export function resolveTouch(a: {
     a.claims[place.name] = a.actor.who;
     return { place, target: place.at, yaw: faceYaw(place.at), act };
   }
-  // taken by someone else: stand beside it, on the side nearer to the actor; the claim stays
+  return beside(place, a.actor.at);
+}
+
+/** stand beside the place, on the side nearer to the actor; the claim stays */
+function beside(place: Place, from: V2): Walk {
+  const faceYaw = (at: V2): number => (place.kind === "sit" || !place.look ? place.yaw : yawTo(at, place.look));
   const r = (place.yaw * Math.PI) / 180;
   const px = Math.cos(r);
   const pz = -Math.sin(r);
   const side = (s: number): V2 => [place.at[0] + s * SIDE_M * px, place.at[1] + s * SIDE_M * pz];
-  const d = (p: V2): number => Math.hypot(p[0] - a.actor.at[0], p[1] - a.actor.at[1]);
+  const d = (p: V2): number => Math.hypot(p[0] - from[0], p[1] - from[1]);
   const [l, rr] = [side(1), side(-1)];
   const target = d(l) <= d(rr) ? l : rr;
   return { place, target, yaw: place.kind === "sit" ? place.yaw : faceYaw(target), act: "idle" };

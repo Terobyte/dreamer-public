@@ -28,6 +28,7 @@ export interface StageCtx {
 export interface Stage {
   handlers: StageHandlers;
   update(dt: number, now: number): void;
+  warnings(): string[];
   api: {
     actors(): Array<{ who: string; pos: V2; yaw: number; act: string }>;
     camera(): { pos: [number, number, number]; room: string | null; height: number | null };
@@ -121,7 +122,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const subs = createSubs(c.sim);
   const remark = stageRegex(places, names);
 
+  const warnings: string[] = [];
   const toucher = createToucher({
+    warnings,
     places,
     claims,
     levels: c.layers.map((l): StageLevel => ({ layer: l.layer, bits: l.bits, y: l.layer.y })),
@@ -206,8 +209,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
-      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture }, cast);
-      if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
+      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks }, cast);
+      if (pick && !pick.procedural) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
       if (who && t) touch(who, t);
     },
@@ -316,6 +319,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
 
   return {
+    warnings: () => [...warnings],
     handlers,
     update,
     api: {

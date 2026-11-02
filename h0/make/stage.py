@@ -13,6 +13,10 @@ from pathlib import Path
 
 SIT = {"sofa", "couch", "chair", "armchair", "bench", "bed", "stool", "seat"}
 SNAP_R = 1.0
+LIE_SIT = {"bed", "sofa", "couch"}
+SIT_ONLY = {"chair", "bench", "armchair"}
+STOOLS = {"stool", "step"}
+STAND_ON_MAX_H = 0.6
 
 
 def _load(p):
@@ -79,6 +83,17 @@ class _Nav:
         return [best[1], best[2]]
 
 
+def _poses(word, h):
+    """the one word -> poses table (last word of the prop id)."""
+    if word in LIE_SIT:
+        return ["lie", "sit"]
+    if word in SIT_ONLY:
+        return ["sit"]
+    if word in STOOLS:
+        return ["stand_on", "sit"] if h <= STAND_ON_MAX_H else ["sit"]
+    return ["stand_at"]
+
+
 def _centre(m):
     if m.get("glbPos"):
         return m["glbPos"][0], m["glbPos"][2]
@@ -139,7 +154,8 @@ def build_places(world_run):
         room = m.get("room") or sc.get("room")
         level = (rooms.get(room) or {}).get("level")
         at = nav.snap(level, cx + fx * off, cz + fz * off)
-        items.append({"id": m["id"], "base": _last_word(pid), "room": room, "kind": kind, "yaw": yaw,
+        poses = _poses(_last_word(pid), s["h"])
+        items.append({"poses": poses, "id": m["id"], "base": _last_word(pid), "room": room, "kind": kind, "yaw": yaw,
                       "center": [cx, cz], "at": at, "level": level,
                       "size": {"w": s["w"], "d": s["d"], "h": s["h"]},
                       "obstacle": _obstacle(cx, cz, w, d, yaw)})
@@ -149,10 +165,27 @@ def build_places(world_run):
         if it["at"] is None:
             warnings.append(f"{it['id']}: no walkable nav cell within {SNAP_R} m, no place")
             continue
-        places.append({"name": it["name"], "id": it["id"], "kind": it["kind"], "room": it["room"],
-                       "level": it["level"], "at": it["at"], "yaw": round(it["yaw"], 3),
-                       "look": it["center"] if it["kind"] != "sit" else None,
-                       "size": it["size"], "obstacle": it["obstacle"]})
+        pl = {"name": it["name"], "id": it["id"], "kind": it["kind"], "room": it["room"],
+              "level": it["level"], "at": it["at"], "yaw": round(it["yaw"], 3),
+              "look": it["center"] if it["kind"] != "sit" else None,
+              "size": it["size"], "obstacle": it["obstacle"], "poses": it["poses"]}
+        cx, cz = it["center"]
+        if any(q in it["poses"] for q in ("lie", "sit", "stand_on")):
+            pl["top"] = it["size"]["h"]
+        if "stand_on" in it["poses"]:
+            pl["stand_on"] = {"at": [cx, cz]}
+        if "lie" in it["poses"]:
+            w, d = it["size"]["w"], it["size"]["d"]
+            # long side; the headboard is the back, opposite the front (yaw: 0 = +Z)
+            ly = it["yaw"] if d >= w else (it["yaw"] + 90) % 360
+            half = max(w, d) / 2
+            fx, fz = _front(ly)
+            if d < w:
+                # long side runs across the front: head to the side whose front is `ly` back
+                fx, fz = -fx, -fz
+            pl["lie"] = {"at": [cx, cz], "yaw": round(ly, 3), "head": [cx - fx * half, cz - fz * half]}
+        pl["slots"] = {q: (2 if (q == "sit" and "lie" in it["poses"]) else 1) for q in it["poses"] if q != "stand_at"}
+        places.append(pl)
     for d in build.get("doors", []):
         hx, hz = d["hinge_at"]
         ex, ez = d["closed_end"]
@@ -168,7 +201,8 @@ def build_places(world_run):
             continue
         yaw = math.degrees(math.atan2(c[0] - at[0], c[1] - at[1])) % 360
         places.append({"name": f"{room} door", "id": d["id"], "kind": "door", "room": room, "level": lv,
-                       "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None})
+                       "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
+                       "poses": ["door"]})
     return {"places": places, "warnings": warnings}
 
 
