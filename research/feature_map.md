@@ -262,7 +262,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | `h0/llm_http.py`, `h0/keys.py` | единый HTTP-клиент провайдеров и загрузчик ключей (Н16); тест `h0/test_llm_http.py` |
 | `engine/test/scenes/koshakan/` | сцена спальни для приёмки Н6 (`koshakan-accept.test.ts`) |
 | `tools/gate_skip.txt` | список пропускаемых файлов (сейчас пуст, только комментарий) |
-| `app/` | IWSDK/WebXR приложение (старое): `src/{splats,dissolve,assets,env,panel,robot*}.ts` 336 строк; не связано с `engine/` кроме статики `app/public` для squid_live |
+| `app/` | IWSDK/WebXR приложение: `src/{splats,dissolve,assets,env,panel,robot*}.ts` 336 строк — старая сцена сплатов; `src/engine-host.ts` — спайк 11-02, мир `engine/` внутри IWSDK по `?world=` (копия `materialOf`/`meshOf` из `main.ts` до X1 `buildWorld`), спека `specs/2026-11-02-engine-xr.md` |
 | `specs/` | `engine-scene.md` (контракт сцены), `2026-10-31-dreamer-make.md` (make), `2026-11-01-engine-anim-camera.md` (А1-А4), `2026-11-01-engine-worlds.md` (ночь 2: Н7-Н15), `tero-*.md` |
 | `LESSONS.md` | реестр уроков L1-L33+ со статусами (читать перед новой спекой) |
 | `engine/docs/critic.md` | как гонять критика ПО КАРТИНКАМ (референс | снимок) — это критик мира, не фильма; `street.md` — как описывать улицу/двор/дом |

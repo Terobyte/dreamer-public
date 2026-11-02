@@ -9,7 +9,19 @@
     "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["@iwsdk/vite-plugin-dev/client"]
+    "types": [
+      "@iwsdk/vite-plugin-dev/client"
+    ],
+    "paths": {
+      "three": [
+        "./node_modules/@types/three/index.d.ts"
+      ],
+      "three/addons/*": [
+        "./node_modules/@types/three/examples/jsm/*"
+      ]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts"
+  ]
 }

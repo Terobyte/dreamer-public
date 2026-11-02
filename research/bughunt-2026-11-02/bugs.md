@@ -2,7 +2,7 @@
 
 Все записи — НЕПРОВЕРЕННЫЕ утверждения охотников. Баг считается доказанным, только когда красный тест падает на своём assertion.
 
-Статус у всех: `claimed`. ID неизменны. Дубли не найдены (охотники делили зоны). Тяжесть — как у охотника, пересмотр после красных тестов.
+Статус: `red` / `rejected` (проставлено после аудита тестов). ID неизменны. Дубли не найдены (охотники делили зоны). Тяжесть — как у охотника, пересмотр после красных тестов.
 
 
 ## B01 · MAJOR · engine/src/runtime/stage/index.ts:408  (охотник h1)
@@ -529,7 +529,7 @@ const n: V3 = [d[1], 0, -d[0]];
 
 # Заход 2 — дифф коммита 637c21a (5 охотников agy gemini-3.8-flash-high)
 
-Все записи — непроверенные утверждения. Статус `claimed`, пока красный тест не упал на своём assertion.
+Все записи — непроверенные утверждения. Статус проставлен после красных тестов (red / rejected).
 
 ## B39 · CRIT · h0/dream/sim.py:1689  (охотник g1)
 
@@ -1013,3 +1013,649 @@ exit $rc
         return text, round((time.time() - t) * 1000), len(pcm) / 32000
 ```
 - **status:** red — research/bughunt-2026-11-02/redtests2/test_b62.py
+
+# Заход 3 — широкий (8 охотников agy gemini-3.8-flash-high; k3 build/ ответил NONE)
+
+Все записи — непроверенные утверждения. Статус проставлен после красных тестов (red / rejected). Дубль shotplan.ts:229 (k1 и k2) склеен.
+
+## B63 · MAJOR · engine/src/runtime/stage/index.ts:567  (охотник k1)
+
+- **claim:** Обработчик события `narrator` при обнаружении ремарки перемещения не вызывает `cancelExit(hit.who)`, из-за чего прервавший выход персонаж после прихода к новому месту принудительно выбрасывается со сцены старой дверью выхода.
+- **trigger:** Персонаж начинает выход через `handlers.stage({ who: "Mama", action: "exit" })` (попадая в `exiting` и `exitThrough`), но до двери поступает событие `handlers.narrator({ text: "Mama went to the chair." })` (где `"chair"` — место из банка мест), и персонаж доходит до стула.
+- **expected:** Перемещение по ремарке отменяет выполняющийся выход (`cancelExit("Mama")`), и персонаж остаётся у стула на сцене (`offstage: false`).
+- **actual:** `cancelExit` не вызывается (в отличие от действий `come`, `goto`, `turn_away`, `enter`, `line` и `touch`), запись двери остаётся в `exitThrough`; при остановке актёра у стула цикл `exiting` в строках 756–770 находит старую дверь, принудительно вызывает `act.go([door.at, beyond])` и переводит персонажа в `offstage: true`.
+- **evidence:**
+```ts
+      if (!hadStage) {
+        const hit = remark(String(e.text ?? ""));
+        if (hit) touch(hit.who, hit.place);
+      }
+```
+
+- **status:** red — engine/test/bughunt3/b63.test.ts
+
+## B64 · MAJOR · engine/src/runtime/stage/index.ts:472  (охотник k1)
+
+- **claim:** При обработке `action === "enter"` с целевым местом, не являющимся дверью, условие телепортации к двери комнаты требует `Number.isFinite(via.yaw)`, из-за чего при отсутствии явного `yaw` у двери персонаж не ставится в проём двери и входит в сцену прямо из своего внесценического положения без предупреждения.
+- **trigger:** В комнате с дверью без явно заданного угла (`door.yaw === undefined`, допустимо схемой) для персонажа вне сцены вызывается `handlers.stage({ who: "Mama", action: "enter", place: "bed" })`.
+- **expected:** Движок использует безопасный дефолтный угол двери (0, как сделано в строке 484 для прямых дверей), телепортирует актёра в проём двери комнаты `via` и ведёт его от двери к кровати.
+- **actual:** Проверка `typeof via.yaw === "number" && Number.isFinite(via.yaw)` оказывается ложной, вызов `a.teleport` пропускается, ветка `else if (!via)` также не срабатывает (так как дверь существует), персонаж удаляется из `offstageActors` на своей исходной позиции за сценой (например, у полки) и идёт к кровати оттуда без каких-либо предупреждений.
+- **evidence:**
+```ts
+          const via = places.find((p) => isDoor(p) && p.room === target.room) ?? null;
+          if (via && typeof via.yaw === "number" && Number.isFinite(via.yaw)) {
+            const s = interRoomDoorStep(via.at, via.yaw, 1.0);
+            a.teleport(s.doorPos, s.yaw, "idle", layerOf(via.level ?? null).layer.y ?? 0);
+          } else if (!via) warnings.push(`stage: enter "${target.name}" is not a door and room "${target.room ?? "?"}" has none -> walks from where she is`);
+```
+
+- **status:** red — engine/test/bughunt3/b64.test.ts
+
+## B65 · MAJOR · engine/src/runtime/stage/shotplan.ts:229  (охотник k1)
+
+- **claim:** Функция `shotFrame` вычисляет результирующий FOV через тернарную проверку `f0 === null ? null : ...`, из-за чего в кадре с неуказанным начальным `from.fov` явно заданный конечный `end.fov` полностью игнорируется и угол обзора камеры никогда не меняется.
+- **trigger:** Кадр плана съёмки с переходом FOV без явного `from.fov`: `{ name: "zoom", at: 0, to: 2, from: { pos: [0, 1, 2], look: [0, 1, 0] }, end: { pos: [0, 1, 2], look: [0, 1, 0], fov: 30 } }`.
+- **expected:** `shotFrame` вычисляет интерполированный или конечный угол обзора `fov: 30`, и `applyShot` обновляет `c.camera.fov`.
+- **actual:** `f0` вычисляется как `null`, строка 229 возвращает `fov: null`, игнорируя `f1 = 30`, и `applyShot` в строке 669 `index.ts` пропускает обновление проекции камеры.
+- **evidence:**
+```ts
+  const f0 = s.from.fov ?? null;
+  const f1 = end.fov ?? f0;
+  return {
+    name: s.name,
+    pos: [p[0] + sh[0], p[1] + sh[1], p[2] + sh[2]],
+    look: mix(lookAt(s.from.look), lookAt(end.look)),
+    fov: f0 === null ? null : f0 + ((f1 ?? f0) - f0) * e,
+    cut: s.cut,
+  };
+```
+
+- **status:** red — engine/test/bughunt3/b65.test.ts
+
+## B66 · MAJOR · engine/src/runtime/stage/touch.ts:91  (охотник k1)
+
+- **claim:** Очередь отложенных навигаций `pending` в `createToucher` не имеет механизма очистки при внешней смене позиции персонажа, из-за чего отложенный на рампе вызов `touch` сохраняется и немедленно исполняется в `tick()`, срывая актёра с нового места.
+- **trigger:** Персонаж находится на рампе (`levelOf(who) === null`), вызывается `toucher.touch(who, "kitchen")` (возвращает `"queued"`). Затем до схода с рампы поступает `handlers.start({ who, place: "bed", pose: "sit" })`, телепортирующий актёра на кровать на уровне L0.
+- **expected:** Новое позиционирование/инициализация персонажа через `start` отменяет отложенное движение; персонаж остаётся сидеть на кровати.
+- **actual:** В следующем кадре `toucher.tick()` видит, что персонаж теперь на уровне (`levelOf(who) !== null`), достаёт устаревший запрос из `pending` и вызывает `touch(who, "kitchen")`, заставляя персонажа встать с кровати и пойти на кухню.
+- **evidence:**
+```ts
+  const tick = (): TouchResult[] => {
+    const out: TouchResult[] = [];
+    for (const [who, q] of [...pending]) if (levelOf(who) !== null) out.push(touch(who, q.name, q.pose, q.finishYaw));
+    return out;
+  };
+```
+
+- **status:** red — engine/test/bughunt3/b66.test.ts
+
+## B67 · MAJOR · engine/src/runtime/stage/shotplan.ts:161  (охотник k1)
+
+- **claim:** Расчёт времени старта `at: "prev"` жестко берет окончание предыдущего по индексу кадра `plan.shots[k - 1].to`, не проверяя, был ли этот предыдущий кадр отброшен (`skipped`), из-за чего кадр привязывается к времени невалидного кадра вместо последнего сыгранного.
+- **trigger:** План съёмки содержит последовательность кадров: кадр 0 (`at: 0, to: 2`), кадр 1 (`at: 2, to: 1` — отбрасывается при валидации через `staticallyEmpty` с занесением в `skipped`), кадр 2 (`at: "prev", to: 5`).
+- **expected:** Кадр 2 отсчитывает `"prev"` от последнего действительного кадра (кадр 0, завершившийся в `t0 + 2`).
+- **actual:** Строка 161 вызывает `timeOf(plan.shots[0].to, 0)` на отброшенном кадре 1, получая время `t0 + 1`, из-за чего кадр 2 начинает показ в `t0 + 1` (раньше, чем фактически завершился кадр 0).
+- **evidence:**
+```ts
+  const timeOf = (t: ShotTime, k: number): number | null => {
+    if (t.k === "num") return t0 === null ? null : t0 + t.x;
+    if (t.k === "prev") return k === 0 ? t0 : timeOf(plan.shots[k - 1].to, k - 1);
+    if (t.k === "end") return endAt === null ? null : endAt + t.off;
+```
+
+- **status:** red — engine/test/bughunt3/b67.test.ts
+
+## B68 · MAJOR · engine/src/runtime/stage/pose.ts:19  (охотник k2)
+
+- **claim:** Функция `sideOf(n)` ошибочно классифицирует кости ног, чьи базовые имена начинаются на `"l"` и имеют суффикс правой стороны (например, `lowerleg_r`, `lowerleg.r`, `leg_r`, `lower_leg_r`), как левые (`"L"`), из-за чего `findLegs()` удаляет правое колено как дубликат стороны.
+- **trigger:** Скелет с именами костей голеней `lowerleg_l` и `lowerleg_r` (или `leg_l` и `leg_r`) при вызове `findLegs(root)`, `sitLegs(root)` или `legHeights(root)`.
+- **expected:** `sideOf` возвращает `"L"` для `lowerleg_l` и `"R"` для `lowerleg_r`; `findLegs` находит оба колена, `sitLegs` сгибает оба колена на 85°, а `legHeights` усредняет длины обеих голеней.
+- **actual:** Проверка `/^l/.test(n)` срабатывает на очищенных именах `lowerlegr` и `legr` раньше, чем проверка суффикса `/r$/`, возвращая сторону `"L"` для обеих костей. В `findLegs` правое колено удаляется из-за совпадения ключа стороны (`c.pri < b.pri` ложно). В результате `sitLegs` сгибает только левое колено персонажа, оставляя правую ногу торчащей прямо вперёд в позе сидения, а `legHeights` замеряет только левую голень.
+- **evidence:**
+```typescript
+const sideOf = (n: string): string => {
+  if (n.includes("left")) return "L";
+  if (n.includes("right")) return "R";
+  if (/^l/.test(n) || /l$/.test(n)) return "L";
+  if (/^r/.test(n) || /r$/.test(n)) return "R";
+  return "mid";
+};
+```
+
+- **status:** red — engine/test/bughunt3/b68.test.ts
+
+## B69 · MAJOR · engine/src/runtime/stage/actors.ts:255  (охотник k2)
+
+- **claim:** Метод `teleport()` не сбрасывает запланированное завершение движения `finish = null`, из-за чего телепортированный во время ходьбы актёр продолжает считаться движущимся (`moving() === true`), на следующем тике отворачивается от точки телепортации к старому `finish.yaw` и меняет позу на старый `finish.act`.
+- **trigger:** Вызов `a.teleport(at, newYaw, newAct)` в момент, когда актёр шёл или поворачивался после вызова `a.go(...)` (`finish !== null`).
+- **expected:** `teleport` мгновенно прерывает любое активное перемещение и доворот (`finish = null`), фиксируя заданные координаты, угол `newYaw` и позу `newAct`, переводя `moving()` в `false`.
+- **actual:** `teleport` сбрасывает только массив точек пути `path = []`, сохраняя `finish`. Метод `moving()` продолжает возвращать `true`, а на следующем тике `update()` условие `!path.length && finish` начинает поворачивать актёра к старому `finish.yaw`, после чего принудительно восстанавливает старое действие `act = finish.act` (например, усаживает вставшего персонажа в воздух) и старую высоту сиденья `finish.seat`.
+- **evidence:**
+```typescript
+    teleport(at: V2, newYaw: number, newAct: "idle" | "sit" = "idle", newY?: number, st?: number) {
+      x = at[0];
+      z = at[1];
+      cur = newYaw;
+      act = newAct;
+      sitOn(st);
+      if (newY !== undefined) {
+        y = newY;
+        segY = newY;
+      }
+      path = [];
+      apply(clock, false);
+    },
+```
+
+- **status:** rejected — actors.ts teleport уже сбрасывает `path = []; finish = null` (строки 256–258)
+
+## B70 · MAJOR · engine/src/runtime/stage/clipfacts.ts:180  (охотник k2) (в работе)
+
+- **claim:** `writeClipfacts` перед расчётом фактов запускает `createAnimator` с активацией позы покоя (`idle`), из-за чего верхние кости рук выходят из Т-позы, и последующий вызов `prepareClip` внутри `clipFacts` считывает в `bind` согнутые руки вместо bind pose, ломая отрезание калибровочной Т-позы клипов.
+- **trigger:** Вызов `writeClipfacts(castDir)` для персонажа с анимацией покоя `idle`, в которой руки опущены вдоль тела, и клипами, начинающимися с калибровочной Т-позы (0..0.5 с).
+- **expected:** `prepareClip` замеряет исходную Т-позу скелета (bind pose), определяет границу выхода из Т-позы (`calibrationEnd`) и отрезает калибровочную фазу клипа (`cutHead`), чтобы замеры параметров клипа отражали полезную анимацию.
+- **actual:** `createAnimator` в строке 180 переводит скелет в `idle`, поворачивая плечи на ~70°. Затем `clipFacts` -> `prepareClip` считывает `bind` с уже повернутых костей. В кадре 0 клипа руки в Т-позе отклоняются от опущенного `bind` на >30°, функция `calibrationEnd` считает кадр 0 выходом из Т-позы и возвращает 0. Калибровочная Т-поза не отрезается, и в кадре `s = 0` замеряются параметры калибровочной Т-позы вместо начала действия.
+- **evidence:**
+```typescript
+    // as createActor: the animator puts the idle frame on first, then the body is fitted (feet on y = 0)
+    const body = gltf.scene as Object3D;
+    createAnimator(body, clips, { idle: c.idle, seed: who, life: false });
+    const { holder } = prepareActorBody(body, heightM);
+    const facts: Record<string, unknown> = {};
+    for (const [name, clip] of Object.entries(clips)) {
+      const f = clipFacts(holder, clip, heightM);
+```
+
+- **status:** red — engine/test/bughunt3/b70.test.ts
+
+## B71 · CRIT · engine/src/budget.ts:34  (охотник k4)
+
+- **claim:** Функция `budgetIssues` обращается к свойству `tris.by_prop[String(p?.id)]` без проверки наличия объекта `by_prop`, что приводит к падению с необработанным `TypeError` при отсутствии опционального поля `by_prop` в переданных данных о треугольниках.
+- **trigger:** Вызов `runCheck(scene, { tris: { total: 0 } as any })` или запуск проверки сцены с `build.json`, в котором поле `tris` содержит только `total` без `by_prop`.
+- **expected:** Безопасное обращение вида `tris.by_prop?.[String(p?.id)]` (аналогично проверкам `tris.unreadable ?? []` и `scene.props ?? []`), не приводящее к фатальной ошибке.
+- **actual:** Падение процесса с `TypeError: Cannot read properties of undefined (reading '<prop_id>')`.
+- **evidence:**
+```ts
+  ((scene.props ?? []) as any[]).forEach((p, i) => {
+    const n = tris.by_prop[String(p?.id)];
+    if (typeof n !== "number" || !p?.size) return;
+    const limit = TRI_LIMITS[propClass(p.size)];
+```
+
+- **status:** rejected — `by_prop` обязателен в типе `TriCount` (engine/src/budget.ts:19) и всегда создаётся build/write.ts:145; тест удалён
+
+## B72 · MAJOR · engine/bin/dreamer.ts:106  (охотник k4)
+
+- **claim:** Обработчик подкоманды `clipfacts` вызывает `writeClipfacts(args[1])` без предварительной проверки существования директории и без блока перехвата ошибок, из-за чего при указании несуществующего пути процесс завершается с необработанным исключением Node.js (`ENOENT`) и кодом 1 вместо стандартного сообщения в `console.error` и кода завершения 2.
+- **trigger:** Запуск `dreamer clipfacts non_existent_cast_dir`.
+- **expected:** Проверка существования пути (или перехват `ENOENT`) с выводом понятной ошибки в `console.error` и возвратом кода выхода 2, как во всех остальных командах CLI `dreamer`.
+- **actual:** Необработанное исключение `Error: ENOENT: no such file or directory, open 'non_existent_cast_dir/cast.json'` с полным стектрейсом и кодом выхода 1.
+- **evidence:**
+```ts
+  if (args[0] === "clipfacts" && args[1]) {
+    // G4: <cast dir>/clipfacts.json: contact_y / face_dir / head_y / lying of every clip of every actor
+    // (static import: this tsx's vendored ESM parser fails on a dynamic import() in this file)
+    for (const w of await writeClipfacts(args[1])) console.warn(w);
+    console.log(`clipfacts: ${join(args[1], "clipfacts.json")}`);
+```
+
+- **status:** rejected — не доказан тестом (нужен отдельный процесс); ручная проверка: `node --import tsx bin/dreamer.ts clipfacts /tmp/dreamer-b72-missing-cast`
+
+## B73 · MAJOR · engine/src/runtime/main.ts:175  (охотник k4)
+
+- **claim:** При асинхронной замене placeholder-меша на загруженную GLB-модель в группу `root` не копируется свойство `userData.kind`, а исходный меш с `userData.kind = src.kind` удаляется из сцены, из-за чего объект в сцене теряет метку типа пропа.
+- **trigger:** Загрузка любой сцены с 3D-моделями пропов (`src.glb`).
+- **expected:** Назначение `root.userData.kind = mesh.userData.kind` (или `src.kind`) перед добавлением модели в `scene`, чтобы загруженный проп сохранял идентификацию в Three.js сцене.
+- **actual:** `root.userData.kind` остаётся `undefined`, исходный меш удаляется через `scene.remove(mesh)`, и объект перестаёт распознаваться как проп при обходах дерева сцены.
+- **evidence:**
+```ts
+        loadGlb(src, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max }).then((root) => {
+          root.name = mesh.name;
+          root.visible = mesh.visible;
+          // the sun traverse below runs before the GLB lands: flag the real
+          // meshes on swap, or they never cast/receive shadows (F4)
+          if (sunShadows) root.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          markNoblock(root, mesh.name);
+          scene.remove(mesh);
+          scene.add(root);
+          objects.set(mesh.name, root);
+```
+
+- **status:** rejected — не доказан тестом (нужен браузер); ручная проверка: `window.__dreamer.three.scene.getObjectByName("ID")?.userData.kind`
+
+## B74 · MAJOR · engine/src/schema/refs.ts:289  (охотник k4)
+
+- **claim:** Функция `checkRefs` не проверяет циклы и самореференс в свойстве `around.center`, из-за чего пропы с замкнутой ссылкой на центр успешно проходят валидацию схемы, но не могут быть размещены в `placeProps` и затем игнорируются в `lintProps`, бесследно исчезая из сцены без сообщений об ошибке.
+- **trigger:** Валидная сцена с пропом, у которого `around: { center: "<свой_же_id>", n: 4, r: 1.5 }` (или взаимный цикл между двумя пропами `A.around.center = "B"`, `B.around.center = "A"`).
+- **expected:** Ошибка схемы `REF_UNKNOWN` или `POS_INVALID` на пути `/props/0/around/center` о невозможности циклической ссылки.
+- **actual:** Валидация возвращает `{ ok: true, errors: [] }`, но проп не может вычислить центр в `placeProps`, не попадает в геометрию сцены, а `lintProps` пропускает его (`if (raw.around) return;`), приводя к тихой потере объекта.
+- **evidence:**
+```ts
+    if (p.around && typeof p.around.center === "string" && !propById.has(p.around.center)) {
+      ref(`/props/${i}/around/center`, "prop", p.around.center, new Set(propIds));
+    }
+```
+
+- **status:** red — engine/test/bughunt3/b74.test.ts
+
+## B75 · CRIT · h0/make/story.py:67  (охотник k5) («в работе»)
+
+- **claim:** Вызов `ctx.spend(ledger.spent)` при каждом обращении к `director` квадратично накручивает учёт расходов стадии `story`, суммируя уже учтённые траты и преждевременно исчерпывая лимит бюджета `max_dollars`.
+- **trigger:** Запуск `run_make(..., fake=False)`, где для сцены вызывается как режиссура расстановки (`_book.score_scene`), так и генерация тонов реплик (`_tone.add_tones`, добавленная в коммите `3248a3c`).
+- **expected:** В `ctx.spend` должна передаваться стоимость только текущего обращения к LLM либо разовый итог трат шага, чтобы `ctx.usd` в манифесте `make.json` совпадал с реальной стоимостью вызовов `ledger.spent`.
+- **actual:** Метод `ctx.spend(usd)` прибавляет переданное число к `self.usd += float(usd)`. Так как `ledger.spent` кумулятивен, первый вызов добавляет $C_1$, а второй вызов добавляет $C_1 + C_2$, раздувая `ctx.usd` до $2C_1 + C_2$ (и более при любых повторах), что преждевременно валит последующие шаги по лимиту `man.spent() >= max_dollars` с ошибкой `budget`.
+- **evidence:**
+```python
+        ans = spark.ask("story", "stage", 0, msgs, "medium")
+        ctx.spend(ledger.spent)
+        return json.dumps(ans.scene, ensure_ascii=False) if ans.valid and isinstance(ans.scene, dict) else ""
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b75.py
+
+## B76 · MAJOR · h0/make/stage.py:117  (охотник k5)
+
+- **claim:** Функция `_pick_surface` проверяет позу `"sit"` раньше `"stand_on"`, из-за чего для ступеней и табуретов (`poses = ["stand_on", "sit"]`) ветка `stand_on` оказывается недостижимым мёртвым кодом, а вместо верхней рабочей площадки тихо выбирается нижняя широкая ступенька.
+- **trigger:** Объект типа `step` или `stool` высотой $\le 0.6$ м (например, двухступенчатый табурет) с открытыми поверхностями: нижняя ступенька площадью 0.2 м² на высоте 0.2 м и верхняя площадка площадью 0.12 м² на высоте 0.4 м.
+- **expected:** По спецификации `film-eyes-a` (раздел Г3) для объектов с позой `stand_on` должна выбираться самая высокая поверхность (`max(c, key=lambda s: s["y"])`), то есть площадка на высоте 0.4 м.
+- **actual:** Порядок итерации `("lie", "sit", "stand_on")` первым берёт `"sit"`, отбирает обе поверхности (`area >= 0.1, y < 1.2`) и немедленно возвращает `max(c, key=lambda s: s["area"])` — нижнюю ступеньку. В результате `pl["top"]` ошибочно выставляется в 0.2 м вместо 0.4 м, а блок `if pose == "stand_on"` на строке 128 никогда не выполняется.
+- **evidence:**
+```python
+    for pose in ("lie", "sit", "stand_on"):
+        if pose not in poses:
+            continue
+...
+        if pose == "stand_on":
+            return max(c, key=lambda s: s["y"])
+        return max(c, key=lambda s: s["area"])
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b76.py
+
+## B77 · MAJOR · h0/make/play.py:115  (охотник k5)
+
+- **claim:** При запуске воспроизведения сцены из книги в английском режиме отсутствие файла `story/score.json` тихо замалчивается и подменяется нережиссированной партитурой вместо падения с ошибкой контракта.
+- **trigger:** Запуск `python3 -m make.play runs/<id>` для книги на английском языке (`lang="en"`, по умолчанию), если стадия `story` не сгенерировала `story/score.json` либо файл был повреждён или удалён.
+- **expected:** Завершение с исключением `FileNotFoundError`, как это явно сделано для русского режима строками 109–112 (`if not score_p.is_file(): raise FileNotFoundError(...)`).
+- **actual:** Проверка `score_p.is_file()` даёт `False`, `score` становится `None`, и `sim._load_book_plan` тихо запускает генерацию сырого плана из текста книги (`bookmod.score_scene` без `places` и `director`), полностью обходя подготовленные режиссером мизансцены.
+- **evidence:**
+```python
+        else:
+            score_p = run_dir / "story" / "score.json"
+        score = json.loads(score_p.read_text()) if score_p.is_file() else None
+        plan = sim._load_book_plan(b["dir"], [b["scene"]], score)
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b77.py
+
+## B78 · MAJOR · h0/make/film.py:112  (охотник k5)
+
+- **claim:** Функция `record_scene` синхронно блокируется на 10 минут при аварийном завершении процесса `make.play`, выдавая ложное сообщение о тайм-ауте сцены вместо немедленного падения с ошибкой упавшего сервера.
+- **trigger:** Запуск `make.film` на прогоне, в котором `make.play` аварийно падает во время воспроизведения сцены (например, ошибка генерации голоса Fish TTS или исключение в цикле симулятора).
+- **expected:** Немедленное прерывание ожидания при выходе процесса `play` (`play.poll() is not None`) с пробросом кода возврата и лога ошибки процесса симулятора.
+- **actual:** `subprocess.run` блокируется до истечения `max_s` (600 секунд), так как страница в Puppeteer никогда не получит событие `book_end` от мертвого сервера, после чего выбрасывает неинформативный `RuntimeError("record.mjs exit 1: the scene did not reach its end in 600s")`, скрывая реальную причину падения.
+- **evidence:**
+```python
+        url = page_url(run_dir, static_port, sim_port)
+        r = subprocess.run(["node", "bin/record.mjs", url, str(rec), str(max_s), size], cwd=ENGINE)
+        if r.returncode != 0:
+            raise RuntimeError(f"record.mjs exit {r.returncode}: the scene did not reach its end in {max_s}s")
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b78.py (покрыта достижимая часть: ожидание 600 с проверено подменой часов)
+
+## B79 · CRIT · h0/pipe2/floor.py:316  (охотник k6)
+
+- **claim:** Функция `attach_refs` отбрасывает только предметы, смонтированные непосредственно на контейнер, но оставляет вложенные смонтированные предметы, создавая висячие ссылки `mount.top_of` на удалённые объекты и приводя к ошибке валидации `REF_UNKNOWN` и срыву финальной сборки.
+- **trigger:** Сцена со вложенным монтажом на перерисовываемом контейнере: контейнер `bedroom_shelf`, на нём коробка `bedroom_box` (`mount.top_of: bedroom_shelf`), а в коробке игрушка `bedroom_toy` (`mount.top_of: bedroom_box`).
+- **expected:** При очистке содержимого контейнера транзитивно удаляются все смонтированные на него уровни предметов либо очищаются ссылки, чтобы не оставлять ссылок на удалённые ID.
+- **actual:** `bedroom_box` удаляется из `scene["props"]`, но `bedroom_toy` остаётся со ссылкой на `bedroom_box`. Валидатор `engine/src/schema/refs.ts` выдаёт ошибку `REF_UNKNOWN: /props/.../mount/top_of`, `dreamer build` завершается с кодом 2, `engine.build` выбрасывает `EngineError`, и статус этажа `FloorResult.status` становится `"failed"`.
+- **evidence:**
+```python
+        mount = prop.get("mount") if isinstance(prop, dict) else None
+        host = None
+        if isinstance(mount, dict):
+            host = mount.get("top_of") or mount.get("tier_of")
+        if isinstance(host, str) and host in containers:
+            if warnings is not None:
+                warnings.append("CONTAINED %s in %s" % (prop.get("id"), host))
+            continue
+        kept.append(prop)
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b79.py
+
+## B80 · MAJOR · h0/pipe2/floor.py:286  (охотник k6)
+
+- **claim:** Извлечение короткого имени пропа через `rsplit("_", 1)[-1]` отсекает всё до последнего подчёркивания, из-за чего составные и нумерованные идентификаторы контейнеров распознаются как суффиксы, блокируя режим `redraw` и портя промпт генерации изображения.
+- **trigger:** Сцена с контейнерами, имеющими цифровые или описательные суффиксы (например, `bedroom_table_1`, `living_shelf_small`, `bedroom_nightstand_left`).
+- **expected:** Из идентификатора корректно извлекается тип мебели (например, путём отсечения префикса комнаты `rid + "_"`), сопоставляется со списком `CONTAINERS`, активирует режим `redraw` и формирует валидное описание в `ref["what"]`.
+- **actual:** Переменная `short` получает значение `"1"`, `"small"` или `"left"`. Проверка `short in CONTAINERS` возвращает `False`, режим `redraw` не включается, смонтированные на стол предметы не удаляются, а генератору изображений уходит искажённый запрос `"Only 1, whole, on a plain white background..."`.
+- **evidence:**
+```python
+        short = str(prop.get("id") or aid).rsplit("_", 1)[-1]
+        ref = {"image": images[rid], "what": short}
+        if short in CONTAINERS:
+            ref["mode"] = "redraw"
+            ref["what"] = short + " with everything standing on it and inside it"
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b80.py
+
+## B81 · MAJOR · h0/pipe2/surface_rule.py:35  (охотник k6)
+
+- **claim:** Функция `plain_surfaces` проверяет наличие ключа через `"tile" in mat`, ошибочно принимая материалы со значением `{"tile": None}` (или JSON `{"tile": null}`) за текстурированные и пропуская сплошные заливки цветом в комнатах с референсами.
+- **trigger:** Материал комнаты с референсным изображением, где модель вернула `{"color": "#fff", "tile": None}` (в JSON: `{"color": "#fff", "tile": null}`).
+- **expected:** Функция `plain_surfaces` проверяет не просто наличие ключа, а непустую строку тайла (`bool(mat.get("tile"))`), выдавая замечание `PLAIN_SURFACE` для любого материала без текстуры.
+- **actual:** Условие `"tile" in mat` вычисляется в `True`, проверка пропускает материал через `continue`, замечание `PLAIN_SURFACE` не генерируется, и движок строит плоскую одноцветную стену/пол в нарушение правила.
+- **evidence:**
+```python
+        mat = materials.get(mid)
+        if isinstance(mat, dict) and "tile" in mat:
+            continue
+        found.append({"code": "PLAIN_SURFACE", "owner": room_id, "path": "/materials/" + mid,
+```
+
+- **status:** rejected — `tile: null` не проходит схему (engine/schema/engine-scene.schema.json:35), `_accept` (h0/pipe2/room.py:347-352) сохраняет кандидата только после зелёной проверки; тест удалён
+
+## B82 · MAJOR · h0/pipe2/engine.py:128  (охотник k6)
+
+- **claim:** Методы `_check_uncached` и `_check_full_uncached` создают временные папки через `self._room(work)` (`tempfile.mkdtemp`), но нигде их не удаляют, приводя к постоянной утечке файлов сцен, отчётов, дистрибутивов сборки и скриншотов Playwright на диске.
+- **trigger:** Вызовы проверок `engine.check(...)` или `engine.check_full(...)` во время работы критиков, сшивки швов (`seams`) и деградации сцен.
+- **expected:** Временная папка каждого запуска CLI гарантированно очищается в блоке `finally` после завершения команды и считывания отчёта (как это реализовано для `_stage_scene` в `Engine.build`).
+- **actual:** Созданные каталоги накапливаются в директории `work/` до конца процесса, накапливая сотни мегабайт сборок `dist/` и скриншотов браузера без очистки.
+- **evidence:**
+```python
+    def _check_uncached(self, scene: dict, work: str | os.PathLike, built: str | os.PathLike | None) -> dict:
+        here = self._room(work)
+        scene_path = self._write_scene(here, scene)
+        report_path = here / "report.json"
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b82.py
+
+## B83 · MAJOR · h0/dream/sim.py:1163  (охотник k7) (в работе)
+
+- **claim:** Метод `Sim._book_human_say` при произнесении реплики живым игроком в книжном режиме не применяет сценические директивы `stage` текущего бита и не передаёт метаданные партитуры в `_start_line`.
+- **trigger:** Симуляция в режиме книги с `hero_owner == "human"`. Текущий бит партитуры книги для героя содержит мизансцену `stage` (например, `[{"who": "Hero", "action": "goto", "place": "door"}]`) и метаданные (`gesture`, `remarks`). Игрок произносит реплику через `sim.human_say("текст")` в окне ожидания `BOOK_PROMPT_WAIT`.
+- **expected:** `_book_human_say` эмитит сценические события `stage` (как это делает `_book_step` на строках 1198–1204) и передаёт `stage`, `gesture`, `remarks`, `shot`, `tone` в `_start_line`.
+- **actual:** `_book_human_say` только увеличивает курсор книги и вызывает `_start_line` с фиксированным набором полей `owner`, `who`, `role`, `source`, `text`, `beat`. Поле `stage` не обрабатывается и не эмитится (персонажи не выполняют мизансцену), а метаданные бита теряются.
+- **evidence:**
+```python
+        beat_i = self.book["cursor"]
+        self.book["cursor"] += 1
+        self.book["wait_since"] = None
+        self._diagnostic(self.status())
+        return out + [self._start_line({"owner": "human", "who": self.hero, "role": "hero",
+                                        "source": "human", "text": clean, "beat": beat_i})]
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b83.py
+
+## B84 · MAJOR · h0/dream/director.py:245  (охотник k7)
+
+- **claim:** Метод `Director._live_decision` перехватывает любые исключения LLM и возвращает `{"messages": []}`, из-за чего FSM на нефорсированных консультациях фиксирует вердикт `"ok"`, безвозвратно теряя накопленные события и блокируя повторный взвод триггеров.
+- **trigger:** Директор в живом режиме (`fake=False`). В автомат поступает консультация по `hint == "nudge"` или `ready_stale`, либо свободная консультация с переданными событиями `events=[...]`. Вызов `llm_call` выбрасывает исключение (сетевой сбой, HTTP 500, таймаут или некорректный JSON).
+- **expected:** Ошибка распознаётся как сбой директора, вызывается `_requeue(ticket, queued)`: события возвращаются в `self.pending`, а FSM вызывает `rearm_consult(ticket)` для восстановления `nudge_pending = True` или `ready_stale_fired = False`.
+- **actual:** `_live_decision` возвращает `{"messages": []}`. В FSM `finish_consult` видит `bridge: None` и для любого тикета кроме `forced` возвращает успешный вердикт `"ok"`. В `_finish` проверка `verdicts[-1] in ("invalid", "stale")` оказывается ложной, `_requeue` не вызывается: входящие события теряются, а `fsm.rearm_consult` не вызывается, навсегда отключая повторный вызов консультации.
+- **evidence:**
+```python
+        except Exception as e:
+            self.errors.append(e)
+            self._publish([dict(report("director", "director_fail", e), t=self.clock.now())])
+            return {"messages": []}
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b84.py
+
+## B85 · MAJOR · h0/dream/director.py:258  (охотник k7)
+
+- **claim:** В `Director._write_prompt` ротация файлов промптов сортирует записи каталога по `key=lambda f: int(f[:-4])` без фильтрации имени, приводя к падению с `ValueError` после вызова `fsm.begin_consult` и вечной блокировке автомата в состоянии `in_flight = True`.
+- **trigger:** В каталоге `outdir/consults` оказывается любой текстовый файл с нечисловым именем (например, `prompt.txt`, `notes.txt` или `.txt`), и вызывается `director.consult_async(now)`.
+- **expected:** Сортировка фильтрует только файлы с числовыми именами либо исключение записи файла перехватывается с откатом `self.fsm.in_flight = False`.
+- **actual:** Вызов `int(f[:-4])` бросает необработанный `ValueError: invalid literal for int() with base 10`. Метод `consult_async` падает после того, как `self.fsm.begin_consult(now)` уже выставил `self.fsm.in_flight = True`, поток `_finish` не запускается, флаг `in_flight` в FSM никогда не сбрасывается, и все последующие консультации навсегда блокируются (`fsm.due()` возвращает `None`).
+- **evidence:**
+```python
+        files = sorted((f for f in os.listdir(d) if f.endswith(".txt")),
+                       key=lambda f: int(f[:-4]))
+        while len(files) > 50:
+            try:
+                os.remove(os.path.join(d, files.pop(0)))
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b85.py
+
+## B86 · MAJOR · h0/dream/fsm.py:291  (охотник k7)
+
+- **claim:** Метод `BuildFSM.touch` не проверяет флаг пробуждения `self.awake`, допуская недопустимый переход спящего автомата из состояния `"ready"` в `"transition"` после пробуждения героя.
+- **trigger:** Автомат находится в состоянии `ready` (`self.state == "ready"`), вызывается `fsm.budget_wakeup(now)` (или директор возвращает `wake_up`), устанавливая `fsm.awake = True`. После этого вызывается `fsm.touch(now, fsm.bridge)`.
+- **expected:** При `self.awake == True` автомат отклоняет касание моста и не переходит в `"transition"` (возвращает `[]` или событие `input` без смены состояния, аналогично `tick` и `begin_consult`).
+- **actual:** Метод `touch` не проверяет `self.awake`, видит `self.state == "ready"` и безусловно вызывает `self._transition(now, "touch")`, возвращая событие перехода в новую сцену, из-за чего вызывающий `Sim._touch` запускает `_apply_transition()` для уже завершённого сна.
+- **evidence:**
+```python
+        if self.state == "building":
+            # the door is still closed: a world fact for the hero, no instruction to actors
+            return [self._e(now, "door", state="closed", object=obj,
+                            build_pct=self.build_pct(now))]
+        if self.state == "ready":
+            return self._transition(now, "touch")
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b86.py
+
+## B87 · MAJOR · h0/dream/sim.py:1122  (охотник k7) (в работе)
+
+- **claim:** Метод `Sim._apply_transition` при переходе в сцену без дескриптора `next_scene` (`ns is None`) не вызывает `self.fsm.new_scene()`, оставляя автомат FSM навсегда заблокированным в состоянии `"transition"`.
+- **trigger:** Стройка запущена вызовом `fsm.start_build(now, bridge, destination)` без явного `next_scene` (`next_scene=None`), после готовности двери выполняется переход `_touch(bridge)` при исчерпанном списке `_free_book`.
+- **expected:** Метод `_apply_transition` сбрасывает автомат в исходное состояние новой сцены через `self.fsm.new_scene(now, self.scene["objects"], actors=self.actors)` даже при отсутствии нового дескриптора.
+- **actual:** Вызов `self.fsm.new_scene` находится исключительно внутри ветки `if ns:`. В ветке `else:` обновляется только `self.scene`, а `fsm.new_scene` не вызывается. Автомат FSM навсегда остаётся в `state == "transition"`, перестаёт обрабатывать тики (`tick()` возвращает `[]`), а `due()` и `begin_consult()` блокируются.
+- **evidence:**
+```python
+            for e in self.fsm.new_scene(self.clock.now(), self.scene["objects"],
+                                        actors=self.actors):
+                if self.logger:
+                    self.logger.write_event(e)
+...
+        else:
+            self.scene = dict(self.scene, events=[], goals=[])
+```
+
+- **status:** rejected — переход без `next_scene` запускается только при непустом `_free_book`, откуда сцена берётся (h0/dream/sim.py:1074-1077, 1380, 1387); тест удалён
+
+## B88 · MAJOR · h0/dream/voice_tone.py:72  (охотник k8) (в работе)
+
+- **claim:** Функция `add_tones` не перехватывает ошибки парсинга кэша, аварийно завершая работу с необработанным `JSONDecodeError`, если файл кэша поврежден или пуст (0 байт).
+- **trigger:** Вызов `voice_tone.add_tones(score, director, cache_dir)` при наличии в `cache_dir` пустого (0 байт) или оборванного файла `tone-<sha256>.json` от прерванного ранее прогона.
+- **expected:** Поврежденный файл кэша игнорируется с записью предупреждения в `warnings`, и опрашивается `director(prompt)` согласно контракту функции («A broken answer leaves the lines as written»).
+- **actual:** `json.load(f)` выбрасывает `json.decoder.JSONDecodeError`, который ничем не перехвачен, приводя к падению сборки в `h0/make/story.py`.
+- **evidence:**
+```python
+    if path and os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            tones = json.load(f)
+    else:
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b88.py
+
+## B89 · MAJOR · h0/dream/author.py:206  (охотник k8)
+
+- **claim:** Функция `cast` при пустом ответе модели `{}` или несовпадающих именах/ключах персонажей возвращает `({}, "partial")` на первой же попытке, прекращая цикл и пропуская вторую попытку из `range(ATTEMPTS)` с ложным статусом частичного успеха при 0 подобранных голосов.
+- **trigger:** Вызов `author.cast(d, ...)` при возврате моделью на первой попытке `"{}"` или словаря с галлюцинированными ключами персонажей/несуществующими id из `menu`.
+- **expected:** При `len(out) == 0` цикл `for _ in range(ATTEMPTS)` переходит к следующей попытке, а при исчерпании попыток возвращает `({}, note)`.
+- **actual:** Выполняется безусловный `return out, ("ok" if len(out) == len(people) else "partial")`, возвращающий `({}, "partial")` сразу на первой попытке без повторного запроса к модели.
+- **evidence:**
+```python
+        out, used = {}, set()
+        for name, rid in picks.items():
+            if name in menu and rid in {c["id"] for c in menu[name]} and rid not in used:
+                out[name] = rid
+                used.add(rid)
+        return out, ("ok" if len(out) == len(people) else "partial")
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b89.py
+
+## B90 · MAJOR · h0/dream/author.py:68  (охотник k8)
+
+- **claim:** Парсер `_json` аварийно падает с `JSONDecodeError`, если ответ LLM с markdown-блоком ```json предваряется любым сопроводительным текстом.
+- **trigger:** Вызов `_json(text)` с ответом модели вида `"Here is the scene:\n```json\n{...}\n```"`.
+- **expected:** JSON-объект успешно извлекается из блока кода markdown и десериализуется в словарь.
+- **actual:** Проверка `s.startswith("```")` ложна из-за вступительного текста, строка `s` не очищается от маркдауна и передается в `json.loads(s)` целиком, вызывая `json.decoder.JSONDecodeError`.
+- **evidence:**
+```python
+def _json(text):
+    s = (text or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[-1].rsplit("```", 1)[0]
+    return json.loads(s)
+```
+
+- **status:** rejected — оба вызывающих `_json` ловят ошибку и повторяют запрос (h0/dream/author.py:128-135, 186-194); тест удалён
+
+## B91 · MAJOR · h0/dream/author.py:163  (охотник k8)
+
+- **claim:** Функция `candidates` посимвольно нарезает `person["voice"]["search"]` на 3 отдельных символа, если модель вернула поисковые слова строкой согласно формулировке схемы `AUTHOR_SCHEMA`.
+- **trigger:** Вызов `candidates(person, search)` с персонажем, у которого поле `"search"` сгенерировано строкой (например, `{"voice": {"search": "old man, cowboy"}}`).
+- **expected:** Поиск в библиотеке Fish выполняется по словам/фразам запроса целиком.
+- **actual:** Срез `[:3]` берет первые 3 символа строки, и функция выполняет три однобуквенных запроса `search("o")`, `search("l")`, `search("d")`; если же передано число, падает с `TypeError`.
+- **evidence:**
+```python
+def candidates(person, search):
+    """Voices the library really has for one person: the look, not the memory."""
+    seen, out = set(), []
+    for term in (person["voice"].get("search") or [])[:3]:
+        try:
+            found = search(str(term))
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b91.py
+
+## B92 · MAJOR · h0/dream/inputs.py:35  (охотник k8)
+
+- **claim:** Функция `sanitize` для спикера `"actor"` повреждает разрешенный тег `[[LOOK:...]]`, если внутри него есть знак `=`, вырезая внутренности до висячих скобок `[ ]` и генерируя ложное событие `input_rejected`.
+- **trigger:** Вызов `sanitize("See [[LOOK: target=Alice]] here", "actor")` или `sanitize("[[LOOK: door=kitchen]]", "actor")`.
+- **expected:** Тег `[[LOOK:...]]` полностью сохраняется без повреждений, так как входит в `ACTOR_TAGS`.
+- **actual:** Регулярное выражение `_SINGLE` сопоставляется с внутренними скобками `[LOOK: target=Alice]`, предикат `keep` вычисляет `False` (так как паттерн не может начинаться с `[[`), заменяет тег на пробел и возвращает `'See [ ] here'`, записывая `[LOOK: ...]` в `input_rejected`.
+- **evidence:**
+```python
+        allowed = lambda s: s[2:-2].split(":")[0].strip().upper() in ACTOR_TAGS
+        text = _cut(_DOUBLE, text, removed, keep=allowed)
+        text = _cut(_ENGINE, text, removed)
+        text = _cut(_SINGLE, text, removed,
+                    keep=lambda s: "=" not in s or s.startswith("[[") or s.endswith("]]"))
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b92.py
+
+## B93 · CRIT · h0/dream/llm.py:348  (охотник k8)
+
+- **claim:** Функция `_piece_parts` падает с `TypeError` при разборе ответа модели, если словарь `usage` содержит `None` в полях токенов.
+- **trigger:** Ответ транспорта с объектом `usage`, содержащим `None`, например `{"content": "hello", "usage": {"prompt_tokens": None, "completion_tokens": None}}`.
+- **expected:** При отсутствии числового значения токенов используются расчетные значения по умолчанию `prompt_tok` и `_tokens(text)`.
+- **actual:** `usage.get("prompt_tokens", prompt_tok)` возвращает `None` из-за присутствия ключа со значением `None`, после чего `int(None)` выбрасывает `TypeError: int() argument must be a string, a bytes-like object or a real number, not 'NoneType'`.
+- **evidence:**
+```python
+    return (text, int(usage.get("prompt_tokens", prompt_tok)),
+            int(usage.get("completion_tokens", _tokens(text))))
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b93.py
+
+## B94 · MAJOR · h0/dream/server.py:288  (охотник k8)
+
+- **claim:** Метод `_ab_order` в `server.py` аварийно падает с `TypeError` при числовом идентификаторе пары в `pairs.json`, роняя эндпоинт GET `/api/ab`.
+- **trigger:** Запрос к `GET /api/ab` при наличии в `pairs.json` записи с числовым id: `{"id": 1, "runs": {"bank/run_1": "v1", "bank/run_2": "v2"}}`.
+- **expected:** Сервер приводит id пары к строке и возвращает список пар с рандомизированным порядком A/B.
+- **actual:** Выражение `self.viewer.ab_salt + pair["id"]` вызывает `TypeError: can only concatenate str (not "int") to str`, приводя к ошибке 500.
+- **evidence:**
+```python
+    def _ab_order(self, pair):
+        """A and B for a pair: the two runs, shuffled by the server's salt."""
+        runs = sorted(pair["runs"])
+        if random.Random(self.viewer.ab_salt + pair["id"]).random() < 0.5:
+            runs.reverse()
+        return runs
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b94.py
+
+## B95 · MAJOR · h0/live/server.py:84  (охотник k9)
+
+- **claim:** Эндпоинт `GET /tts/<id>` не обрабатывает сетевые и HTTP-ошибки Fish Audio API (`stream_tts`), приводя к аварийному завершению рабочего потока и обрыву TCP-соединения мёртвым сокетом без HTTP-статуса ошибки.
+- **trigger:** Запрос клиента `GET /tts/<id>` с валидным идентификатором реплики из `lines` при возврате сервисом Fish Audio ошибки (например, HTTP 429 Too Many Requests, HTTP 401 Unauthorized, HTTP 500) или сетевом таймауте.
+- **expected:** Сервер перехватывает сбой (`(OSError, ValueError)`) и возвращает клиенту HTTP-ответ с кодом 502 согласно контракту сервиса («a bad body/upstream gets an answer, not a dead socket»).
+- **actual:** Необработанное исключение `urllib.error.HTTPError` / `URLError` / `TimeoutError` прерывает `do_GET()`, рабочий поток падает без отправки HTTP-заголовков и закрывает сокет (dead socket / connection reset).
+- **evidence:**
+```python
+        elif self.path.startswith("/tts/"):
+            if not self.trusted():
+                return
+            with lock:
+                text = lines.get(self.path[5:])  # get: the audio tag may fetch twice
+            if not text:
+                self.send_error(404)  # B32: no Fish call for an unknown id
+                return
+            self.stream_tts(text)
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b95.py
+
+## B96 · MAJOR · h0/live/rt.py:59  (охотник k9)
+
+- **claim:** Функция-генератор `spark()` не вызывает `r.raise_for_status()`, из-за чего HTTP-ошибки Meta AI API (401, 429, 500) тихо проглатываются, а клиенту по WebSocket отправляется ложное событие `done` без сообщения об ошибке.
+- **trigger:** Запуск диалогового хода через WebSocket, при котором запрос к `api.meta.ai` возвращает HTTP-статус ошибки (401 Unauthorized, 429 Rate Limit, 500 Server Error) с не-SSE телом ошибки.
+- **expected:** `spark()` вызывает `r.raise_for_status()`, выбрасывая `aiohttp.ClientResponseError`, который перехватывается блоком `except Exception as e:` в `Session.respond()` и передаётся клиенту в поле `m["error"]`.
+- **actual:** Без `r.raise_for_status()` генератор читает строки тела ошибки, не совпадающие с `data:`, штатно завершает итерацию с нулевым количеством токенов, а `Session.respond()` отправляет клиенту `type="done"` с пустым текстом и без поля ошибки в объекте `metrics`.
+- **evidence:**
+```python
+    async with http.post("https://api.meta.ai/v1/chat/completions", json=body,
+                         headers={"Authorization": f"Bearer {META_KEY}"}) as r:
+        async for raw in r.content:
+            line = raw.decode().strip()
+            if line.startswith("data:") and line != "data: [DONE]":
+                for ch in json.loads(line[5:]).get("choices", []):
+                    if piece := (ch.get("delta") or {}).get("content"):
+                        yield piece
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b96.py
+
+## B97 · MAJOR · h0/live/rt.py:171  (охотник k9)
+
+- **claim:** Функция `join()` аварийно завершается с необработанным `IndexError` при наличии в списке пробельных строк, что приводит к краху и остановке фоновой корутины распознавания речи `turns.watch()`.
+- **trigger:** Вызов `join(parts)` со списком фрагментов, содержащим пробельную строку (например, `["Hello", "   "]`), возникшую из-за непустого пробельного сегмента от ASR.
+- **expected:** Функция `join()` проверяет непустоту списка `new` (`if words and new:`) перед обращением к `new[0]`, игнорируя пробельные элементы.
+- **actual:** `filter(None, parts)` пропускает непустые пробельные строки (`bool("   ") == True`), вызов `part.split()` возвращает пустой список `new = []`, и обращение `new[0]` падает с `IndexError: list index out of range`, убивая задачу `turns.watch()`.
+- **evidence:**
+```python
+    for part in filter(None, parts):
+        new = part.split()
+        if words:
+            words[-1] = re.sub(r"[.,:;!]+$", "", words[-1])
+            a, b = (re.sub(r"\W", "", w).lower() for w in (words[-1], new[0]))
+            if b and (a == b or (len(b) >= 3 and a.endswith(b))):  # not "hi" + "I"
+                new = new[1:]
+        words += new
+```
+
+- **status:** rejected — ASR вызывает `.strip()`, `join` пропускает пустую строку (h0/live/rt.py:87, 230-246); тест удалён
+
+## B98 · MAJOR · h0/squid_live/server.py:191  (охотник k9)
+
+- **claim:** Обработчик `POST /api/talk` не проверяет неотрицательность заголовка `Content-Length`, позволяя отрицательным значениям обходить лимит `MAX_BODY` и зависать в бесконечном чтении `rfile.read(-1)`.
+- **trigger:** HTTP-клиент отправляет запрос `POST /api/talk` с заголовком `Content-Length: -1`.
+- **expected:** Сервер валидирует диапазон длины тела (`0 <= n <= MAX_BODY`) и отклоняет отрицательные значения статусом 400 Bad Request.
+- **actual:** Проверка `if n > MAX_BODY:` вычисляется в `False` (`-1 > 65536` ложно), после чего вызывается `self.rfile.read(-1)`, который в `io.BufferedReader` читает поток до EOF; на открытом соединении поток сервера зависает навсегда, а при закрытии сокета вычитывает неограниченный объём данных в память.
+- **evidence:**
+```python
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self.close_connection = True
+                return self.send_error(413)
+            req = json.loads(self.rfile.read(n))
+```
+
+- **status:** red — research/bughunt-2026-11-02/redtests3/test_b98.py
+

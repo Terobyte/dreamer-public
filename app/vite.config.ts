@@ -7,6 +7,7 @@
 
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [iwsdkDev()],
@@ -22,6 +23,12 @@ export default defineConfig({
   // (its own three vs the app's super-three alias). Duplicate Component classes break
   // instanceof checks → "Only pmndrs/uikit components can be added as children".
   resolve: {
+    // engine/ sources (imported by the ?world= host) must see the app's
+    // super-three, not engine/node_modules/three: one three in the bundle
+    alias: [
+      { find: /^three$/, replacement: fileURLToPath(new URL('./node_modules/three/build/three.module.js', import.meta.url)) },
+      { find: /^three\/addons\/(.*)$/, replacement: fileURLToPath(new URL('./node_modules/three/examples/jsm/', import.meta.url)) + '$1' },
+    ],
     dedupe: [
       'three',
       '@pmndrs/uikit',
