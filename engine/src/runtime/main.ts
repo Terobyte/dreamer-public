@@ -94,6 +94,7 @@ function meshOf(src: any, material: MeshStandardMaterial): Mesh {
   g.setAttribute("uv", new Float32BufferAttribute(src.uvs, 2));
   g.setIndex(new BufferAttribute(new Uint32Array(src.indices), 1));
   const mesh = new Mesh(g, material);
+  mesh.userData.kind = src.kind;
   mesh.name = String(src.id);
   return mesh;
 }

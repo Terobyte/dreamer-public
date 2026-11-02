@@ -1,9 +1,10 @@
 // Record one stage page: a video (no sound, Playwright never captures audio) plus the moment the page got every
 // sim event, so make.film lays each voice wav under the picture at the time it played live.
 //   node bin/record.mjs <page url> <out dir> [max seconds] [WxH]
-// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur}], plus {ms, type: "ready"} when the world is built), last.png, critic.jsonl (window.__critic facts). Exit 3: no book_end/stop.
+// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur, beat}], plus {ms, type: "ready"} when the world is built), last.png, critic.jsonl (window.__critic facts). Exit 3: no book_end/stop.
 import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
+import { pickEvent } from "./rec_event.mjs";
 
 const [url, outDir, maxS = "600", size = "1280x720"] = process.argv.slice(2);
 if (!url || !outDir) {
@@ -17,6 +18,7 @@ const t0 = Date.now();  // the video starts with the context
 const page = await ctx.newPage();
 const events = [];
 await page.exposeFunction("__recEvent", (s) => events.push({ ms: Date.now() - t0, ...JSON.parse(s) }));
+await page.addInitScript(`window.__pickEvent = ${pickEvent.toString()};`);
 await page.addInitScript(() => {
   const ES = window.EventSource;
   window.EventSource = function (u, o) {
@@ -24,7 +26,7 @@ await page.addInitScript(() => {
     es.addEventListener("message", (m) => {
       try {
         const e = JSON.parse(m.data);
-        window.__recEvent(JSON.stringify({ type: e.type, who: e.who, text: e.text, audio: e.audio, dur: e.dur }));
+        window.__recEvent(JSON.stringify(window.__pickEvent(e)));
       } catch { /* not an event */ }
     });
     return es;

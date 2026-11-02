@@ -209,3 +209,53 @@ class PrompterTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _OkVoice:
+    def synthesize(self, text, label, path):
+        with open(path, "wb") as f:
+            f.write(b"RIFF")
+        return {"ok": True, "audio": path, "seconds": 1.0}
+
+
+class BeatIndexTest(unittest.TestCase):
+    """Г8: book events carry `beat`, the index of their beat in score.beats."""
+
+    def tearDown(self):
+        S.use_scene("start")
+
+    def test_book_lines_and_narration_carry_beat_in_order(self):
+        score = B.score_scene(BOOK, "library")
+        _, _, rows = play(scenes=["library"])
+        got = [r.get("beat") for r in rows
+               if (r["type"] == "line" and r.get("source") == "book")
+               or (r["type"] == "narrator" and r.get("cause") == "book")]
+        self.assertEqual(got, list(range(len(score["beats"]))))
+
+    def test_voiced_narration_carries_beat(self):
+        sim, _ = make_sim()
+        self.addCleanup(sim.close)
+        sim._voice = _OkVoice()
+        sim._book_narrate("Words of the book.", "old_man", beat=4)
+        self.assertTrue(sim._book_voicing["done"].wait(5))
+        sim._book_narrated()
+        rows = rows_of(os.path.join(sim.outdir, "log.jsonl"))
+        narr = [r for r in rows if r["type"] == "narrator" and r.get("cause") == "book"]
+        self.assertEqual(narr[-1]["beat"], 4)
+        self.assertIn("audio", narr[-1])
+
+    def test_human_answer_carries_its_beat(self):
+        sim, _ = make_sim(hero_owner="human", speed=200)
+        self.addCleanup(sim.close)
+        for _ in range(4000):
+            sim._tick()
+            if sim.status()["waiting_for"] == "hero":
+                break
+            sim.clock.real_sleep(0.002)
+        self.assertEqual(sim.status()["waiting_for"], "hero")
+        cursor = sim.book["cursor"]
+        sim.human_say("my own words")
+        rows = rows_of(os.path.join(sim.outdir, "log.jsonl"))
+        mine = [r for r in rows if r["type"] == "line" and r.get("source") == "human"]
+        self.assertEqual(len(mine), 1)
+        self.assertEqual(mine[0]["beat"], cursor)
