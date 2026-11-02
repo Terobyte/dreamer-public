@@ -1,0 +1,53 @@
+{
+  "title": "A Study in Scarlet",
+  "author": "Arthur Conan Doyle",
+  "year": 1887,
+  "source": "Project Gutenberg ebook #244 (see SOURCE.md)",
+  "pov": "Watson",
+  "cast": {
+    "Watson": {
+      "sex": "man",
+      "voice": "man",
+      "look": "A thin, sun-browned man of about thirty in a worn tweed suit, haggard face, left arm held stiffly; an army doctor back from Afghanistan."
+    },
+    "Holmes": {
+      "sex": "man",
+      "voice": "man",
+      "look": "A tall, excessively lean man over six feet, sharp piercing eyes, thin hawk-like nose, hands blotted with ink and stained with chemicals; in a purple dressing-gown, a pipe in his hand."
+    },
+    "Commissionaire": {
+      "sex": "man",
+      "voice": "old_soldier",
+      "look": "A stalwart, plainly-dressed man walking slowly down the street, a large blue envelope in his hand; a retired sergeant of Royal Marines."
+    }
+  },
+  "chapters": [
+    {
+      "n": 2,
+      "file": "study-in-scarlet.txt",
+      "title": "The Science of Deduction",
+      "scenes": [
+        {
+          "id": "baker_street",
+          "paras": [85, 131],
+          "title": "221B Baker Street: the brain-attic, the Book of Life, and the retired sergeant",
+          "place": "The sitting-room at 221B Baker Street on a cold morning in March 1881: two broad windows looking onto the street, a breakfast table with coffee and toast, a magazine with a pencil-marked article, an arm-chair, a sofa, a fireplace, a violin on the mantelpiece, chemical apparatus on a side-table, shelves of books and papers.",
+          "cast": [
+            "Watson",
+            "Holmes",
+            "Commissionaire"
+          ],
+          "aliases": {
+            "I": "Watson",
+            "my companion": "Holmes",
+            "Sherlock Holmes": "Holmes",
+            "Sherlock": "Holmes",
+            "he": "Holmes",
+            "the man": "Commissionaire",
+            "my friend": "Holmes"
+          }
+        }
+      ]
+    }
+  ]
+}
