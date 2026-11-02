@@ -457,13 +457,27 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: enter requires door place -> stay`);
           return;
         }
-        const door = places.find((p) => p.name === placeName || p.id === placeName);
-        if (!door) {
+        const target = places.find((p) => p.name === placeName || p.id === placeName);
+        if (!target) {
           warnings.push(`stage: door place "${placeName}" not in places bank -> stay`);
           return;
         }
         cancelExit(who);
         offstageActors.delete(who);
+        const isDoor = (p: Place): boolean => p.kind === "door" || !!p.poses?.includes("door");
+        if (!isDoor(target)) {
+          // the director named where she goes, not the door: come in through the room's door, then walk there;
+          // no door in the room -> walk there from where she is
+          const via = places.find((p) => isDoor(p) && p.room === target.room) ?? null;
+          if (via && typeof via.yaw === "number" && Number.isFinite(via.yaw)) {
+            const s = interRoomDoorStep(via.at, via.yaw, 1.0);
+            a.teleport(s.doorPos, s.yaw, "idle", layerOf(via.level ?? null).layer.y ?? 0);
+          } else if (!via) warnings.push(`stage: enter "${target.name}" is not a door and room "${target.room ?? "?"}" has none -> walks from where she is`);
+          const tgt = getTargetPos(lookTarget);
+          touch(who, target.name, pose, tgt ? yawTo(target.at, tgt) : "along");
+          return;
+        }
+        const door = target;
         const lvl = door.level ?? null;
         const y = layerOf(lvl).layer.y ?? 0;
         // B04: a door without a usable yaw enters along a fixed side, like exit does
@@ -733,7 +747,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const all = [...actors.values()];
       for (const a of all) a.look(gazeOf(a, all));
     }
-    for (const a of actors.values()) a.update(dt, now);
+    for (const a of actors.values()) {
+      // offstage = not in the room: not drawn either (Koshakan: Mama stood by the shelf before her entrance)
+      a.group.visible = !offstageActors.has(a.who);
+      a.update(dt, now);
+    }
     spread(dt);
     for (const who of [...exiting]) {
       const act = actors.get(who);
