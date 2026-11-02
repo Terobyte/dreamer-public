@@ -335,3 +335,67 @@ export function normalizeGlb(
 
   return { glb: writeGlb(json, bin), size };
 }
+
+export type V3 = [number, number, number];
+
+const COMPONENT_BYTES: Record<number, number> = { 5121: 1, 5123: 2, 5125: 4 };
+
+/**
+ * Every triangle of the active scene, vertices in the model's own system (the
+ * full node matrices applied, as `normalizeGlb` leaves its root matrix on a
+ * node). Only plain accessors are read: FLOAT VEC3 positions, unsigned
+ * indices; anything else (sparse, normalized, other types) is an error.
+ */
+export function* sceneTriangles(json: GltfJson, bin: Buffer | null): Iterable<[V3, V3, V3]> {
+  const bad = (): never => {
+    throw new Error("glb: unsupported accessor");
+  };
+  const nodes = json.nodes ?? [];
+  const views = (json.bufferViews ?? []) as { buffer?: number; byteOffset?: number; byteStride?: number }[];
+  const accessors = (json.accessors ?? []) as any[];
+  const locate = (index: number | undefined, type: string, comps: number[]) => {
+    const acc = index === undefined ? undefined : accessors[index];
+    if (acc === undefined || acc.sparse !== undefined || acc.normalized === true) return bad();
+    if (acc.type !== type || !comps.includes(acc.componentType) || typeof acc.bufferView !== "number") return bad();
+    const view = views[acc.bufferView];
+    if (view === undefined || bin === null || view.buffer !== 0) return bad();
+    const size = acc.componentType === 5126 ? 12 : COMPONENT_BYTES[acc.componentType];
+    const stride = view.byteStride ?? size;
+    const base = (view.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    if (base + (acc.count - 1) * stride + size > bin.length) return bad();
+    return { count: acc.count as number, stride, base, type: acc.componentType as number };
+  };
+  const readIndex = (a: { base: number; stride: number; type: number }, i: number): number => {
+    const at = a.base + i * a.stride;
+    return a.type === 5121 ? bin!.readUInt8(at) : a.type === 5123 ? bin!.readUInt16LE(at) : bin!.readUInt32LE(at);
+  };
+  const roots = json.scenes?.[json.scene ?? 0]?.nodes ?? [];
+  const out: [V3, V3, V3][] = [];
+  const walk = (index: number, parent: Mat4): void => {
+    const node = nodes[index];
+    if (node === undefined) return;
+    const world = mul(parent, nodeMatrix(node));
+    if (typeof node.mesh === "number") {
+      for (const prim of json.meshes?.[node.mesh]?.primitives ?? []) {
+        const mode = (prim as { mode?: number }).mode;
+        if (mode !== undefined && mode !== 4) continue;
+        const pos = locate(prim.attributes.POSITION, "VEC3", [5126]);
+        const vertex = (i: number): V3 => {
+          const at = pos.base + i * pos.stride;
+          return apply(world, [bin!.readFloatLE(at), bin!.readFloatLE(at + 4), bin!.readFloatLE(at + 8)]);
+        };
+        const ix = typeof prim.indices === "number" ? locate(prim.indices, "SCALAR", [5121, 5123, 5125]) : null;
+        const n = ix === null ? pos.count : ix.count;
+        for (let t = 0; t + 2 < n; t += 3) {
+          const id = (k: number): number => (ix === null ? t + k : readIndex(ix, t + k));
+          const [a, b, c] = [id(0), id(1), id(2)];
+          if (a >= pos.count || b >= pos.count || c >= pos.count) bad();
+          out.push([vertex(a), vertex(b), vertex(c)]);
+        }
+      }
+    }
+    for (const child of node.children ?? []) walk(child, world);
+  };
+  for (const root of roots) walk(root, IDENTITY);
+  yield* out;
+}

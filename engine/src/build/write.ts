@@ -19,6 +19,7 @@ import { cutGlb } from "../assets/cut.js";
 import { shotBaseNames } from "./shotnames.js";
 import { doorDefs, type DoorJson } from "./doors.js";
 import { floorDecals } from "./decals.js";
+import { surfacesOf, worldSurfaces, type Surface, type WorldSurface } from "./surfaces.js";
 
 export interface BuildJson {
   ok: boolean;
@@ -40,6 +41,8 @@ export interface BuildJson {
   scatter: NonNullable<Geometry["scatter"]>;
   /** every scene light as the page gets it; a `sun` is one directional light */
   lights: Geometry["lights"];
+  /** horizontal surfaces of every placed model by mesh id (world system); `[]` when none were found */
+  surfaces: Record<string, WorldSurface[]>;
   warnings: string[];
   /** triangles of the built scene: engine geometry plus every placed model */
   tris: TriCount;
@@ -234,6 +237,40 @@ async function cutPlaced(
   return cut;
 }
 
+/**
+ * Surfaces of every prop mesh with a model, read from the file that ends up in
+ * dist (after the budget cut). An asset `placeAssets` rejected has no size and
+ * no key here; one with no surface, or a file the reader refuses, gets `[]`
+ * and a `SURFACES_EMPTY <id>` warning.
+ */
+function meshSurfaces(
+  geometry: Geometry,
+  outDir: string,
+  assetFiles: AssetFiles,
+  glbSizes: Record<string, GlbSize>,
+  warnings: string[],
+): Record<string, WorldSurface[]> {
+  const out: Record<string, WorldSurface[]> = Object.create(null);
+  const placed = new Set(Object.keys(glbSizes).map((id) => assetFiles[id]));
+  const cache = new Map<string, Surface[]>();
+  for (const m of geometry.meshes as any[]) {
+    if (m.kind !== "prop" || typeof m.glb !== "string" || !placed.has(m.glb)) continue;
+    let local = cache.get(m.glb);
+    if (local === undefined) {
+      try {
+        local = surfacesOf(readFileSync(join(outDir, decodeURIComponent(m.glb))));
+      } catch {
+        local = [];
+      }
+      cache.set(m.glb, local);
+    }
+    const world = worldSurfaces(local, m);
+    out[String(m.id)] = world;
+    if (world.length === 0) warnings.push(`SURFACES_EMPTY ${m.id}`);
+  }
+  return out;
+}
+
 /** Each used object's `<key>.pose.json` next to its GLB in the cache; a missing or unreadable file is `null`. */
 function posesOf(ctx: Ctx, cacheDir: string | undefined, used: string[], scenePath: string | undefined): Record<string, object | null> {
   const out: Record<string, object | null> = Object.create(null);
@@ -295,6 +332,8 @@ export async function writeDist(
 
   const geometry = buildGeometry(ctx, assetFiles, glbSizes);
   const nav = ctx.nav ?? buildNav(ctx);
+  const surfaceWarnings: string[] = [];
+  const surfaces = meshSurfaces(geometry, outDir, assetFiles, glbSizes, surfaceWarnings);
   mkdirSync(outDir, { recursive: true });
   const refWarnings = copyRefs(geometry.cameras, outDir, opts.scenePath);
   writeFileSync(join(outDir, "check.json"), JSON.stringify(report, null, 2));
@@ -324,8 +363,10 @@ export async function writeDist(
       outDir,
       ((ctx.scene as any)?.props ?? []).map((r: any) => String(r?.id)),
     ),
+    surfaces,
     warnings: [
       ...assetWarnings,
+      ...surfaceWarnings,
       ...(geometry.scatterWarnings ?? []),
       ...report.warnings.map((w) => `${w.code}: ${w.msg}`),
       // a generated asset its post-step rejected (a sky that is not 2:1)
