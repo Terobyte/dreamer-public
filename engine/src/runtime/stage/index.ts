@@ -92,6 +92,13 @@ export function placeGazePoint(p: Place, floorY = 0): [number, number, number] {
   return [p.at[0], floorY + 1.4, p.at[1]];
 }
 
+/** seed for one line's gesture variant: the scene seed with a stable line index
+ *  (Н17 F7). No seed in the scene -> the bare index, as before. */
+export function lineSeed(sceneSeed: unknown, lineIndex: number): string {
+  const s = typeof sceneSeed === "string" ? sceneSeed : sceneSeed === null || sceneSeed === undefined ? "" : String(sceneSeed);
+  return s ? `${s}|line-${lineIndex}` : `line-${lineIndex}`;
+}
+
 /** Reads stage.json + places + cast, puts the cast on its start places and returns the event handlers and the frame step. */
 export async function startStage(c: StageCtx): Promise<Stage> {
   const locHref = typeof location !== "undefined" ? location.href : "http://localhost/";
@@ -304,6 +311,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const floorY = typeof layer === "number" ? layer : layer?.layer?.y ?? (layer as { y?: number } | undefined)?.y ?? 0;
     return placeGazePoint(p, Number.isFinite(floorY) ? (floorY as number) : 0);
   };
+  /** last known pose per actor (start/stage carry it): the line event passes it to clipForBeat (Н17 F2) */
+  const poseOf = new Map<string, string>();
+  // F6: the initial poses (stage.start_pose) count from the first line, before any start/stage event
+  for (const [who, p] of Object.entries((stage as any).start_pose ?? {})) {
+    if (typeof p === "string" && p && actors.has(who)) poseOf.set(who, p);
+  }
+  /** deterministic per-line seed for gesture variants: no Math.random in the runtime */
+  let lineSeq = 0;
   const handlers: StageHandlers = {
     start(e) {
       const items = Array.isArray((e as any).start) ? (e as any).start : [e];
@@ -312,6 +327,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const who = typeof it.who === "string" ? it.who : null;
         if (!who || !actors.has(who)) continue;
         const a = actors.get(who)!;
+        if (typeof it.pose === "string" && it.pose) poseOf.set(who, it.pose);
         exiting.delete(who);
         exitThrough.delete(who);
         exitPending.delete(who);
@@ -349,6 +365,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const placeName = typeof e.place === "string" ? e.place : undefined;
       const lookTarget = typeof e.look === "string" ? e.look : undefined;
       const pose = typeof e.pose === "string" ? e.pose : undefined;
+      if (pose) poseOf.set(who, pose);
 
       const getTargetPos = (tgt?: string): V2 | null => {
         if (!tgt) return null;
@@ -459,8 +476,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
-      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks }, cast, aliases);
-      if (pick && !pick.procedural) actors.get(pick.who)?.play(pick.clip, { once: true });
+      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases);
+      if (pick?.procedural) actors.get(pick.who)?.gesture();
+      else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
       if (who && t) touch(who, t);
     },

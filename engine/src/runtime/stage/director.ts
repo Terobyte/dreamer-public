@@ -553,7 +553,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
 
   let p: Plan = plan;
   // Н7б: explicit shot from bank is kept as is, including orbit and dolly for a single actor
-  const isExplicit = explicitPlan || Boolean(inp.event.shot && (BANK as readonly string[]).includes(inp.event.shot) && p === inp.event.shot);
+  const isExplicit = explicitPlan;
   if (!isExplicit) {
     if (!other && (p === "ots" || p === "two")) p = p === "ots" ? "close" : "wide";
     if (!other && (p === "orbit" || p === "dolly")) p = p === "orbit" ? "wide" : "close";

@@ -1,4 +1,4 @@
-import { AnimationClip, Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from "three";
+import { AnimationClip, Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Quaternion, Vector3, type Object3D } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
@@ -6,6 +6,37 @@ import type { V2 } from "./places.js";
 
 export const SIT_DROP = 0.45;
 export const WALK_SPEED = 1.4;
+
+/** head/chest nodes for the procedural nod (Н17 F8): the head node, then one
+ *  upper node (neck/chest); [] when the body has no named bones (a box). */
+export function findNodBones(root: Object3D): Object3D[] {
+  const byName = new Map<string, Object3D>();
+  root.traverse((o) => {
+    const n = o.name.toLowerCase();
+    if (n && !byName.has(n)) byName.set(n, o);
+  });
+  const head = byName.get("head");
+  const upper = ["neck", "neck1", "neck_01", "chest", "upperchest", "upper_chest", "spine2"]
+    .map((n) => byName.get(n)).find(Boolean);
+  return [head, upper].filter((b): b is Object3D => !!b && b !== root);
+}
+
+const NOD_X = new Vector3(1, 0, 0);
+/** bounded nod on the head/chest local nodes (never the group, never out of
+ *  range: |amp| ≤ 0.07). Returns undo (call it before the next mixer update).
+ *  No named bones (a box) -> a no-op: the caller rocks the group instead. */
+export function applyNod(root: Object3D, amp: number): () => void {
+  const bones = findNodBones(root);
+  if (!bones.length) return () => undefined;
+  const a = Math.max(-0.07, Math.min(0.07, amp));
+  const saved = bones.map((b) => b.quaternion.clone());
+  bones.forEach((b, k) => {
+    b.quaternion.multiply(new Quaternion().setFromAxisAngle(NOD_X, k === 0 ? a : a * 0.5));
+  });
+  return () => {
+    bones.forEach((b, k) => b.quaternion.copy(saved[k]!));
+  };
+}
 
 export interface Actor {
   who: string;
@@ -29,6 +60,8 @@ export interface Actor {
   look(p: [number, number, number] | null): void;
   /** play a clip by name (no animator or no such clip -> stays in idle) */
   play(clip: string, o?: { once?: boolean }): void;
+  /** bounded procedural nod (1.5 s): head/chest bones on a rig, the group on a box; never moves a bone out of range */
+  gesture(): void;
   update(dt: number, now: number): void;
 }
 
@@ -95,19 +128,28 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let segFrom: V2 = [x, z];
   let segY = y;
   let talkUntil = 0;
+  let gestureUntil = -Infinity;
   let gaze: [number, number, number] | null = null;
   let clock = 0;
   let wasMoving = false;
   const wrap = (a: number): number => ((a % 360) + 540) % 360 - 180;
 
+  // F8: a rigged body nods with its head/chest bones; a box (no named bones) rocks as a whole
+  const nodBones = findNodBones(body);
+  let nodUndo: (() => void) | null = null;
+  const nodAmp = (now: number): number => (now < gestureUntil ? Math.sin(now * 2 * Math.PI * 1.4) * 0.06 : 0);
   const apply = (now: number, moving: boolean): void => {
+    nodUndo?.();
+    nodUndo = null;
     const bob = moving ? Math.abs(Math.sin(now * 9)) * 0.04 : 0;
     const sway = moving ? Math.sin(now * 9) * 0.05 : 0;
     const talking = now < talkUntil;
+    // Н17: procedural gesture — a bounded 1.5 s nod (never a bone out of range, F8)
+    const nod = nodBones.length ? 0 : nodAmp(now);
     group.position.set(x, y + bob - (act === "sit" && !moving ? SIT_DROP : 0), z);
     // a rigged body nods with its head (life layer); a box or an unrigged mesh rocks as a whole
     const rock = talking && !animator?.alive() ? 0.04 + Math.sin(now * 6) * 0.05 : 0;
-    group.rotation.set(rock, (cur * Math.PI) / 180, sway);
+    group.rotation.set(rock + nod, (cur * Math.PI) / 180, sway);
   };
   apply(0, false);
 
@@ -145,6 +187,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     },
     speak(seconds) {
       talkUntil = clock + seconds;
+    },
+    gesture() {
+      gestureUntil = clock + 1.5;
     },
     speaking: () => clock < talkUntil,
     eye: () => [x, y + heightM * (act === "sit" ? 0.65 : 0.92), z],
@@ -203,6 +248,10 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         wasMoving = m;
         animator.update(dt, { talking: clock < talkUntil, look: gaze ?? undefined });
       }
+      // F8: lay the procedural nod on the head/chest bones after the mixer+life
+      // (undone at the next apply, so it never accumulates and never leaves a range)
+      const ga = nodAmp(now);
+      if (ga && nodBones.length) nodUndo = applyNod(body, ga);
     },
   };
 }
