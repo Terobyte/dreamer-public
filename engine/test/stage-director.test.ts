@@ -180,16 +180,23 @@ describe("director frames", () => {
         const yaw = k * 45;
         const { step } = mk();
         const s = step(line("a", { shot: plan }), [A({ yaw }), B()]);
-        if (yaw === 180) {
-          // F2: the face cone (-z) and the room-center side (+z) do not intersect — the side wins
-          expect(s.cam[2] - 10).toBeGreaterThanOrEqual(-1e-9);
-          continue;
-        }
+        // Rule 1 & 2: camera must strictly be on the 180° side
+        expect(s.cam[2] - 10).toBeGreaterThan(1e-6);
         const f = [Math.sin((yaw * Math.PI) / 180), Math.cos((yaw * Math.PI) / 180)];
         const dx = s.cam[0] - 9;
         const dz = s.cam[2] - 10;
-        const cos = (f[0] * dx + f[1] * dz) / Math.hypot(dx, dz);
-        expect(Math.acos(Math.max(-1, Math.min(1, cos))) * (180 / Math.PI)).toBeLessThanOrEqual(60.001);
+        const cos = Math.max(-1, Math.min(1, (f[0] * dx + f[1] * dz) / Math.hypot(dx, dz)));
+        const angDeg = Math.acos(cos) * (180 / Math.PI);
+        if (yaw === 180) {
+          // F2: the face cone (-z) and the room-center side (+z) do not intersect — the side wins
+          expect(angDeg).toBeGreaterThan(60);
+          expect(angDeg).toBeLessThanOrEqual(95);
+        } else {
+          expect(angDeg).toBeLessThanOrEqual(60.001);
+          if (plan === "close" && yaw === 0) {
+            expect(angDeg).toBeLessThanOrEqual(1e-3);
+          }
+        }
       }
     }
   });

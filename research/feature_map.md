@@ -135,7 +135,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `stage/anim.ts` | AnimationMixer на персонажа: ретаргет по имени кости, срез калибровочной T-позы (`calibrationEnd`), root на месте, кроссфейд, rest-поза (`UPRIGHT`), выбор клипа по тексту | `createAnimator`, `Animator{play,idle,update,has,current,alive,...}`, `pickClip(text, who, cast, aliases)`, `clipForBeat(beat, cast)`, `DEFAULT_VERBS` (wake,hug,flick,stroke,leap,fall,sit,walk) | cast `clips`,`verbs`,`idle` | `stage-anim` (19), `stage-anim-pick` |
 | `stage/life.ts` | процедурный idle: дыхание (chest), перенос веса (spine), взгляд головой по сторонам, кивки при речи; кости по именам-кандидатам; руки/таз не трогает | `createLife(root, seed) -> Life{before, after}` | — | `stage-life.test.ts` |
 | `stage/director.ts` | чистый режиссёр камеры: банк планов `BANK = ots, close, two, wide, orbit, dolly, low, follow`; реакции, правило 180, очередь событий, сглаживание | `createDirector(rng, {snap})`, `step(DirectorInput) -> {plan,cam,look,cut}`, `createPendingQueue`, `initialYaws`, `smoothCam`, `fallbackFrame` | DEvent{line,narrator,walk,tick} | `stage-director` (38), `-room`, `-occlusion` |
-| `stage/camera.ts` | прямоугольник комнаты, зажим камеры внутрь (inset 0.3, ceil gap 0.3), кадр по виду плана | `roomRect`, `clampCamera`, `insideInset`, `snapInside`, `directShot(kind: wide\|two\|close)` | — | `stage-camera*.test.ts` |
+| `stage/camera.ts` | прямоугольник комнаты, зажим камеры внутрь (inset 0.3, ceil gap 0.3), кадр по виду плана | `roomRect`, `clampCamera`, `insideInset`, `snapInside`, `legalCameraPoint`, `directShot(kind: wide\|two\|close)` | — | `stage-camera*.test.ts` |
 | `stage/sight.ts` | луч от камеры к цели: мешает ли мир (актёры не мешают), кэш на сетке 10 см; растительность (`noblock`) не мешает | `createSight(world, skip) -> (cam, look) => clear`, `markNoblock(root, id)`, `isPlantId(id)` | — | `stage-sight.test.ts` |
 | `stage/places.ts` | банк мест: `Place{name,id,kind: sit\|stand\|door,room,level,at,yaw,look,obstacle,size}`; `claims` (место занято -> встать сбоку `SIDE_M 0.8`); `stageRegex` (фраза -> {who,place}) | `resolveTouch`, `releaseClaim`, `stageRegex`, `yawTo`, `floorAt(floors,p,level)` | places.json | `stage-places`, `stage-touch-claim`, `stage-regex-unicode` |
 | `stage/path.ts` | BFS по nav-слою (8 соседей, без срезания углов), obstacles, открытые двери; межуровневый маршрут через рампы | `findPath(layer,bits,from,to,opts)`, `findStageRoute` | nav.json | `stage-path`, `stage-route(-hops)` |
@@ -307,6 +307,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | процедурное дыхание/взгляд/кивки | `stage/life.ts createLife`; включается в `createAnimator(..., {life:true})` |
 | выбрать план камеры/склейку | `stage/director.ts createDirector().step(...)` |
 | зажать камеру в комнату | `stage/camera.ts clampCamera / snapInside / roomRect` |
+| поставить точку камеры (контур + сторона 180° + высота) | `stage/camera.ts legalCameraPoint` |
 | проекция в кадр / влезает ли в кадр | `director.ts` считает `hfov/tanH/tanV` по `fov`, `aspect` (около стр. 485); отдельной общей `project()` нет |
 | мешает ли мебель обзору | `stage/sight.ts createSight(world, skip)` |
 | начальные повороты актёров | `director.ts initialYaws` |
