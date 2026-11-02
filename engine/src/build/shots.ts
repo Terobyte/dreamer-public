@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import { readFile } from "node:fs/promises";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
-import { chromium, type Browser } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { mark } from "../report/timing.js";
 import { shotBaseNames } from "./shotnames.js";
 
@@ -204,7 +204,43 @@ export interface RunShotsDeps {
   browser?: Browser;
   /** Reuse an already-running static server instead of starting a new one. */
   served?: { url: string; close: () => Promise<void> };
+  /** Ready wait; replaceable so tests need no real clock. Rejects when the page never gets ready. */
+  waitReady?: (page: Page, timeoutMs: number) => Promise<void>;
+  /**
+   * Clock for the default ready wait; the deadline `readyTimeoutMs` is armed
+   * on this clock instead of the real one, so tests advance it by hand.
+   * When absent the real `setTimeout`/`clearTimeout` run, as before.
+   */
+  timers?: ReadyTimers;
 }
+
+export interface ReadyTimers {
+  setTimeout(cb: () => void, ms: number): unknown;
+  clearTimeout(id: unknown): void;
+}
+
+const realTimers: ReadyTimers = {
+  setTimeout: (cb, ms) => setTimeout(cb, ms),
+  clearTimeout: (id) => clearTimeout(id as NodeJS.Timeout),
+};
+
+/**
+ * The page's own wait carries no deadline: the injected clock owns it, so a
+ * test that never advances its fake timers never times out either.
+ */
+const defaultWaitReady = async (page: Page, timeoutMs: number, timers: ReadyTimers = realTimers): Promise<void> => {
+  let id: unknown;
+  try {
+    await Promise.race([
+      page.waitForFunction("window.__ready === true", undefined, { timeout: 0 }),
+      new Promise<never>((_, reject) => {
+        id = timers.setTimeout(() => reject(new Error("timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (id !== undefined) timers.clearTimeout(id);
+  }
+};
 
 /**
  * Screenshots every camera of an already built `dist/` and lays the shots out
@@ -241,7 +277,7 @@ export async function runShots(
       await page.goto(`${served.url}index.html?cam=${encodeURIComponent(cam.id)}`);
       mark("ready-wait");
       try {
-        await page.waitForFunction("window.__ready === true", undefined, { timeout: opts.readyTimeoutMs });
+        await (deps.waitReady ?? ((p, t) => defaultWaitReady(p, t, deps.timers)))(page, opts.readyTimeoutMs);
       } catch {
         mark("ready-timeout");
         console.error(`camera ${cam.id}: page never set window.__ready`);

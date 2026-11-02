@@ -9,7 +9,6 @@ import { launch, serve, type Served, closeBrowser } from "./serve.js";
 import { demoFlat, patched } from "../helpers/scene.js";
 import { fakePng } from "../../src/assets/providers/fake.js";
 import { runShots, SHOTS_DEFAULTS } from "../../src/build/shots.js";
-import { readMarks } from "../helpers/timing.js";
 
 const ENGINE = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -74,27 +73,38 @@ describe("dreamer shots", () => {
 
   it("fails with the camera id when the page never gets ready", { timeout: 120000 }, async () => {
     const { dist } = build(demoFlat());
+    // A runtime that never sets `window.__ready`: the ready wait below can
+    // only end via the injected clock, so the test measures no wall-clock.
     const copy = join(mkdtempSync(join(tmpdir(), "dreamer-stub-")), "dist");
     cpSync(dist, copy, { recursive: true });
     writeFileSync(join(copy, "runtime.js"), "window.__stub = true;\n");
-    // Measure the ready deadline itself; Chrome close/exit can be slow under load.
-    const timing = join(mkdtempSync(join(tmpdir(), "dreamer-timing-")), "marks.jsonl");
-    const r = spawnSync("node", ["--import", "tsx", "bin/dreamer.ts", "shots", copy, "--ready-timeout", "2"], {
-      cwd: ENGINE,
-      encoding: "utf-8",
-      env: { ...process.env, DREAMER_TIMING_FILE: timing },
-    });
-    expect(r.status).toBe(2);
-    expect(r.stderr).toContain("door");
-    const marks = readMarks(timing);
-    const waits = marks.filter((m) => m.mark === "ready-wait");
-    expect(waits.length).toBeGreaterThan(0);
-    const readyTimeouts = marks.filter((m) => m.mark === "ready-timeout");
-    expect(readyTimeouts.length).toBeGreaterThan(0);
-    const seconds = (readyTimeouts[readyTimeouts.length - 1]!.t - waits[waits.length - 1]!.t) / 1000;
-    // Under load (>50) the deadline fires late; a deadline that ignores --ready-timeout waits the default 20 s (SHOTS_DEFAULTS.readyTimeoutMs), so 12 s still separates the two.
-    expect(seconds).toBeGreaterThanOrEqual(1.9);
-    expect(seconds).toBeLessThan(12);
+    const served = await serve(copy);
+    // Fake clock: records the deadline, fires only when the test advances it.
+    const pending: Array<{ cb: () => void; ms: number }> = [];
+    const timers = {
+      setTimeout: (cb: () => void, ms: number): unknown => {
+        pending.push({ cb, ms });
+        return pending.length;
+      },
+      clearTimeout: (_id: unknown): void => {},
+    };
+    const errs: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void errs.push(a.join(" "));
+    const run = runShots(copy, { ...SHOTS_DEFAULTS, readyTimeoutMs: 2000 }, { browser, served, timers });
+    try {
+      for (let i = 0; i < 10000 && pending.length === 0; i++) await new Promise((r) => setImmediate(r));
+      // The deadline comes from the option, the moment of firing from the test.
+      expect(pending.length).toBeGreaterThan(0);
+      const seen = pending.map((p) => p.ms);
+      for (const p of pending.splice(0)) p.cb();
+      expect(await run).toBe(2);
+      expect(seen).toEqual([2000]);
+      expect(errs.join("\n")).toContain("door");
+    } finally {
+      console.error = orig;
+      await served.close();
+    }
   });
 
   it("puts the ref next to the shot on the sheet", { timeout: 120000 }, async () => {
