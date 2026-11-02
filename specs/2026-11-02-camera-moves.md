@@ -1,4 +1,4 @@
-# Камера как кино: библиотека приёмов, стили режиссёров, Spark выбирает (версия 0.2)
+# Камера как кино: библиотека приёмов, стили режиссёров, Spark выбирает (версия 0.3)
 
 **Зачем.** Фильм Кошакана (спальня, круг 6) хозяин оценил на 6/10: камера законная, но «закреплённая». В плане одна точка на всю длительность, а общий план прибит к месту (`0803ed6`). В ручном демо Sonnet (`anymove/runs/koshakan/demo/story.js`) каждый план — это движение от `from` к `end`:
 - наезд или отъезд на 0,2–0,6 м;
@@ -48,7 +48,7 @@
 
 **Три группы.** Каталог — исследование; в коде у него три разных контракта:
 - **атомы** (1–39 без 13, 36): один план, `resolveMove` возвращает `from` и `end`. У каждого атома машинный ID латиницей в `MOVES` (`wide`, `medium`, `close`, `push_in`, `pull_out`, `slow_push`, `truck`, `arc`, `pedestal_up`, `crane_up`, `follow_side`, `follow_behind`, `lead`, `drift`, `handheld`, `steadicam`, `zoom_in`, `zoom_out`, `dolly_zoom`, `pan_to`, `tilt_up`, `whip_pan`, `low`, `high`, `child_eye`, `tatami`, `top_down`, `profile`, `three_quarter`, `frontal`, `master`, `detail` …); остальное — по тому же образцу `snake_case`, полный список — в `MOVES`. Русские имена каталога — алиасы в `MOVES[id].aliases`; Spark получает ID с одной строкой смысла и отвечает ID;
-- **схемы** (40–44, 46–50): последовательности атомов по битам. Их раскладывает не `resolveMove`, а `planScheme(name, beats, ctx) -> [{beat, move, subject}]` в `moves.ts`; результат идёт в `resolveMove` по плану. Схема — это правило выбора атома на бит (восьмёрка = `ots` на говорящего, потом на слушающего; `oner` = цепочка атомов, где `to` предыдущего плана = `at` следующего, а `from` следующего = `end` предыдущего; `final_pull_out` = `pull_out` на последнем бите);
+- **схемы** (40–44, 46–50): последовательности атомов по битам, отдельный реестр `SCHEMES` с ID: `over_the_shoulder` (40), `reaction_cut` (41), `establishing` (42), `insert` (43), `pov` (44), `oner` (46), `rhythm_cut` (47), `return_wide` (48), `open_from_light` (49), `final_pull_out` (50). Их раскладывает не `resolveMove`, а `planScheme(id, beats: SchemeBeat[], ctx) -> [{beat, move, subject}]` в `moves.ts`, где `SchemeBeat = {i, kind: "line"|"narrator"|"walk", speaker?, listener?, about?, actors: string[], durationS, tags}`. Fallback: один актёр в кадре — вместо восьмёрки `close` на него; нет субъекта — `wide`; другая комната — схема обрывается и следующий бит начинает заново; `insert` и `pov` в первой версии — записи без исполнения (`MOVE_RECORD_ONLY`: нужна кость руки или предмет); результат идёт в `resolveMove` по плану. Схема — это правило выбора атома на бит (восьмёрка = `ots` на говорящего, потом на слушающего; `oner` = цепочка атомов, где `to` предыдущего плана = `at` следующего, а `from` следующего = `end` предыдущего; `final_pull_out` = `pull_out` на последнем бите);
 - **записи без исполнения** (13 `dutch`, 36 `rack_focus`, 45 `cross_cut`): `resolveMove` возвращает статичную точку той же крупности и предупреждение `MOVE_RECORD_ONLY <id>`; поле в `plan.json` пишется в `notes`, а не в `shots[i]` (разбор `shotplan.ts` не меняется, неизвестные поля он не читает).
 
 Каждый атом задаётся относительно субъекта (кость головы или середина пары) через параметры:
@@ -172,6 +172,15 @@
 | `ozu` | 0 | 6–8 | 0,5–0,9 | 40–50 | 0 | 0,6 |
 | `anderson` | 0,3 | 4–6 | 1,2–1,5 | 40–55 | 0 | 0,9 |
 
+**Выбор приёма** — одна функция `pickMove(style, tags, rng, prev?) -> id` в `styles.ts`, её же зовёт мост для `--fake`:
+1. кандидаты: ID из `weights` с весом > 0 (атомы и схемы);
+2. совместимость: `style.move == 0` убирает `moving`-атомы; на реплике убираются `follow_behind` и `lead`; в `ozu` и `anderson` с `symmetry ≥ 0,6` кандидаты не-`frontal`/`tatami`/`master`/`medium` весят вчетверо меньше;
+3. жребий `moving`: `rng() < style.move` → берутся только `moving`, иначе только статичные; пустое множество → другое;
+4. теги принуждают ID с приоритетом `last` > `first` > `enter` > `look`; принуждённый ID, не прошедший п. 2, заменяется ближайшим статичным (`medium` на актёра) вместо отказа;
+5. взвешенный жребий по нормированным весам; пусто → `wide`;
+6. `hold: true` из ответа Spark = «не менять»: тот же приём, тот же план продолжается без нового `at`.
+`asl` — мягкая цель: режиссёр не режет план раньше `asl.min` секунд по событию `tick`, но реплика нового говорящего режет всегда; ASL считается как среднее расстояний между соседними `cut` без последнего незакрытого плана.
+
 Веса (минимум): `storybook` — `push_in`, `pull_out`, `drift`, `child_eye`, `close`; `spielberg` — `slow_push`, `oner`, `low`, `crane_up`; `ozu` — `tatami`, `frontal`, `medium`; `anderson` — `frontal`, `truck`, `whip_pan`, `master`. Остальное — вес 0 или ≤ 0,2.
 
 ---
@@ -181,23 +190,25 @@
 Зоны: `engine/src/runtime/stage/moves.ts` (новый), `engine/test/stage-moves.test.ts` (новый), `research/feature_map.md` (новые строки и исправление противоречия: §5 строка про `legalCameraPoint` («НЕТ одной функции») неверна, функция есть в `camera.ts:130`, поправить на ссылку на §3).
 
 Контракт:
-- `MOVES: Record<string, MoveDef>` — атомы (см. «Три группы»), `MoveDef = {id, family, aliases, defaults, faceMove: boolean}`.
+- `MOVES: Record<string, MoveDef>` — атомы (см. «Три группы»), `MoveDef = {id, family, aliases, defaults, moving: boolean, faceMove: boolean}`; `moving: true` — у атома обязан быть `end` с движением ≥ 0,05 м или Δfov ≥ 2°, `moving: false` — `end = null`.
 - `resolveMove(id, subject, ctx) -> {from: ShotPoint, end: ShotPoint | null, ease: Ease, shake: number, warnings: string[]}`.
-  - `subject`: `{actor: string}`, `{pair: [string, string]}` или `{prop: string}` (`prop` — только для `detail`, берётся из `ctx.props`).
-  - `ctx`: `{actors: DActor[], room: DRoom, side?: {origin, normal, sign}, fov, aspect, clear?: (cam, look) => boolean, props?: Array<{id, box}>, durationS, rng}`. `DActor` — из `director.ts` (поля `head`, `faceYaw`, `lying` есть).
-  - `ShotPoint` — тип из `shotplan.ts` без изменений: `{pos, look, fov?}`. `look` для актёра всегда `{actor, bone: "head", o: [0,0,0]}` (для лежащего и сидящего тоже: голова — кость, не `pos + height*0.9`); для пары — середина двух голов как точка `V3`; для `detail` — центр `box` как `V3`. `fov` — вертикальный, градусы, всегда проставлен.
+  - `subject`: `{actor: string}` или `{pair: [string, string]}`. Предмет как субъект в первой версии не поддержан (`detail` целится в кость `head`/`hips`).
+  - `ctx`: `{actors: DActor[], room: DRoom, side?: {origin, normal, sign}, fov, aspect, clear?: (cam, look) => boolean, durationS, rng}`. `DActor` — из `director.ts` (поля `head`, `faceYaw`, `lying` есть).
+  - `ShotPoint` — тип из `shotplan.ts` без изменений: `{pos, look, fov?}`. `look` для актёра всегда `{actor, bone: "head", o: [0,0,0]}` (для лежащего и сидящего тоже: голова — кость, не `pos + height*0.9`); для пары — середина двух голов как точка `V3` (по `DActor.head` на момент разбора). `ShotLook` при исполнении разрешает кость каждый кадр; в `clear` идёт мировая позиция из `DActor.head`. `fov` — вертикальный, градусы, всегда проставлен.
   - `shake` — амплитуда в метрах, как у `shakeOf`. `ease` — одно из `lin|io|in|out`.
   - JSON-пример результата `push_in` на Маму: `{"from":{"pos":[-2.1,1.0,1.2],"look":{"actor":"Mama","bone":"head","o":[0,0,0]},"fov":42},"end":{"pos":[-1.9,1.0,1.7],"look":{"actor":"Mama","bone":"head","o":[0,0,0]},"fov":38},"ease":"io","shake":0.003,"warnings":[]}`.
 - **Законность пути.** Рантайм зажимает позицию в `applyShot` только если `cut` не стоит (`index.ts:688`), поэтому `resolveMove` никогда не отдаёт `cut: true`, а путь проверяет сам:
-  - проба каждые ≤ 0.1 м вдоль отрезка `from.pos → end.pos` (не менее 8 проб), в каждой точке `pos ± shake` по ±X, ±Z (максимальное отклонение) проходит `insideInset` и `legalCameraPoint` отдаёт ту же точку с допуском 1 см;
+  - проба каждые ≤ 0.1 м вдоль отрезка `from.pos → end.pos` (не менее 8 проб; `easeOf` монотонна и остаётся в [0,1], значит фактический путь лежит на том же отрезке), в каждой точке смещения shake по всем трём осям (`shakeOf`, `shotplan.ts:120`: X и Z до `shake`, Y до `0.5·shake`) в крайних сочетаниях знаков проходят `insideInset` `legalCameraPoint` отдаёт ту же точку с допуском 1 см, а высота лежит в `[floorY + 0.3, ceiling − 0.3]`;
   - стороны 180° (`ctx.side`) держатся на всех пробах, не только на концах;
-  - если задан `ctx.clear`, на `from` и `end` `clear(pos, look)` истинно. Не истинно → точка двигается по дуге вокруг головы на 15° до трёх раз; не помогло — статичная точка `MOVE_OCCLUDED`;
+  - если задан `ctx.clear`, он проверяется на `from`, `end` и 4 промежуточных пробах (u = 0,2/0,4/0,6/0,8). Не истинно → точка двигается по дуге вокруг головы на 15° до трёх раз; не помогло — статичная точка `MOVE_OCCLUDED`;
   - не прошла проба → движение вдвое короче, до 3 раз (`MOVE_SHRUNK`); не помогло → статичный план той же крупности (`MOVE_STATIC`); и статичная точка не законна → `legalCameraPoint` зажимает её, `MOVE_CLAMPED`.
-- **Лицо.** Атомы с `faceMove` (крупный, средне-крупный, `push_in`, `slow_push`, `ots`, `close_reaction`) держат угол между направлением лица и камерой ≤ 60° на `from`, `end` и на каждой пробе. Направление лица — `faceYaw` актёра (если нет — `yaw`). Лежащий (`lying`): угол не считается (его `yaw` — не лицо, `director.ts:21`); вместо этого камера не ближе 0,5 м к голове и не выше 1,6 м, `clear` обязательно. Нельзя законно выдержать 60° → `MOVE_STATIC` на ближайшей законной точке с углом ≤ 100°, иначе приём заменяется на `wide` с предупреждением `MOVE_FACE_FALLBACK`.
+- **Резолвер не выдаёт `cut: true`**: рантайм не зажимает такие планы (`index.ts:688`), а мост всегда пишет `cut: false`.
+- **Лицо.** Атомы с `faceMove` (крупный, средне-крупный, `push_in`, `slow_push`, `ots`, `close_reaction`) держат угол между направлением лица и камерой ≤ 60° на `from`, `end` и на каждой пробе. Направление лица — `faceYaw` актёра (если нет — `yaw`). Лежащий (`lying`): угол не считается (его `yaw` — не лицо, `director.ts:21`); вместо этого камера не ближе 0,5 м к голове и не выше 1,6 м, `clear` обязательно. Нельзя законно выдержать 60° → `MOVE_STATIC` на ближайшей законной точке с углом ≤ 100°, иначе приём заменяется на `wide` с предупреждением `MOVE_FACE_FALLBACK`. Остальные атомы с актёром в кадре (`wide`, `medium`, `master`, `truck`, `arc` …) держат ≤ 100° для не лежащих (как сегодняшний wide, `stage-director-faces.test.ts:34`); исключение — `follow_behind` и `lead`: они для `walk`-битов без реплики, `pickMove` на реплике их не берёт. Гарантия лица на **лежащих не распространяется**: у них только расстояние, высота и `clear`.
 - **Детерминизм.** Вся случайность через `ctx.rng`; на одном сиде и входе результат побайтно равен.
 
 Проверки:
 - [ ] красные тесты:
+  - `moving`-атомы дают `end` с движением ≥ 0,05 м или Δfov ≥ 2°, остальные — `end = null`;
   - каждый атом из `MOVES` (кроме записей) на комнате Кошакана (`[[-3.6,0],[0,0],[0,3.6],[-3.6,3.6]]`, Мама `pos [-1.65,2.28]`, `faceYaw 12`, голова `[-1.6,1.05,2.3]`, Мирай лежит `[-1.21,2.63]` — фикстура из `stage-director-faces.test.ts`) и в 20×20 даёт `from` и `end`, у которых вся проба по правилу «Законность пути» зелёная, а `warnings` не содержит ничего, кроме `MOVE_SHRUNK`/`MOVE_STATIC`/`MOVE_CLAMPED`;
   - `push_in`: расстояние до головы на `end` меньше, чем на `from`; `pull_out`: больше;
   - `dolly_zoom`: `d·tan(fov/2)` на `from` и `end` различается ≤ 5 %;
@@ -211,7 +222,7 @@
 
 ## К2. engine: стили и режиссёр на приёмах
 
-Зоны: `engine/src/runtime/stage/styles.ts` (новый), `engine/src/runtime/stage/director.ts` (выбор плана на бит и выход), `engine/src/runtime/stage/index.ts` (только место, где выход режиссёра ставит камеру: функция `applyDirector` рядом с `applyShot`, строки ~272–275 и ~888), тесты `engine/test/stage-styles.test.ts` (новый) и существующие тесты режиссёра.
+Зоны: `engine/src/runtime/stage/styles.ts` (новый), `engine/src/runtime/stage/director.ts` (выбор плана на бит и выход), `engine/src/runtime/stage/index.ts` (только хвост `update()`: цикл `director.step` и сглаживание камеры, строки ~869–895; новая локальная функция `applyDirectorMove`, `applyShot` не меняется), тесты `engine/test/stage-styles.test.ts` (новый) и существующие тесты режиссёра.
 
 Контракт:
 - `STYLES: Record<string, Style>` — 8 стилей; тип и числа в разделе «Стили».
@@ -219,27 +230,32 @@
   - `createDirector(rng, {snap, style?: string})`; неизвестный стиль → `storybook` с предупреждением в `DirectorOut.warnings`;
   - `DEvent.tags?: {first?: boolean, enter?: boolean, look?: boolean, last?: boolean}`: `first` — первое событие сцены, `enter` — в бите есть `enter`/`goto` актёра, `look` — в `stage` бита есть `look` на другого актёра, `last` — следующего бита нет (`END` или `book_end`). Источник: `index.ts` знает биты (из `shotplan`-хуков Г8: `B<i>`, `beat` в событиях), собирает теги и кладёт их в событие; нет тегов — поведение как сегодня (по `shot` и `kind`).
 - **Выбор.** Нет плана съёмки (поле `shotplan` пусто, или бит не покрыт) → режиссёр берёт приём по `weights` стиля с учётом `tags` (`first` → `master`; `enter` → `follow_side`/`crane_down`; `look` → `over_the_shoulder`; `last` → `final_pull_out`) и вызывает `resolveMove` с `ctx` из того, что режиссёр уже знает (`clear` из входа, `side` из 180°, `durationS` из события).
-- **Выход.** `DirectorOut` получает необязательные поля: `end?: V3`, `lookEnd?: V3`, `fov?: number`, `fovEnd?: number`, `ease?: Ease`, `shake?: number`, `move?: string`, `warnings?: string[]`. Всё, кроме `plan/cam/look/cut`, необязательно, чтобы существующие тесты не менялись; `cam` — позиция `from`, `end` — позиция конца, `look`/`lookEnd` — уже вычисленные точки (не ссылки на кость).
-- **Исполнение.** В `index.ts` `applyDirector` строит `ActiveShot` (из `shotplan.ts`) вида `{shot: {name: out.plan, from: {pos: cam, look, fov}, end: {pos: end, look: lookEnd, fov: fovEnd}, cut: false, shake, ease}, at: tCut, to: tCut + durationS}` и зовёт ту же `shotFrame`, без копии интерполяции; `tCut` — момент, когда `cut` вырос. Новый `cut` (реплика, смена бита, прогулка) начинает новое движение с `u = 0`; бит без `durationS` → `to = null`, `u = 1` (стоит в `end`). Сглаживание `smoothCam` для движения внутри плана отключено (движение уже гладкое), остаётся при `cut`. Переход в другую комнату — новый `cut`. Планы shotplan (Г8) приоритетнее режиссёра, как сейчас.
+- **Выход.** `DirectorOut` получает необязательные поля: `lookRef?: ShotLook`, `lookEndRef?: ShotLook`, `end?: V3`, `lookEnd?: V3`, `fov?: number`, `fovEnd?: number`, `ease?: Ease`, `shake?: number`, `move?: string`, `warnings?: string[]`. Всё, кроме `plan/cam/look/cut`, необязательно, чтобы существующие тесты не менялись; `cam` — позиция `from`, `end` — позиция конца, `look`/`lookEnd` — уже вычисленные точки (не ссылки на кость).
+- **Исполнение.** `director.step` вызывается только по событиям очереди, а камера двигается каждый кадр в `update()`. Поэтому `index.ts` хранит `dirMove = {out, t0, durationS}` и при росте `out.cut` (новая реплика, смена бита, прогулка, переход в другую комнату) ставит `t0 = now`. Каждый кадр, пока `onShot` ложно и у `dirMove.out` есть `end`, `applyDirectorMove(now)` собирает `ActiveShot` `{shot: {name: out.plan, from: {pos: cam, look: lookRef ?? look, fov}, end: {pos: end, look: lookEndRef ?? lookEnd, fov: fovEnd}, cut: false, shake, ease}, at: t0, to: t0 + durationS}` и зовёт ту же `shotFrame`, без копии интерполяции; результат проходит `legalCameraPoint` как в `applyShot`, `fov` ставится и восстанавливается через `directorFov` (как в `applyShot`, `index.ts:690–700`). Нет `end` → прежний путь (`smoothCam`). Бит без `durationS` → `to = null` (стоит в `end`). `DirectorOut` несёт и ссылку `lookRef?: ShotLook` (кость головы, чтобы взгляд следил за движущейся головой), и вычисленную точку `look`; ссылка важнее, если задана. Планы shotplan (Г8) приоритетнее режиссёра, как сейчас (`prevCut = null` при уходе).
 - Общий план не прибит: движение задаёт стиль (у `ozu` `move = 0`, у `storybook` дрейф 0,1 м).
 - Правила, которые остаются: короткая прогулка не даёт склейки (`stage-director-shortwalk.test.ts`), общий план ищет лица (`stage-director-faces.test.ts`), камера не пересекает стены (`stage-director-debt.test.ts`). Старые тесты меняют только настройку, если она противоречит новому выходу; проверки не трогаются.
 
 Проверки:
-- [ ] красные тесты (фикстура: `engine/test/fixtures/bedroom-30.json` — 30 битов, сгенерирован в тесте из комнаты Кошакана и актёров `stage-director-faces.test.ts`, чередование реплик Мамы и Мирай, 3 с на бит, `rng = mulberry32(7)`):
+- [ ] красные тесты (фикстура строится в самом `stage-styles.test.ts`, файла нет: комната и актёры из `stage-director-faces.test.ts`, 30 битов, чередование реплик Мамы и Мирай, длительность бита `4 + 2·rng()` с, `rng = mulberry32(7)`, сиды 7, 8, 9 — выводы должны держаться на всех трёх):
   - `storybook`: доля выходов с `end` ≥ 0,6; средняя длительность плана между `cut` в окне 4–6 с (считается по `cut` и `dt` события);
   - `ozu`: `end` отсутствует у всех выходов, `cam[1] ≤ 0,9`, `shake` равен 0 или не задан;
   - `anderson`: у планов, помеченных `frontal`, угол между `faceYaw` и камерой ≤ 10°;
   - `storybook` и `spielberg` на этой же фикстуре и сиде: доля `end` различается ≥ 0,1, множество `move` различается, а у `ozu` и `anderson` средний `cam[1]` различается ≥ 0,3 м;
-  - в `index.ts` (через тест `stage-index`-стиля с фейковым рендерером, как в `stage-shotplan.test.ts`) на середине бита `cam` = `shotFrame(...).pos` при `ease(0,5)`;
+  - в `index.ts` (в новом `engine/test/stage-director-move.test.ts` на фейковой сцене, как в `stage-shotplan.test.ts`, при `shake = 0`) на `t0 + durationS/2` позиция камеры = `from + (end − from)·easeOf(ease)(0,5)` с допуском 1 см; голова движется — `look` следует за ней; `fov` восстановлен после плана;
   - ни один стиль на фикстуре не даёт угол лица > 100° на общем и > 60° на крупном (кроме `lying`);
   - пробы пути каждого выхода с `end` (как в К1) внутри комнаты;
+  - `pickMove` на сидах 7–9: `ozu` не выдаёт `moving`; при тегах `last` и `ozu` — статичный отъезд-аналог, а не отказ; нулевые веса не выбираются; `hold` не создаёт нового плана;
+  - `pickMove` на сидах 7–9: `ozu` не выдаёт `moving`; тег `last` в `ozu` даёт статичный аналог, а не отказ; нулевые веса не выбираются; `hold` не создаёт нового плана;
   - все существующие тесты режиссёра зелёные.
 
 ## К3. make: Spark выбирает приёмы
 
 Зоны: `h0/make/shotplan.py` (новый), `h0/make/core.py` (стадия `shotplan` после `stage`), `h0/make/story.py` (`run_stage` пишет поле `shotplan` в `stage.json`, ссылка на опубликованный `plan.json` или `null`), `engine/bin/moves.mjs` (новый мост), тест `h0/make/test_shotplan.py` (новый), тест моста `engine/test/stage-moves-bridge.test.ts` (новый).
 
-**Из Г9 переносятся без изменений** правила `specs/2026-11-02-film-eyes.md` раздел «Г9» (строки ~63–110): путь `shotplan/plan.json`, `plan.edited.json` (хеш входа как у `score.edited.json`), поле `world` и `SHOTPLAN_STALE`, кэш по sha256, `validate_plan`, `SHOTPLAN_GAP`, `SHOT_OUTSIDE`, `SHOT_IN_PROP`, бюджет (`DEFAULT_SPLIT` с `shotplan: 2` и `story: 8`, сумма 100), `Ledger(inf, 2)` и ≤ 2 вызова `Spark.ask`, `effort "high"`, `stage` версия 2→3, DAG: `shotplan` зависит от `stage` и `story`, владелец `stage.json` — `story.run_stage`. Чего Г9 просит про сырые координаты Spark — не делается.
+**Из Г9 переносятся без изменений** правила `specs/2026-11-02-film-eyes.md` раздел «Г9» (строки ~63–110): путь `shotplan/plan.json`, `plan.edited.json` (хеш входа как у `score.edited.json`), поле `world` и `SHOTPLAN_STALE`, кэш по sha256, `validate_plan`, `SHOTPLAN_GAP`, `SHOT_OUTSIDE`, `SHOT_IN_PROP`, бюджет (`DEFAULT_SPLIT` с `shotplan: 2` и `story: 8`, сумма 100), `Ledger(inf, 2)` и ≤ 2 вызова `Spark.ask`, `effort "high"`, `stage` версия 2→3, DAG и владелец файлов (конкретно, `core.py:15`, `:194–203`):
+  - сегодня `DEFAULT_SPLIT = {brief 2, refs 3, world 70, cast 15, story 10}` → станет `{brief 2, refs 3, world 70, cast 15, story 8, shotplan 2}`; `default_stages()` получает `S("shotplan", ("stage",), 1, _run_shotplan, ("fake", "camera_style"))`; `stage` остаётся `("world","cast","story")` версии 3;
+  - `story.run_stage` пишет `stage.json` и в нём поле `shotplan` — относительный путь `../shotplan/plan.json` **всегда** (как в Г9): ссылка не зависит от того, будет ли файл; нет файла — рантайм без плана. Стадия `shotplan` пишет только свою папку (`plan.json`, `plan.edited.json`);
+  - `camera_style` добавляется в `OPTIONAL_PARAMS` и в хеш стадии `shotplan`. Чего Г9 просит про сырые координаты Spark — не делается.
 
 Отличия:
 - **Что видит Spark:** биты партитуры (текст, `stage`, кто говорит), номера битов со сменой мизансцены, список ID атомов и схем с одной строкой смысла, стиль (`camera_style`) с его весами, факты поз (кто лежит, кто сидит, куда смотрит лицо по `cast/clipfacts.json`).
@@ -247,7 +263,7 @@
 - **Мост Python → TS.** `engine/bin/moves.mjs`: `node engine/bin/moves.mjs <in.json> <out.json>`; вход `{style, room, actors_by_beat, beats: [{beat, move, subject, at, to}], fov, aspect, seed}` (позиции и головы актёров по битам — из `stage.json`/`clipfacts.json`, в формате `DActor`); один вызов на сцену; выход `{shots: [...формат Г8...], warnings: [...]}`. Ошибка узла (код ≠ 0, битый JSON) → стадия `ok` без плана, `SHOTPLAN_BRIDGE <текст>`. Без сети. Python геометрию не считает.
 - **Код:** проверяет имена против `MOVES` и схем (неизвестный → выбор стиля, `MOVE_UNKNOWN`), раскладывает схемы (`planScheme`), зовёт мост, собирает `plan.json` Г8 (`version: 1`, `scene`, `world`, `shots`, `notes` с записями без исполнения), прогоняет `validate_plan`. Непокрытый бит получает выбор стиля (заполнен, не `SHOTPLAN_GAP`).
 - **`camera_style`.** Поле `make.json` (читается в `core.py` рядом с остальными опциями, входит в хеш стадии `shotplan`; по умолчанию `storybook`). Задано в `make.json` — побеждает выбор Spark; не задано — стиль Spark, неизвестный → `storybook` (`STYLE_UNKNOWN`).
-- **`--fake`.** Spark не вызывается; выбор приёма на каждый бит делает ТОТ ЖЕ выбор стиля, что `director.ts` (`pickMove(style, tags, rng)` из `styles.ts`, экспорт через мост), `rng` с сидом `sha256(scene)[:4]`. Так `--fake` детерминирован.
+- **`--fake`** (в `core.py` это флаг `fake` в параметрах стадии; без него и без `--live` работает `_fast_stub`, и `shotplan` его не расширяет — стадия пропускается). Spark не вызывается; выбор приёма на каждый бит делает ТОТ ЖЕ выбор стиля, что `director.ts` (`pickMove(style, tags, rng)` из `styles.ts`, экспорт через мост), `rng` с сидом `sha256(scene)[:4]`; теги бита (`first`/`enter`/`look`/`last`) и мизансцену берёт из `stage.json` и `score.json`, субъект — говорящий (`pair` при `look`), нет данных (нет актёров в бите) — `wide` на комнату. Так `--fake` детерминирован.
 
 Проверки:
 - [ ] красные тесты (фейковый Spark):
