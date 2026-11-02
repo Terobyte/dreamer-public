@@ -1192,6 +1192,7 @@ class Sim:
             self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
                             "text": beat["text"], "source": "book", "para": beat.get("para"),
                             "stage": beat.get("stage"), "gesture": beat.get("gesture"),
+                            "remarks": beat.get("remarks"),
                             "shot": beat.get("shot")})
             return
         text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]

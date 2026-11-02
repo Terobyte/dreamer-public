@@ -411,11 +411,28 @@ export function pickClip(text: string, who: string | null, cast: Record<string, 
   return null;
 }
 
+export type GesturePick = ClipPick & { procedural?: true };
+
+/** voice remarks + line text -> verb; first row wins, shared by every character */
+const GESTURE_TABLE: Array<[string, RegExp]> = [
+  ["wave", /(?<![\p{L}])(hello|hullo|hi|hey|greetings|good (morning|day|evening)|привет|здравствуй)(?![\p{L}])/iu],
+  ["shrug", /(?<![\p{L}])(sigh|tired|weary)/iu],
+  ["jump", /(?<![\p{L}])(excited|giddy|cheer)/iu],
+  ["droop", /(?<![\p{L}])(sad|hurt|quiet)/iu],
+  ["armscross", /(?<![\p{L}])(stern|firm|offended)/iu],
+  ["react", /(?<![\p{L}])(startled|gasp)/iu],
+];
+const strHash = (s: string): number => {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+};
+
 export function clipForBeat(
-  beat: { who?: string | null; text?: unknown; gesture?: unknown },
+  beat: { who?: string | null; text?: unknown; gesture?: unknown; remarks?: unknown; pose?: unknown; seed?: unknown },
   cast: Record<string, CastClips>,
   aliases: Record<string, string> = {},
-): ClipPick | null {
+): GesturePick | null {
   const who = typeof beat.who === "string" && beat.who in cast ? beat.who : null;
   const text = typeof beat.text === "string" ? beat.text : "";
   if (who && typeof beat.gesture === "string" && beat.gesture.trim()) {
@@ -425,5 +442,16 @@ export function clipForBeat(
     const hit = pickClip(beat.gesture, who, cast, aliases);
     if (hit) return hit;
   }
-  return pickClip(text, who, cast, aliases);
+  const hit = pickClip(text, who, cast, aliases);
+  if (hit) return hit;
+  if (!who || !Object.keys(cast[who].clips ?? {}).length) return null;  // no bank at all: stays on the life nods
+  const rm = typeof beat.remarks === "string" ? beat.remarks : Array.isArray(beat.remarks) ? beat.remarks.filter((r) => typeof r === "string").join("\n") : "";
+  const signal = `${rm}\n${text}`;
+  const verb = GESTURE_TABLE.find(([, re]) => re.test(signal))?.[0];
+  if (!verb) return null;
+  const lying = typeof beat.pose === "string" && beat.pose !== "" && beat.pose !== "stand" && beat.pose !== "stand_at";
+  const variants = Object.keys(cast[who].clips ?? {}).filter((k) => k === verb || new RegExp(`^${verb}[_\\d]`).test(k)).sort();
+  if (lying || !variants.length) return { who, clip: verb, procedural: true };
+  const seed = typeof beat.seed === "string" ? beat.seed : "";
+  return { who, clip: variants[strHash(`${seed}|${verb}|${text}`) % variants.length] };
 }

@@ -209,8 +209,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
-      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture }, cast);
-      if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
+      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks }, cast);
+      if (pick && !pick.procedural) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
       if (who && t) touch(who, t);
     },
