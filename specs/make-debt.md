@@ -48,3 +48,6 @@
 ## Миры, ночь 2
 
 Заполняет хозяин по итогам `tero go`: строка на фазу (Н1…Н17), статус `SHIP` / `FUSED_WITH_DEBT` / `BLOCKED`, несделанные пункты дословно, недостающие входы.
+
+- **Н16** (прогон C) — `FUSED_WITH_DEBT`: 6 раундов без SHIP, ship хозяина. Открыто (судья r6, minor): `h0/llm_http.py:132` — `post()` пропускает truthy не-строковый `content` (dict); нужно `TransportError` или `str` + red→green тест. Блокеры r5 закрыты: редирект https→http с Authorization, ключ Fish из `career/.env`, кэш `h13_sky.KEY`.
+- **Н14** (прогон C) — `SHIP`.
