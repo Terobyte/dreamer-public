@@ -35,6 +35,8 @@ export interface Stage {
     actors(): Array<{ who: string; pos: V2; yaw: number; act: string }>;
     camera(): { pos: [number, number, number]; room: string | null; height: number | null };
     subs(): string[];
+    /** the world point `who` looks at right now, or null */
+    gaze(who: string): [number, number, number] | null;
   };
 }
 
@@ -287,6 +289,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const GAZE_SILENCE = 4;
   let nowT = 0;
   let gazeBeat: { speaker: string | null; at: string | null; place: Place | null; until: number } | null = null;
+  /** pending `look` of the last stage beat, per speaker; a line consumes only its own speaker's entry */
+  const stageLook = new Map<string, string>();
   const placeIn = (text: string): Place | null => places.find((p) => p.name && text.toLowerCase().includes(p.name.toLowerCase())) ?? null;
   const placePoint = (p: Place): [number, number, number] => {
     const layer = layerOf(p.level ?? null) as unknown as { layer?: { y?: number }; y?: number } | number | null | undefined;
@@ -329,6 +333,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         warnings.push(`stage: actor "${String(e.who)}" unknown`);
         return;
       }
+      if (typeof e.look === "string") stageLook.set(who, e.look);
+      else stageLook.delete(who);
       const a = actors.get(who)!;
       const action = typeof e.action === "string" ? e.action : "stay";
       const placeName = typeof e.place === "string" ? e.place : undefined;
@@ -412,7 +418,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       lastBeatHadStage = false;
       const who = whoOf(e);
       if (who) lastSpeaker = who;
-      const lookName = typeof e.look === "string" ? e.look : null;
+      const inherited = who ? (stageLook.get(who) ?? null) : null;
+      if (who) stageLook.delete(who);
+      const lookName = typeof e.look === "string" ? e.look : inherited;
       gazeBeat = { speaker: who ?? null, at: lookName, place: lookName ? (places.find((p) => p.name === lookName) ?? null) : null, until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
       pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
@@ -596,6 +604,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       actors: () => [...actors.values()].map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), act: a.act(), offstage: offstageActors.has(a.who) })),
       camera: () => ({ pos: [c.camera.position.x, c.camera.position.y, c.camera.position.z], room: camRoom, height: camHeight }),
       subs: () => subs.log(),
+      gaze: (who) => {
+        const a = actors.get(who);
+        return a ? gazeOf(a, [...actors.values()]) : null;
+      },
     },
   };
 }
