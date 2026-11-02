@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
-OPTIONAL_PARAMS = {"book", "scene", "freestyle", "mesh"}  # в хэше только если заданы
+OPTIONAL_PARAMS = {"book", "scene", "freestyle", "mesh", "lang"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -198,8 +198,8 @@ def default_stages():
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
-        S("story", ("refs",), 2, _run_story, ("fake", "cap")),
-        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle")),
+        S("story", ("refs",), 2, _run_story, ("fake", "cap", "lang")),
+        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle", "lang")),
         S("check", ("world", "refs"), 1, _fast_stub, optional=True),
     )}
 
@@ -394,7 +394,7 @@ def _publish(run_dir, sid, tmp):
 
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
              fresh=False, fake=False, check=False, max_dollars=None, split=None,
-             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False, mesh=None):
+             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False, mesh=None, lang="en"):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
     run_dir = Path(run_dir)
@@ -410,7 +410,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
             raise ValueError(f"invalid max_dollars: {max_dollars!r}")
     opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort,
             "book": str(book) if book else None, "scene": scene,
-            "freestyle": True if freestyle else None, "live": bool(live), "mesh": mesh}
+            "freestyle": True if freestyle else None, "live": bool(live), "mesh": mesh,
+            "lang": lang if lang and lang != "en" else None}  # en = как раньше: ключа нет в хеше
 
     enabled = {k for k, s in stages.items() if not s.optional or check}
     forced = set()

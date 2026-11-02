@@ -14,6 +14,10 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+import keys
+import llm_http
+from llm_http import TransportError
+
 URL = "https://api.meta.ai/v1/chat/completions"
 MODEL = "muse-spark-1.3-contributor"
 MAX_TOKENS = 64000
@@ -23,15 +27,6 @@ CHARS_PER_TOKEN = 3
 TOKENS_PER_IMAGE = 1500
 RETRY_BASE_S = 20
 RETRY_JITTER_S = 5
-
-
-class TransportError(Exception):
-    """A failed HTTP exchange. `retryable` is decided by the transport, not by Spark."""
-
-    def __init__(self, message="", status=None, retryable=False):
-        super().__init__(message)
-        self.status = status
-        self.retryable = retryable
 
 
 class Transport(Protocol):
@@ -45,33 +40,12 @@ class HttpTransport:
     post, never stores or logs it."""
 
     def post(self, body, timeout):
-        import os
-
-        req = urllib.request.Request(
-            URL, json.dumps(body).encode(),
-            {"Authorization": "Bearer " + os.environ["META_MODEL_API_KEY"], "Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read()
-        except urllib.error.HTTPError as exc:
-            status = exc.code
-            raise TransportError(f"http {status}", status,
-                                 status == 429 or 500 <= status <= 599) from None
-        except (socket.timeout, TimeoutError, ConnectionError) as exc:  # socket timeout / connection break
-            raise TransportError(type(exc).__name__, None, True) from None
-        except urllib.error.URLError as exc:  # e.g. "unknown url type" - not transient
-            retryable = isinstance(exc.reason, (socket.timeout, TimeoutError, ConnectionError))
-            raise TransportError(type(exc).__name__, None, retryable) from None
-        except http.client.IncompleteRead as exc:  # connection broke mid-body - a connection break
-            raise TransportError(type(exc).__name__, None, True) from None
-        except http.client.HTTPException as exc:  # other protocol-level error, not transient
-            raise TransportError(type(exc).__name__, None, False) from None
-        except Exception as exc:
-            raise TransportError(type(exc).__name__, None, False) from None
-        try:
-            return json.loads(raw.decode("utf-8"))
-        except (ValueError, UnicodeDecodeError) as exc:
-            raise TransportError(f"bad json: {exc}", None, False) from None
+            auth = "Bearer " + keys.get("META")
+        except keys.MissingKey as exc:
+            raise TransportError(str(exc), None, False) from None
+        # one attempt: Spark owns the retry loop and the token reserve
+        return llm_http.post(URL, auth, body, timeout, 0)["raw"]
 
 
 @dataclass

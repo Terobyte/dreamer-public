@@ -24,14 +24,10 @@ TIMEOUT = 180
 
 
 def _image_key():
-    # lazy: importing h13_sky reads META_MODEL_API_KEY at module import (plan)
-    key = os.environ.get("META_MODEL_API_KEY", "").strip()
-    if key:
-        return key
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-    import h13_sky
-    return h13_sky.KEY
+    import keys
+    return keys.get("IMAGE")
 
 
 def real_transport(prompt, out_path, size="1024x1024"):
