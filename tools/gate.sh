@@ -1,5 +1,5 @@
 #!/bin/sh
-# tero gate for meta: h0/dream, h0/make, h0/pipe2 + h0 root + servers, engine vitest. Files in tools/gate_skip.txt are left out.
+# tero gate for meta: h0/dream, h0/make, h0/pipe2 + h0 root + tools + servers, engine vitest. Files in tools/gate_skip.txt are left out.
 # The python suites run side by side, engine vitest after them; dream and make run their test classes in parallel (tools/ptest.py).
 cd "$(dirname "$0")/.." || exit 2
 skip=$(grep -v '^#' tools/gate_skip.txt | grep -v '^$')
@@ -23,6 +23,9 @@ fi
  # shared modules at the h0 root (llm_http, keys) have their tests next to them
  root=$(cd h0 && for f in test_*.py; do [ -f "$f" ] && { echo "$skip" | grep -qx "h0/$f" || echo "$f"; }; done)
  [ -z "$root" ] || (cd h0 && python3 -m pytest -q -p no:cacheprovider $root) || rc=1
+ # the gate's own tools (ptest timeout)
+ tl=$(for f in tools/test_*.py; do [ -f "$f" ] && { echo "$skip" | grep -qx "$f" || echo "$f"; }; done)
+ [ -z "$tl" ] || python3 -m pytest -q -p no:cacheprovider $tl || rc=1
  for f in h0/live/test_*.py h0/squid_live/test_*.py; do
    echo "$skip" | grep -qx "$f" && continue
    (cd "$(dirname "$f")" && python3 -m pytest -q -p no:cacheprovider "$(basename "$f")") || rc=1

@@ -1,4 +1,4 @@
-# Карта фич Dreamer (код на 2026-11-01, HEAD 9b118fd)
+# Карта фич Dreamer (код на 2026-11-01, HEAD 3a79e97, после Н1–Н6, Н14, Н16)
 
 Читай ДО того, как писать код. Порядок для любого агента: §3 «нужно X — используй Y» → §4 дубли (не добавляй пятый клиент Spark, третий поиск пути) → §5 чего нет → только потом новый код. Добавил модуль или публичную функцию — допиши строку в §2 и §3 в том же коммите. Ссылки `файл:строка` проверены скриптом 11-01 (42/42 файла, 35/35 символов на месте); строки сдвигаются, ищи по имени функции. Идентификаторы оставлены как в коде. `?` = не проверено чтением кода. Не читались: `~/.dreamer-bench`, cache/, dist/, node_modules, h0/out, .env.
 
@@ -144,7 +144,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 
 ### 2.6 h0/make (python -m make)
 
-CLI: `cd h0 && python3 -m make "<промпт>" [--book DIR --scene ID] [--run DIR] [--only X|--from X] [--until X] [--fresh] [--fake] [--check] [--max-dollars N] [--split brief:2,...] [--effort] [--mesh sam3d] [--pick first|vision] [--freestyle]`. Прогоны в `meta/runs/<ts>/`. Отдельно: `python3 -m make.play runs/<id> [--freestyle] [--fake] [--port N]`, `python3 -m make.film runs/<a> [runs/<b>] --out film.mp4 [--max 600] [--size WxH]`.
+CLI: `cd h0 && python3 -m make "<промпт>" [--book DIR --scene ID] [--run DIR] [--only X|--from X] [--until X] [--fresh] [--fake] [--check] [--max-dollars N] [--split brief:2,...] [--effort] [--mesh sam3d] [--pick first|vision] [--freestyle] [--lang en|ru]`. Прогоны в `meta/runs/<ts>/`. Отдельно: `python3 -m make.play runs/<id> [--freestyle] [--fake] [--port N]`, `python3 -m make.film runs/<a> [runs/<b>] --out film.mp4 [--max 600] [--size WxH]`.
 
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
@@ -244,7 +244,10 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | файл | что |
 |---|---|
 | `tools/gate.sh` | гейт tero (см. раздел 6) |
-| `tools/ptest.py` | `python3 tools/ptest.py [-j N] [--cwd DIR] module...` — unittest-классы параллельно, один процесс на класс |
+| `tools/ptest.py` | `python3 tools/ptest.py [-j N] [--cwd DIR] [--timeout SEC] module...` — unittest-классы параллельно, один процесс на класс; класс дольше `--timeout` (env `PTEST_TIMEOUT`, 300 с) убивается со всей группой процессов, строка `TIMEOUT` |
+| `engine/test/tmp-setup.ts` | vitest globalSetup: свой TMPDIR на прогон, удаляется в конце, папки мёртвых прогонов подметаются |
+| `h0/llm_http.py`, `h0/keys.py` | единый HTTP-клиент провайдеров и загрузчик ключей (Н16); тест `h0/test_llm_http.py` |
+| `engine/test/scenes/koshakan/` | сцена спальни для приёмки Н6 (`koshakan-accept.test.ts`) |
 | `tools/gate_skip.txt` | список пропускаемых файлов (сейчас пуст, только комментарий) |
 | `app/` | IWSDK/WebXR приложение (старое): `src/{splats,dissolve,assets,env,panel,robot*}.ts` 336 строк; не связано с `engine/` кроме статики `app/public` для squid_live |
 | `specs/` | `engine-scene.md` (контракт сцены), `2026-10-31-dreamer-make.md` (make), `2026-11-01-engine-anim-camera.md` (А1-А4), `2026-11-01-engine-worlds.md` (ночь 2: Н7-Н15), `tero-*.md` |
@@ -361,8 +364,8 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | дуга/край комнаты | `props/place.ts` (`AuthorEdge`, `edgePoint`...) | `plan/rooms.ts:9 AuthorEdge`; `pipe2/floor.py:69 _edge_center`, `:63 _on_circle` | `AuthorEdge` объявлен в двух TS-файлах; Py-копия |
 | валидатор glTF/GLB | `engine/src/assets/glb.ts:136 readGlb` | `h0/make/cast.py:65 _gltf_doc_ok`, `:136 _glb_ok` | Py проверяет чужие GLB (cast), TS читает SAM3D |
 | «куда смотрит фронт» / yaw | `runtime/stage/places.ts:36 yawTo` (0=+Z, 90=+X) | `make/stage.py:22 _front` | одна конвенция, два кода |
-| клиент Spark | `pipe2/spark.py:42 HttpTransport` (contributor, ретраи, резерв токенов) | `dream/llm.py:303 _post` + `RealTransport`; `squid_live/server.py:67 _post`; `live/rt.py` | четыре HTTP-клиента Meta/Baseten |
-| ключи | `dream/llm.py:225 _baseten_key`, `voice.py:68 fish_key`, `images.py:26 _image_key` | `squid_live/server.py:76 _baseten_key`, `:115 _fish_key`; `live/rt.py` из `gate_test.fish_key` | читают .env каждый по-своему |
+| клиент Spark | `h0/llm_http.py post` — единый (Н16); `pipe2/spark.py:37 HttpTransport` и `dream/llm.py:318 _post` вызывают его (резерв токенов pipe2 и счётчик денег dream остаются у себя) | `squid_live/server.py:67 _post`; `live/rt.py` | два клиента вне общего (референс) |
+| ключи | `h0/keys.py get(...)` — единый (Н16); `dream/llm.py:248 _baseten_key` берёт из него | `squid_live/server.py:76,115`; `live/rt.py` (`gate_test.fish_key`) | остаток после Н16; `voice.fish_key` и `images._image_key` уже оборачивают `keys.get` |
 | Fish TTS | `dream/voice.py:129 real_transport` (drama-3) | `squid_live/server.py:124 speak`; `live/rt.py` (PCM stream); вне repo `career/orchestration/tg.py` (s2-pro, Гаврилов) | разные модели: dream = `drama-3`, tg.py = `s2-pro` |
 | Muse Image | `engine/src/assets/providers/muse-image.ts:40` (`muse-image-1`, api.meta-models.ai) | `pipe2/assets.py:71 MuseImage` (`muse-image-1.0`, api.meta.ai); `dream/images.py:37`; `h0/gen_images.py` | разные endpoint и имена моделей |
 | SAM3D | `engine/src/assets/providers/sam3d.ts:17 Sam3dProvider` (HTTP meta-models) | `pipe2/assets.py:108 ModalMesh` (Modal `dreamer-sam3d`); `h0/world/twelve_oaks/sam3d_par.py` | боевой путь pipe2 = Modal; engine HTTP-провайдер = путь `--assets live` |
@@ -386,7 +389,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | коллизии актёр-актёр | НЕТ. Только `claims` (занятое место, встаёт сбоку `SIDE_M`) и `obstacle` пропов в `path.ts` | L4, Н9 |
 | взгляд/внимание на цель (gaze/attention) | НЕТ целевого взгляда. `life.ts` смотрит головой «по сторонам» случайно; `initialYaws` ставит стартовый поворот лицом к ближайшему; `sight.ts` — про камеру, не про актёров | L5, Н11 |
 | критик фильма | НЕТ. `make.film` только пишет. Есть критик ПО КАРТИНКАМ мира: `pipe2/prompts/critic_layout.md`, `critic_assets.md`, `engine/docs/critic.md` | L15, Н13 |
-| `--lang` | ЧАСТИЧНО. `sim.py --lang en\|ru` и `bank.py --lang` через `dream/lang.py` (подмена английских фраз в правилах). В `make`, `book.json`, голосах Fish языка нет | L21, Н14 |
+| `--lang` | ЧАСТИЧНО. `make --lang ru`: `story.translate_score` (Spark, кэш), голос `<метка>@ru` в `stage._pick_voice`; `sim.py/bank.py --lang` через `dream/lang.py`. Перевода `book.json` нет | L21, Н14 (сделано) |
 | `make.book` | НЕТ. Есть `make --book DIR --scene ID` на ОДНУ сцену и `dream/book.py` | L22, Н15 |
 | instancing / `InstancedMesh` | НЕТ (grep пуст). `around`-копии пропа — отдельные меши `<id>.<k>` | — |
 | определение `front_yaw` у GLB | НЕТ. Только авторский `assets.<id>.front_deg` и `normalizeGlb` | — |
@@ -412,14 +415,14 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 2. make: `python3 tools/ptest.py --cwd h0 make.test_*`;
 3. py: `cd h0 && python3 -m pytest -q -n 6 pipe2` + отдельным процессом каждый `h0/live/test_*.py` и `h0/squid_live/test_*.py` (у обоих `test_bugs_server.py`, поэтому порознь);
 4. engine: `cd engine && npx vitest run` (`engine/vitest.config.ts`; браузерные тесты `test/browser/*` используют Playwright).
-Файлы из `tools/gate_skip.txt` пропускаются (сейчас пуст). Один набор: `cd engine && npx vitest run test/stage-director.test.ts`; `cd h0/dream && python3 -m unittest test_fsm`; `cd h0 && python3 -m unittest make.test_core`; `cd h0 && python3 -m pytest pipe2/test_room.py -q`.
+Ещё гоняются тесты корня h0 (`h0/test_*.py`) и `tools/test_*.py`. Файлы из `tools/gate_skip.txt` пропускаются (сейчас пуст). Один набор: `cd engine && npx vitest run test/stage-director.test.ts`; `cd h0/dream && python3 -m unittest test_fsm`; `cd h0 && python3 -m unittest make.test_core`; `cd h0 && python3 -m pytest pipe2/test_room.py -q`.
 
 Примерное число тестов (подсчёт `it(`/`def test_`, `.each` и параметры не считал):
 | область | файлов | тестов |
 |---|---|---|
-| engine (vitest) | 79 (из них 10 browser) | ~615 (browser ~34) |
+| engine (vitest) | 84 (из них 10 browser) | ~590 `it(` (PROGRESS: 659 с параметрами) |
 | h0/dream | ~65 | ~614 |
-| h0/make | 36 | ~263 |
+| h0/make | 38 | ~273 |
 | h0/pipe2 | 22 | ~240 |
 | h0/live | 2 | 3 |
 | h0/squid_live | 1 | 3 |

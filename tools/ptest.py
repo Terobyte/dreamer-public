@@ -1,14 +1,17 @@
 """Run unittest test classes in parallel processes, one process per class.
 
-  python3 tools/ptest.py [-j N] [--cwd DIR] module...
+  python3 tools/ptest.py [-j N] [--cwd DIR] [--timeout SEC] module...
 
 The tests mostly wait on clocks, not the CPU, so classes run side by side.
 A child process lists the classes first (`--list`); the largest modules start first.
 Output of a failed class is printed whole; passing ones get one line.
-Exit 1 if any class fails.
+A class that runs longer than --timeout (env PTEST_TIMEOUT, default 300 s) is killed with
+its whole process group and reported as TIMEOUT; the other classes still run.
+Exit 1 if any class fails or times out.
 """
 import argparse
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -44,17 +47,40 @@ def list_classes(modules):
             print(name)
 
 
-def run_one(name, cwd):
+DEFAULT_TIMEOUT = 300.0
+TIMEOUT = "timeout"
+
+
+def run_one(name, cwd, timeout):
+    """-> (name, returncode or TIMEOUT, seconds, output). The class runs in its own session,
+    so a timeout kills everything it started (servers, chrome, sleeping grandchildren)."""
     t = time.monotonic()
-    p = subprocess.run([sys.executable, "-m", "unittest", "-q", name], cwd=cwd,
-                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    return name, p.returncode, time.monotonic() - t, p.stdout
+    p = subprocess.Popen([sys.executable, "-m", "unittest", "-q", name], cwd=cwd,
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         start_new_session=True)
+    try:
+        out, _ = p.communicate(timeout=timeout)
+        rc = p.returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            out, _ = p.communicate(timeout=5)
+        except subprocess.TimeoutExpired:  # a grandchild outside the group still holds the pipe
+            out = ""
+        rc = TIMEOUT
+    return name, rc, time.monotonic() - t, out or ""
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ptest")
     ap.add_argument("-j", type=int, default=min(8, os.cpu_count() or 4))
     ap.add_argument("--cwd", default=".")
+    ap.add_argument("--timeout", type=float,
+                    default=float(os.environ.get("PTEST_TIMEOUT") or DEFAULT_TIMEOUT),
+                    help="seconds per class before it is killed (env PTEST_TIMEOUT)")
     ap.add_argument("--list", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("modules", nargs="+")
     a = ap.parse_args(argv)
@@ -71,8 +97,11 @@ def main(argv=None):
     names = p.stdout.split() if p.returncode == 0 else mods
     failed = []
     with ThreadPoolExecutor(a.j) as ex:
-        for name, rc, dt, out in ex.map(lambda n: run_one(n, a.cwd), names):
-            if rc and rc != 5:  # 5: no tests ran (a module whose tests are all skipped by name)
+        for name, rc, dt, out in ex.map(lambda n: run_one(n, a.cwd, a.timeout), names):
+            if rc == TIMEOUT:
+                failed.append(name)
+                print(f"TIMEOUT {name} ({dt:.1f}s, limit {a.timeout:g}s)\n{out}", flush=True)
+            elif rc and rc != 5:  # 5: no tests ran (a module whose tests are all skipped by name)
                 failed.append(name)
                 print(f"FAIL {name} ({dt:.1f}s)\n{out}", flush=True)
             else:
