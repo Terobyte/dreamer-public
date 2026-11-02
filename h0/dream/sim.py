@@ -739,10 +739,12 @@ class Sim:
             # B49: Fish TTS can take 4x15 s; it runs off the loop thread and the
             # line starts (_finish_voicing) on the first tick after it is done
             job = {"line": line, "done": threading.Event(), "res": None}
+            # a book line's delivery goes to drama-3 as a [direction]; the subtitle keeps the book's text
+            said = "[%s] %s" % (line["tone"], line["text"]) if line.get("tone") else line["text"]
 
             def synth():
                 try:
-                    job["res"] = self._voice.synthesize(line["text"], voice_label, path)
+                    job["res"] = self._voice.synthesize(said, voice_label, path)
                 except Exception as e:
                     job["res"] = {"ok": False, "pause": 0.0, "error": "%s: %s" % (type(e).__name__, e)}
                 finally:
@@ -1206,7 +1208,7 @@ class Sim:
             self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
                             "text": beat["text"], "source": "book", "para": beat.get("para"),
                             "stage": beat.get("stage"), "gesture": beat.get("gesture"),
-                            "remarks": beat.get("remarks"),
+                            "remarks": beat.get("remarks"), "tone": beat.get("tone"),
                             "shot": beat.get("shot"), "beat": beat_i})
             return
         text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]

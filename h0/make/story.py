@@ -115,6 +115,14 @@ def run_story(ctx):
         if places is None:
             score = dict(score, warnings=list(score.get("warnings") or [])
                          + ["story: no world, staging without places"])
+        if not ctx.params.get("fake"):
+            # each line's delivery for drama-3 (dream/voice_tone); the previous story's answer is reused
+            import voice_tone as _tone
+            for f in (ctx.run_dir / "story").glob("tone-*.json"):
+                shutil.copyfile(f, ctx.out / f.name)
+            score, tw = _tone.add_tones(score, director, cache_dir=str(ctx.out))
+            if tw:
+                score = dict(score, warnings=list(score.get("warnings") or []) + tw)
         edited = ctx.run_dir / "story" / "score.edited.json"
         if edited.is_file():
             ed = json.loads(edited.read_text())

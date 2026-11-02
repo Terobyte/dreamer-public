@@ -53,6 +53,8 @@ class StoryDirector(NoNet):
                 second_out = run / "story-second.tmp"
                 second_out.mkdir()
                 story.run_story(_ctx(run, second_out))
+            # the same Spark director also writes line tones (dream/voice_tone); count the staging prompts only
+            calls = [c for c in calls if "Determine staging" in c]
             self.assertEqual(len(calls), 1, "the second score must reuse the director cache")
             cache_files = list((run / "story").glob("stage_*.json"))
             self.assertEqual(len(cache_files), 1)
