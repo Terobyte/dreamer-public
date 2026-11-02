@@ -343,11 +343,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           const pl = places.find((p) => p.name === it.place || p.id === it.place);
           if (pl) {
             const pose = typeof it.pose === "string" ? it.pose : undefined;
-            const spot = pose === "lie" && pl.lie ? pl.lie.at : pose === "stand_on" && pl.stand_on ? pl.stand_on.at : pl.at;
-            const yaw = pose === "lie" && pl.lie ? pl.lie.yaw : pl.yaw;
+            // lie: the same spot and height (bed top) as the stage.json start (startSpot), one rule for both
+            const ss = startSpot(pl, pose);
+            const spot = pose === "stand_on" && pl.stand_on ? pl.stand_on.at : ss.at;
+            const yaw = ss.yaw;
             const act = pose === "sit" ? "sit" : "idle";
             const lvl = pl.level ?? null;
-            const y = layerOf(lvl).layer.y ?? 0;
+            const y = (layerOf(lvl).layer.y ?? 0) + ss.y;
             claims[pl.name] = who;
             a.teleport(spot, yaw, act, y);
           }

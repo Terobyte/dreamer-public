@@ -62,6 +62,23 @@ async function rampRuntime() {
 }
 
 describe("stage blocking runtime actions", () => {
+  it("start lie puts the actor on top of the bed, not on the floor (Koshakan: Mirai sunk in the bed)", async () => {
+    const scene = new Scene();
+    const bank = [{ ...places[0], top: 0.75 }, places[1], places[2]];
+    const stage = await startStage({
+      scene, camera: new PerspectiveCamera(50, 1, 0.1, 100), stageUrl: "stage/stage.json", sim: null,
+      stage: { mode: "book", places: "stage/places.json", cast: "cast/cast.json", start: {} },
+      places: bank, cast: { Mama: { glb: "missing.glb", height_m: 1.7 } },
+      geo: { spawn: { at: [3, 5] }, floors: [{ room: "room", level: null, outline }], meshes: [] },
+      layers: [{ layer: navLayer, bits: navBits }], nav: { ramps: [], doors: {} }, doorOpen: () => false,
+    } as any);
+    stage.handlers.start!({ type: "start", who: "Mama", place: "bed", pose: "lie" });
+    stage.update(1 / 60, 0);
+    const g = scene.getObjectByName("actor:Mama")!;
+    expect(g).toBeTruthy();
+    expect(g.position.y).toBeCloseTo(0.75, 2);
+  });
+
   it("goto/come faces along the final route segment without an explicit look", async () => {
     const stage = await runtime();
     stage.handlers.start!({ type: "start", who: "Mama", place: "chair" });
