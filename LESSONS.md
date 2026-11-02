@@ -162,7 +162,7 @@
 | L78 | **Бюджет brief без потолка:** Ledger создаётся с `cap_usd=inf`; резерв Spark на худший случай (64k токенов) больше 2 % от $10. Потолок по токенам (`cap_tokens`) или иначе | make-debt.md М1 | долг |
 | L79 | **Фикстура `world_run` — два разных мира:** `scene.json` (living/kitchen) и `dist/` (hall/front) отдаются `--fake` вместе; следующие стадии получают несогласованные данные | make-debt.md М3 | долг |
 | L80 | **Бренд в TASK.md:** `brief.style` вставляется как есть («Studio Ghibli»). Фильтровать в brief или в `build_task_md` | make-debt.md М3 | долг |
-| L81 | **`npx tsc --noEmit` в engine красный** (`build/write.ts`, `runtime/assets.ts`, `test/doors.test.ts`); гейт tsc не гоняет | make-debt.md М5 (замечено попутно) | долг |
+| L81 | **`npx tsc --noEmit` в engine красный** (`build/write.ts`, `runtime/assets.ts`, `test/doors.test.ts`); гейт tsc не гоняет. 11-02 после слияния полос «Глаза»: 244 → 302 ошибок, все новые — от того же корня (нет `@types/three`: `stage/clipfacts.ts`, `stage/shotplan.ts` и их тесты); новые не-three файлы (`build/surfaces.ts`, `assets/glb.ts`) чистые | make-debt.md М5 (замечено попутно) | долг |
 | L82 | **`_gltf_doc_ok` не полный валидатор glTF** (sparse, skins, morph, `KHR_*`). Для пути A хватает; полный нужен к пути B | make-debt.md М6 | долг |
 | L83 | **Сквозная приёмка Кошакана:** `make --fake` всегда берёт `testdata/cast` и `testdata/world_run`; нужна фикстура `testdata/koshakan`, журнал вне `h0/out/` | make-debt.md «Анимация и камера» | долг |
 | L84 | **Формат реплик книги:** `Mama: текст` движок читает как рассказчика; Кошакан переписан в прозу с кавычками. Решить формат для `dream/book.py` | make-debt.md «Анимация и камера» | долг |
