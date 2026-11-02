@@ -174,6 +174,30 @@ describe("clipFacts (Г4)", () => {
     const g = new Group();
     expect(clipFacts(g, LIE(), 1.0)).toBeNull();
   });
+
+  it("contact is where the body rests, not the tip of a thin dangling ear (Koshakan: Mirai slept 7 cm over the bed)", () => {
+    // torso: a dense box 0.2 tall on the hips, bottom at 0.1; ear: a thin strip on the head hanging to 0.02
+    const body = makeBody();
+    const torso = body.children.find((o) => (o as any).isSkinnedMesh) as SkinnedMesh;
+    const dense = new BoxGeometry(0.2, 0.2, 0.2, 20, 20, 20);
+    dense.translate(0, 0.2, 0);
+    const n = dense.attributes.position.count;
+    dense.setAttribute("skinIndex", new Uint16BufferAttribute(new Array(n).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+    dense.setAttribute("skinWeight", new Float32BufferAttribute(new Array(n).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+    torso.geometry = dense;
+    const earGeo = new BoxGeometry(0.02, 0.1, 0.02);
+    earGeo.translate(0.05, 0.07, 0);
+    const m = earGeo.attributes.position.count;
+    earGeo.setAttribute("skinIndex", new Uint16BufferAttribute(new Array(m).fill(0).flatMap(() => [2, 0, 0, 0]), 4));
+    earGeo.setAttribute("skinWeight", new Float32BufferAttribute(new Array(m).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+    const ear = new SkinnedMesh(earGeo, new MeshStandardMaterial());
+    body.add(ear);
+    body.updateMatrixWorld(true);
+    ear.bind(torso.skeleton);
+    expect(lowestSkinY(body)).toBeCloseTo(0.02, 3);
+    const f = clipFacts(body, headClip("still", [0, 0, 0], qa(Y, 0)), 1.0)!;
+    expect(Math.abs(f.contact_y - 0.1)).toBeLessThanOrEqual(0.01);
+  });
 });
 
 /** 2 m GLB (box 2 tall, hips at 1) whose clip lifts the hips to 1.2: at heightM 1 the skin is 0.1 above the root */
@@ -300,7 +324,11 @@ describe("runtime: holder offset by contact_y (Г4)", () => {
 
 // ---- writeClipfacts on a temp cast (GLBs built with @gltf-transform/core, no network) ----
 
-function bodyGlb(): Promise<Uint8Array> {
+// a 1x1 PNG: a body with a texture, like every real cast GLB
+const PNG_1PX = Uint8Array.from(Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+
+function bodyGlb(o: { texture?: boolean } = {}): Promise<Uint8Array> {
   const doc = new Document();
   const buf = doc.createBuffer();
   const root = doc.createNode("root");
@@ -323,6 +351,11 @@ function bodyGlb(): Promise<Uint8Array> {
     .setAttribute("JOINTS_0", acc("VEC4", new Uint16Array(j)))
     .setAttribute("WEIGHTS_0", acc("VEC4", new Float32Array(w)))
     .setIndices(acc("SCALAR", new Uint16Array(tri)));
+  if (o.texture) {
+    prim.setAttribute("TEXCOORD_0", acc("VEC2", new Float32Array(16)));
+    const tex = doc.createTexture("skin").setImage(PNG_1PX).setMimeType("image/png");
+    prim.setMaterial(doc.createMaterial("skin").setBaseColorTexture(tex));
+  }
   const mesh = doc.createMesh("skin").addPrimitive(prim);
   const ident = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
   const down = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.2, 0, 1];
@@ -378,5 +411,17 @@ describe("writeClipfacts (Г4)", () => {
     expect(Math.abs(out.Mira.lie.face_yaw - 90)).toBeLessThanOrEqual(1);
     // rounded to 0.001
     for (const v of [out.Mira.lie.contact_y, out.Mira.lie.head_y, ...out.Mira.lie.face_dir]) expect(Math.round(v * 1000) / 1000).toBe(v);
+  });
+
+  it("a body with a texture (every real cast GLB) is measured under node, not skipped with 'self is not defined'", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const dir = mkdtempSync(join(tmpdir(), "clipfacts-tex-"));
+    writeFileSync(join(dir, "body.glb"), await bodyGlb({ texture: true }));
+    writeFileSync(join(dir, "lie.glb"), await clipGlb([{ name: "lie", pos: [0.6, 0, 0], rot: qa(Y, 90) }]));
+    writeFileSync(join(dir, "cast.json"), JSON.stringify({ Mira: { glb: "body.glb", height_m: 1.0, clips: { lie: "lie.glb" } } }));
+    const warns = await writeClipfacts(dir);
+    expect(warns).toEqual([]);
+    const out = JSON.parse(readFileSync(join(dir, "clipfacts.json"), "utf-8"));
+    expect(out.Mira.lie.lying).toBe(true);
   });
 });

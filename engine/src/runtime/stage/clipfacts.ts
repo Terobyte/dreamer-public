@@ -8,7 +8,7 @@ import { headPose } from "./critic.js";
 
 export type V3 = [number, number, number];
 export interface ClipFacts {
-  /** lowest skin point relative to the actor root (m): the holder shifts by -contact_y */
+  /** where the skin rests (supportY) relative to the actor root (m): the holder shifts by -contact_y */
   contact_y: number;
   /** unit gaze in the actor's axes (+Z = actor forward) */
   face_dir: V3;
@@ -57,6 +57,25 @@ export function lowestSkinY(root: Object3D): number {
   return b.isEmpty() ? 0 : b.min.y;
 }
 
+/** a support band holds at least this share of the skin points: a foot sole or a lying side does, an ear tip does not */
+const SUPPORT_SHARE = 0.015;
+const SUPPORT_BAND_M = 0.02;
+
+/** World y the body rests on: the lowest y whose 2 cm band above holds >= 1.5% of the skin points. The bare
+ *  minimum is the tip of whatever dangles lowest (Koshakan: a lamb's ear hung under the sleeping body, 7 cm of air). */
+export function supportY(root: Object3D): number {
+  const ys = skinPoints(root).map((p) => p[1]).sort((a, b) => a - b);
+  if (!ys.length) return lowestSkinY(root);
+  const need = Math.max(1, Math.ceil(ys.length * SUPPORT_SHARE));
+  let j = 0;
+  for (let i = 0; i < ys.length; i++) {
+    if (j < i) j = i;
+    while (j < ys.length && ys[j]! <= ys[i]! + SUPPORT_BAND_M) j++;
+    if (j - i >= need) return ys[i]!;
+  }
+  return ys[0]!;
+}
+
 const yawOf = (o: Object3D): number => {
   const f = new Vector3(0, 0, 1).applyQuaternion(o.getWorldQuaternion(new Quaternion()));
   return Math.atan2(f.x, f.z);
@@ -79,7 +98,7 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
     for (const s of [0, 0.25, 0.5, 0.75]) {
       mixer.setTime(d * s);
       root.updateMatrixWorld(true);
-      const low = lowestSkinY(root);
+      const low = supportY(root);
       const rootY = root.getWorldPosition(new Vector3()).y;
       const hp = headPose(root)!;
       const yaw = (hp.faceYaw * Math.PI) / 180;
@@ -130,7 +149,10 @@ export async function writeClipfacts(castDir: string): Promise<string[]> {
     const file = path.resolve(castDir, rel);
     const b = fs.readFileSync(file);
     const ab = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
-    return new GLTFLoader().parseAsync(ab, path.dirname(file) + path.sep);
+    // facts need the skin, not its colours: textures are skipped (decoding one under node threw "self is not defined")
+    return new GLTFLoader()
+      .register(() => ({ name: "dreamer_no_textures", loadTexture: () => Promise.resolve(null) }) as any)
+      .parseAsync(ab, path.dirname(file) + path.sep);
   };
   const out: Record<string, Record<string, unknown>> = {};
   for (const [who, c] of Object.entries(cast)) {
