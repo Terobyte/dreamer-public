@@ -4,7 +4,7 @@ import { AnimationClip, AnimationMixer, LoopOnce, LoopRepeat, PropertyBinding, Q
 export interface Animator {
   play(name: string, o?: { once?: boolean }): void;
   /** advance; `talking` adds head nods to the life layer */
-  update(dt: number, o?: { talking?: boolean }): void;
+  update(dt: number, o?: { talking?: boolean; look?: [number, number, number] }): void;
   /** back to the idle pose (crossfade) */
   idle(): void;
   current(): string;
@@ -332,7 +332,7 @@ export function createAnimator(root: Object3D, clips: Record<string, AnimationCl
       life?.before();
       mixer.update(dt);
       // full life in idle; a clip keeps a little breath under it
-      life?.after(dt, { weight: state === "idle" ? 1 : 0.3, talking: !!o.talking });
+      life?.after(dt, { weight: state === "idle" ? 1 : 0.3, talking: !!o.talking, look: o.look });
     },
     current: () => (state === "idle" ? idleName : curName),
     alive: () => !!life,

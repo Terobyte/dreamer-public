@@ -23,6 +23,10 @@ export interface Actor {
   moving(): boolean;
   speak(seconds: number): void;
   speaking(): boolean;
+  /** world point of the eyes (the gaze target other actors look at) */
+  eye(): [number, number, number];
+  /** where the head looks (a world point), null = nowhere in particular */
+  look(p: [number, number, number] | null): void;
   /** play a clip by name (no animator or no such clip -> stays in idle) */
   play(clip: string, o?: { once?: boolean }): void;
   update(dt: number, now: number): void;
@@ -91,6 +95,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let segFrom: V2 = [x, z];
   let segY = y;
   let talkUntil = 0;
+  let gaze: [number, number, number] | null = null;
   let clock = 0;
   let wasMoving = false;
   const wrap = (a: number): number => ((a % 360) + 540) % 360 - 180;
@@ -142,6 +147,10 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       talkUntil = clock + seconds;
     },
     speaking: () => clock < talkUntil,
+    eye: () => [x, y + heightM * (act === "sit" ? 0.65 : 0.92), z],
+    look(p) {
+      gaze = p;
+    },
     update(dt, now) {
       clock = now;
       let moving = false;
@@ -192,7 +201,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         if (m && !wasMoving) (animator.has("walk") ? animator.play("walk") : animator.idle());
         else if (!m && wasMoving) animator.idle();
         wasMoving = m;
-        animator.update(dt, { talking: clock < talkUntil });
+        animator.update(dt, { talking: clock < talkUntil, look: gaze ?? undefined });
       }
     },
   };
