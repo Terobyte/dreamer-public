@@ -230,19 +230,24 @@ class Lang(unittest.TestCase):
     def test_ru_spark_via_run_make_and_play_events_subs_cache(self):
         # 1) build world/cast/story/stage in fake en (so world/cast are cached stubs)
         self.make(until="stage")
-        transport_calls = []
+        transport_calls = {"translation": 0, "director": 0}
 
         class DummyTransport:
             def post(self, body, timeout):
-                transport_calls.append(1)
                 msgs = body.get("messages") or []
-                # second message contains JSON array of texts
-                try:
-                    orig = json.loads(msgs[1]["content"]) if len(msgs) > 1 else []
-                except Exception:
-                    orig = []
-                translated = [f"[ru] {t}" for t in orig]
-                content = json.dumps({"texts": translated}, ensure_ascii=False)
+                user_msg = next((m for m in msgs if m.get("role") == "user"), None)
+                if user_msg is None:
+                    raise AssertionError(f"Spark request has no user message: {msgs!r}")
+                request = json.loads(user_msg["content"])
+                if isinstance(request, list) and all(isinstance(t, str) for t in request):
+                    transport_calls["translation"] += 1
+                    translated = [f"[ru] {t}" for t in request]
+                    content = json.dumps({"texts": translated}, ensure_ascii=False)
+                elif isinstance(request, dict) and "instruction" in request:
+                    transport_calls["director"] += 1
+                    content = json.dumps({"start": [], "stage": []}, ensure_ascii=False)
+                else:
+                    raise AssertionError(f"Unexpected Spark user message: {request!r}")
                 text = f"```json\n{content}\n```"
                 return {"choices": [{"message": {"content": text}, "finish_reason": "stop"}],
                         "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
@@ -253,7 +258,8 @@ class Lang(unittest.TestCase):
                                 book=str(self.book), scene="tea", from_="story", lang="ru")
             self.assertEqual(res["story"], "ran", res)
             self.assertEqual(res["stage"], "ran", res)
-            self.assertEqual(len(transport_calls), 1)
+            self.assertEqual(transport_calls["translation"], 1)
+            self.assertEqual(transport_calls["director"], 1)
             ru = json.loads((self.run_dir / "story" / "score.ru.json").read_text())
             self.assertTrue(any(b.get("text", "").startswith("[ru]") for b in ru["beats"] if b.get("kind") in ("line", "narration")),
                             ru["beats"][:2])
@@ -279,7 +285,8 @@ class Lang(unittest.TestCase):
             # 3) second run with same sha must reuse tr-cache, not call Spark again
             res2 = core.run_make(self.run_dir, "p", fake=False, live=True,
                                  book=str(self.book), scene="tea", from_="story", lang="ru")
-            self.assertEqual(len(transport_calls), 1, "second run should hit sha256 tr-cache, not Spark")
+            self.assertEqual(transport_calls["translation"], 1,
+                             "second run should hit sha256 tr-cache, not translate with Spark")
 
     def _subs_via_createSubs(self, rows):
         """Feed line/narrator events into engine's createSubs and return subs.log()."""
