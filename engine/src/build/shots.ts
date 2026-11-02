@@ -243,6 +243,7 @@ export async function runShots(
       try {
         await page.waitForFunction("window.__ready === true", undefined, { timeout: opts.readyTimeoutMs });
       } catch {
+        mark("ready-timeout");
         console.error(`camera ${cam.id}: page never set window.__ready`);
         // no page.close() here: closing the browser below closes the page, and
         // each extra round-trip to a loaded chromium eats into the deadline
