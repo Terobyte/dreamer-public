@@ -17,6 +17,8 @@ from pipe2.blame import blame_room
 from pipe2.engine import blocking, green, shots_retry
 from pipe2.merge import PARTIAL_KEYS, merge
 
+DROPPABLE = {"DECAL_OVERLAP", "DECAL_OFF_WALL", "DECAL_ON_OPENING"}
+
 HERE = Path(__file__).parent
 PROMPTS = HERE / "prompts"
 REPO = HERE.parent.parent
@@ -372,8 +374,22 @@ class RoomPipeline:
             self._rollback()
             return
         candidate = answer.scene
+        reissued0 = self.reissued
         fresh = self._freeze(candidate, allow_reissue)
         ok, findings = self._accept(role, candidate)
+        if not ok:
+            # one retry: the critic gets its own rejected fragment and the findings
+            self._record({"kind": "critic_retry", "room": self.room, "role": role,
+                          "findings": findings})
+            retry = self._ask(role, self._critic_messages(
+                role, self.report, partial=candidate, findings=findings))
+            if retry.valid:
+                candidate = retry.scene
+                self.reissued = reissued0
+                fresh = self._freeze(candidate, allow_reissue)
+                ok, findings = self._accept(role, candidate)
+                if not ok:
+                    ok, findings = self._drop_decals(role, candidate, findings)
         if not ok:
             # B28: the engine's reasons for refusing the critic are kept, not dropped
             self._record({"kind": "critic_rejected", "room": self.room, "role": role,
@@ -384,6 +400,41 @@ class RoomPipeline:
         self.status = "green"
         if fresh:
             self._queue(fresh)
+
+    def _drop_decals(self, role: str, candidate: dict, findings: list) -> tuple[bool, list]:
+        """Remove the decals a retried critic still overlaps, if every finding is a droppable
+        decal finding and every decal is the critic's own. (ok, findings) of the new check."""
+        indexes: list[int] = []
+        paths: list[str] = []
+        for f in findings:
+            parts = str(f.get("path") or "").split("/")
+            if f.get("code") not in DROPPABLE or len(parts) not in (3, 4) or parts[0] != "" \
+                    or parts[1] != "decals" or not parts[2].isdigit():
+                return False, findings
+            if len(parts) == 4 and not parts[3]:
+                return False, findings
+            if int(parts[2]) not in indexes:
+                indexes.append(int(parts[2]))
+                paths.append("/decals/%d" % int(parts[2]))
+        if not indexes:
+            return False, findings
+        scene, _violations = merge(self.ctx.skeleton, {self.room: candidate}, self.ctx.plan)
+        merged = scene.get("decals") or []
+        own = candidate.get("decals") or []
+        drop: set[int] = set()
+        for i in indexes:
+            if i >= len(merged):
+                return False, findings
+            found = _find_decal(merged[i], own)
+            if found is None:
+                return False, findings
+            drop.add(found)
+        candidate["decals"] = [d for j, d in enumerate(own) if j not in drop]
+        ok, new = self._accept(role, candidate)
+        if ok:
+            self._record({"kind": "critic_dropped", "room": self.room, "role": role,
+                          "paths": paths})
+        return ok, new
 
     def _skip_layout(self) -> bool:
         """Production shortcut only: skip the layout critic when the meshes already landed."""
@@ -537,17 +588,36 @@ class RoomPipeline:
                        SPEC=self.ctx.doc("spec"))
         return [_user(text, [])]
 
-    def _critic_messages(self, role: str, report: dict) -> list:
+    def _critic_messages(self, role: str, report: dict, partial: dict | None = None,
+                         findings: list | None = None) -> list:
         text = _prompt(role,
                        ROOM=self.room,
-                       PARTIAL=_pretty(self.partial),
+                       PARTIAL=_pretty(self.partial if partial is None else partial),
                        REPORT=_pretty(report),
                        SKELETON=_pretty(self.ctx.skeleton))
         assert NOT_YOURS in text
+        if findings is not None:
+            lines = ["- code: %s, path: %s" % (f.get("code"), f.get("path")) for f in findings]
+            text += ("\n\nYour previous answer was refused by the check. Fix only this, "
+                     "return everything else as it was:\n\n" + "\n\n".join(lines))
         # references first, then our shots: without them the critic judges a picture against nothing
         # (Twelve Oaks: "green" on a scene that looked nothing like its references)
         row = (self.ctx.plan.get("rooms") or {}).get(self.room) or {}
         return [_user(text, self._refs(row) + self._shots())]
+
+
+def _find_decal(decal, own: list):
+    """Index in `own` of the critic's decal equal to a merged one (by id, else by content)."""
+    if isinstance(decal, dict) and decal.get("id") is not None:
+        for j, d in enumerate(own):
+            if isinstance(d, dict) and d.get("id") == decal["id"]:
+                return j
+        return None
+    key = json.dumps(decal, sort_keys=True, default=str)
+    for j, d in enumerate(own):
+        if json.dumps(d, sort_keys=True, default=str) == key:
+            return j
+    return None
 
 
 def _findings_note(findings) -> list:
