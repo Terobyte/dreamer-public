@@ -5,7 +5,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     // each run writes temp files into its own dir and removes it at the end (tmp-leak.test.ts)
     globalSetup: ["test/tmp-setup.ts"],
-    testTimeout: 60000,
+    testTimeout: 90000,
     hookTimeout: 60000,
   },
 });

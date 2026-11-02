@@ -104,3 +104,57 @@ export function directShot(kind: ShotKind, actors: ShotActor[], r: Rect, height:
   }
   return { pos: p, look };
 }
+
+/** The 180° line: points with `(p - origin) · normal * sign > 0` are on the allowed side. */
+export interface CameraSide {
+  origin: V2;
+  normal: V2;
+  sign: 1 | -1;
+}
+export interface CameraLaw {
+  outline: V2[];
+  rect: Rect;
+  height: number;
+  floorY?: number;
+  side?: CameraSide;
+  /** frame used when no legal point exists (default: the room center) */
+  fallback?: V3;
+}
+const SIDE_EPS = 1e-6;
+const sideOf = (s: CameraSide, p: V2): number => ((p[0] - s.origin[0]) * s.normal[0] + (p[1] - s.origin[1]) * s.normal[1]) * s.sign;
+
+/** The one place a camera point is made legal: inside the outline (0.3 m inset), on the required side of the 180° axis
+ * (an on-axis point, |dot| < 1e-6, counts as no side and is moved), and at a height in [floorY + 0.3, ceiling - 0.1]
+ * (the lower bound wins only when the room is too low for both). The side is re-checked after `snapInside`; an off-side
+ * point takes the nearest inside point of the required side, else `law.fallback`, else the room center. */
+export function legalCameraPoint(p: V3, law: CameraLaw): V3 {
+  const floorY = law.floorY ?? 0;
+  const c = clampCamera(p, law.rect, law.height, floorY);
+  const y = Math.max(floorY + 0.3, Math.min(c[1], law.height - 0.1));
+  const { outline, side } = law;
+  const ok = (q: V2): boolean => (outline.length < 3 || insideInset(outline, q)) && (!side || sideOf(side, q) > SIDE_EPS);
+  let xz: V2 = [c[0], c[2]];
+  if (outline.length >= 3) xz = snapInside(outline, xz, law.rect);
+  if (ok(xz)) return [xz[0], y, xz[1]];
+  // nearest legal point of the required side (grid search over the rect, 5 cm)
+  let best: V2 | null = null;
+  let bd = Infinity;
+  const r = law.rect;
+  for (let x = r.minx; x <= r.maxx + 1e-9; x += 0.05)
+    for (let z = r.minz; z <= r.maxz + 1e-9; z += 0.05) {
+      const d = (x - c[0]) ** 2 + (z - c[2]) ** 2;
+      if (d < bd && ok([x, z])) {
+        bd = d;
+        best = [x, z];
+      }
+    }
+  if (best) return [best[0], y, best[1]];
+  if (law.fallback) return [law.fallback[0], Math.max(floorY + 0.3, Math.min(law.fallback[1], law.height - 0.1)), law.fallback[2]];
+  const cx = (r.minx + r.maxx) / 2;
+  const cz = (r.minz + r.maxz) / 2;
+  if (outline.length >= 3 && !insideInset(outline, [cx, cz], 0)) {
+    const sn = snapInside(outline, [cx, cz], roomRect(outline, 0), 0);
+    return [sn[0], y, sn[1]];
+  }
+  return [cx, y, cz];
+}

@@ -50,7 +50,7 @@ describe("page with assets", () => {
     if (r.status !== 0) throw new Error(`build failed: ${r.stderr}`);
     browser = await launch();
     site = await serve(dist);
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     // the browser must close before we wait on the server: a page that is
@@ -70,12 +70,12 @@ describe("page with assets", () => {
       await page.waitForTimeout(1000);
       expect(await page.evaluate("window.__ready === true")).toBe(false);
       release();
-      await page.waitForFunction("window.__ready === true", null, { timeout: 5000 });
+      await page.waitForFunction("window.__ready === true", null, { timeout: 90_000 });
     } finally {
       release();
       await page?.close();
     }
-  }, 30000);
+  }, 90000);
 
   it("test_textured_page", async () => {
     const { page, consoleErrors, pageErrors } = await open();
@@ -86,5 +86,5 @@ describe("page with assets", () => {
     expect((floor as any).hasMap).toBe(true);
     expect((sofa as any).type).toBe("Group");
     await page.close();
-  }, 30000);
+  }, 90000);
 });

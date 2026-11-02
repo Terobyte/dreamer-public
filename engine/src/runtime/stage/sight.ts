@@ -1,6 +1,18 @@
 import { Box3, Ray, Raycaster, Vector3, type Object3D } from "three";
 import type { V3 } from "./camera.js";
 
+const PLANT_WORDS = new Set(["grass", "tuft", "flower", "dandelion", "clover", "bush", "weed", "fern"]);
+/** A prop id is vegetation when its last word is a plant word (`grass_tuft`, `meadow-fern`). */
+export function isPlantId(id: string): boolean {
+  const last = id.split(/[^A-Za-z0-9]+/).filter(Boolean).pop();
+  return last !== undefined && PLANT_WORDS.has(last.toLowerCase());
+}
+/** Flag every mesh under `root` as see-through for the sight probe when `id` is vegetation. */
+export function markNoblock(root: Object3D, id: string): void {
+  if (!isPlantId(id)) return;
+  root.traverse((o) => { o.userData.noblock = true; });
+}
+
 /** The director's eyes: is anything of the world between the camera and what it looks at? Actors never block
  *  (the subject is the target; the listener in front is a fine foreground). Koshakan, Nov 1: the pure director
  *  put the close behind the bed's footboard. Meshes are collected once (the world is static), each with its
@@ -13,7 +25,7 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
     const banned = new Set(skip());
     world.updateMatrixWorld(true);
     const walk = (o: Object3D): void => {
-      if (banned.has(o) || !o.visible) return;
+      if (banned.has(o) || !o.visible || o.userData.noblock === true) return;
       if ((o as any).isMesh && !(o as any).isSkinnedMesh) {
         const box = new Box3().setFromObject(o);
         if (!box.isEmpty()) out.push({ o, box });

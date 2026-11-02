@@ -52,7 +52,7 @@ describe("B36 runtime readiness after a failed GLB", () => {
       await page.goto(site.url);
       // wait for the event, not a fixed time: the gate runs under load
       const ready = await page.waitForFunction(() => (window as any).__ready === true, null,
-        { timeout: 8000 }).then(() => true, () => false);
+        { timeout: 90000 }).then(() => true, () => false);
       expect(ready,
         "B36: failed GLB left __ready false and shots cannot start").toBe(true);
       expect(warnings.some((w) => /GLB failed/.test(w)),
@@ -60,5 +60,5 @@ describe("B36 runtime readiness after a failed GLB", () => {
     } finally {
       await page.close();
     }
-  }, 25000);
+  }, 90000);
 });

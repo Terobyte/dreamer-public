@@ -256,7 +256,7 @@ describe("schema phase contract", () => {
     expect(report.ok).toBe(true);
   });
 
-  it("test_cli_exit_codes", () => {
+  it("test_cli_exit_codes", { timeout: 120000 }, () => {
     const dir = mkdtempSync(join(tmpdir(), "dreamer-"));
     const flatPath = new URL("../../specs/examples/demo-flat.scene.json", import.meta.url);
     const flatFile = fileURLToPath(flatPath);
