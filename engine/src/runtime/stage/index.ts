@@ -38,6 +38,53 @@ export interface Stage {
 
 const SPEAK_SECONDS = 3;
 
+/** a speech beat for gaze: who speaks, who/which place the speaker's `look` bit names, until when (4 s of silence after -> nobody looks at anything) */
+export interface GazeBeat {
+  speaker: string | null;
+  at: string | null;
+  place: Place | null;
+  until: number;
+}
+
+export interface GazeActor {
+  who: string;
+  room: unknown;
+  pos: V2;
+  eye: [number, number, number];
+}
+
+/** who looks at whom (the pure decision behind the per-frame gaze): the speaker follows their `look` bit
+ *  (a named actor, else a named place, else the nearest mate in the room); listeners look at the speaker;
+ *  a narration turns the cast to each other, or to the place it is about; 4 s of silence after a beat -> null. */
+export function resolveGaze(
+  beat: GazeBeat | null,
+  now: number,
+  self: GazeActor,
+  cast: GazeActor[],
+  placePoint: (p: Place) => [number, number, number],
+): [number, number, number] | null {
+  if (!beat || now > beat.until) return null;
+  const mates = cast.filter((o) => o.who !== self.who && o.room === self.room);
+  const nearest = (): GazeActor | undefined =>
+    mates.slice().sort((p, q) => Math.hypot(p.pos[0] - self.pos[0], p.pos[1] - self.pos[1]) - Math.hypot(q.pos[0] - self.pos[0], q.pos[1] - self.pos[1]))[0];
+  const speaker = beat.speaker ? cast.find((o) => o.who === beat.speaker) : undefined;
+  if (speaker && speaker.who !== self.who) return speaker.room === self.room ? speaker.eye : null;
+  if (speaker) {
+    const named = beat.at ? cast.find((o) => o.who === beat.at && o.who !== self.who) : undefined;
+    if (named) return named.eye;
+    if (beat.place) return placePoint(beat.place);
+    return nearest()?.eye ?? null;
+  }
+  // narration: a place if the narration is about one, else the actors look at each other
+  if (beat.place) return placePoint(beat.place);
+  return nearest()?.eye ?? null;
+}
+
+/** a gaze target over a place: eye height (1.4 m) above the floor of the place's level (ground floor when unknown). */
+export function placeGazePoint(p: Place, floorY = 0): [number, number, number] {
+  return [p.at[0], floorY + 1.4, p.at[1]];
+}
+
 /** Reads stage.json + places + cast, puts the cast on its start places and returns the event handlers and the frame step. */
 export async function startStage(c: StageCtx): Promise<Stage> {
   const stageAbs = new URL(c.stageUrl, location.href);
@@ -201,10 +248,22 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     return best;
   };
   let lastSpeaker: string | null = null;
+  // gaze: who looks at whom (life.ts turns the head); silence of 4 s after a beat -> nobody looks at anything
+  const GAZE_SILENCE = 4;
+  let nowT = 0;
+  let gazeBeat: { speaker: string | null; at: string | null; place: Place | null; until: number } | null = null;
+  const placeIn = (text: string): Place | null => places.find((p) => p.name && text.toLowerCase().includes(p.name.toLowerCase())) ?? null;
+  const placePoint = (p: Place): [number, number, number] => {
+    const layer = layerOf(p.level ?? null) as unknown as { layer?: { y?: number }; y?: number } | number | null | undefined;
+    const floorY = typeof layer === "number" ? layer : layer?.layer?.y ?? (layer as { y?: number } | undefined)?.y ?? 0;
+    return placeGazePoint(p, Number.isFinite(floorY) ? (floorY as number) : 0);
+  };
   const handlers: StageHandlers = {
     line(e) {
       const who = whoOf(e);
       if (who) lastSpeaker = who;
+      const lookName = typeof e.look === "string" ? e.look : null;
+      gazeBeat = { speaker: who ?? null, at: lookName, place: lookName ? (places.find((p) => p.name === lookName) ?? null) : null, until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
       pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
@@ -215,6 +274,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who && t) touch(who, t);
     },
     narrator(e) {
+      gazeBeat = { speaker: null, at: null, place: namedIn(String(e.text ?? "")) ? null : placeIn(String(e.text ?? "")), until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
       pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0 });
       subs.narrator({ text: e.text, audio: e.audio });
       window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
@@ -251,7 +311,18 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let camHeight: number | null = null;
   let prevCut: number | null = null;
   const look = new Vector3();
+  /** the world point `a` looks at right now, or null */
+  const gazeOf = (a: Actor, list: Actor[]): [number, number, number] | null => {
+    const cast: GazeActor[] = list.map((o) => ({ who: o.who, room: roomAt(o.pos(), toucher.levelOf(o.who))?.room, pos: o.pos(), eye: o.eye() }));
+    const self = cast.find((o) => o.who === a.who);
+    return self ? resolveGaze(gazeBeat, nowT, self, cast, placePoint) : null;
+  };
   const update = (dt: number, now: number): void => {
+    nowT = now;
+    {
+      const all = [...actors.values()];
+      for (const a of all) a.look(gazeOf(a, all));
+    }
     for (const a of actors.values()) a.update(dt, now);
     toucher.tick();
     const list = [...actors.values()];
