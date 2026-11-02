@@ -1,0 +1,387 @@
+{
+ "version": 1,
+ "scene": "bathroom",
+ "notes": "Example of the format only (another scene, another room): Mama walks in, watches Mirai catch tap water on a stool, flicks a drop; close shots on faces at head height, a master when someone enters, a push-in on each reaction.",
+ "shots": [
+  {
+   "name": "ванная: общий",
+   "at": 0,
+   "to": "B0+2.6",
+   "from": {
+    "pos": [
+     0.3,
+     1.6,
+     0.3
+    ],
+    "look": [
+     2.3,
+     0.8,
+     2.1
+    ],
+    "fov": 62
+   },
+   "end": {
+    "pos": [
+     0.65,
+     1.5,
+     0.55
+    ],
+    "look": [
+     2.35,
+     0.8,
+     2.1
+    ],
+    "fov": 58
+   },
+   "cut": false,
+   "shake": 0.005,
+   "ease": "io"
+  },
+  {
+   "name": "чистит зубы (профиль)",
+   "at": "prev",
+   "to": "B0+5.0",
+   "from": {
+    "pos": [
+     2,
+     0.95,
+     0.85
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.05,
+      0
+     ]
+    },
+    "fov": 36
+   },
+   "end": {
+    "pos": [
+     2.15,
+     0.9,
+     1
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.05,
+      0
+     ]
+    },
+    "fov": 32
+   },
+   "cut": false,
+   "shake": 0.004,
+   "ease": "io"
+  },
+  {
+   "name": "Мама наблюдает",
+   "at": "prev",
+   "to": "B0+7.6",
+   "from": {
+    "pos": [
+     0.8,
+     1.2,
+     2.25
+    ],
+    "look": [
+     1.9,
+     0.85,
+     1.7
+    ],
+    "fov": 50
+   },
+   "end": {
+    "pos": [
+     0.9,
+     1.15,
+     2.2
+    ],
+    "look": [
+     2,
+     0.85,
+     1.75
+    ],
+    "fov": 44
+   },
+   "cut": false,
+   "shake": 0.005,
+   "ease": "io"
+  },
+  {
+   "name": "к крану (юго-восток)",
+   "at": "prev",
+   "to": "B1",
+   "from": {
+    "pos": [
+     3.05,
+     1.25,
+     1.55
+    ],
+    "look": [
+     2.4,
+     0.85,
+     2.2
+    ],
+    "fov": 46
+   },
+   "end": {
+    "pos": [
+     3,
+     1.15,
+     1.75
+    ],
+    "look": [
+     2.45,
+     0.9,
+     2.2
+    ],
+    "fov": 36
+   },
+   "cut": false,
+   "shake": 0.004,
+   "ease": "io"
+  },
+  {
+   "name": "щекотно (крупно)",
+   "at": "prev",
+   "to": "B2+0.3",
+   "from": {
+    "pos": [
+     3,
+     1.1,
+     1.8
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.16,
+      0
+     ]
+    },
+    "fov": 30
+   },
+   "end": {
+    "pos": [
+     2.9,
+     1.08,
+     1.85
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.18,
+      0
+     ]
+    },
+    "fov": 26
+   },
+   "cut": false,
+   "shake": 0.003,
+   "ease": "io"
+  },
+  {
+   "name": "две фигуры: щелчок",
+   "at": "prev",
+   "to": "B2+3.0",
+   "from": {
+    "pos": [
+     1,
+     1.25,
+     2.3
+    ],
+    "look": [
+     2.3,
+     0.95,
+     1.85
+    ],
+    "fov": 54
+   },
+   "end": {
+    "pos": [
+     1.3,
+     1.2,
+     2.25
+    ],
+    "look": [
+     2.4,
+     0.95,
+     1.8
+    ],
+    "fov": 50
+   },
+   "cut": false,
+   "shake": 0.005,
+   "ease": "io"
+  },
+  {
+   "name": "капля на щеку",
+   "at": "prev",
+   "to": "B3-0.1",
+   "from": {
+    "pos": [
+     3.05,
+     1.1,
+     1.75
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.04,
+      0
+     ]
+    },
+    "fov": 30
+   },
+   "end": {
+    "pos": [
+     2.95,
+     1.1,
+     1.85
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.04,
+      0
+     ]
+    },
+    "fov": 27
+   },
+   "cut": false,
+   "shake": 0.002,
+   "ease": "io"
+  },
+  {
+   "name": "«Теперь я мокрая!»",
+   "at": "prev",
+   "to": "B3e",
+   "from": {
+    "pos": [
+     3.05,
+     1.2,
+     1.7
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.02,
+      0
+     ]
+    },
+    "fov": 40
+   },
+   "end": {
+    "pos": [
+     2.9,
+     1.15,
+     1.85
+    ],
+    "look": {
+     "actor": "Mirai",
+     "bone": "head",
+     "o": [
+      0,
+      -0.02,
+      0
+     ]
+    },
+    "fov": 34
+   },
+   "cut": false,
+   "shake": 0.004,
+   "ease": "io"
+  },
+  {
+   "name": "Мама смеётся",
+   "at": "prev",
+   "to": "B5e",
+   "from": {
+    "pos": [
+     1.5,
+     1.3,
+     2.1
+    ],
+    "look": {
+     "actor": "Mama",
+     "bone": "head",
+     "o": [
+      0,
+      -0.08,
+      0
+     ]
+    },
+    "fov": 34
+   },
+   "end": {
+    "pos": [
+     1.7,
+     1.3,
+     2.05
+    ],
+    "look": {
+     "actor": "Mama",
+     "bone": "head",
+     "o": [
+      0,
+      -0.08,
+      0
+     ]
+    },
+    "fov": 30
+   },
+   "cut": false,
+   "shake": 0.004,
+   "ease": "io"
+  },
+  {
+   "name": "отъезд",
+   "at": "prev",
+   "to": "END",
+   "from": {
+    "pos": [
+     0.9,
+     1.45,
+     1.1
+    ],
+    "look": [
+     2.35,
+     0.8,
+     2
+    ],
+    "fov": 56
+   },
+   "end": {
+    "pos": [
+     0.3,
+     1.6,
+     0.4
+    ],
+    "look": [
+     2.35,
+     0.8,
+     2
+    ],
+    "fov": 62
+   },
+   "cut": false,
+   "shake": 0.005,
+   "ease": "io"
+  }
+ ]
+}
