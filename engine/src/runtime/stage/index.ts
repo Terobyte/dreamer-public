@@ -11,6 +11,8 @@ import { createToucher } from "./touch.js";
 import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
+import { legalCameraPoint, roomRect, type V3 } from "./camera.js";
+import { createShotClock, cutMeshes, parseShotplan, shotFrame, type ShotClock } from "./shotplan.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -25,6 +27,10 @@ export interface StageCtx {
   nav: any;
   /** is this door open right now? */
   doorOpen(id: string): boolean;
+  /** stage.json itself (tests; else fetched from stageUrl) */
+  stage?: Record<string, unknown>;
+  /** Г8: the shot plan, ready (tests; else `stage.shotplan` is fetched from the run folder) */
+  plan?: unknown;
 }
 
 export interface Stage {
@@ -103,7 +109,7 @@ export function lineSeed(sceneSeed: unknown, lineIndex: number): string {
 export async function startStage(c: StageCtx): Promise<Stage> {
   const locHref = typeof location !== "undefined" ? location.href : "http://localhost/";
   const stageAbs = new URL(c.stageUrl || "stage/stage.json", locHref);
-  const stage: any = (c as any).stage ?? (await fetch(stageAbs).then((r) => r.json()));
+  const stage: any = c.stage ?? (await fetch(stageAbs).then((r) => r.json()));
   // paths inside stage.json are relative to the run folder: the parent of stage/
   const runBase = new URL("../", stageAbs);
   let places: Place[];
@@ -117,6 +123,25 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const cast: Record<string, { glb?: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[] }> =
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
+  // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
+  const clipfacts: Record<string, Record<string, { contact_y?: number }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
+    .catch(() => null);
+
+  // Г8: the shot plan (optional): given ready, or `stage.shotplan` (path from the run folder); none -> the director as before
+  let planWarn: string | null = null;
+  const planJson: unknown = c.plan !== undefined
+    ? c.plan
+    : typeof stage.shotplan === "string"
+      ? await fetch(new URL(stage.shotplan, runBase))
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+          .then((j) => {
+            if (j === null) planWarn = `stage: shotplan "${stage.shotplan}" not readable -> director`;
+            return j;
+          })
+      : (planWarn = "stage: no shotplan -> director", null);
 
   const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
   const roomAt = (p: V2, level?: string | null): any | null => floorAt(c.geo.floors ?? [], p, level);
@@ -147,7 +172,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const url = new URL(cast[who].glb, castUrl).href;
     const clipUrls: Record<string, string> = {};
     for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
-    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle);
+    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
     if (sp && sp.name === startName) claims[sp.name] = who;
     actors.set(who, a);
   }
@@ -217,6 +242,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const remark = stageRegex(places, names);
 
   const warnings: string[] = [];
+  if (planWarn) warnings.push(planWarn);
+  const planParsed = planJson !== null && planJson !== undefined ? parseShotplan(planJson, warnings) : null;
+  const shots: ShotClock | null = planParsed ? createShotClock(planParsed, warnings) : null;
+  /** a beat event (`beat` = index in score.beats) reached a handler: its start is the last update's now */
+  const beatIn = (e: StageEvent): void => {
+    if (shots && typeof e.beat === "number" && Number.isInteger(e.beat)) {
+      const d = Number(e.dur);
+      shots.beat(e.beat, nowT, e.dur !== undefined && e.dur !== null && Number.isFinite(d) ? d : undefined);
+    }
+  };
   const toucher = createToucher({
     warnings,
     places,
@@ -475,6 +510,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       warnings.push(`stage: unknown action "${action}" -> stay`);
     },
     line(e) {
+      beatIn(e);
       lastBeatHadStage = false;
       const who = whoOf(e);
       if (who) lastSpeaker = who;
@@ -498,6 +534,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       }
     },
     narrator(e) {
+      beatIn(e);
       gazeBeat = { speaker: null, at: null, place: namedIn(String(e.text ?? "")) ? null : placeIn(String(e.text ?? "")), until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
       pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0 });
       subs.narrator({ text: e.text, audio: e.audio });
@@ -512,6 +549,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const hit = remark(String(e.text ?? ""));
         if (hit) touch(hit.who, hit.place);
       }
+    },
+    book_end() {
+      shots?.end(nowT);
+    },
+    scene_end() {
+      shots?.end(nowT);
     },
     touch(e) {
       const who = whoOf(e);
@@ -554,6 +597,70 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   // the film critic's facts (every 0.5 s -> window.__critic, read by bin/record.mjs)
   let lastPlan = "wide";
+  // Г8: the active plan's name for the critic, the 0.3 m clamp flag, the meshes a cut hid, the director's fov
+  let shotName: string | null = null;
+  let shotClamped = false;
+  let cutHidden: any[] = [];
+  let directorFov: number | null = null;
+  const boneOf = (who: string, bone: "head" | "hips"): V3 | null => {
+    const a = actors.get(who);
+    if (!a) return null;
+    let found: any = null;
+    a.group.traverse((o) => {
+      const n = o.name.toLowerCase();
+      if (!found && (n === bone || n.endsWith(`:${bone}`) || n.endsWith(`_${bone}`))) found = o;
+    });
+    const v = new Vector3();
+    if (found) {
+      found.getWorldPosition(v);
+      return [v.x, v.y, v.z];
+    }
+    const p = a.pos();
+    return [p[0], a.group.position.y + heightOf(who) * (bone === "head" ? 0.93 : 0.5), p[1]];
+  };
+  /** puts the camera on the active plan (no smoothing, a hard switch); false -> the director has the camera */
+  const applyShot = (now: number): boolean => {
+    const act = shots?.active(now) ?? null;
+    const fr = act ? shotFrame(act, now, boneOf) : null;
+    // only what the cut itself hides comes back (a mesh hidden by someone else stays hidden)
+    const hide = (fr?.cut ? cutMeshes(c.scene, fr.pos, fr.look) : []).filter((m) => m.visible || cutHidden.includes(m));
+    for (const m of cutHidden) if (!hide.includes(m)) m.visible = true;
+    for (const m of hide) m.visible = false;
+    cutHidden = hide;
+    if (!fr) {
+      shotName = null;
+      shotClamped = false;
+      if (directorFov !== null) {
+        c.camera.fov = directorFov;
+        c.camera.updateProjectionMatrix();
+        directorFov = null;
+      }
+      return false;
+    }
+    let p: V3 = fr.pos;
+    shotClamped = false;
+    if (!fr.cut) {
+      const f = roomAt([p[0], p[2]]) ?? (camRoom ? (c.geo.floors ?? []).find((q: any) => q.room === camRoom) : null) ?? (c.geo.floors ?? [])[0];
+      if (f?.outline?.length) {
+        const floorY = layerOf(f.level ?? null).layer.y ?? 0;
+        const height = isOpen(f.room) ? floorY + 20 : ceilingOf(f.room);
+        const q = legalCameraPoint(p, { outline: f.outline, rect: roomRect(f.outline), height, floorY });
+        if (Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) > 0.3) shotClamped = true;
+        p = q;
+      }
+    }
+    if (fr.fov !== null && fr.fov !== c.camera.fov) {
+      if (directorFov === null) directorFov = c.camera.fov;
+      c.camera.fov = fr.fov;
+      c.camera.updateProjectionMatrix();
+    }
+    c.camera.position.set(p[0], p[1], p[2]);
+    look.set(fr.look[0], fr.look[1], fr.look[2]);
+    c.camera.lookAt(look.x, look.y, look.z);
+    c.camera.updateMatrixWorld();
+    shotName = fr.name;
+    return true;
+  };
   const critic = typeof window !== "undefined"
     ? createCritic(((window as any).__critic ??= []) as CriticFact[], () => {
         const cam = c.camera.position;
@@ -563,6 +670,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const sp = (late?.speaking() ? late : undefined) ?? on.find((a) => a.speaking());
         return {
           plan: lastPlan,
+          shot: shotName,
+          shot_clamped: shotClamped,
           cam: [cam.x, cam.y, cam.z] as [number, number, number],
           look: [look.x, look.y, look.z] as [number, number, number],
           speaker: sp?.who ?? null,
@@ -583,6 +692,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     : null;
   const update = (dt: number, now: number): void => {
     nowT = now;
+    shots?.tick(now);
     {
       const all = [...actors.values()];
       for (const a of all) a.look(gazeOf(a, all));
@@ -627,6 +737,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       else warnings.push(`stage: exit to "${p.door.name}" is ${res} -> stay`);
     }
     toucher.tick();
+    const onShot = shots ? applyShot(now) : false;
     const list = [...actors.values()];
     const sorted = [...list].sort((x, y) => (x.who < y.who ? -1 : 1));
     // F5: handlers may fire twice before one update — every queued event reaches the director in order, the camera shows the last
@@ -682,6 +793,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (isLast) s = out;
     }
     if (!s) return;
+    if (onShot) {
+      // the plan has the camera; leaving it jumps to the director's frame (prevCut reset -> k = 1)
+      prevCut = null;
+      lastPlan = s.plan;
+      critic?.tick(dt, now);
+      return;
+    }
     const k = s.cut !== prevCut ? 1 : 1 - Math.exp(-4 * dt);  // a cut jumps, inside a plan the camera follows smoothly
     prevCut = s.cut;
     const pos = c.camera.position;

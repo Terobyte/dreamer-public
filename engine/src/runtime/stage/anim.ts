@@ -175,64 +175,72 @@ function restPose(root: Object3D, reg: Map<string, AnimationClip>): { name: stri
   return best && best.score > 0 ? { name: best.name, t: best.t } : null;
 }
 
-/** One AnimationMixer per character: clips retargeted by bone name, calibration head cut, root walks in place, crossfades. */
-export function createAnimator(root: Object3D, clips: Record<string, AnimationClip>, opts: { idle?: string; fade?: number; seed?: string; life?: boolean } = {}): Animator {
-  const fade = opts.fade ?? 0.15;
-  const mixer = new AnimationMixer(root);
-  // bind pose of the upper arms, once, before the first update
+/** The clip as the runtime plays it on `root`: tracks with no bone in the body dropped, the calibration
+ *  head cut (`calibrationEnd`/`cutHead`), the root X/Z frozen (walks in place). No track for the body ->
+ *  a clip with no tracks. Shared by `createAnimator` and `clipFacts` (Г4), so facts match what plays. */
+export function prepareClip(src: AnimationClip, root: Object3D, name: string = src.name): AnimationClip {
   const bind: Record<string, Quaternion> = {};
   root.traverse((o) => {
     const m = ARM.exec(o.name);
     if (m) bind[m[1].toLowerCase()] = o.quaternion.clone();
   });
+  const known = src.tracks.filter((t) => {
+    const n = PropertyBinding.parseTrackName(t.name).nodeName;
+    return !!n && !!root.getObjectByName(n);
+  });
+  if (known.length < src.tracks.length && known.length) console.warn(`anim: clip "${name}" dropped ${src.tracks.length - known.length} track(s) with no bone in the body`);
+  if (!known.length) return new AnimationClip(name, 0, []);
+  let tracks = known;
+  const t0 = calibrationEnd(known, bind);
+  if (t0 === null) console.warn(`anim: clip "${name}" has no upperarm pair to detect the calibration head, not cut`);
+  else tracks = known.map((t) => cutHead(t, t0));
+  tracks = tracks.map((t) => {
+    const p = PropertyBinding.parseTrackName(t.name);
+    if (p.propertyName !== "position") return t;
+    const cubic = isCubic(t);
+    if (!cubic && t.getValueSize() !== 3) return t;
+    if (cubic && t.getValueSize() / 3 !== 3) return t;
+    const node = root.getObjectByName(p.nodeName)!;
+    const isRoot = ROOT.test(p.nodeName) || ((node as any).isBone && !(node.parent as any)?.isBone);
+    if (!isRoot) return t;
+    const v = Array.from(t.values);
+    if (isCubic(t)) {
+      // CUBICSPLINE root: freeze vertex X/Z to the first vertex, zero tangent X/Z (Y kept)
+      const vs = t.getValueSize(), st = vs / 3;
+      const fx = v[st], fz = v[st + 2];
+      for (let k = 0; k < v.length / vs; k++) {
+        const base = k * vs;
+        for (let j = 0; j < st; j++) {
+          if (j % 3 === 1) continue;
+          v[base + j] = 0;
+          v[base + st + j] = j % 3 === 0 ? fx : fz;
+          v[base + 2 * st + j] = 0;
+        }
+      }
+    } else {
+      for (let i = 0; i < v.length; i += 3) {
+        v[i] = v[0];
+        v[i + 2] = v[2];
+      }
+    }
+    return cloneTrack(t, Array.from(t.times), v);
+  });
+  return new AnimationClip(name, -1, tracks);
+}
 
+/** One AnimationMixer per character: clips retargeted by bone name, calibration head cut, root walks in place, crossfades. */
+export function createAnimator(root: Object3D, clips: Record<string, AnimationClip>, opts: { idle?: string; fade?: number; seed?: string; life?: boolean } = {}): Animator {
+  const fade = opts.fade ?? 0.15;
+  const mixer = new AnimationMixer(root);
+  // prepareClip reads the arms' bind pose: every clip is prepared here, before the first update
   const reg = new Map<string, AnimationClip>();
   for (const [name, src] of Object.entries(clips)) {
-    const known = src.tracks.filter((t) => {
-      const n = PropertyBinding.parseTrackName(t.name).nodeName;
-      return !!n && !!root.getObjectByName(n);
-    });
-    if (known.length < src.tracks.length && known.length) console.warn(`anim: clip "${name}" dropped ${src.tracks.length - known.length} track(s) with no bone in the body`);
-    if (!known.length) {
+    const clip = prepareClip(src, root, name);
+    if (!clip.tracks.length) {
       console.warn(`anim: clip "${name}" has no track for this body, not registered`);
       continue;
     }
-    let tracks = known;
-    const t0 = calibrationEnd(known, bind);
-    if (t0 === null) console.warn(`anim: clip "${name}" has no upperarm pair to detect the calibration head, not cut`);
-    else tracks = known.map((t) => cutHead(t, t0));
-    tracks = tracks.map((t) => {
-      const p = PropertyBinding.parseTrackName(t.name);
-      if (p.propertyName !== "position") return t;
-      const cubic = isCubic(t);
-      if (!cubic && t.getValueSize() !== 3) return t;
-      if (cubic && t.getValueSize() / 3 !== 3) return t;
-      const node = root.getObjectByName(p.nodeName)!;
-      const isRoot = ROOT.test(p.nodeName) || ((node as any).isBone && !(node.parent as any)?.isBone);
-      if (!isRoot) return t;
-      const v = Array.from(t.values);
-      if (isCubic(t)) {
-        // CUBICSPLINE root: freeze vertex X/Z to the first vertex, zero tangent X/Z (Y kept)
-        const vs = t.getValueSize(), st = vs / 3;
-        const fx = v[st], fz = v[st + 2];
-        for (let k = 0; k < v.length / vs; k++) {
-          const base = k * vs;
-          for (let j = 0; j < st; j++) {
-            if (j % 3 === 1) continue;
-            v[base + j] = 0;
-            v[base + st + j] = j % 3 === 0 ? fx : fz;
-            v[base + 2 * st + j] = 0;
-          }
-        }
-      } else {
-        for (let i = 0; i < v.length; i += 3) {
-          v[i] = v[0];
-          v[i + 2] = v[2];
-        }
-      }
-      return cloneTrack(t, Array.from(t.times), v);
-    });
-    reg.set(name, new AnimationClip(name, -1, tracks));
+    reg.set(name, clip);
   }
 
   const actions = new Map<string, AnimationAction>();

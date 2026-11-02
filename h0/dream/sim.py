@@ -789,7 +789,7 @@ class Sim:
             event["who"] = who
             event["role"] = line.get("role") or ("hero" if line["owner"] == "human" else "actor")
             for key in ("remarks", "level", "look", "touch", "impulse", "source", "para",
-                        "stage", "gesture", "shot"):
+                        "stage", "gesture", "shot", "beat"):
                 if line.get(key) is not None:
                     event[key] = line[key]
         if res is not None and line.get("dur") is not None:
@@ -1161,11 +1161,12 @@ class Sim:
             input_ev = {"type": "input", "source": "speech", "value": clean, "ignored": "book"}
             self._emit(input_ev)
             return out + [input_ev]
+        beat_i = self.book["cursor"]
         self.book["cursor"] += 1
         self.book["wait_since"] = None
         self._diagnostic(self.status())
         return out + [self._start_line({"owner": "human", "who": self.hero, "role": "hero",
-                                        "source": "human", "text": clean})]
+                                        "source": "human", "text": clean, "beat": beat_i})]
 
     def _book_step(self):
         bk = self.book
@@ -1192,6 +1193,7 @@ class Sim:
         if bk["wait_since"] is not None:
             bk["wait_since"] = None
             self._diagnostic(self.status())
+        beat_i = bk["cursor"]
         bk["cursor"] += 1
         if beat.get("stage"):
             stage_items = beat["stage"] if isinstance(beat["stage"], list) else [beat["stage"]]
@@ -1205,23 +1207,24 @@ class Sim:
                             "text": beat["text"], "source": "book", "para": beat.get("para"),
                             "stage": beat.get("stage"), "gesture": beat.get("gesture"),
                             "remarks": beat.get("remarks"),
-                            "shot": beat.get("shot")})
+                            "shot": beat.get("shot"), "beat": beat_i})
             return
         text = beat["text"] if beat["kind"] == "narration" else '"%s"' % beat["text"]
         voice = self.book.get("narrator_voice") or "old_man"
         if (self._voice is not None and self.logger is not None and not self.fake
                 and not self.safety_paused and self._budget_ok()):
-            self._book_narrate(text, voice)
+            self._book_narrate(text, voice, beat=beat_i)
             return
-        self._diagnostic({"type": "narrator", "cause": "book", "text": text, "voice": voice})
+        self._diagnostic({"type": "narrator", "cause": "book", "text": text, "voice": voice,
+                          "beat": beat_i})
         self._book_hold_until = now + self.clock.scale(line_duration(text))
 
-    def _book_narrate(self, text, voice):
+    def _book_narrate(self, text, voice, beat=None):
         """The book's narration is voiced like a line: Fish runs off the loop thread (B49), the
         score waits for it, the narrator event then carries the audio and the hold is its length."""
         self._line_seq += 1
         path = os.path.join(self._audio_dir, "line_%03d.wav" % self._line_seq)
-        job = {"text": text, "voice": voice, "done": threading.Event(), "res": None}
+        job = {"text": text, "voice": voice, "done": threading.Event(), "res": None, "beat": beat}
 
         def synth():
             try:
@@ -1240,6 +1243,8 @@ class Sim:
         self._book_voicing = None
         res = job["res"] or {}
         event = {"type": "narrator", "cause": "book", "text": job["text"], "voice": job["voice"]}
+        if job.get("beat") is not None:
+            event["beat"] = job["beat"]
         seconds = None
         if res.get("ok") and res.get("audio"):
             seconds = res.get("seconds", res.get("pause"))

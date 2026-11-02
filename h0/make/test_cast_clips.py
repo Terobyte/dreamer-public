@@ -318,5 +318,58 @@ class StageCarriesClips(unittest.TestCase):
         self.assertEqual(res.get("cast"), "failed", res)
 
 
+class CastRunsClipfacts(unittest.TestCase):
+    """Г4: run_cast calls `dreamer.ts clipfacts <ctx.out>` when someone has a GLB and clips."""
+
+    def _ctx(self, src):
+        run = Path(tempfile.mkdtemp()) / "run"
+        shutil.copytree(src, run / "cast.src")
+        out = run / "cast"
+        out.mkdir(parents=True)
+        return core.Ctx(run_dir=run, out=out, params={}, resume=False, budget_usd=None, opts={"live": True})
+
+    def _marker(self, ctx):
+        return json.loads((ctx.out / "marker.txt").read_text())
+
+    def test_calls_command_with_out(self):
+        ctx = self._ctx(FIX)
+        seen = []
+
+        def fake(cmd, **kw):
+            seen.append((cmd, kw))
+            # by then copytree and _fill_idle are done, marker not yet written
+            self.assertTrue((ctx.out / "body.glb").is_file())
+            self.assertEqual(json.loads((ctx.out / "cast.json").read_text())["Mama"]["idle"], "hug@0")
+            self.assertFalse((ctx.out / "marker.txt").exists())
+            return mock.Mock(returncode=0)
+
+        with mock.patch.object(cast.subprocess, "run", side_effect=fake):
+            cast.run_cast(ctx)
+        self.assertEqual(len(seen), 1)
+        cmd, kw = seen[0]
+        self.assertEqual(cmd, ["node", "--import", "tsx", "bin/dreamer.ts", "clipfacts", str(ctx.out)])
+        self.assertEqual(Path(kw["cwd"]).resolve(), (Path(cast.__file__).resolve().parents[2] / "engine").resolve())
+        self.assertNotIn("check", kw)
+        self.assertNotIn("CLIPFACTS_FAILED", " ".join(self._marker(ctx).get("warnings", [])))
+
+    def test_no_clips_no_call(self):
+        ctx = self._ctx(cast.FIXTURE)
+        with mock.patch.object(cast.subprocess, "run") as run:
+            cast.run_cast(ctx)
+        run.assert_not_called()
+
+    def test_no_glb_no_call(self):
+        ctx = self._ctx(FIX)
+        self.assertFalse(cast._wants_clipfacts({"Mama": {"clips": {"wake": "wake.glb"}}}))
+        self.assertFalse(cast._wants_clipfacts({"Mama": {"glb": "body.glb", "clips": {}}}))
+        self.assertTrue(cast._wants_clipfacts({"Mama": {"glb": "body.glb", "clips": {"wake": "wake.glb"}}}))
+
+    def test_nonzero_exit_is_a_warning(self):
+        ctx = self._ctx(FIX)
+        with mock.patch.object(cast.subprocess, "run", return_value=mock.Mock(returncode=1)):
+            self.assertEqual(cast.run_cast(ctx), 0.0)
+        self.assertIn("CLIPFACTS_FAILED", " ".join(self._marker(ctx)["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

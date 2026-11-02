@@ -29,6 +29,10 @@ export interface CriticIn {
   fov: number;
   aspect: number;
   actors: CriticActorIn[];
+  /** Г8: name of the active shot plan, null outside plans */
+  shot?: string | null;
+  /** Г8: the plan's point was moved more than 0.3 m by the camera law */
+  shot_clamped?: boolean;
 }
 export interface CriticActor {
   who: string;
@@ -47,6 +51,10 @@ export interface CriticFact {
   actors: CriticActor[];
   /** bodies intersect in 3D (horizontal gap < 0.6 m with overlapping y .. y + height capsules) */
   overlap: boolean;
+  /** Г8: name of the active shot plan, null outside plans (absent when the caller does not track plans) */
+  shot?: string | null;
+  /** Г8: the plan's point was moved more than 0.3 m by the camera law */
+  shot_clamped?: boolean;
 }
 
 const round = (v: number, k: number): number => Math.round(v * k) / k;
@@ -130,7 +138,11 @@ export function computeFact(i: CriticIn): CriticFact {
       const bottom = Math.max(i.actors[k].y, i.actors[j].y);
       if (Math.hypot(dx, dz) < 0.6 && bottom < top) overlap = true;
     }
-  return { t: round(i.t, 100), plan: i.plan, cam: i.cam, look: i.look, speaker: i.speaker, actors, overlap };
+  return {
+    t: round(i.t, 100), plan: i.plan, cam: i.cam, look: i.look, speaker: i.speaker, actors, overlap,
+    ...(i.shot !== undefined ? { shot: i.shot } : {}),
+    ...(i.shot_clamped !== undefined ? { shot_clamped: i.shot_clamped } : {}),
+  };
 }
 
 /** Recorder: `tick(dt, now)` pushes one fact into `sink` each 0.5 s of stage time. */

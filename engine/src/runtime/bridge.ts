@@ -30,8 +30,12 @@ export interface StageHandlers {
   story?(e: StageEvent): void;
   start?(e: StageEvent): void;
   stage?(e: StageEvent): void;
+  /** the last scene of the book is over (sim `book_end`) */
+  book_end?(e: StageEvent): void;
+  /** the book went on to its next scene: sim `transition` with `cause: "book"` only */
+  scene_end?(e: StageEvent): void;
 }
-const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage"] as const;
+const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage", "book_end"] as const;
 /** the sim's own names for what the stage calls `mode` / `story` (snapshot carries the mode; schedule and story events the pieces) */
 const ALIAS: Record<string, (typeof STAGE_TYPES)[number]> = { snapshot: "mode", schedule: "story", event: "story" };
 
@@ -41,6 +45,10 @@ export function createBridge(engine: BridgeEngine, io: BridgeIO, stage: StageHan
       const e = ev as { type?: unknown; object?: unknown; state?: unknown } | null;
       if (!e || typeof e !== "object" || typeof e.type !== "string") {
         io.warn(`sim event without a type: ${JSON.stringify(ev)}`);
+        return;
+      }
+      if (e.type === "transition" && (e as { cause?: unknown }).cause === "book" && stage.scene_end) {
+        stage.scene_end(e as StageEvent);
         return;
       }
       const key = ALIAS[e.type] ?? e.type;
