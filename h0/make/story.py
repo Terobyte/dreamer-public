@@ -48,6 +48,27 @@ def _spark_translate(ctx):
     return translate
 
 
+def _spark_director(ctx):
+    """prompt -> JSON text of the staging: one Spark call (pipe2), same wiring as `_spark_translate`."""
+    from . import core
+    h0 = str(Path(__file__).resolve().parents[1])
+    if h0 not in sys.path:
+        sys.path.insert(0, h0)
+    from pipe2.ledger import Ledger, load_prices
+    from pipe2.spark import Spark
+    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
+    spark = Spark(core._spark_transport(), ledger)
+
+    def director(prompt):
+        msgs = [{"role": "system", "content": "You are a stage director. Answer one JSON object as the user's "
+                 "instruction says; use only the given actor and place names."},
+                {"role": "user", "content": prompt}]
+        ans = spark.ask("story", "stage", 0, msgs, "medium")
+        ctx.spend(ledger.spent)
+        return json.dumps(ans.scene, ensure_ascii=False) if ans.valid and isinstance(ans.scene, dict) else ""
+    return director
+
+
 def translate_score(ctx, score, lang):
     """score -> the same score with line/narration texts in `lang`. One call per scene; the answer is cached
     in story/tr-<sha256(texts + lang)>.json (copied over from the previous story, so a rebuild stays free)."""
@@ -87,7 +108,10 @@ def run_story(ctx):
         director = None
         if ctx.params.get("fake"):
             director = lambda p: json.dumps({"start": [], "stage": []})
-        score = _book.score_scene(b["dir"], b["scene"], places=places, director=director)
+        else:
+            director = _spark_director(ctx)
+        score = _book.score_scene(b["dir"], b["scene"], places=places, director=director,
+                                  cache_dir=ctx.run_dir / "story")
         edited = ctx.run_dir / "story" / "score.edited.json"
         if edited.is_file():
             ed = json.loads(edited.read_text())

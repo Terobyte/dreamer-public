@@ -13,6 +13,16 @@ VALID_ACTIONS = {"stay", "come", "goto", "enter", "exit", "turn_away"}
 DEFAULT_POSE = "stand"
 
 
+def normalize_places(places: Any) -> Dict[str, Any]:
+    """The bank as `{name: {room, poses, ...}}`. Accepts that, a list of places, or the
+    `stage/places.json` envelope `{"places": [...], "warnings": [...]}`."""
+    if isinstance(places, dict) and isinstance(places.get("places"), list):
+        places = places["places"]
+    if isinstance(places, list):
+        return {p["name"]: p for p in places if isinstance(p, dict) and p.get("name")}
+    return places if isinstance(places, dict) else {}
+
+
 def compute_director_cache_key(paragraphs: List[str], places: Dict[str, Any], model_name: str = "spark-contributor") -> str:
     payload = {
         "paragraphs": paragraphs,
@@ -64,7 +74,7 @@ def build_director_prompt(
     needed_beats: Optional[List[int]] = None
 ) -> str:
     places_info = {}
-    for name, p in (places or {}).items():
+    for name, p in normalize_places(places).items():
         places_info[name] = {
             "room": p.get("room", ""),
             "poses": p.get("poses", [])
@@ -91,7 +101,7 @@ def validate_and_merge_staging(
     hand_stage_by_beat: Dict[int, List[Dict[str, Any]]],
     warnings: List[str]
 ) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]]]:
-    places = places or {}
+    places = normalize_places(places)
     cast_set = set(cast) if cast else None
     valid_places = set(places.keys())
 
@@ -105,7 +115,7 @@ def validate_and_merge_staging(
                 hand_start_who.add(who)
                 final_start.append(dict(st))
 
-    if model_output and "start" in model_output and isinstance(model_output["start"], list):
+    if hand_start is None and model_output and "start" in model_output and isinstance(model_output["start"], list):
         for st in model_output["start"]:
             if not isinstance(st, dict):
                 continue
@@ -229,7 +239,10 @@ def run_staging(
 
     The model is called only when the scene lacks `start` or `stage`. Answers are
     cached by sha256(paragraphs + places + model) in `cache_dir` when it is given."""
-    hand_start = scene.get("start") or None
+    places = normalize_places(places)
+    # a field that is present in book.json wins even when empty
+    hand_start = list(scene["start"]) if isinstance(scene.get("start"), list) else None
+    has_stage = isinstance(scene.get("stage"), dict)
     hand_stage: Dict[int, List[Dict[str, Any]]] = {}
     for k, v in (scene.get("stage") or {}).items():
         try:
@@ -237,9 +250,9 @@ def run_staging(
         except (TypeError, ValueError):
             warnings.append("stage: bad beat id %r in book.json ignored" % (k,))
     output = None
-    need_model = director is not None and (not hand_start or not hand_stage)
+    need_model = director is not None and (hand_start is None or not has_stage)
     if need_model:
-        key = compute_director_cache_key(paragraphs, places or {}, "spark-contributor")
+        key = compute_director_cache_key(paragraphs, places, "spark-contributor")
         path = _cache_path(cache_dir, key) if cache_dir else None
         if path and os.path.isfile(path):
             try:
@@ -248,11 +261,11 @@ def run_staging(
             except (OSError, ValueError):
                 output = None
         if output is None:
-            prompt = build_director_prompt(paragraphs, list(cast or []), places or {})
+            prompt = build_director_prompt(paragraphs, list(cast or []), places)
             output = call_director_with_retry(director, prompt, warnings)
             if output is not None and path:
                 os.makedirs(cache_dir, exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(output, f, ensure_ascii=False)
     return validate_and_merge_staging(
-        output, paragraphs, list(cast or []), places or {}, hand_start, hand_stage, warnings)
+        output, paragraphs, list(cast or []), places, hand_start, hand_stage, warnings)

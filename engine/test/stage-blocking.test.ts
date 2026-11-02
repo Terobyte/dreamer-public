@@ -53,13 +53,4 @@ describe("stage-blocking and director offstage", () => {
     expect(events.map((e) => e.type)).toEqual(["start", "stage", "line"]);
   });
 
-  it("runtime enter clears offstage and positions actor at door", () => {
-    const mama = act("Мама", [0, 0], { offstage: true, room: "corridor" });
-    expect(mama.offstage).toBe(true);
-  });
-
-  it("runtime exit moves to door and marks actor offstage", () => {
-    const mama = act("Мама", [5, 5], { offstage: false, room: "bedroom" });
-    expect(mama.offstage).toBe(false);
-  });
 });

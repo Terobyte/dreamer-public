@@ -87,6 +87,66 @@ class TestBookStage(unittest.TestCase):
         mirai = next(x for x in score["start"] if x["who"] == "Mirai")
         self.assertEqual(mirai["pose"], "stand")
 
+    def test_stage_places_json_envelope_is_accepted_and_prompt_lists_bank(self):
+        calls = []
+        response = json.dumps({"start": [{"who": "Mirai", "place": "bed", "pose": "lie"}],
+                               "stage": [{"beat_id": 2, "who": "Mama", "action": "goto",
+                                          "place": "bed", "pose": "lie"},
+                                         {"beat_id": 2, "who": "Mirai", "action": "goto",
+                                          "place": "door_bedroom", "pose": "lie"}]})
+        director, _ = self._director(response)
+        # Match h0/make/stage.py's persisted stage/places.json shape.
+        bank = {"places": [{"name": "bed", "room": "bedroom", "poses": ["lie", "sit", "stand"]},
+                           {"name": "door_bedroom", "room": "bedroom", "poses": ["stand"]}],
+                "warnings": []}
+        def recording(prompt):
+            calls.append(prompt)
+            return director(prompt)
+        score, failure = None, None
+        try:
+            score = book.score_scene(KOSHAKAN, "bedroom", places=bank, director=recording,
+                                     cache_dir=self.tmp)
+        except Exception as exc:
+            failure = exc
+        self.assertIsNone(failure, f"score_scene should accept the stage/places.json envelope: {failure!r}")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("bed", calls[0])
+        stage = score["beats"][2]["stage"]
+        self.assertEqual(stage[0]["place"], "bed")
+        self.assertEqual(stage[0]["pose"], "lie")
+        mirai_stage = next(item for item in stage if item["who"] == "Mirai")
+        self.assertEqual(mirai_stage["place"], "door_bedroom")
+        self.assertEqual(mirai_stage["pose"], "stand")
+
+    def test_explicit_empty_manual_fields_override_director_individually(self):
+        target, path, data, scene = self._copy_book_with_scene()
+        scene["start"] = []
+        scene["stage"] = {}
+        self._write_book(path, data)
+        director, calls = self._director(json.dumps({
+            "start": [{"who": "Mirai", "place": "bed", "pose": "lie"}],
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "enter", "place": "door_bedroom"}],
+        }))
+        score = book.score_scene(target, "bedroom", places=self._places(), director=director,
+                                 cache_dir=self.tmp)
+        self.assertEqual(calls, [])
+        self.assertEqual(score["start"], [])
+        self.assertTrue(all(not b.get("stage") for b in score["beats"]))
+
+    def test_empty_manual_start_still_calls_director_when_stage_is_missing(self):
+        target, path, data, scene = self._copy_book_with_scene()
+        scene["start"] = []
+        self._write_book(path, data)
+        director, calls = self._director(json.dumps({
+            "start": [{"who": "Mirai", "place": "bed", "pose": "lie"}],
+            "stage": [{"beat_id": 2, "who": "Mama", "action": "enter", "place": "door_bedroom"}],
+        }))
+        score = book.score_scene(target, "bedroom", places=self._places(), director=director,
+                                 cache_dir=self.tmp)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(score["start"], [])
+        self.assertEqual(score["beats"][2]["stage"][0]["action"], "enter")
+
     def _copy_book_with_scene(self):
         target = os.path.join(self.tmp, "book")
         shutil.copytree(KOSHAKAN, target)

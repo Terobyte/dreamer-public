@@ -94,6 +94,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
   const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
   const offstageActors = new Set<string>();
+  /** actors walking to a door on `exit`: they become offstage only once they stop there */
+  const exiting = new Set<string>();
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
@@ -152,7 +154,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     actor: (w) => actors.get(w),
   });
   toucherLevel = (who) => toucher.levelOf(who);
-  const touch = (who: string, name: string, pose?: string, finishYaw?: number): void => void toucher.touch(who, name, pose, finishYaw);
+  const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): void => void toucher.touch(who, name, pose, finishYaw);
 
   const whoOf = (e: StageEvent): string | null => {
     const w = e.who ?? e.actor ?? e.turn_owner;
@@ -239,6 +241,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const who = typeof it.who === "string" ? it.who : null;
         if (!who || !actors.has(who)) continue;
         const a = actors.get(who)!;
+        exiting.delete(who);
         if (it.offstage) {
           offstageActors.add(who);
         } else {
@@ -304,7 +307,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           return;
         }
         const tgtPos = getTargetPos(lookTarget);
-        const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : undefined;
+        const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
         touch(who, pl.name, pose, lookYaw);
         return;
       }
@@ -318,6 +321,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: door place "${placeName}" not in places bank -> stay`);
           return;
         }
+        exiting.delete(who);
         offstageActors.delete(who);
         const lvl = door.level ?? null;
         const y = layerOf(lvl).layer.y ?? 0;
@@ -332,10 +336,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const lvl = toucher.levelOf(who);
         const curRoom = roomAt(a.pos(), lvl)?.room;
         const door = places.find((p) => (p.room === curRoom || !curRoom) && (p.kind === "door" || p.poses?.includes("door")));
-        if (door) {
-          touch(who, door.name, "door");
+        if (!door) {
+          warnings.push(`stage: exit finds no door in room "${curRoom ?? "?"}" -> stay`);
+          return;
         }
-        offstageActors.add(who);
+        const res = toucher.touch(who, door.name, "door");
+        if (res === "walk") exiting.add(who);
+        else if (res === "skip") offstageActors.add(who);
+        else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
         return;
       }
       warnings.push(`stage: unknown action "${action}" -> stay`);
@@ -402,6 +410,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const look = new Vector3();
   const update = (dt: number, now: number): void => {
     for (const a of actors.values()) a.update(dt, now);
+    for (const who of [...exiting]) {
+      if (!actors.get(who)?.moving()) {
+        exiting.delete(who);
+        offstageActors.add(who);
+      }
+    }
     toucher.tick();
     const list = [...actors.values()];
     const sorted = [...list].sort((x, y) => (x.who < y.who ? -1 : 1));

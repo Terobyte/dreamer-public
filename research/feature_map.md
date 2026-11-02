@@ -202,7 +202,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | `voice.py` | Fish TTS: `Voice.synthesize(text, label, out_path)`, `strip_tags`, `wav_seconds`, тишина при 3 провалах; `MODEL = "drama-3"`; пул `voices.json` (old_woman, old_man, woman, man, child, creature, scarlett, rhett ...) | `Voice`, `real_transport`, `fake_transport`, `load_pool`, `fish_key`, `character_reference_id` | wav | `test_contract_fish*`, `test_bugs_voice` |
 | `images.py` | Muse Image фон/портрет, макс 2 одновременно, fallback | `Images.generate`, `background_prompt`, `portrait_prompt`, `real_transport` | png | `test_media` |
 | `book.py` | глава -> черновой score без LLM (beats `line`/`narration`, поле `who/text/tag/para`; в sim пробрасываются `stage/gesture/shot`) | `load_book`, `find_scene`, `parse_scene`, `score_scene`, `split_narration`, `split_paras`, `stats` | book.json, score.json | `test_book`, `test_jane_eyre_book`, `test_book_play`, `test_book_stage` |
-| `stage_director.py` | мизансцена моделью-директором: `start` и `stage` битов, валидация по банку мест/поз, кэш `story/director-*.json`, слияние с ручным book.json | `run_staging`, `validate_and_merge_staging`, `call_director_with_retry`, `compute_director_cache_key`, `build_director_prompt` | score.json | `test_book_stage` |
+| `stage_director.py` | мизансцена моделью-директором: `start` и `stage` битов, валидация по банку мест/поз, кэш `story/stage_<sha256>.json` (`cache_dir`), слияние с ручным book.json | `run_staging`, `validate_and_merge_staging`, `call_director_with_retry`, `compute_director_cache_key`, `build_director_prompt`, `normalize_places` (банк как dict, список или конверт `places.json`) | score.json | `test_book_stage` |
 | `author.py` | Wonder пишет целую сцену (душа героя, актёры, подбор голоса Fish через `fish_search`) | `author_scene`, `write_scene`, `cast`, `to_scene` | scenes/*.json | `test_author` |
 | `bank.py` | прогон банка сцен текстом + метрики (MATTR, молчания, серии) | `run_scene`, `score`, `mattr` | `h0/out/dream/bank/sheet_*.md` | `test_ab`? |
 | `dub.py` | озвучить и нарисовать текстовый прогон постфактум | `dub`, `cast_of` | — | `test_dub` |
@@ -233,7 +233,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 
 Чего из squid_live НЕТ в движке (проверено по `duo.html` и `runtime/stage`):
 - процедурные жесты по голосовой ремарке (`pick(who,text,remarks)`: wave/react/facepalm/shrug/armscross/jump/droop) — в движке жесты только клипами cast (`pickClip`) и `life.ts`;
-- структурный `stage` в бите партитуры (`DIRECTED[text].stage = [{who, place}]`) — sim пробрасывает `stage` в событие (`sim.py:1194`), но `stage/index.ts` его не читает, ставит людей только `stageRegex` по тексту (L11);
+- структурный `stage` в бите партитуры теперь исполняется (Н10): события `start`/`stage` через мост, `stage/index.ts` (`goto` без `look` — лицом по ходу, `exit` -> `offstage` только после остановки у двери); `stageRegex` работает, только когда у бита нет `stage`; директор в `make/story.py::_spark_director`;
 - `walkOff`/переход на улицу через дверь, `buildStreet` (вторая сцена по двери), `goDoor`;
 - подписи на дверях (`doorLabel`), «пятно-тень» под актёром (`blob`), текстура «дырочки» (`holes`);
 - первое лицо игрока, говорящего с NPC (`/api/talk`);

@@ -376,7 +376,7 @@ def score_scene(dir, scene_id, places=None, director=None, cache_dir=None):
         "beats": beats,
         "warnings": warnings_for(beats) + extra_warnings
     }
-    if final_start:
+    if final_start or isinstance(sc.get("start"), list):
         score["start"] = final_start
     return score
 
