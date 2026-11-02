@@ -4,10 +4,13 @@ import json
 import re
 import shutil
 import struct
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 FIXTURE = Path(__file__).resolve().parent / "testdata" / "cast"
+ENGINE = Path(__file__).resolve().parents[2] / "engine"
 VOICES = Path(__file__).resolve().parents[1] / "dream" / "voices.json"
 H_MIN, H_MAX = 0.5, 2.5
 _GLB_MAGIC = 0x46546C67  # b'glTF' as little-endian uint32
@@ -389,5 +392,18 @@ def run_cast(ctx):
         raise ValueError("cast: " + "; ".join(errs))
     shutil.copytree(src, ctx.out, dirs_exist_ok=True)
     _fill_idle(ctx.out / "cast.json")
-    (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time()}))
+    warnings = []
+    if _wants_clipfacts(json.loads((ctx.out / "cast.json").read_text())):
+        # Г4: facts of each clip (contact_y, face_dir, head_y, lying) -> cast/clipfacts.json
+        out_abs = Path(ctx.out).absolute()  # F1: relative ctx.out resolves from the caller cwd, not ENGINE
+        r = subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "clipfacts", str(out_abs)], cwd=ENGINE)
+        if r.returncode != 0:
+            warnings.append(f"CLIPFACTS_FAILED: dreamer clipfacts exited {r.returncode}")
+            print(f"cast: {warnings[-1]}", file=sys.stderr)
+    (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time(), "warnings": warnings}))
     return 0.0
+
+
+def _wants_clipfacts(cast_json):
+    """someone has a GLB body and non-empty clips: only then clip facts can be measured."""
+    return any(isinstance(c, dict) and c.get("glb") and c.get("clips") for c in cast_json.values())

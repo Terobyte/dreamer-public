@@ -117,6 +117,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const cast: Record<string, { glb?: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[] }> =
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
+  // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
+  const clipfacts: Record<string, Record<string, { contact_y?: number }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
+    .catch(() => null);
 
   const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
   const roomAt = (p: V2, level?: string | null): any | null => floorAt(c.geo.floors ?? [], p, level);
@@ -147,7 +152,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const url = new URL(cast[who].glb, castUrl).href;
     const clipUrls: Record<string, string> = {};
     for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
-    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle);
+    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
     if (sp && sp.name === startName) claims[sp.name] = who;
     actors.set(who, a);
   }

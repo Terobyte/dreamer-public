@@ -16,11 +16,13 @@ import { Sam3dProvider } from "../src/assets/providers/sam3d.js";
 import type { Issue, NavJson, Report } from "../src/types.js";
 import { mark } from "../src/report/timing.js";
 import type { PropFact } from "../src/props/fact.js";
+import { writeClipfacts } from "../src/runtime/stage/clipfacts.js";
 
 const USAGE =
   "usage: dreamer check <scene> [--report <path>] [--built <dist>]\n" +
   "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>] [--apply-fixes]\n" +
-  "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]";
+  "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]\n" +
+  "       dreamer clipfacts <cast dir>";
 
 /**
  * `undefined` = flag absent, `null` = flag present but its value is missing
@@ -96,6 +98,13 @@ async function main(): Promise<number> {
     // re-bundle runtime.js into a built dist: an old world plays with the current engine (film, fixes)
     await bundleRuntime(join(args[1], "runtime.js"));
     console.log(`runtime: ${join(args[1], "runtime.js")}`);
+    return 0;
+  }
+  if (args[0] === "clipfacts" && args[1]) {
+    // G4: <cast dir>/clipfacts.json: contact_y / face_dir / head_y / lying of every clip of every actor
+    // (static import: this tsx's vendored ESM parser fails on a dynamic import() in this file)
+    for (const w of await writeClipfacts(args[1])) console.warn(w);
+    console.log(`clipfacts: ${join(args[1], "clipfacts.json")}`);
     return 0;
   }
   if (args[0] !== "check" || !args[1]) {

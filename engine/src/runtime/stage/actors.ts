@@ -6,6 +6,8 @@ import type { V2 } from "./places.js";
 
 export const SIT_DROP = 0.45;
 export const WALK_SPEED = 1.4;
+/** the animator crossfade (`createAnimator` default fade): the contact_y shift follows it */
+const CLIP_FADE = 0.15;
 
 /** head/chest nodes for the procedural nod (Н17 F8): the head node, then one
  *  upper node (neck/chest); [] when the body has no named bones (a box). */
@@ -65,7 +67,30 @@ export interface Actor {
   update(dt: number, now: number): void;
 }
 
-/** clip name -> animations[0] of its GLB; a clip that does not load is skipped with a warning */
+/** the animation of a clip GLB for clip key `name`: the one named `name`, else the first (null = none) */
+export function pickAnimation(animations: AnimationClip[], name: string): AnimationClip | null {
+  return animations.find((a) => a.name === name) ?? animations[0] ?? null;
+}
+
+/** Fit an already loaded body to `heightM`: `holder` is scaled to the height, the body centred on XZ
+ *  with its feet on y = 0. Shared by `createActor` and the `clipfacts` CLI (Г4). */
+export function prepareActorBody<T extends Object3D>(body: T, heightM: number): { holder: Group; body: T } {
+  // loadGlb fits a box; the contract is the height: rescale about the feet to exactly height_m, feet on y = 0, centred
+  const bb = new Box3().setFromObject(body);
+  const h = bb.max.y - bb.min.y;
+  const holder = new Group();
+  holder.add(body);
+  if (h > 0) holder.scale.setScalar(heightM / h);
+  const feet = new Box3().setFromObject(holder);
+  const c = feet.getCenter(new Vector3());
+  body.position.x -= c.x / holder.scale.x;
+  body.position.z -= c.z / holder.scale.z;
+  body.position.y -= feet.min.y / holder.scale.y;
+  holder.updateMatrixWorld(true);
+  return { holder, body };
+}
+
+/** clip name -> its animation (`pickAnimation`); a clip that does not load is skipped with a warning */
 async function loadClips(who: string, urls: Record<string, string>): Promise<Record<string, AnimationClip>> {
   const loader = new GLTFLoader();
   const out: Record<string, AnimationClip> = {};
@@ -73,7 +98,7 @@ async function loadClips(who: string, urls: Record<string, string>): Promise<Rec
     Object.entries(urls).map(async ([name, url]) => {
       try {
         const g = await loader.loadAsync(url);
-        const clip = g.animations.find((a) => a.name === name) ?? g.animations[0];
+        const clip = pickAnimation(g.animations, name);
         if (!clip) throw new Error("no animation in the file");
         out[name] = clip;
       } catch (e) {
@@ -84,8 +109,10 @@ async function loadClips(who: string, urls: Record<string, string>): Promise<Rec
   return out;
 }
 
-/** Cast member `who` from a GLB, scaled to `height_m`; a plain box stands in if the GLB does not load. */
-export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0, clipUrls: Record<string, string> = {}, idle?: string): Promise<Actor> {
+/** Cast member `who` from a GLB, scaled to `height_m`; a plain box stands in if the GLB does not load.
+ *  `facts` = clipfacts.json of this actor (Г4): its `contact_y` per clip lowers/raises the holder so the skin lies on the support. */
+export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0, clipUrls: Record<string, string> = {}, idle?: string,
+  facts?: Record<string, { contact_y?: number } | undefined> | null): Promise<Actor> {
   const group = new Group();
   group.name = `actor:${who}`;
   let body: Group;
@@ -105,18 +132,31 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     m.position.y = heightM / 2;
     body.add(m);
   }
-  // loadGlb fits a box; the contract is the height: rescale about the feet to exactly height_m, feet on y = 0, centred
-  const bb = new Box3().setFromObject(body);
-  const h = bb.max.y - bb.min.y;
-  const holder = new Group();
-  holder.add(body);
-  if (h > 0) holder.scale.setScalar(heightM / h);
-  const feet = new Box3().setFromObject(holder);
-  const c = feet.getCenter(new Vector3());
-  body.position.x -= c.x / holder.scale.x;
-  body.position.z -= c.z / holder.scale.z;
-  body.position.y -= feet.min.y / holder.scale.y;
+  const { holder } = prepareActorBody(body, heightM);
   group.add(holder);
+  // Г4: the group stays on the support; the holder shifts by -contact_y of the current clip (metres, the
+  // group is not scaled), linearly over the animator crossfade when the clip changes. No facts -> 0.
+  const offOf = (clip: string): number => {
+    const c = Number(facts?.[clip]?.contact_y);
+    return Number.isFinite(c) && Math.abs(c) > 0.02 ? -c : 0;
+  };
+  let offClip = animator?.current() ?? "";
+  let offFrom = offOf(offClip);
+  let offTo = offFrom;
+  let offT0 = 0;
+  holder.position.y = offTo;
+  const shift = (now: number): void => {
+    if (!facts || !animator) return;
+    const c = animator.current();
+    if (c !== offClip) {
+      offFrom = holder.position.y;
+      offTo = offOf(c);
+      offT0 = now;
+      offClip = c;
+    }
+    const k = Math.max(0, Math.min(1, (now - offT0) / CLIP_FADE));
+    holder.position.y = offFrom + (offTo - offFrom) * k;
+  };
 
   let x = at[0];
   let z = at[1];
@@ -247,6 +287,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         else if (!m && wasMoving) animator.idle();
         wasMoving = m;
         animator.update(dt, { talking: clock < talkUntil, look: gaze ?? undefined });
+        shift(now);
       }
       // F8: lay the procedural nod on the head/chest bones after the mixer+life
       // (undone at the next apply, so it never accumulates and never leaves a range)
