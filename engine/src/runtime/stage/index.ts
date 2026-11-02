@@ -1,13 +1,14 @@
 import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
-import type { NavRamp } from "../../nav/floor.js";
+import { navBit, type NavRamp } from "../../nav/floor.js";
 import { aliasesOf, clipForBeat } from "./anim.js";
-import { createActor, type Actor } from "./actors.js";
+import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
 import { floorAt, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
+import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
@@ -690,6 +691,38 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         };
       })
     : null;
+  /**
+   * Н9: actors never stand inside each other. Per level, after the actors stepped: `separate()` over the capsules.
+   * Not counted: offstage and exiting actors, actors off a level (lying on a bed, on a ramp, on a table top), and
+   * walkers: the route leads them (pushing a walker off a goal next to someone loops forever); they are set apart
+   * once they stop. A seated actor never moves. A standing one steps out at walking speed at most (no jump).
+   * A push off the walkable floor (nav bitmap) is refused: that actor stays where it was.
+   */
+  const spread = (dt: number): void => {
+    const step = Math.max(0, dt) * WALK_SPEED;
+    const byLevel = new Map<string, Actor[]>();
+    for (const a of actors.values()) {
+      if (offstageActors.has(a.who) || exiting.has(a.who) || a.moving()) continue;
+      const lvl = toucher.levelOf(a.who);
+      if (lvl === null) continue;
+      (byLevel.get(lvl) ?? byLevel.set(lvl, []).get(lvl)!).push(a);
+    }
+    for (const [lvl, list] of byLevel) {
+      if (list.length < 2) continue;
+      const fixed = list.map((a) => a.act() === "sit");
+      const r = separate(list.map((a) => a.pos()), list.map((a) => a.radius()), { fixed });
+      const L = layerOf(lvl === "" ? null : lvl);
+      list.forEach((a, i) => {
+        const [x0, z0] = a.pos();
+        let [x, z] = r.pos[i]!;
+        const d = Math.hypot(x - x0, z - z0);
+        if (d === 0) return;
+        if (d > step) (x = x0 + ((x - x0) * step) / d), (z = z0 + ((z - z0) * step) / d);
+        if (L && !navBit(L.layer, L.bits, x, z)) return;
+        a.shove(x, z);
+      });
+    }
+  };
   const update = (dt: number, now: number): void => {
     nowT = now;
     shots?.tick(now);
@@ -698,6 +731,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       for (const a of all) a.look(gazeOf(a, all));
     }
     for (const a of actors.values()) a.update(dt, now);
+    spread(dt);
     for (const who of [...exiting]) {
       const act = actors.get(who);
       if (!act?.moving()) {

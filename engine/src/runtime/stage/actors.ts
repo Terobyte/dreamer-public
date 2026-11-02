@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
 import type { V2 } from "./places.js";
+import { sitLegs } from "./pose.js";
 
 export const SIT_DROP = 0.45;
 export const WALK_SPEED = 1.4;
@@ -54,6 +55,10 @@ export interface Actor {
   teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number): void;
   /** still walking or turning */
   moving(): boolean;
+  /** collision capsule radius (Н9, `capsuleRadius`) */
+  radius(): number;
+  /** put the actor on a point (collision push, Н9): no walking, the walk goes on from there */
+  shove(x: number, z: number): void;
   speak(seconds: number): void;
   speaking(): boolean;
   /** world point of the eyes (the gaze target other actors look at) */
@@ -65,6 +70,13 @@ export interface Actor {
   /** bounded procedural nod (1.5 s): head/chest bones on a rig, the group on a box; never moves a bone out of range */
   gesture(): void;
   update(dt: number, now: number): void;
+}
+
+/** collision capsule radius (Н9): half the wider bbox side, 0.12..0.3 m. The cap: a rig at rest is often a
+ *  T-pose, its arm span would keep two actors 1.7 m apart */
+export function capsuleRadius(body: Object3D): number {
+  const fit = new Box3().setFromObject(body);
+  return Math.min(0.3, Math.max(0.12, 0.5 * Math.max(fit.max.x - fit.min.x, fit.max.z - fit.min.z)));
 }
 
 /** the animation of a clip GLB for clip key `name`: the one named `name`, else the first (null = none) */
@@ -134,6 +146,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   }
   const { holder } = prepareActorBody(body, heightM);
   group.add(holder);
+  const radius = capsuleRadius(holder);
   // Г4: the group stays on the support; the holder shifts by -contact_y of the current clip (metres, the
   // group is not scaled), linearly over the animator crossfade when the clip changes. No facts -> 0.
   const offOf = (clip: string): number => {
@@ -177,10 +190,14 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   // F8: a rigged body nods with its head/chest bones; a box (no named bones) rocks as a whole
   const nodBones = findNodBones(body);
   let nodUndo: (() => void) | null = null;
+  // Н9: seated legs (thigh and knee 85 deg) laid after the mixer, undone at the next apply like the nod
+  let legUndo: (() => void) | null = null;
   const nodAmp = (now: number): number => (now < gestureUntil ? Math.sin(now * 2 * Math.PI * 1.4) * 0.06 : 0);
   const apply = (now: number, moving: boolean): void => {
     nodUndo?.();
     nodUndo = null;
+    legUndo?.();
+    legUndo = null;
     const bob = moving ? Math.abs(Math.sin(now * 9)) * 0.04 : 0;
     const sway = moving ? Math.sin(now * 9) * 0.05 : 0;
     const talking = now < talkUntil;
@@ -222,6 +239,14 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       apply(clock, false);
     },
     moving: () => path.length > 0 || finish !== null,
+    radius: () => radius,
+    shove(nx, nz) {
+      x = nx;
+      z = nz;
+      group.position.x = nx;
+      group.position.z = nz;
+      segFrom = [x, z];
+    },
     play(clip, o) {
       animator?.play(clip, o);
     },
@@ -291,6 +316,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       }
       // F8: lay the procedural nod on the head/chest bones after the mixer+life
       // (undone at the next apply, so it never accumulates and never leaves a range)
+      if (act === "sit" && !moving && !finish) legUndo = sitLegs(body);
       const ga = nodAmp(now);
       if (ga && nodBones.length) nodUndo = applyNod(body, ga);
     },
