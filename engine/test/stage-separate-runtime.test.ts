@@ -45,6 +45,21 @@ describe("separate() in the runtime", () => {
     expect(dist(posOf(stage, "Papa"), [5, 5])).toBeGreaterThan(0.45);
   });
 
+  it("stage.json start_pose sit seats the actor at load, like a start event with pose sit (Koshakan: Mirai stood by the bed)", async () => {
+    const bank = [{ name: "chair", id: "chair", kind: "sit", room: "room", level: null, at: [5, 5], yaw: 0, look: null, obstacle: null, poses: ["sit", "stand"] }];
+    const stage = await startStage({
+      scene: new Scene(), camera: new PerspectiveCamera(50, 1, 0.1, 100), stageUrl: "stage/stage.json", sim: null,
+      stage: { mode: "book", places: "stage/places.json", cast: "cast/cast.json", start: { Mama: "chair" }, start_pose: { Mama: "sit" } },
+      places: bank, cast,
+      geo: { spawn: { at: [3, 5] }, floors: [{ room: "room", level: null, outline }], meshes: [] },
+      layers: [{ layer, bits: full() }], nav: { ramps: [], doors: {} }, doorOpen: () => false,
+    } as any);
+    run(stage);
+    const mama = stage.api.actors().find((a: any) => a.who === "Mama")!;
+    expect(mama.act).toBe("sit");
+    expect(dist(mama.pos, [5, 5])).toBeLessThan(1e-6);
+  });
+
   it("a walker whose goal is next to a seated actor arrives (no endless push-back), then stands clear of her", async () => {
     const bank = [
       { name: "chair", id: "chair", kind: "sit", room: "room", level: null, at: [5, 5], yaw: 0, look: null, obstacle: null, poses: ["sit", "stand"] },

@@ -175,6 +175,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
     const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
     if (sp && sp.name === startName) claims[sp.name] = who;
+    // start_pose sit seats the actor at load, the same rule as a start event with pose sit (else it stands by the seat)
+    if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y());
     actors.set(who, a);
   }
   const director = createDirector(rng);
