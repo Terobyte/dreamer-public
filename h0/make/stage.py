@@ -318,6 +318,13 @@ def write_stage(run_dir, out, brief=None, freestyle=False, lang="en"):
           "mode": brief.get("mode"), "book": None, "seed": None,
           "objects": [p["name"] for p in res["places"]], "voices": {},
           "narrator_voice": None, "start": start}
+    try:  # a cast member that starts lying/sitting on its place ("start_pose": "lie" in cast.json)
+        cj = json.loads((run_dir / "cast" / "cast.json").read_text())
+        sp = {w: c["start_pose"] for w, c in cj.items() if isinstance(c, dict) and isinstance(c.get("start_pose"), str)}
+        if sp:
+            sj["start_pose"] = sp
+    except (OSError, ValueError):
+        pass
     # book cast voices for stage (book actors use voices from book.json, not only cast.json)
     # contract: без --lang всё побайтно как раньше — book голоса только для ru
     book_voices = []

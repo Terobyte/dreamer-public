@@ -352,6 +352,14 @@ export interface CastClips {
   clips?: Record<string, unknown>;
   /** clip -> words */
   verbs?: Record<string, string[]>;
+  /** the name in the book's language ("Мирай" for Mirai): narration names the actor by it */
+  aliases?: string[];
+}
+/** alias (lower case) -> cast name, from every `cast[name].aliases` */
+export function aliasesOf(cast: Record<string, CastClips>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, c] of Object.entries(cast)) for (const a of c.aliases ?? []) if (typeof a === "string" && a.trim()) out[a.trim().toLowerCase()] = name;
+  return out;
 }
 export type ClipPick = { who: string; clip: string };
 

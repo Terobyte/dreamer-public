@@ -123,7 +123,7 @@ def run_stage(ctx):
     if (rd / "world" / "run" / "dist" / "geometry.json").is_file():
         from . import stage as _stage
         extra = _stage.write_stage(rd, ctx.out, brief=brief, lang=ctx.opts.get("lang") or "en")
-        sj.update({k: extra[k] for k in ("objects", "voices", "start")})
+        sj.update({k: extra[k] for k in ("objects", "voices", "start", "start_pose") if k in extra})
     (ctx.out / "stage.json").write_text(json.dumps(sj, ensure_ascii=False, indent=2))
     (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time()}))
     return 0.0

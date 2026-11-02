@@ -81,6 +81,22 @@ class Lang(unittest.TestCase):
         self.assertIn("man@ru", warn)
         self.assertEqual(stage._pick_voice(pool, "woman", "en"), ("w-id", None))
 
+    def test_koshakan_voices_have_ru(self):
+        dream = Path(__file__).resolve().parents[1] / "dream"
+        voices = json.loads((dream / "voices.json").read_text())
+        bj = json.loads((dream / "books" / "koshakan" / "book.json").read_text())
+        labels = {c["voice"] for c in bj["cast"].values()} | {bj["narrator_voice"]}
+        for label in labels:
+            self.assertIn(f"{label}@ru", voices, label)
+
+    def test_cast_rejects_ru_key_as_label(self):
+        from make import cast
+        d = Path(self.tmp.name) / "castdir"
+        d.mkdir()
+        (d / "cast.json").write_text(json.dumps({"A": {"sex": "female", "height_m": 1.0, "voice": "child@ru"}}))
+        errs = cast.check_cast(d, voices={"child": "i", "child@ru": "r"})
+        self.assertTrue(any("A.voice" in e for e in errs), errs)
+
     def test_film_has_lang_flag(self):
         with mock.patch.object(film, "film") as f:
             film.main(["r1", "--out", "x.mp4", "--lang", "ru"])

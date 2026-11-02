@@ -393,7 +393,7 @@ class AssetQueue:
             if _mask_mesh(problem):
                 # the mask arrived and SAM3D blew up on submit: an ordinary mesh
                 # failure, said out loud like the through-handle path below, never a redraw
-                self._mesh_charge(self.mesh_timeout_s, reserved=estimate)
+                self._mesh_charge(self._elapsed(started), reserved=estimate)
                 self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
                 self._failed(asset, type(problem).__name__)
                 with self._lock:
@@ -403,9 +403,7 @@ class AssetQueue:
             self._mask_fallback(asset, "empty" if _mask_empty(problem) else "error")
             return False
         answer, reason = self._poll(handle, started)
-        sec = answer.get("sec") if isinstance(answer, dict) else None
-        units = sec if isinstance(sec, (int, float)) else self.mesh_timeout_s
-        self._mesh_charge(units, reserved=estimate)
+        self._mesh_charge(self._mesh_units(answer, started), reserved=estimate)
         if reason is not None:
             self.ledger.record({"kind": "MASK_FALLBACK", "room": asset.room, "asset": key})
             self._failed(asset, reason)
@@ -424,6 +422,15 @@ class AssetQueue:
         with self._lock:
             self._mask["ok"] += 1
         return True
+
+    def _elapsed(self, started: float) -> float:
+        """Seconds a failed call really ran, never above the reserve. A hang reads as the
+        whole reserve; a ConnectionError on a cold container does not."""
+        return min(max(self.clock() - started, 0.0), float(self.mesh_timeout_s))
+
+    def _mesh_units(self, answer, started: float) -> float:
+        sec = answer.get("sec") if isinstance(answer, dict) else None
+        return sec if isinstance(sec, (int, float)) else self._elapsed(started)
 
     def _mesh_allow(self, asset: _Asset, estimate: float) -> bool:
         """Reserve a worst-case mesh. Does not fit while other meshes run -> wait for one
@@ -500,15 +507,13 @@ class AssetQueue:
             try:
                 handle = self.meshes.submit(key, png)
             except Exception as problem:
-                self._mesh_charge(self.mesh_timeout_s, reserved=estimate)
+                self._mesh_charge(self._elapsed(started), reserved=estimate)
                 if attempt:
                     self._failed(asset, type(problem).__name__)
                     return
                 continue
             answer, reason = self._poll(handle, started)
-            sec = answer.get("sec") if isinstance(answer, dict) else None
-            units = sec if isinstance(sec, (int, float)) else self.mesh_timeout_s
-            self._mesh_charge(units, reserved=estimate)
+            self._mesh_charge(self._mesh_units(answer, started), reserved=estimate)
             if reason is None:
                 try:
                     self._write(f"{key}.glb", answer["glb"])

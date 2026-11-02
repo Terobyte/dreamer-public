@@ -296,6 +296,10 @@ def _check_clips(who, c, cast_dir, glb_ok):
                       for k, v in verbs.items()))
         if not ok:
             errs.append(f"{who}.verbs: must be an object {{clip: [words]}}")
+    if "aliases" in c:
+        al = c["aliases"]
+        if not (isinstance(al, list) and all(isinstance(a, str) and a.strip() for a in al)):
+            errs.append(f"{who}.aliases: must be a list of names (the cast name in the book's language)")
     return errs
 
 
@@ -340,7 +344,7 @@ def check_cast(cast_dir, voices=None):
                 or not H_MIN <= h <= H_MAX):
             errs.append(f"{who}.height_m: {h!r} not a number in [{H_MIN}, {H_MAX}]")
         v = c.get("voice")
-        if not isinstance(v, str) or v not in voices:
+        if not isinstance(v, str) or v not in voices or "@" in v:
             errs.append(f"{who}.voice: {c.get('voice')!r} not in voices.json")
         s = c.get("sex")
         if s not in ("male", "female"):

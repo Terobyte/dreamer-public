@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveTouch, SIDE_M, type Place } from "../src/runtime/stage/places.js";
+import { resolveTouch, startSpot, SIDE_M, type Place } from "../src/runtime/stage/places.js";
 
 const BED: Place = {
   name: "bed", id: "room_bed", kind: "sit", room: "room", level: "L0", at: [2, 2], yaw: 0, look: null, obstacle: null,
@@ -68,5 +68,16 @@ describe("stage places: poses", () => {
     expect(r2.pose).toBe("door");
     expect(claims).toEqual({});
     expect(w).toHaveLength(0);
+  });
+});
+
+describe("startSpot: where an actor starts on a place", () => {
+  const bed: any = { name: "bed", at: [-0.3, -0.42], yaw: 0, top: 0.75, poses: ["lie", "sit"], lie: { at: [-0.3, -1.15], yaw: 90, head: [0.6, -1.15] } };
+  it("lie: on the top, along the long side, at the height of the top", () => {
+    expect(startSpot(bed, "lie")).toEqual({ at: [-0.3, -1.15], yaw: 90, y: 0.75 });
+  });
+  it("no pose, or a pose the place lacks: the place spot on the floor", () => {
+    expect(startSpot(bed)).toEqual({ at: [-0.3, -0.42], yaw: 0, y: 0 });
+    expect(startSpot({ ...bed, lie: undefined }, "lie")).toEqual({ at: [-0.3, -0.42], yaw: 0, y: 0 });
   });
 });

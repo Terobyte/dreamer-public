@@ -297,6 +297,50 @@ class TestAccounting(unittest.TestCase):
         self.assertEqual(meshes.names, [])
         self.assertEqual(len(events_of(ledger, "asset_failed")), 1)
 
+class TestFailedMeshCharge(unittest.TestCase):
+    def test_a_poll_error_is_charged_the_time_it_took_not_the_whole_reserve(self):
+        ledger = FakeLedger()
+        clock = Clock()
+
+        class Broken:
+            def get(self, timeout):
+                clock.sleep(5)
+                raise ConnectionError("cold container")
+
+        class Meshes(FakeMeshes):
+            def submit(self, name, png):
+                return Broken()
+
+        q, _, _ = queue(meshes=Meshes(), ledger=ledger, clock=clock, mesh_timeout_s=330)
+        q.put("kitchen", [key("stool")])
+        q.wait("kitchen")
+        charges = [c[2] for c in ledger.calls if c[0] == "charge" and c[1] == "h100_s"]
+        self.assertEqual(charges, [5, 5])
+        self.assertEqual(len(events_of(ledger, "asset_failed")), 1)
+
+    def test_a_submit_error_is_charged_the_time_it_took(self):
+        ledger = FakeLedger()
+        clock = Clock()
+
+        class Meshes(FakeMeshes):
+            def submit(self, name, png):
+                clock.sleep(2)
+                raise ConnectionError("down")
+
+        q, _, _ = queue(meshes=Meshes(), ledger=ledger, clock=clock, mesh_timeout_s=330)
+        q.put("kitchen", [key("stool")])
+        q.wait("kitchen")
+        charges = [c[2] for c in ledger.calls if c[0] == "charge" and c[1] == "h100_s"]
+        self.assertEqual(charges, [2, 2])
+
+    def test_a_timeout_still_costs_the_whole_reserve(self):
+        ledger = FakeLedger()
+        q, _, _ = queue(meshes=FakeMeshes(hang=True), ledger=ledger, mesh_timeout_s=30)
+        q.put("kitchen", [key("stool")])
+        q.wait("kitchen")
+        charges = [c[2] for c in ledger.calls if c[0] == "charge" and c[1] == "h100_s"]
+        self.assertTrue(charges and all(c >= 30 for c in charges))
+
 
 if __name__ == "__main__":
     unittest.main()

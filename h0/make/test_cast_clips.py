@@ -212,6 +212,14 @@ class CheckClips(unittest.TestCase):
             self.assertIn("Mama.verbs", errs[0])
             self.assertIn("must be an object", errs[0])
 
+    def test_aliases_shape(self):
+        self.assertEqual(_errs(aliases=["Мама", "мамы"]), [])
+        for bad in ({"a": "b"}, [1], "Мама", None):
+            errs = _errs(aliases=bad)
+            self.assertEqual(len(errs), 1, (bad, errs))
+            self.assertIn("Mama.aliases", errs[0])
+            self.assertIn("list of names", errs[0])
+
     def test_idle_null_rejected(self):
         errs = _errs(idle=None)
         self.assertEqual(len(errs), 1, errs)

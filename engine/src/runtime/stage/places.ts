@@ -24,6 +24,12 @@ export interface Place {
   stand_on?: { at: V2 };
 }
 
+/** where an actor starts on a place: `lie` = on the top along the long side at the height of the top */
+export function startSpot(place: Place, pose?: string): { at: V2; yaw: number; y: number } {
+  if (pose === "lie" && place.lie) return { at: place.lie.at, yaw: place.lie.yaw, y: place.top ?? 0 };
+  return { at: place.at, yaw: place.yaw, y: 0 };
+}
+
 export type Claims = Record<string, string>;
 
 export interface Walk {

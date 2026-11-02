@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clipForBeat, pickClip } from "../src/runtime/stage/anim.js";
+import { aliasesOf, clipForBeat, pickClip } from "../src/runtime/stage/anim.js";
 
 const cast = {
   Mama: { clips: { wake: "m/wake.glb", flick: "m/flick.glb", hug: "m/hug.glb", pat: "m/pat.glb" }, verbs: { pat: ["tap"] } },
@@ -55,5 +55,24 @@ describe("clipForBeat", () => {
   it("narrator uses text only; no clip -> null", () => {
     expect(clipForBeat({ who: null, text: "Mama woke", gesture: "hug" }, cast)).toEqual({ who: "Mama", clip: "wake" });
     expect(clipForBeat({ who: "Bare", text: "hello" }, cast)).toBeNull();
+  });
+});
+
+describe("aliasesOf: names in the book language", () => {
+  const ru = {
+    Mirai: { clips: { sleep: "r/sleep.glb" }, verbs: { sleep: ["спала"] }, aliases: ["Мирай", "Мирай "] },
+    Mama: { clips: { bend: "m/bend.glb" }, verbs: { bend: ["наклонилась"] }, aliases: ["Мама"] },
+    Bare: { clips: {} },
+  };
+  it("maps each alias to its cast member, case-folded", () => {
+    expect(aliasesOf(ru)).toEqual({ "мирай": "Mirai", "мама": "Mama" });
+  });
+  it("a Russian narration names the actor and picks the Russian verb", () => {
+    const al = aliasesOf(ru);
+    expect(clipForBeat({ who: null, text: "А внутри Мирай ещё спала, свернувшись." }, ru, al)).toEqual({ who: "Mirai", clip: "sleep" });
+    expect(clipForBeat({ who: null, text: "Мама наклонилась и прошептала." }, ru, al)).toEqual({ who: "Mama", clip: "bend" });
+  });
+  it("without aliases the same narration picks nothing (the bug)", () => {
+    expect(clipForBeat({ who: null, text: "А внутри Мирай ещё спала." }, ru)).toBeNull();
   });
 });
