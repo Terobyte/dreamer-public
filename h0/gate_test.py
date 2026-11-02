@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -73,16 +74,24 @@ def chat(system, messages, max_tokens=300):
         req = urllib.request.Request(API, json.dumps(body).encode(),
                                      {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"})
         t0, first, text = time.time(), None, ""
-        with urllib.request.urlopen(req, timeout=120) as r:
-            for raw in r:
-                line = raw.decode().strip()
-                if not line.startswith("data:") or line == "data: [DONE]":
-                    continue
-                for ch in json.loads(line[5:]).get("choices", []):
-                    piece = (ch.get("delta") or {}).get("content")
-                    if piece:
-                        first = first or time.time() - t0
-                        text += piece
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                for raw in r:
+                    line = raw.decode().strip()
+                    if not line.startswith("data:") or line == "data: [DONE]":
+                        continue
+                    for ch in json.loads(line[5:]).get("choices", []):
+                        piece = (ch.get("delta") or {}).get("content")
+                        if piece:
+                            first = first or time.time() - t0
+                            text += piece
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            # 429/5xx and network errors are transient: retry; any other 4xx raises at once
+            transient = not isinstance(e, urllib.error.HTTPError) or e.code == 429 or e.code >= 500
+            if not transient or attempt == 2:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+            continue
         # empty-content guard: Spark sometimes streams nothing with finish_reason=stop
         if text.strip():
             return text.strip(), first, attempt

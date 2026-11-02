@@ -305,7 +305,8 @@ def _para_beats(st, n, p):
     if _words(before) >= 4:
         out.append({"kind": "narration", "text": before, "para": n})
     out.append({"kind": "line", "who": who, "text": inner, "tag": tag, "para": n})
-    rest, last = [], qe0 + 1
+    # the tag sentence after the first quote is the line's remark, not narration
+    rest, last = [], qe0 + 1 + (m.end() if m else len(post_raw))
     for a, b in spans[1:]:
         rest.append(p[last:a])
         last = b + 1

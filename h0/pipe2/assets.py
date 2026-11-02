@@ -320,6 +320,12 @@ class AssetQueue:
                 return
             m["said"] = True
         self.ledger.record({"kind": "MASK_ALL_FALLBACK", "tried": m["tried"]})
+    def finished(self) -> int:
+        """How many queued assets are written, failed or timed out: the queue's progress."""
+        with self._lock:
+            assets = list(self._assets.values())
+        return sum(a.finished.is_set() for a in assets)
+
     def idle(self) -> bool:
         with self._lock:
             assets = list(self._assets.values())

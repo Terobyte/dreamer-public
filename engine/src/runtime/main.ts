@@ -238,6 +238,8 @@ async function start(): Promise<void> {
   // layers[0] is the spawn level (`buildLayers`); the rest are reachable by a
   // flight, so the walker needs all of them and the ramps that join them
   const all = (nav.layers ?? []).map((l: any) => ({ layer: l, bits: unbase64(String(l?.bits ?? "")) }));
+  // no layers (a scene without walkable rooms): an empty one at the spawn, so the walker stands still
+  if (all.length === 0) all.push({ layer: { level: "", y: geo.spawn.y ?? 0, origin: [0, 0], w: 0, h: 0 }, bits: new Uint8Array(0) });
   const walker: Walker = makeWalker(all[0].layer, all[0].bits, geo.floors ?? [], geo.spawn.at, {
     layers: all.slice(1),
     ramps: nav.ramps ?? [],

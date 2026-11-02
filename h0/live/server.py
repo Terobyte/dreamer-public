@@ -42,9 +42,9 @@ def transcribe(wav):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, obj):
+    def send_json(self, obj, status=200):
         data = json.dumps(obj).encode()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
@@ -90,7 +90,18 @@ class Handler(BaseHTTPRequestHandler):
         if not self.trusted():
             return
         if self.path == "/asr":
-            self.send_json({"text": transcribe(self.body()), "ms": round((time.time() - t0) * 1000)})
+            try:
+                wav = self.body()
+            except ValueError:  # Content-Length is not a number
+                self.close_connection = True  # the unread body must not become the next request
+                self.send_json({"error": "bad Content-Length"}, 400)
+                return
+            try:
+                text = transcribe(wav)
+            except (OSError, ValueError) as e:  # URLError/HTTPError are OSErrors: the upstream failed
+                self.send_json({"error": f"asr failed: {type(e).__name__}"}, 502)
+                return
+            self.send_json({"text": text, "ms": round((time.time() - t0) * 1000)})
         elif self.path == "/turn":
             try:
                 req = json.loads(self.body())

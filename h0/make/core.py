@@ -86,9 +86,9 @@ def _run_brief(ctx):
     JSON mode, checked against make/schema/brief.json; scripted Spark when --fake."""
     from . import brief as _brief
     prompt = (ctx.opts.get('prompt') or '').strip()
-    if not prompt:
-        raise _brief.BriefFailed('brief needs a prompt (make.json.prompt is empty)')
     book, scene = ctx.opts.get('book'), ctx.opts.get('scene')
+    if not prompt and not (book and scene):  # a book scene is a prompt by itself
+        raise _brief.BriefFailed('brief needs a prompt (make.json.prompt is empty)')
     if bool(book) != bool(scene):
         raise _brief.BriefFailed('--book and --scene go together')
     note = _brief.book_context(book, scene) if book else None
@@ -198,7 +198,7 @@ def default_stages():
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
-        S("story", ("refs",), 2, _run_story, ("fake", "cap", "lang")),
+        S("story", ("refs", "world"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
         S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle", "lang")),
         S("check", ("world", "refs"), 1, _fast_stub, optional=True),
     )}

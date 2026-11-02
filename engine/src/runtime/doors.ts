@@ -122,12 +122,13 @@ export function touchTarget(doors: Door[], at: P2, yawDeg: number, pitchDeg = 0,
     const az = a[1] - at[1];
     const t = (ax * ez - az * ex) / den;
     const s = (ax * dz - az * dx) / den;
-    if (t < 0 || t > TOUCH_M || s < 0 || s > 1 || t >= bestT) continue;
+    // written so a NaN (bad position or angle) fails the test instead of slipping past it
+    if (!(t >= 0 && t <= TOUCH_M && s >= 0 && s <= 1 && t < bestT)) continue;
     // the gaze is a 3D ray: at horizontal distance t it climbs to eyeY + t*tan(pitch)
     const y0 = door.def.y0 ?? 0;
     const y1 = door.def.y1 ?? y0 + door.def.height;
     const y = eyeY + t * tanP;
-    if (y < y0 - 1e-9 || y > y1 + 1e-9) continue;
+    if (!(y >= y0 - 1e-9 && y <= y1 + 1e-9)) continue;
     best = door.def.id;
     bestT = t;
   }

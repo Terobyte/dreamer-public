@@ -101,6 +101,9 @@ def validate_and_merge_staging(
     hand_stage_by_beat: Dict[int, List[Dict[str, Any]]],
     warnings: List[str]
 ) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]]]:
+    if model_output is not None and not isinstance(model_output, dict):
+        warnings.append("staging: model output is not a dict, ignored")
+        model_output = None
     places = normalize_places(places)
     cast_set = set(cast) if cast else None
     valid_places = set(places.keys())

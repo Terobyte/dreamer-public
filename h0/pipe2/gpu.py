@@ -53,9 +53,12 @@ class GpuWarmth:
     def close(self):
         with self._lock:
             if not self._closed:
-                self.autoscaler.set(0, 0, WARM_WINDOW_S)
-                self._closed = True
-                # B25: k warm H100s bill for every second they are held, busy or not
-                charge = getattr(self.ledger, 'charge', None)
-                if self._started_at is not None and charge is not None:
-                    charge('h100_s', self.k * max(0.0, self.clock() - self._started_at))
+                # a failed reset still closes and bills the held seconds; the error goes up
+                try:
+                    self.autoscaler.set(0, 0, WARM_WINDOW_S)
+                finally:
+                    self._closed = True
+                    # B25: k warm H100s bill for every second they are held, busy or not
+                    charge = getattr(self.ledger, 'charge', None)
+                    if self._started_at is not None and charge is not None:
+                        charge('h100_s', self.k * max(0.0, self.clock() - self._started_at))

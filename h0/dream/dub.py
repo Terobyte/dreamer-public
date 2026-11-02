@@ -7,6 +7,7 @@ usage: python3 dub.py RUN_DIR --scene NAME_OR_PATH [--profile A] [--no-images]
 """
 
 import argparse
+import filecmp
 import json
 import os
 import shutil
@@ -40,7 +41,8 @@ def dub(run, scene, profile="A", voice=None, images=None):
     """Writes audio and pictures into `run` and rewrites its log -> (lines voiced,
     pictures drawn). A run already dubbed is left alone."""
     log = os.path.join(run, "log.jsonl")
-    if os.path.exists(log + ".novoice"):
+    # the backup is made before voicing: a log still equal to it was never rewritten (a crash)
+    if os.path.exists(log + ".novoice") and not filecmp.cmp(log, log + ".novoice", shallow=False):
         return 0, 0
     hero, voices, looks, place, pool = cast_of(scene, profile)
     voice = voice or Voice(pool=pool)

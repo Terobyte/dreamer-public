@@ -325,9 +325,7 @@ class Floor:
             return self._run()
         finally:
             self.deps["assets"].close()
-            warmth = self.deps.get("warmth")
-            if warmth is not None:
-                warmth.close()
+            self._close_warmth()
 
     # -- top level ----------------------------------------------------------
 
@@ -412,9 +410,14 @@ class Floor:
         clock = self.deps.get("clock", time.monotonic)
         sleep = self.deps.get("sleep", time.sleep)
         assets = self.deps["assets"]
-        started = clock()
+        # each mesh has its own timeout, so the queue always drains; give up only on a
+        # stall: no asset finished for a whole mesh timeout (a long queue is not a stall)
+        done, moved = None, clock()
         while not getattr(assets, "idle", lambda: True)():
-            if clock() - started >= getattr(assets, "mesh_timeout_s", 330):
+            now_done = getattr(assets, "finished", lambda: 0)()
+            if now_done != done:
+                done, moved = now_done, clock()
+            elif clock() - moved >= getattr(assets, "mesh_timeout_s", 330):
                 break
             sleep(getattr(assets, "poll_s", 2))
         dist = self.run_dir / "dist"
@@ -454,7 +457,19 @@ class Floor:
                                   else res) for rid, res in rooms.items()}
         (self.run_dir / "report.json").write_text(_pretty(payload))
 
+    def _close_warmth(self):
+        warmth = self.deps.pop("warmth", None)  # once: the charge lands at the first close
+        if warmth is not None:
+            warmth.close()
+
     def _finish(self, result: FloorResult) -> FloorResult:
+        # the warm GPUs bill at close: close them first, then read the money totals
+        try:
+            self._close_warmth()
+        except Exception as exc:
+            result.final_errors.append({"kind": "warmth_close_failed", "error": str(exc)})
+        for key, value in self._report_fields().items():
+            setattr(result, key, value)
         self._write_report(result)
         return result
 

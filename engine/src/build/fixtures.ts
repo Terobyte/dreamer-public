@@ -157,12 +157,17 @@ export function fixtureMeshes(ctx: Ctx): Mesh[] {
     const [y0, y1] = g.y;
     const at = (k: number, y: number): V3 => [q[k][0], y, q[k][1]];
     const mb = new MeshBuilder();
-    // sides, in footprint order; the normal of each is its outward perpendicular
+    // sides, in footprint order; the normal of each points away from the centre,
+    // so a fixture given to→from still faces out (B38)
+    const cx = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4;
+    const cz = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
     for (let k = 0; k < 4; k++) {
       const a = q[k];
       const b = q[(k + 1) % 4];
       const d = norm2([b[0] - a[0], b[1] - a[1]]);
-      const n: V3 = [d[1], 0, -d[0]];
+      const out = (a[0] + b[0]) / 2 - cx, outZ = (a[1] + b[1]) / 2 - cz;
+      const s = d[1] * out - d[0] * outZ < 0 ? -1 : 1;
+      const n: V3 = [s * d[1], 0, -s * d[0]];
       const w = Math.hypot(b[0] - a[0], b[1] - a[1]);
       mb.quad(at(k, y0), at((k + 1) % 4, y0), at((k + 1) % 4, y1), at(k, y1), n, [0, 0], [w, 0], [w, y1 - y0], [0, y1 - y0]);
     }

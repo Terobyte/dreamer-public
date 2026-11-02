@@ -758,7 +758,8 @@ class Sim:
             voice_thread = threading.Thread(target=synth, daemon=True)
             job["thread"] = voice_thread
             voice_thread.start()
-            return None
+            # B19: callers read ev["type"]; the line is announced when its voice is ready
+            return {"type": "line_voicing", "turn_owner": line.get("owner"), "text": line["text"]}
         return self._play_line(line, audio_seconds, res, whisper_to)
 
     def _finish_voicing(self):
@@ -1659,10 +1660,10 @@ class Sim:
                     self._diagnostic({"type": "narrator", "text": line["text"],
                                       "cause": line["cause"]})
             elif line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
-                ev = self.npc_start(line)
-                if ev[0]["type"] == "line_prepared":
+                ev = (self.npc_start(line) or [None])[0] or {}  # B19: a voicing line has no event yet
+                if ev.get("type") == "line_prepared":
                     self._prepared_taken = taken
-                elif ev[0]["type"] == "line_discarded" and taken is not None:
+                elif ev.get("type") == "line_discarded" and taken is not None:
                     self._return_taken(taken)
             elif line is not None and epoch != self._turn_epoch:
                 # 1.2a: the turn moved on while this line was in flight -- a human
@@ -1930,7 +1931,7 @@ class Sim:
             if ((self.book is None and self.n_transitions >= self._max_transitions)
                     or self.clock.now() - start >= max_seconds):
                 break
-            if self.stopped or (self.dialogue is not None and self.fsm.awake):
+            if self.stopped or self.fsm.awake:
                 break
             if not self._budget_ok():
                 break
@@ -1955,7 +1956,7 @@ class Sim:
                                          "reason": "max_seconds"})
         elif self.stopped:
             self.stop_reason = "stopped"
-        elif self.dialogue is not None and self.fsm.awake:
+        elif self.fsm.awake:
             self.stop_reason = "awake"
         elif not self._budget_ok():
             self.stop_reason = "budget"

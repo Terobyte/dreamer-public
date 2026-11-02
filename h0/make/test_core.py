@@ -166,11 +166,13 @@ class TestSelection(Base):
 
     def test_parallel_stubs_overlap(self):
         self.make()
-        iv = []
+        iv = {}
         for sid in ("world", "cast", "story"):
             d = json.loads((self.run_dir / sid / "marker.txt").read_text())
-            iv.append((d["start"], d["end"]))
-        self.assertLess(max(s for s, _ in iv), min(e for _, e in iv))
+            iv[sid] = (d["start"], d["end"])
+        # world and cast run in parallel; story depends on world (B14) and starts after it
+        self.assertLess(max(iv["world"][0], iv["cast"][0]), min(iv["world"][1], iv["cast"][1]))
+        self.assertGreaterEqual(iv["story"][0], iv["world"][1])
 
 
 class TestLock(Base):

@@ -103,9 +103,12 @@ async function main(): Promise<number> {
     return 2;
   }
   const scenePath = args[1];
-  let reportPath: string | null = null;
-  const ri = args.indexOf("--report");
-  if (ri >= 0) reportPath = args[ri + 1] ?? null;
+  const reportFlag = flag(args, "--report");
+  if (reportFlag === null) {
+    console.error("--report requires a value");
+    return 2;
+  }
+  const reportPath = reportFlag ?? null;
 
   if (!existsSync(scenePath)) {
     console.error(`file not found: ${scenePath}`);

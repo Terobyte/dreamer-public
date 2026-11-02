@@ -92,6 +92,7 @@ export function checkRefs(raw: any): Issue[] {
   (raw.cameras ?? []).forEach((c: any, i: number) => typeof c?.id === "string" && reg(c.id, `/cameras/${i}/id`));
   (raw.routes ?? []).forEach((r: any, i: number) => typeof r?.id === "string" && reg(r.id, `/routes/${i}/id`));
 
+  (raw.levels ?? []).forEach((l: any, i: number) => typeof l?.id === "string" && reg(l.id, `/levels/${i}/id`));
   (raw.stairs ?? []).forEach((st: any, i: number) => typeof st?.id === "string" && reg(st.id, `/stairs/${i}/id`));
 
 

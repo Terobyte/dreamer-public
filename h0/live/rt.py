@@ -294,7 +294,12 @@ async def ws_handler(request):
                 if msg.type == aiohttp.WSMsgType.BINARY:
                     await push(msg.data)
                 elif msg.type == aiohttp.WSMsgType.TEXT:
-                    s.progress = json.loads(msg.data).get("progress", s.progress)
+                    try:
+                        ctl = json.loads(msg.data)
+                    except ValueError:
+                        continue  # a text frame that is not JSON: ignored, the socket stays open
+                    if isinstance(ctl, dict):
+                        s.progress = ctl.get("progress", s.progress)
         finally:
             bg.cancel()
             if s.busy():

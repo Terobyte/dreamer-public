@@ -362,6 +362,12 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
                            "error": "cap $%.2f reached, paid call skipped" % _cap[0]}], [])
     transport = _transport or RealTransport(event_sink)
     for limit in (max_tokens, max_tokens * 2 + 100):
+        # the retry is optional: skip it when its worst case would cross the cap
+        if attempts and _cap[0] is not None and \
+                get_spent() + _price(model, est_prompt, limit) > _cap[0] + 1e-9:
+            diagnostics.append({"type": "cap", "component": "llm", "role": role, "model": model,
+                                "error": "cap $%.2f: empty reply, paid retry skipped" % _cap[0]})
+            break
         extra = {}
         if isinstance(transport, RealTransport) and ROLE_TEMPERATURE.get(role) is not None:
             extra["temperature"] = ROLE_TEMPERATURE[role]

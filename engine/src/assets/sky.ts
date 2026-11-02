@@ -112,7 +112,7 @@ export async function inpaintSky(png: Buffer, edit: EditFn, id = "sky"): Promise
   if (bad) return bad;
   const { width: w, height: h } = src;
   const rolled = roll(src, w / 2);
-  const left = w / 2 - h / 2;
+  const left = Math.floor(w / 2 - h / 2); // a whole pixel: an odd h would shift the RGBA bytes
   const gap = Math.max(2, Math.round(w * GAP));
   const feather = Math.max(1, Math.round(w * FEATHER));
 

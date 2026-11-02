@@ -32,7 +32,7 @@ def check_scene(ns, voices):
     if not isinstance(ns, dict):
         return "next_scene", "missing"
     actors, objects = ns.get("actors"), ns.get("objects")
-    if not isinstance(actors, list) or not all(isinstance(a, dict) for a in actors) \
+    if not isinstance(actors, list) or not all(isinstance(a, dict) and isinstance(a.get("name"), str) for a in actors) \
             or not _names(objects):
         return "next_scene", "bad_type"
     if not CAST_RANGE[0] <= len(actors) <= CAST_RANGE[1] \
@@ -391,9 +391,13 @@ class BuildFSM:
                 self.fail_streak = 0
                 ev += self._wake(now, decision["wake_up"])
                 return ev + [self._consult(now, ticket, "wake_up")]
+            verdict = "ok"
             if abort:
-                ev += self.abort(now, abort.get("reason") if isinstance(abort, dict) else abort)
-            return ev + [self._consult(now, ticket, "abort" if abort else "ok")]
+                ab = self.abort(now, abort.get("reason") if isinstance(abort, dict) else abort)
+                ev += ab
+                # a transition cannot be aborted: the rejected abort is an invalid answer
+                verdict = "invalid" if ab[0]["type"] == "invalid" else "abort"
+            return ev + [self._consult(now, ticket, verdict)]
         if decision.get("wake_up"):
             self.fail_streak = 0
             ev += self._wake(now, decision["wake_up"])

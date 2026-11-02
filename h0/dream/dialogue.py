@@ -866,16 +866,21 @@ class Dialogue:
                                  for i, (who, text) in enumerate(lines, 1))
             else:
                 new = "\n".join("%s: %s" % l for l in lines)
-            user = "My memory until now:\n%s\n\nNew lines:\n%s\n\nThe whole memory:" % (
-                m.fold_input(), new)
+            # B26: the mind is read and written under _mind_lock; the slow model call is not
+            with self._mind_lock:
+                user = "My memory until now:\n%s\n\nNew lines:\n%s\n\nThe whole memory:" % (
+                    m.fold_input(), new)
+                tried_by = set(m.tried_by)
             if name == SCENE_MIND:
                 names = ({w for w, _ in lines} | set(cast_names or ())
-                         | {self.hero} | set(m.tried_by))
+                         | {self.hero} | tried_by)
                 reply = self._call("compress", SCENE_MEMORY_RULES, user)
-                ok = m.update(reply, lines=lines, actors=cast_names or (), names=names)
+                with self._mind_lock:
+                    ok = m.update(reply, lines=lines, actors=cast_names or (), names=names)
             else:
                 reply = self._call("compress", MEMORY_RULES.format(name=name), user)
-                ok = m.update(reply)
+                with self._mind_lock:
+                    ok = m.update(reply)
         except Exception as e:
             ok, reply = False, "%s: %s" % (type(e).__name__, e)
         with self._mind_lock:

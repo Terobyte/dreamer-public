@@ -101,7 +101,7 @@ def main(argv=None):
             if rc == TIMEOUT:
                 failed.append(name)
                 print(f"TIMEOUT {name} ({dt:.1f}s, limit {a.timeout:g}s)\n{out}", flush=True)
-            elif rc and rc != 5:  # 5: no tests ran (a module whose tests are all skipped by name)
+            elif rc and not (rc == 5 and "NO TESTS RAN" in out):  # 5 is ok only when unittest says no tests ran (all skipped by name)
                 failed.append(name)
                 print(f"FAIL {name} ({dt:.1f}s)\n{out}", flush=True)
             else:

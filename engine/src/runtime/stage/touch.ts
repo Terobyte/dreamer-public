@@ -34,7 +34,7 @@ const EPS_Y = 1e-3;
  * - a missed route drops the booking it made (F6), a walk frees the places the actor leaves (F33).
  */
 export function createToucher(c: ToucherCtx) {
-  const pending = new Map<string, string>();
+  const pending = new Map<string, { name: string; pose?: string; finishYaw?: number | "along" }>();
   const levelOf = (who: string): string | null => {
     const a = c.actor(who);
     if (!a) return null;
@@ -50,7 +50,7 @@ export function createToucher(c: ToucherCtx) {
     }
     const from = levelOf(who);
     if (from === null) {
-      pending.set(who, name);
+      pending.set(who, { name, pose, finishYaw });
       return "queued";
     }
     pending.delete(who);
@@ -87,7 +87,7 @@ export function createToucher(c: ToucherCtx) {
   /** replays touches that waited for the actor to step off a ramp */
   const tick = (): TouchResult[] => {
     const out: TouchResult[] = [];
-    for (const [who, name] of [...pending]) if (levelOf(who) !== null) out.push(touch(who, name));
+    for (const [who, q] of [...pending]) if (levelOf(who) !== null) out.push(touch(who, q.name, q.pose, q.finishYaw));
     return out;
   };
 

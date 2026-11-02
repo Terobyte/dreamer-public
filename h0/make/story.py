@@ -98,11 +98,16 @@ def run_story(ctx):
         _dream()
         import book as _book
         b = brief["book"]
+        # B14: the place bank comes from the built world (story runs after `world`);
+        # stage/places.json does not exist yet on a clean run
         places = None
-        places_p = ctx.run_dir / "stage" / "places.json"
-        if places_p.is_file():
+        world_run = ctx.run_dir / "world" / "run"
+        if (world_run / "dist" / "geometry.json").is_file():
+            from . import stage as _stage
+            places = _stage.build_places(world_run)
+        elif (ctx.run_dir / "stage" / "places.json").is_file():
             try:
-                places = json.loads(places_p.read_text())
+                places = json.loads((ctx.run_dir / "stage" / "places.json").read_text())
             except Exception:
                 pass
         director = None

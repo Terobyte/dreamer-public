@@ -59,6 +59,9 @@ export function pickCamera(geo: any, params: URLSearchParams, aspect: number): C
         maxZ = Math.max(maxZ, pos[i + 2]);
       }
     }
+    // no meshes: frame the spawn point
+    if (minX > maxX) minX = maxX = geo.spawn.at[0];
+    if (minZ > maxZ) minZ = maxZ = geo.spawn.at[1];
     const w = Math.max(maxX - minX, 1e-3);
     const h = Math.max(maxZ - minZ, 1e-3);
     const half = Math.max(w / 2, (h / 2) * aspect);

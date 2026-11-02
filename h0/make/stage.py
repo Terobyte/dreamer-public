@@ -200,7 +200,10 @@ def build_places(world_run):
             warnings.append(f"door {d['id']}: no walkable nav cell, no place")
             continue
         yaw = math.degrees(math.atan2(c[0] - at[0], c[1] - at[1])) % 360
-        places.append({"name": f"{room} door", "id": d["id"], "kind": "door", "room": room, "level": lv,
+        # two doors on one room: ` 2`, ` 3` like _name_places
+        n = f"{room} door"
+        taken = sum(1 for q in places if q["kind"] == "door" and q["room"] == room)
+        places.append({"name": n if not taken else f"{n} {taken + 1}", "id": d["id"], "kind": "door", "room": room, "level": lv,
                        "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
                        "poses": ["door"]})
     return {"places": places, "warnings": warnings}

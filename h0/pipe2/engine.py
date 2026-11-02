@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -183,8 +184,6 @@ class Engine:
         """A temp folder holding the scene plus its `refs/*`: the CLI resolves
         `ref.image` against the scene file, so frames copied next to another
         folder (attach_refs under run_dir) must travel with it."""
-        import shutil
-
         here = Path(tempfile.mkdtemp())
         scene_path = Engine._write_scene(here, scene)
         if scene_dir is not None:
@@ -224,10 +223,13 @@ class Engine:
     def build(self, scene: dict, out: str | os.PathLike, assets: str, cache: str | os.PathLike | None,
               scene_dir: str | os.PathLike | None = None) -> None:
         scene_path = self._stage_scene(scene, scene_dir)
-        args = ["build", str(scene_path), "--out", str(out), "--assets", assets]
-        if cache is not None:
-            args += ["--cache", str(cache)]
-        done = self._run(args)
+        try:
+            args = ["build", str(scene_path), "--out", str(out), "--assets", assets]
+            if cache is not None:
+                args += ["--cache", str(cache)]
+            done = self._run(args)
+        finally:
+            shutil.rmtree(scene_path.parent, ignore_errors=True)
         if done.returncode != 0:
             raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
 
@@ -244,12 +246,15 @@ class Engine:
         With `scene_dir`, `ref.image` files are staged next to the temp scene so
         `keys.ts` folds the frame bytes into the key, exactly as the build will."""
         scene_path = self._stage_scene(scene, scene_dir)
-        done = subprocess.run(
-            ["node", "--import", "tsx", str(KEYS_TS), str(scene_path)],
-            cwd=self.engine_dir,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            done = subprocess.run(
+                ["node", "--import", "tsx", str(KEYS_TS), str(scene_path)],
+                cwd=self.engine_dir,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            shutil.rmtree(scene_path.parent, ignore_errors=True)
         if done.returncode != 0:
             raise EngineError(done.returncode, (done.stdout or "") + (done.stderr or ""))
         return json.loads(done.stdout)

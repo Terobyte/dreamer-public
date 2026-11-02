@@ -195,6 +195,7 @@ export async function runAssets(scene: Scene, opts: AssetsOpts): Promise<AssetRe
   return {
     ...report,
     fallback: [...report.fallback, ...bad.map((r) => r.id)],
+    missing: [...report.missing, ...bad.map((r) => r.id)],
     failed: [...(report.failed ?? []), ...bad.map(refFailure)],
   };
 }

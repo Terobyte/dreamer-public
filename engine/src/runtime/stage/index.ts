@@ -163,6 +163,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const exitPending = new Map<string, { door: Place; noSide: boolean }>();
   /** exiting actors seen standing still once: they go offstage on the next update */
   const exitSettled = new Set<string>();
+  /** B01: a new move or turn cancels an exit in progress (else the old door pulls the actor out) */
+  const cancelExit = (who: string) => {
+    exiting.delete(who);
+    exitThrough.delete(who);
+    exitPending.delete(who);
+    exitSettled.delete(who);
+  };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
@@ -330,10 +337,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         if (!who || !actors.has(who)) continue;
         const a = actors.get(who)!;
         if (typeof it.pose === "string" && it.pose) poseOf.set(who, it.pose);
-        exiting.delete(who);
-        exitThrough.delete(who);
-        exitPending.delete(who);
-        exitSettled.delete(who);
+        cancelExit(who);
         if (it.offstage) {
           offstageActors.add(who);
         } else {
@@ -383,6 +387,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         return;
       }
       if (action === "turn_away") {
+        cancelExit(who);
         const tgtPos = getTargetPos(lookTarget);
         if (tgtPos) {
           const targetYaw = yawTo(a.pos(), tgtPos);
@@ -403,6 +408,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: place "${placeName}" not in places bank -> stay`);
           return;
         }
+        cancelExit(who);
         const tgtPos = getTargetPos(lookTarget);
         const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
         touch(who, pl.name, pose, lookYaw);
@@ -418,14 +424,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: door place "${placeName}" not in places bank -> stay`);
           return;
         }
-        exiting.delete(who);
-        exitThrough.delete(who);
-        exitPending.delete(who);
-        exitSettled.delete(who);
+        cancelExit(who);
         offstageActors.delete(who);
         const lvl = door.level ?? null;
         const y = layerOf(lvl).layer.y ?? 0;
-        const step = interRoomDoorStep(door.at, door.yaw, 1.0);
+        // B04: a door without a usable yaw enters along a fixed side, like exit does
+        const doorYaw = typeof door.yaw === "number" && Number.isFinite(door.yaw) ? door.yaw : 0;
+        if (doorYaw !== door.yaw) warnings.push(`stage: enter door "${door.name}" has no known side -> yaw 0`);
+        const step = interRoomDoorStep(door.at, doorYaw, 1.0);
         a.teleport(step.doorPos, step.yaw, "idle", y);
         const tgtPos = getTargetPos(lookTarget);
         const faceYaw = tgtPos ? yawTo(step.insidePos, tgtPos) : step.yaw;
@@ -486,7 +492,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (pick?.procedural) actors.get(pick.who)?.gesture();
       else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
       const t = touchName(e.touch);
-      if (who && t) touch(who, t);
+      if (who && t) {
+        cancelExit(who);
+        touch(who, t);
+      }
     },
     narrator(e) {
       gazeBeat = { speaker: null, at: null, place: namedIn(String(e.text ?? "")) ? null : placeIn(String(e.text ?? "")), until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
@@ -507,7 +516,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     touch(e) {
       const who = whoOf(e);
       const t = touchName(e.object ?? e.place ?? e.touch);
-      if (who && t) touch(who, t);
+      if (who && t) {
+        cancelExit(who);
+        touch(who, t);
+      }
     },
     mode(e) {
       const m = e.mode === "freestyle" ? "freestyle" : typeof e.mode === "string" ? e.mode : null;
@@ -630,7 +642,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       let focus: Actor | undefined;
       const onstageList = list.filter((a) => !offstageActors.has(a.who));
       const onstageSorted = sorted.filter((a) => !offstageActors.has(a.who));
-      if (ev.kind === "line" && ev.speaker) focus = list.find((a) => a.who === ev.speaker) ?? onstageList.find((a) => a.speaking()) ?? onstageSorted[0] ?? sorted[0];
+      if (ev.kind === "line" && ev.speaker) focus = (!offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? onstageList.find((a) => a.speaking()) ?? onstageSorted[0] ?? sorted[0];
       else if (ev.kind === "narrator") focus = (ev.about && !offstageActors.has(ev.about) ? list.find((a) => a.who === ev.about) : undefined) ?? onstageSorted[0] ?? sorted[0];
       else focus = onstageList.find((a) => a.speaking()) ?? (ev.speaker && !offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? (lastSpeaker && !offstageActors.has(lastSpeaker) ? list.find((a) => a.who === lastSpeaker) : undefined) ?? onstageSorted[0] ?? sorted[0];
       focus ??= onstageSorted[0] ?? sorted[0];

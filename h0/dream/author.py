@@ -111,7 +111,7 @@ def check_authored(d):
             and isinstance(f.get("hidden_from_hero"), bool) for f in facts):
         return "facts"
     bad = check_scene({"objects": d.get("objects"),
-                       "actors": [{"voice": a["voice"]["fallback"]} for a in actors]},
+                       "actors": [{"name": a["name"], "voice": a["voice"]["fallback"]} for a in actors]},
                       set(VOICE_POOL))
     if bad:
         return bad[1]

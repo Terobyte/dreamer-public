@@ -234,6 +234,11 @@ def _step_voices(ctx):
         if w:
             warns.append(name + ": " + w)
     shutil.copy(ctx.prev("read") / "book.txt", ctx.out / "book.txt")
+    # every chapter file travels on: load_book reads them from the voices dir on the world step
+    for ch in book.get("chapters", []):
+        f = ch.get("file")
+        if f and (ctx.prev("read") / f).is_file():
+            shutil.copy(ctx.prev("read") / f, ctx.out / f)
     (ctx.out / "book.json").write_text(json.dumps(book, ensure_ascii=False, indent=2), encoding="utf-8")
     (ctx.out / "voices.json").write_text(json.dumps({"voices": assigned, "warnings": warns}, indent=2))
     return 0.0
@@ -268,9 +273,7 @@ def _step_world(ctx):
 
 def _step_cast(ctx):
     from . import cast as _cast
-    for f in sorted(Path(ctx.cast_dir).iterdir()):
-        if f.is_file():
-            shutil.copy(f, ctx.out / f.name)
+    shutil.copytree(ctx.cast_dir, ctx.out, dirs_exist_ok=True)
     errs = _cast.check_cast(ctx.out)
     if errs:
         raise StepError("cast: " + "; ".join(errs))

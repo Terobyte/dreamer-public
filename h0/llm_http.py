@@ -129,7 +129,10 @@ def _once(url, auth, payload, timeout):
     if not choices:
         raise TransportError("no choices: %s" % _head(raw), 200, False)
     first = choices[0] or {}
-    content = (first.get("message") or {}).get("content") or (first.get("delta") or {}).get("content") or ""
+    parts = [first.get(k) or {} for k in ("message", "delta")] if isinstance(first, dict) else []
+    if not parts or not all(isinstance(x, dict) for x in parts):
+        raise TransportError("malformed choice: %s" % _head(raw), 200, False)
+    content = parts[0].get("content") or parts[1].get("content") or ""
     if not isinstance(content, str):
         raise TransportError("content is %s, not str" % type(content).__name__, 200, False)
     return {"content": content, "usage": data.get("usage") or {}, "raw": data}

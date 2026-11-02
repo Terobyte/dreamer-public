@@ -62,7 +62,7 @@ export function fitGlb(glbScene: Group, box: { min: Vector3; max: Vector3 }): vo
   if (!Number.isFinite(scale) || scale <= 0) scale = 1;
   glbScene.scale.setScalar(scale);
   const glbCenter = glbBox.getCenter(new Vector3()).multiplyScalar(scale);
-  const glbMinY = glbBox.min.y * scale;
+  const glbMinY = glbBox.isEmpty() ? 0 : glbBox.min.y * scale;
   const boxCenter = box.min.clone().add(box.max).multiplyScalar(0.5);
   glbScene.position.set(boxCenter.x - glbCenter.x, box.min.y - glbMinY, boxCenter.z - glbCenter.z);
 }
