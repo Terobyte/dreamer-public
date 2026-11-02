@@ -525,3 +525,491 @@ const d = norm2([b[0] - a[0], b[1] - a[1]]);
 const n: V3 = [d[1], 0, -d[0]];
 ```
 - **status:** fixed (opus) — engine/test/bughunt/b38.test.ts
+
+
+# Заход 2 — дифф коммита 637c21a (5 охотников agy gemini-3.8-flash-high)
+
+Все записи — непроверенные утверждения. Статус `claimed`, пока красный тест не упал на своём assertion.
+
+## B39 · CRIT · h0/dream/sim.py:1689  (охотник g1)
+
+- **claim:** Взаимная блокировка (deadlock) между `_cycle_line` и `_dialogue_turn` при наличии подготовленной реплики NPC (`prepared_npc`) и запланированного повествования (`_narrate`): симуляция намертво зависает в цикле `run()` до таймаута `max_seconds`.
+- **trigger:** В `Sim` с активным `dialogue` находится подготовленная реплика `sim.prepared_npc = "Hi"` (заготовленная через `npc_start` во время звучания предыдущей реплики). В этот момент в очередь `sim._narrate` попадает событие (например, через строку 485 от мирового события без персонажей в сцене или строку 1128 при переходе сцены).
+- **expected:** На очередном тике `_dialogue_turn` запускает генерацию закадрового голоса (`self._start_narration`), освобождает очередь `_narrate`, после чего `_cycle_line` воспроизводит `prepared_npc` (аналогично тому, как в B43 было разрешено для `next_line`: `not self._narrate`).
+- **actual:** `_dialogue_turn` на строке 1689 видит `self.prepared_npc is not None` и делает ранний `return`, никогда не доходя до `_start_narration` на строке 1700. Одновременно `_cycle_line` на строке 1457 видит `self._narrate` и делает ранний `return`, отказываясь запускать `prepared_npc`. Симуляция бесконечно крутится в холостом цикле вплоть до истечения `max_seconds` со статусом `timeout`.
+- **evidence:**
+```python
+        # sim.py:1457 in _cycle_line:
+        if self._narrate or self._narrating:
+            # F1: the narrator speaks before the first line -- a queued line
+            # (human or prepared NPC) waits for the pending/in-flight narration
+            return
+
+        # sim.py:1689 in _dialogue_turn:
+        # B43: a queued line waits for pending narration (_cycle_line), so the
+        # narration must still be allowed to start here or both wait forever
+        if (busy or self.prepared_npc is not None
+                or (self.next_line is not None and not self._narrate)):
+            return
+
+        # sim.py:1700 in _dialogue_turn:
+        if self._narrate:
+            self._start_narration(self._narrate.pop(0))
+            return
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b39.py
+
+## B40 · MAJOR · h0/dream/fsm.py:354  (охотник g1)
+
+- **claim:** Метод `rearm_consult` не восстанавливает флаг `force_pending` при сбросе форсированной консультации директора (`hint == "force"`), навсегда теряя признак готовности перехода и приводя к зависанию стройки.
+- **trigger:** По истечении `idle >= self.p["force"]` автомат взводит `force_fired = force_active = force_pending = True`. В `begin_consult` сбрасывается `self.force_pending = False` и формируется билет с `hint="force"`. Во время консультации происходит прерывание (пауза безопасности `safety_pause`, ошибка транспорта LLM или stale), вызывающее `director._requeue(ticket, queued)` -> `fsm.rearm_consult(ticket)`.
+- **expected:** `rearm_consult(ticket)` восстанавливает `self.force_pending = True` (по аналогии с `nudge_pending` и `ready_stale_fired`), чтобы метод `due(now)` продолжал возвращать `"force"` для повторной попытки форсированной консультации.
+- **actual:** `rearm_consult` обрабатывает только `ready_stale` и `nudge`, полностью игнорируя `hint == "force"`. Флаг `self.force_pending` остаётся `False`. Метод `fsm.due(now)` на строке 310 проверяет `if self.force_pending: return "force"`, но поскольку флаг сброшен, а `self.force_fired` уже `True` (строка 273 не сработает повторно), `due(now)` больше никогда не возвращает `"force"`. В режиме `_free_story` при наличии неразыгранных кусков книги (`idle_ok = False`, строка 1920) консультации могут инициироваться только через `due(now)`; в результате `_maybe_consult` больше никогда не вызывает директора, и симуляция зависает в состоянии ожидания перехода.
+- **evidence:**
+```python
+    def rearm_consult(self, ticket):
+        """Undo the one-shot flags begin_consult spent when its reply was dropped."""
+        hint = ticket.get("hint")
+        if hint == "ready_stale" and self.state == "ready" and ticket["epoch"] == self.build_epoch:
+            self.ready_stale_fired = False
+        elif hint == "nudge" and ticket["epoch"] == self.build_epoch:
+            self.nudge_pending = True
+            self.nudge_delivered = ticket["nudged_before"]
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b40.py (тяжесть снижена до MAJOR: теряется метка force в due(), «зависания стройки» нет)
+
+## B41 · MAJOR · h0/dream/fsm.py:424  (охотник g1)
+
+- **claim:** При включённом режиме одиночного мира (`no_build=True`) метод `finish_consult` возвращает вердикт `"build"`, несмотря на то, что автомат отклонил старт стройки событием `invalid`, приводя к рассинхронизации памяти директора и автомата.
+- **trigger:** `BuildFSM(..., no_build=True)` (используется для сценариев без перехода между мирами, например в `make/play.py`), и директор присылает решение начать стройку: `{"bridge": "door", "destination": "garden", "next_scene": {...}}`.
+- **expected:** Автомат отклоняет запуск стройки и возвращает вердикт консультации `"invalid"`, чтобы директор не считал стройку начавшейся (по аналогии с недопустимым `abort` в B21).
+- **actual:** Метод `self.start_build()` возвращает событие ошибки `{"type": "invalid", "fields": ["start_build"], "reason": "no_build"}` и оставляет автомат в `"idle"`. Однако строка 424 безусловно возвращает событие консультации с `verdict="build"`. Директор (`director.py:362`) видит `verdict == "build"` и вызывает `self.memory.record_decision(decision)` и `self.memory.set_bridge("door")`, считая, что стройка активна, тогда как FSM остался в покое.
+- **evidence:**
+```python
+        self.fail_streak = 0
+        ev += self.start_build(now, bridge, decision.get("destination"),
+                               decision.get("next_scene"), decision.get("hero_next"))
+        return ev + [self._consult(now, ticket, "build")]
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b41.py
+
+## B42 · MAJOR · h0/dream/fsm.py:412  (охотник g1)
+
+- **claim:** В состоянии FSM `"idle"` решение директора с `abort_build` возвращает вердикт `"ok"`, хотя попытка отмены стройки отклоняется как невалидная (`reason="no_build"`), маскируя ошибку директора от системы повторов.
+- **trigger:** Вызов `fsm.finish_consult(now, ticket, {"abort_build": {"reason": "stop"}})` в момент, когда автомат находится в состоянии `"idle"` и `ticket["label"] != "forced"`.
+- **expected:** Недопустимая для фазы покоя отмена сборки отклоняется с вердиктом `"invalid"` (по аналогии с фиксом коммита 637c21a для фазы `transition`: `verdict = "invalid" if ab[0]["type"] == "invalid" else "abort"`).
+- **actual:** Строка 406 логирует невалидность отмены `ev.append(self._e(now, "invalid", fields=["abort_build"], reason="no_build"))`. Однако далее строка 407 проверяет `bridge = decision.get("bridge")` (None), и строка 412 безусловно возвращает `verdict = "ok"`, рапортуя директору об успешном применении некорректного решения и блокируя возврат входных событий через `_requeue`.
+- **evidence:**
+```python
+        if abort:
+            ev.append(self._e(now, "invalid", fields=["abort_build"], reason="no_build"))
+        bridge = decision.get("bridge")
+        if bridge is None:
+            if ticket["label"] == "forced":
+                self.pending_wakeup = pending  # invalid reply: the next ticket carries it again
+                return ev + self._bad(now, ticket, ["bridge"], "null_bridge")
+            return ev + [self._consult(now, ticket, "ok")]
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b42.py
+
+## B43 · MAJOR · h0/dream/sim.py:1077  (охотник g1)
+
+- **claim:** Метод `_apply_transition` не сбрасывает счётчик серии реплик актёров `_actor_streak` и метки активности (`_spoke_last`, `_silent_ticks`), из-за чего актёры новой сцены оказываются заблокированы от вступления в диалог с первого же тика.
+- **trigger:** В предыдущей сцене актёры произнесли 2 реплики подряд (`self._actor_streak == 2 >= ACTOR_STREAK_MAX`), после чего совершается переход в новую сцену (`_touch` -> `_apply_transition`) в режиме с живым игроком (`hero_owner == "human"`).
+- **expected:** Переход в новую сцену сбрасывает счётчики активности персонажей старой сцены (`_actor_streak = 0`, `_spoke_last = None`, `_silent_ticks = {}`), как это сделано в соседнем коде смены сцены `_book_scene_end` (строки 1282-1287).
+- **actual:** `_apply_transition` оставляет `_actor_streak = 2`. На первом же тике новой сцены метод `_pick_speaker` (строка 1575) вычисляет `blocked = self._actor_streak >= ACTOR_STREAK_MAX` (True). Так как `human = True`, строка 1591 отбрасывает всех актёров новой сцены (`if blocked and (human or ...): continue`), возвращая `(None, None)` («тишина»). Актёры новой сцены принудительно заблокированы и не могут заговорить первыми, пока человек не подаст реплику.
+- **evidence:**
+```python
+        # sim.py:1077 in _apply_transition:
+        self.transcript = self.transcript[-2:]
+        self._notes = {}
+        self._notes_seen = {}
+        self._notes_shown = {}
+        self._hero_world = ["you have just arrived in %s" % self.place]
+        # missing: self._actor_streak = 0, self._spoke_last = None, self._silent_ticks = {}
+        # compare with sim.py:1282 in _book_scene_end:
+        # self._spoke_last = None
+        # self._silent_ticks = {}
+        # self._addressed = {}
+        # self._event_hits = {}
+        # self._actor_streak = 0
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b43.py
+
+## B44 · CRIT · h0/dream/sim.py:1067  (охотник g1)
+
+- **claim:** `_apply_transition` не очищает `prepared_npc` и метаданные заготовленной реплики от предыдущей сцены, из-за чего реплика выбывшего актёра озвучивается и воспроизводится в новой сцене.
+- **trigger:** До перехода в новую сцену была подготовлена реплика NPC (`sim.prepared_npc = "Wait here!"`, `_prepared_meta = {"who": "Squidward"}`). Происходит переход в сцену с новым составом персонажей (`["Sandy"]`).
+- **expected:** `_apply_transition` очищает заготовленные реплики предыдущей сцены (`prepared_npc = None`), предотвращая утечку реплик между сценами.
+- **actual:** `prepared_npc` сохраняется. При первом же тике новой сцены `_cycle_line` (строка 1465) берёт `self.prepared_npc` и запускает воспроизведение реплики Сквидварда в новой сцене, где Сквидварда нет в касте и нет его голоса в `_actor_voices`, ломая ракурс камеры и воспроизводя чужую реплику.
+- **evidence:**
+```python
+    def _apply_transition(self):
+        self.n_transitions += 1
+        ns = self.fsm.next_scene
+        self.hero_next = self.fsm.hero_next
+        self.place = self.fsm.destination or "scene %d" % self.n_transitions
+        ...
+        self.transcript = self.transcript[-2:]
+        self._notes = {}
+        self._notes_seen = {}
+        self._notes_shown = {}
+        # self.prepared_npc, self._prepared_meta, self._prepared_taken not cleared
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b44.py
+
+## B45 · CRIT · h0/dream/llm.py:366  (охотник g2)
+
+- **claim:** Проверка лимита расходов перед повторной попыткой (`_price(model, ...)`) проверяет начальную модель роли `model`, а не фактически использованную платную модель из первой попытки (`used` / `SPARK_MODEL`). Для ролей с бесплатной первичной моделью (`SPARK_OPEN_MODEL`) стоимость ретрая оценивается в $0.0, из-за чего повторный запрос на платной модели обходит проверку `cap` и приводит к перерасходу бюджета (регрессия фикса B24).
+- **trigger:** Вызов `llm.call("hero", ...)` с установленным `set_cap(6.0)`, когда первичный вызов к Baseten (`SPARK_OPEN_MODEL`) завершился ошибкой и сработал fallback на платную модель Meta (`SPARK_MODEL`), списав $5.0 и вернув пустой ответ `""`, при этом остаток бюджета ($1.0) меньше стоимости повторной попытки ($5.0).
+- **expected:** Повторный запрос пропускается, так как стоимость ретрая на платной модели ($5.0) превышает остаток бюджета ($1.0), а в `diagnostics` регистрируется ошибка исчерпания капы.
+- **actual:** `_price(model, est_prompt, limit)` вызывается с `model = SPARK_OPEN_MODEL`, возвращая 0.0. Условие `get_spent() + 0.0 > _cap[0]` ложно, выполнение цикла продолжается, запускается повторная попытка, снова срабатывает fallback на `SPARK_MODEL`, списывая еще $5.0 (всего потрачено $10.0 при лимите $6.0).
+- **evidence:**
+```python
+    for limit in (max_tokens, max_tokens * 2 + 100):
+        # the retry is optional: skip it when its worst case would cross the cap
+        if attempts and _cap[0] is not None and \
+                get_spent() + _price(model, est_prompt, limit) > _cap[0] + 1e-9:
+            diagnostics.append({"type": "cap", "component": "llm", "role": role, "model": model,
+                                "error": "cap $%.2f: empty reply, paid retry skipped" % _cap[0]})
+            break
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b45.py
+
+## B46 · MAJOR · h0/dream/dub.py:45  (охотник g2)
+
+- **claim:** При штатной ошибке синтеза речи (`voice.synthesize` вернул `ok=False`) `dub` модифицирует строки лога добавлением поля `"dur"` без `"audio"`, из-за чего перезаписанный `log.jsonl` перестает быть побайтово идентичным `log.jsonl.novoice`. При повторном запуске проверка `filecmp.cmp` считает лог успешно озвученным и немедленно возвращает `(0, 0)`, навсегда блокируя озвучку сессии (недочинённый случай B27).
+- **trigger:** Вызов `dub.dub(run, scene)` в условиях временной недоступности TTS API (все повторные попытки в `Voice.synthesize` исчерпаны, возвращен fallback `{"ok": False, "audio": None, "pause": ...}`), с последующим повторным вызовом `dub.dub(run, scene)` после восстановления связи с TTS.
+- **expected:** Первый вызов не считает сессию озвученной, а второй вызов обнаруживает отсутствие `"audio"` в строках и успешно синтезирует недостающие файлы.
+- **actual:** Первый вызов инкрементирует `n` на каждой строке и записывает `r["dur"] = res["pause"]` в `log.jsonl`. Второй вызов видит существующий `log.jsonl.novoice` и несовпадение файлов по содержимому (`not filecmp.cmp(...) == True`), принимает сессию за уже озвученную и возвращает `(0, 0)`, навсегда оставляя сессию без единого аудиофайла.
+- **evidence:**
+```python
+    log = os.path.join(run, "log.jsonl")
+    # the backup is made before voicing: a log still equal to it was never rewritten (a crash)
+    if os.path.exists(log + ".novoice") and not filecmp.cmp(log, log + ".novoice", shallow=False):
+        return 0, 0
+...
+        n += 1
+        path = os.path.join(run, "audio", "line_%03d.wav" % n)
+        res = voice.synthesize(r["text"], label, path)
+        r["dur"] = res["pause"]
+        if res["ok"]:
+            r["audio"] = os.path.relpath(res["audio"], run)
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b46.py
+
+## B47 · MAJOR · h0/llm_http.py:94  (охотник g2)
+
+- **claim:** Парсер потоковых ответов `_parse` в `llm_http` не проверяет типы элементов `choices` и `delta`, из-за чего при нестандартном формате SSE-ответа возникают необработанные `AttributeError` и `TypeError`, не перехватываемые блоком `except (ValueError, UnicodeDecodeError)` и аварийно завершающие работу клиента в обход `TransportError` (недочинённый случай B28 для SSE).
+- **trigger:** Вызов `llm_http.post(...)`, при котором сервер прислал SSE-стрим с нетипичным форматом choices или delta, например `b'data: {"choices": ["hello"]}\n\n'`, `b'data: {"choices": [{"delta": "hello"}]}'` или `b'data: {"choices": [{"delta": {"content": 123}}]}\n\n'`.
+- **expected:** Функция распознает нарушение схемы ответа и выбрасывает `TransportError(retryable=False)`.
+- **actual:** `_parse` вызывает `ch.get("delta")` или `out += content`, порождая `AttributeError: 'str' object has no attribute 'get'` либо `TypeError: can only concatenate str (not "int") to str`. В `_once` блок `except (ValueError, UnicodeDecodeError)` пропускает эти исключения наружу.
+- **evidence:**
+```python
+        for line in text.splitlines():
+            line = line.strip()
+            if not line.startswith("data:") or line == "data: [DONE]":
+                continue
+            data = json.loads(line[5:])
+            usage = data.get("usage") or usage
+            for ch in data.get("choices", []):
+                out += (ch.get("delta") or {}).get("content") or ""
+```
+и обработчик в `_once`:
+```python
+    try:
+        data = _parse(raw)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise TransportError("bad json: %s" % type(exc).__name__, None, False) from None
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b47.py (доказан 1 из 3 вариантов нагрузки (choices:[str]))
+
+## B48 · MAJOR · h0/dream/dialogue.py:976  (охотник g2)
+
+- **claim:** В `Dialogue.hero_line` проверка правил реплики (`repeats`, `uses_bit`, `hush`) находится внутри условия `break`. Если на второй попытке модель выдает реплику, нарушающую эти правила, цикл завершается естественным путем, но код после цикла выполняет только проверку `if not text: return None` и возвращает запрещенную реплику.
+- **trigger:** Вызов `Dialogue.hero_line`, когда обе попытки генерации вернули повторяющуюся реплику из недавнего контекста либо вопрос при активном режиме `hush` (когда герой уже задал подряд `QUESTION_RUN` вопросов).
+- **expected:** При неудаче обеих попыток метод отклоняет реплику и возвращает `None`.
+- **actual:** На первой попытке реплика не проходит проверку, `break` не выполняется, формируется подсказка; на второй попытке проверка `not repeats and not uses_bit and not (hush and "?")` снова не выполняется, `break` не срабатывает, цикл `range(2)` завершается. Переменная `text` содержит строку из второй попытки, поэтому проверка `if not text:` не срабатывает, и метод возвращает запрещенную/повторяющуюся реплику в сцену.
+- **evidence:**
+```python
+        text = None
+        for attempt in range(2):
+            raw = self._call("hero", self.hero_system(), user, who=self.hero)
+            cand = _clean_spoken(raw, "hero", self.hero)
+            in_role = cand.startswith("[")
+            text, why = lock_line(cand, objects, names) if cand and in_role else (None, None)
+            if text and not repeats(text, recent) and not uses_bit(
+                    text, own) and not (hush and "?" in text):
+                break
+            if why:
+                self._reject(self.hero, why, cand)
+                user += lock_hint(why, cand)
+                continue
+            user += ("\n(No question this time.)" if in_role and hush and "?" in cand else
+                     "\n(Say or do something new.)" if in_role else
+                     "\n(Stay %s: one spoken line of yours, starting with [direction].)" % self.hero)
+        if not text:
+            return None
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b48.py
+
+## B49 · CRIT · h0/pipe2/floor.py:94  (охотник g3)
+
+- **claim:** Функция `_edge_center` падает с необработанным `AttributeError: 'int' object has no attribute 'get'`, если модель-архитектор вернула вершины контура комнаты с 3 координатами (например, 3D `[x, z, y]`), аварийно обрывая валидацию скелета `skeleton_defects` до проверки движком.
+- **trigger:** Вызов `skeleton_defects(skeleton, plan)` со скелетом, где контур комнаты содержит 3D-координаты `[[0, 0, 0], [4, 0, 0], [4, 4, 0], [0, 4, 0]]`, и задан проём с привязкой к ребру `{"id": "o1", "on": {"room": "r1", "edge": 0, "t": 0.5}}`.
+- **expected:** Согласно контракту `_edge_center` (*«None when the spec or the edge geometry is malformed (the engine reports that instead)»*), функция возвращает `None` при некорректном формате ребра, позволяя `skeleton_defects` завершить обход и передать геометрию на штатную валидацию движком.
+- **actual:** Выражение `shape[edge][2].get("bulge", 0)` безусловно считает 3-й элемент словарем; для `[0, 0, 0]` третий элемент равен `0` (`int`), вызов `.get()` выбрасывает `AttributeError`, который не перехватывается в `_edge_center`, `_opening_rooms` и `skeleton_defects`, приводя к падению цикла `_architect`.
+- **evidence:**
+```python
+    length = math.hypot(bx - ax, bz - az)
+    if length <= 0:
+        return (ax, az)
+    bulge = shape[edge][2].get("bulge", 0) if len(shape[edge]) > 2 else 0
+    if not isinstance(bulge, (int, float)) or not math.isfinite(bulge):
+        return None
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b49.py
+
+## B50 · CRIT · h0/pipe2/floor.py:513  (охотник g3)
+
+- **claim:** Метод `Floor._finish` перехватывает сбой деактивации тёплых GPU (`_close_warmth`) и сохраняет ошибку в `result.final_errors`, но не обновляет `result.status` в `"failed"`, из-за чего процесс `pipe2` завершается с кодом 0 (успех), скрывая утечку запущенных облачных H100.
+- **trigger:** Успешное завершение сборки сцены (`final_errors` изначально пуст, `FloorResult.status == "done"` на строке 475), при котором последующий вызов `_close_warmth()` выбрасывает исключение (таймаут или сетевой сбой API Modal при попытке `autoscaler.set(0, 0, WARM_WINDOW_S)`).
+- **expected:** При ошибке закрытия ресурсов статус `result.status` переключается в `"failed"`, а CLI `pipe2` возвращает код выхода 1, сигнализируя о критическом сбое освобождения GPU.
+- **actual:** `_finish` добавляет `{"kind": "warmth_close_failed", "error": ...}` в `result.final_errors`, но оставляет `result.status == "done"`. Код выхода `__main__.py` равен 0, вызывающий пайплайн считает прогон успешным, а контейнеры GPU остаются прогретыми в облаке и продолжают тарифицироваться.
+- **evidence:**
+```python
+    def _finish(self, result: FloorResult) -> FloorResult:
+        # the warm GPUs bill at close: close them first, then read the money totals
+        try:
+            self._close_warmth()
+        except Exception as exc:
+            result.final_errors.append({"kind": "warmth_close_failed", "error": str(exc)})
+        for key, value in self._report_fields().items():
+            setattr(result, key, value)
+        self._write_report(result)
+        return result
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b50.py
+
+## B51 · MAJOR · h0/make/story.py:114  (охотник g3)
+
+- **claim:** Стадия `run_story` передаёт постановщику кэш-директорию `cache_dir = ctx.run_dir / "story"`, которая на чистом прогоне создаётся как обычный каталог и затем удаляется публикацией `core._publish`, полностью уничтожая кэш постановок и приводя к повторным платным вызовам Spark при перезапусках.
+- **trigger:** Чистый запуск сцены книги (`core.run_make` с параметрами `book` и `scene`, `fake=False`).
+- **expected:** Результаты работы постановщика (`stage_<hash>.json`) сохраняются внутри `ctx.out`, переносясь публикацией в `.pub/story-<ts>`, чтобы повторный запуск сцены (например, `make --from story`) повторно использовал кэш мизансцены без вызова LLM.
+- **actual:** `run_staging` создаёт директорию `run_dir / "story"` и записывает туда `stage_<hash>.json`. При завершении стадии `_publish` на строках 384–388 в `core.py` обнаруживает `run_dir / "story"` как каталог без симлинка (`final.exists() and not final.is_symlink()`), перемещает его в `story.old`, заменяет симлинком на опубликованный `ctx.out` и удаляет `story.old` через `shutil.rmtree`, безвозвратно уничтожая закэшированный ответ. Повторный запуск вынужден повторно выполнять платный вызов Spark к директору.
+- **evidence:**
+```python
+        score = _book.score_scene(b["dir"], b["scene"], places=places, director=director,
+                                  cache_dir=ctx.run_dir / "story")
+```
+в связке с `h0/make/core.py:384`:
+```python
+    if final.exists() and not final.is_symlink():  # старая папка без ссылки
+        legacy = run_dir / f"{sid}.old"
+        os.replace(final, legacy)
+        os.replace(link, final)
+        shutil.rmtree(legacy, ignore_errors=True)
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b51.py
+
+## B52 · MAJOR · h0/make/stage.py:258  (охотник g3)
+
+- **claim:** Дедупликация имён дверей в `build_places` проверяет только места с `q["kind"] == "door"`, порождая коллизии идентичных имён мест в комнате, если в ней расположен проп с базовым именем `door`.
+- **trigger:** Построение банка мест для мира, где в комнате `living` находится проп с базовым именем `door` (например, `id="living_door"`, получивший имя `"living door"` при наличии второго пропа `door` в сцене), а также дверной проём со `swing: "living"`.
+- **expected:** Дверной проём получает уникальное имя (например, `"living door 2"`), исключающее совпадение с уже существующими местами в комнате.
+- **actual:** Подсчёт `taken = sum(1 for q in places if q["kind"] == "door" and q["room"] == room)` игнорирует проп (у которого `kind: "stand"`), возвращает `0` и присваивает двери имя `"living door"`. В итоговом `places.json` появляются два места с одинаковым именем `"living door"`, из-за чего рантайм `places.find(...)` и `stage_director` разрешают дверь в декоративный проп.
+- **evidence:**
+```python
+        # two doors on one room: ` 2`, ` 3` like _name_places
+        n = f"{room} door"
+        taken = sum(1 for q in places if q["kind"] == "door" and q["room"] == room)
+        places.append({"name": n if not taken else f"{n} {taken + 1}", "id": d["id"], "kind": "door", "room": room, "level": lv,
+                       "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
+                       "poses": ["door"]})
+```
+Поиск багов в указанной зоне по заданной линзе завершён, все 4 дефекта подтверждены воспроизводимыми кейсами. Готов ответить на вопросы или перейти к подготовке тестов/исправлений, когда будет снят read-only режим.
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b52.py
+
+## B53 · CRIT · engine/src/runtime/stage/touch.ts:83  (охотник g4)
+
+- **claim:** Навигация к объекту с неопределённым углом поворота (`place.yaw === undefined`) через `resolveTouch` и `createToucher.touch` передаёт `undefined` в качестве угла доворота (`finishYaw`) в `actor.go()`. При остановке на месте `actor.update()` вычисляет разность углов `wrap(finish.yaw - cur)` как `NaN`, угол поворота актёра необратимо становится `NaN`, признак завершения движения `finish` никогда не сбрасывается, и актёр навсегда зависает в состоянии `moving() === true`.
+- **trigger:** Место в `places.json` не содержит угла `yaw` (например, `{ name: "chair", kind: "sit", room: "r", level: "L0", at: [1, 0], yaw: undefined, poses: ["sit"] }`), и вызывается `toucher.touch("Bob", "chair", "sit")` (или без позы `toucher.touch("Bob", "chair")`).
+- **expected:** Движок валидирует угол места и применяет безопасный дефолт (0 или угол по ходу движения `"along"`), актёр завершает перемещение с конечным углом `yaw` и переходит в `moving() === false`.
+- **actual:** `r.yaw` возвращается как `undefined`, `actors.ts:275` вычисляет `wrap(undefined - cur) = NaN`, `a.yaw()` становится `NaN`, условие `Math.abs(dy) < 1` ложно для `NaN`, `finish` никогда не сбрасывается в `null`, и `a.moving()` навсегда остаётся `true`.
+- **evidence:**
+```ts
+// engine/src/runtime/stage/places.ts:84
+      const yaw = pose === "lie" && place.lie ? place.lie.yaw : place.yaw;
+      return { place, target: spot?.at ?? place.at, yaw, act: pose === "sit" ? "sit" : "idle", pose, claim: free };
+// engine/src/runtime/stage/touch.ts:82-83
+    const fin = finishYaw === "along" ? along() : finishYaw;
+    a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys);
+// engine/src/runtime/stage/actors.ts:274-278
+      if (!path.length && finish) {
+        const dy = wrap(finish.yaw - cur);
+        cur += Math.max(-360 * dt, Math.min(360 * dt, dy));
+```
+- **status:** red — engine/test/bughunt2/b53.test.ts (низкая достижимость: make/stage.py:211 всегда пишет yaw; нужен ручной places.json)
+
+## B54 · MAJOR · engine/src/runtime/cams.ts:71  (охотник g4)
+
+- **claim:** В режиме камеры `top=1` при отсутствии или неопределённости координаты высоты точки спавна `geo.spawn.y` вертикальная позиция камеры Y и элементы матрицы вида `camera.matrixWorld` заполняются значениями `NaN`.
+- **trigger:** Вызов `pickCamera({ spawn: { at: [0, 0] }, meshes: [] }, new URLSearchParams("top=1"), 1.6)` (по схеме сцены поле `spawn.y` опционально).
+- **expected:** Координата Y камеры вычисляется с безопасным значением по умолчанию `0 + 100 = 100` (как сделано в `main.ts:243`: `geo.spawn.y ?? 0`), а матрица `camera.matrixWorld` содержит только конечные числа.
+- **actual:** Выражение `geo.spawn.y + 100` даёт `NaN`, `camera.position.y` становится `NaN`, а последующий вызов `camera.lookAt(cx, geo.spawn.y, cz)` заполняет матрицу `camera.matrixWorld` значениями `NaN`.
+- **evidence:**
+```ts
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    camera.position.set(cx, geo.spawn.y + 100, cz);
+    camera.up.set(0, 0, -1);
+    camera.lookAt(cx, geo.spawn.y, cz);
+    camera.updateMatrixWorld();
+```
+- **status:** rejected — призрак: geo.spawn.y всегда задан, geometry.ts:296/309
+
+## B55 · MAJOR · engine/src/runtime/stage/index.ts:777  (охотник g4)
+
+- **claim:** При формировании списка актёров комнаты `here` для режиссёра камеры список фильтруется из общего массива всех актёров `dActors(list)` вместо сценических `dActors(onstageList)`, из-за чего внесценический персонаж (`offstage: true`) попадает в `here`, и реплика вышедшего персонажа наводит камеру на внесценического актёра.
+- **trigger:** Персонаж покинул сцену (`offstageActors.has("Mama") === true`) в той же комнате, где находится сценический актёр ("Bob"), после чего поступает реплика `handlers.line({ who: "Mama", text: "Я ушла!" })`.
+- **expected:** Список `here` отфильтровывает внесценических персонажей (`!offstageActors.has(...)`), а режиссёр `director.step` наводит камеру на сценического актёра (Bob), показывая его реакцию.
+- **actual:** Строка 777 включает внесценическую "Mama" в `here`, `director.step` выбирает её как `named` говорящего (`all.find(a => a.name === ev.speaker)`) и направляет камеру на координаты внесценического актёра.
+- **evidence:**
+```ts
+      // only the actors of the speaker's room and level are in the frame
+      const here = dActors(list).filter((d) => d.room === f.room && d.level === lvl);
+      if (!here.length) {
+        if (!queued.length) return;
+        continue;
+      }
+      // the speaker leads (a narrator line: the first actor by name), so the director's room is the one under `focus`
+      if (ev.kind !== "line") ev.speaker = undefined;
+      const out = director.step({
+        event: ev,
+        actors: here,
+```
+- **status:** rejected — призрак: director.ts:164 фильтрует offstage-актёров
+
+## B56 · MAJOR · engine/src/runtime/stage/index.ts:421  (охотник g4)
+
+- **claim:** Обработчик действия `action === "stay"` в `stage()` не вызывает функцию `cancelExit(who)`, из-за чего команда остаться на месте во время выполняющегося выхода не сбрасывает состояние выхода (`exiting`, `exitThrough`), и остановившийся актёр принудительно выбрасывается со сцены.
+- **trigger:** Актёр начинает выход через `handlers.stage({ who: "Bob", action: "exit" })`, но затем получает команду остаться `handlers.stage({ who: "Bob", action: "stay" })` и останавливается.
+- **expected:** Действие `stay` отменяет начавшийся выход (`cancelExit("Bob")`), актёр остаётся на сцене (`offstage: false`).
+- **actual:** Ветка `action === "stay"` выполняет ранний `return` без вызова `cancelExit(who)`. В очередном `update()` цикл по `exiting` видит остановившегося актёра (`!act?.moving()`), берёт дверь из `exitThrough` и через `act.go([door.at, beyond])` переводит актёра в `offstage: true`.
+- **evidence:**
+```ts
+      if (action === "stay") {
+        return;
+      }
+```
+- **status:** red — engine/test/bughunt2/b56.test.ts
+
+## B57 · CRIT · engine/src/runtime/stage/index.ts:175  (охотник g4)
+
+- **claim:** При инициализации высоты спавна актёров выражение `layerOf(sp?.level ?? null).layer.y` падает с необработанным `TypeError` при пустом массиве `layers: []`, либо вычисляет высоту Y как `NaN` при отсутствии у слоя свойства `y` (`layer.y === undefined`).
+- **trigger:** Вызов `startStage` с пустым массивом слоёв `layers: []` либо со слоем без высоты `layers: [{ layer: { level: null }, bits: ... }]`.
+- **expected:** Безопасное чтение высоты с дефолтом `layerOf(...)?.layer?.y ?? 0` (аналогично строкам 391, 465, 645, 712, 775 движка).
+- **actual:** При `layers: []` функция `layerOf` возвращает `undefined` и строка 175 падает с `TypeError: Cannot read properties of undefined (reading 'layer')`. При `layer.y === undefined` вычисляется `undefined + 0 = NaN`, актёр создаётся с высотой `y: NaN`, из-за чего `toucher.levelOf` навсегда возвращает `null`, и все команды `touch` бессрочно застревают в очереди `queued`.
+- **evidence:**
+```ts
+  const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
+// ...
+  const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
+```
+- **status:** rejected — призрак: main.ts:242 подставляет пустой слой при layers=[]
+
+## B58 · MAJOR · tools/gate.sh:46  (охотник g5)
+
+- **claim:** При аварийном завершении подоболочки любого из тестовых наборов (`dream`, `make`, `py`, `engine`) до записи статуса выхода файл `*.rc` не создаётся, из-за чего `tools/gate.sh` тихо пропускает упавший набор и завершается с кодом 0 (ложный зелёный гейт).
+- **trigger:** Подоболочка одного из наборов тестов убита сигналом (например, OOM-killer при нехватке памяти или сбой процесса до `echo $? >"$logs/dream.rc"`), в результате чего файл `$logs/dream.rc` отсутствует на диске.
+- **expected:** Скрипт `gate.sh` проверяет наличие ожидаемых результатов всех запущенных наборов, при отсутствии отчёта фиксирует падение (`rc=1`) и выводит ошибку о незавершённом прогоне.
+- **actual:** Условие `[ -f "$logs/$s.rc" ] || continue` молча пропускает набор в обоих проходах (`green` и `red`), блок с ошибкой не выполняется, переменная `rc` остаётся равной `0`, и гейт рапортует об успешном прохождении проверки.
+- **evidence:**
+```sh
+rc=0
+for pass in green red; do
+  for s in dream make py engine; do
+    [ -f "$logs/$s.rc" ] || continue
+    c=$(cat "$logs/$s.rc")
+    if [ "$c" = 0 ]; then [ $pass = green ] || continue; else [ $pass = red ] || continue; rc=1; fi
+    echo "== $s (exit $c)"
+    cat "$logs/$s"
+  done
+done
+exit $rc
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b58.py
+
+## B59 · MAJOR · tools/ptest.py:104  (охотник g5)
+
+- **claim:** Регрессия и неполный фикс бага B32 в коммите `637c21a`: модуль параллельного запуска тестов считает успешно пройденным тестовый модуль (`ok`), в котором `unittest` зафиксировал код возврата 5 («NO TESTS RAN»), пропуская невыполненные тесты с кодом выхода 0.
+- **trigger:** Передача в `tools/ptest.py` любого тестового модуля, в котором не было выполнено ни одного теста (например, пустой тестовый файл, закомментированные тесты, опечатка в имени класса или использование функций `def test_*` без наследования от `unittest.TestCase`).
+- **expected:** Ненулевой код возврата 5 от `unittest` (введённый в Python для сигнализации о пустом прогоне в CI) фиксируется как падение (`FAIL`), имя модуля добавляется в `failed`, а `ptest.py` завершается с кодом 1.
+- **actual:** Проверка `not (rc == 5 and "NO TESTS RAN" in out)` вычисляется в `False`, условие `elif` не срабатывает, модуль попадает в ветку `else`, печатает `ok <name>`, не добавляется в `failed`, и `ptest.py` возвращает код 0 (ложный зелёный гейт).
+- **evidence:**
+```python
+            elif rc and not (rc == 5 and "NO TESTS RAN" in out):  # 5 is ok only when unittest says no tests ran (all skipped by name)
+                failed.append(name)
+                print(f"FAIL {name} ({dt:.1f}s)\n{out}", flush=True)
+            else:
+                print(f"ok   {name} ({dt:.1f}s)", flush=True)
+```
+- **status:** rejected — строка 104 уже требует «NO TESTS RAN» в выводе, фикс B32 корректен
+
+## B60 · MAJOR · h0/live/server.py:114  (охотник g5)
+
+- **claim:** Соседний код с тем же классом дефекта, что и исправленный в коммите `637c21a` баг B30: вызов `chat()` в эндпоинте `POST /turn` не защищён обработкой исключений, обрывает соединение мёртвым сокетом при сетевых ошибках Meta AI API и необратимо повреждает сессионную историю `history`.
+- **trigger:** Клиент отправляет валидный запрос `POST /turn`, но апстрим `api.meta.ai` возвращает ошибку (HTTP 401/403/429/500/502) или происходит сбой сети/таймаут после исчерпания попыток в `chat()`.
+- **expected:** По аналогии с обработчиком `/asr`, сервер отлавливает ошибку апстрима (`(OSError, ValueError)`), возвращает клиенту HTTP-статус 502 (`{"error": "turn failed: ..."}`) и откатывает добавленное в `history` сообщение пользователя.
+- **actual:** Исключение `urllib.error.HTTPError`/`URLError` не перехватывается, рабочий поток падает, соединение закрывается без отправки HTTP-ответа (dead socket / connection reset). При этом строка `history.append({"role": "user", ...})` уже выполнена, а реплика ассистента не добавлена, что навсегда ломает чередование реплик в истории живой сессии.
+- **evidence:**
+```python
+            with lock:  # one turn at a time: history is one live session
+                history.append({"role": "user", "content": user})
+                line, ttft, _ = chat(SQUIDWARD_LOAD, history)
+                history.append({"role": "assistant", "content": line})
+                spoken = line.replace(OPEN, "").strip()
+                tid = uuid.uuid4().hex[:8]
+                lines[tid] = spoken
+            self.send_json({"line": spoken, "opened": OPEN in line, "tts": f"/tts/{tid}",
+                            "ttft": round((ttft or 0) * 1000), "ms": round((time.time() - t0) * 1000)})
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b60.py (откат history проверит второй тест после фикса)
+
+## B61 · MAJOR · h0/gate_test.py:83  (охотник g5)
+
+- **claim:** Регрессия и недочинённый случай B31 в коммите `637c21a`: парсинг SSE-стрима в `chat()` падает с необработанным `JSONDecodeError` на пустых строках `data:`, а обрывы стрима посреди чтения (`RemoteDisconnected`, `TimeoutError`) не перехватываются блоком `except (HTTPError, URLError)` и прерывают цикл без повтора попыток.
+- **trigger:** Сервер `api.meta.ai` отправляет пустой SSE-фрейм вида `data:\n` (keep-alive) либо сбрасывает TCP-соединение во время итерации по телу ответа `for raw in r:`.
+- **expected:** Парсер безопасно пропускает пустые/невалидные фрагменты SSE, а таймауты и разрывы соединения сокета перехватываются и вызывают повторную попытку запроса (до 3 раз).
+- **actual:** `line.startswith("data:")` истинно для `data:`, срез `line[5:]` даёт пустую строку, и `json.loads("")` падает с `json.decoder.JSONDecodeError`. Ошибки разрыва соединения стрима (`http.client.RemoteDisconnected`, `socket.timeout`, `TimeoutError`) не являются подклассами `urllib.error.URLError`, поэтому исключение не ловится блоком `except` и аварийно завершает вызов на первой же попытке.
+- **evidence:**
+```python
+                    line = raw.decode().strip()
+                    if not line.startswith("data:") or line == "data: [DONE]":
+                        continue
+                    for ch in json.loads(line[5:]).get("choices", []):
+                        piece = (ch.get("delta") or {}).get("content")
+                        if piece:
+                            first = first or time.time() - t0
+                            text += piece
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b61.py (доказана только половина: пустой data:-кадр; обрыв стрима не проверен)
+
+## B62 · MAJOR · h0/live/rt.py:234  (охотник g5)
+
+- **claim:** Состояние гонки при параллельном распознавании аудио-чанков приводит к инверсии порядка слов и повреждению промежуточного текста `type="partial"`.
+- **trigger:** Пользователь произносит фразу, нарезанную VAD на два последовательных чанка (задачи `task1` и `task2` в `self.chunks`), при этом HTTP-запрос второго чанка завершается раньше первого из-за сетевых задержек.
+- **expected:** Промежуточные события `partial` отправляют транскрипт строго в исходном хронологическом порядке речи пользователя.
+- **actual:** Когда `task2` завершается первым, `task1` ещё не завершён (`done` пуст). Затем завершается `task1`: в списке `self.chunks` задача `task2` уже имеет статус `done`, поэтому `[_text(c) for c in self.chunks if c.done()]` возвращает `[text2]`, а выражение `done + [text]` склеивает `[text2, text1]`, отправляя клиенту фразу с переставленными задом наперёд частями предложения.
+- **evidence:**
+```python
+    async def transcribe(self, pcm):
+        t = time.time()
+        text = await meta_asr(self.s.http, pcm)
+        if text:  # show what is heard so far: finished chunks of this turn plus this one
+            done = [_text(c) for c in self.chunks if c.done()]
+            await self.s.send(type="partial", text=join(done + [text]))
+        return text, round((time.time() - t) * 1000), len(pcm) / 32000
+```
+- **status:** red — research/bughunt-2026-11-02/redtests2/test_b62.py
