@@ -156,8 +156,8 @@ CLI: `cd h0 && python3 -m make "<промпт>" [--book DIR --scene ID] [--run D
 | `refs/fake.py`, `testkit.py` | оффлайн ответы / `OfflineTransport` Spark | `providers()`, `image`, `vision_ask`; `offline_spark_module` | testdata/refs | все |
 | `world.py` | brief+refs -> TASK.md -> `pipe2 run` (subprocess, cwd=h0); `--fake` копирует фикстуру `testdata/world_run` | `build_task_md`, `pipe2_argv`, `run_world`, `DEFAULT_CAPS {usd 20, calls 400, tokens 4M}` | world/task/TASK.md, world/run/ | `test_world*.py` (5) |
 | `cast.py` | ПУТЬ A: проверяет cast.json + GLB (валидатор glTF на питоне, клипы, idle, голоса из `dream/voices.json`). Генерации персонажей НЕТ | `check_cast`, `run_cast`, `default_idle`, `_glb_ok`, `_gltf_doc_ok`, `_clip_problem` | cast/cast.json | `test_cast`, `test_cast_clips` |
-| `story.py` | book: `dream/book.score_scene` -> score.json (учитывает `score.edited.json`); seed: seed.txt; `run_stage` пишет stage.json; `run_sim` | `run_story`, `run_stage`, `run_sim` | story/score.json | `test_story`, `test_story_hash_rel`, `test_stage_hash_book` |
-| `stage.py` | банк мест из построенного мира: позиция/yaw из geometry.json, размер из scene.json, двери из build.json, snap на nav; `SIT = sofa,couch,chair,armchair,bench,bed,stool,seat` -> kind `sit`, остальное `stand`; двери `door`; `pick_start` | `build_places(world_run)`, `write_stage`, `pick_start`, `_Nav.snap`, `_name_places` | places.json, stage.json | `test_stage_places`, `test_stage_snap`, `test_stage_start_*`, `test_stage_fix` |
+| `story.py` | book: `dream/book.score_scene` -> score.json (учитывает `score.edited.json`); `--lang ru`: `translate_score` -> score.ru.json (один вызов Spark, кэш `tr-<sha256>.json`); seed: seed.txt; `run_stage` пишет stage.json; `run_sim` | `run_story`, `run_stage`, `run_sim` | story/score.json | `test_story`, `test_story_hash_rel`, `test_stage_hash_book` |
+| `stage.py` | банк мест из построенного мира: позиция/yaw из geometry.json, размер из scene.json, двери из build.json, snap на nav; `SIT = sofa,couch,chair,armchair,bench,bed,stool,seat` -> kind `sit`, остальное `stand`; двери `door`; `pick_start` | `build_places(world_run)`, `write_stage`, `pick_start`, `_pick_voice` (`<метка>@ru`, иначе основной голос + предупреждение), `_Nav.snap`, `_name_places` | places.json, stage.json | `test_stage_places`, `test_stage_snap`, `test_stage_start_*`, `test_stage_fix` |
 | `play.py` | stage.json -> `sim.run`, статик-сервер dist, ожидание зрителя | `play`, `serve_static`, `static_url` | log.jsonl | `test_play`, `test_play_wait`, `test_e2e_fake` |
 | `film.py` | запись сцен в mp4: record.mjs + ffmpeg adelay для wav | `film`, `record_scene`, `mux_cmd`, `concat_cmd`, `page_url`, `TAIL_MS 2500` | film.mp4 | `test_film.py` |
 
@@ -318,6 +318,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | запись фильма | `python3 -m make.film runs/<id> --out f.mp4` (`record.mjs` + ffmpeg) |
 | сыграть сцену make-прогона | `python3 -m make.play runs/<id> [--fake]` |
 | партитура сцены из книги | `dream/book.py score_scene(dir, scene_id)`; руками править -> `story/score.edited.json` |
+| перевести партитуру на язык (кэш sha256) | `make/story.py translate_score(ctx, score, lang)` — один вызов Spark, кэш `story/tr-<sha256>.json` |
 | разбить рассказ на предложения | `book.split_narration`, `split_paras` |
 | определить кто говорит в абзаце | `book._para_beats` (`_from_tag`, `_by_position`) |
 | список объектов/имён в тексте | `dialogue.find_objects`, `names_in`, `remarks` |

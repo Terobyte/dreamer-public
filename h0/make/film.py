@@ -90,7 +90,7 @@ def _next(q, pred, timeout):
             return line
 
 
-def record_scene(run_dir, dst, max_s=600, size="1280x720"):
+def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
     """One run -> dst mp4 with sound. Raises when the page never reaches book_end/stop."""
     import json
     run_dir = Path(run_dir).resolve()
@@ -101,7 +101,7 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720"):
     subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "runtime", str(dist)], cwd=ENGINE, check=True)
     sim_port, static_port = _free_port(), _free_port()
     play = subprocess.Popen([sys.executable, "-u", "-m", "make.play", str(run_dir), "--port", str(sim_port),
-                             "--static-port", str(static_port)], cwd=H0, stdout=subprocess.PIPE,
+                             "--static-port", str(static_port)] + (["--lang", lang] if lang != "en" else []), cwd=H0, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True)
     try:
         q = _lines(play)
@@ -123,12 +123,12 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720"):
     return dst
 
 
-def film(runs, out, max_s=600, size="1280x720"):
+def film(runs, out, max_s=600, size="1280x720", lang="en"):
     out = Path(out).resolve()
     parts = []
     for i, run in enumerate(runs):
         print(f"film: scene {i + 1}/{len(runs)} {run}", flush=True)
-        parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size))
+        parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size, lang))
     if len(parts) == 1:
         shutil.move(parts[0], out)
     else:
@@ -146,8 +146,9 @@ def main(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--max", type=int, default=600, help="seconds per scene before giving up")
     ap.add_argument("--size", default="1280x720")
+    ap.add_argument("--lang", choices=["en", "ru"], default="en")
     a = ap.parse_args(argv)
-    film(a.runs, a.out, a.max, a.size)
+    film(a.runs, a.out, a.max, a.size, lang=a.lang)
     return 0
 
 

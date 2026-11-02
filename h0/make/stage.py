@@ -172,14 +172,31 @@ def build_places(world_run):
     return {"places": places, "warnings": warnings}
 
 
-def _voices(run_dir):
+def _pick_voice(pool, label, lang="en"):
+    """-> (reference_id, warning). For ru the `<label>@ru` key wins; without it the main voice is used."""
+    if lang == "ru":
+        if f"{label}@ru" in pool:
+            return pool[f"{label}@ru"], None
+        if label in pool:
+            return pool[label], f"voice {label!r}: no {label}@ru in voices.json, the main voice speaks Russian"
+    return pool.get(label), None
+
+
+def _voices(run_dir, lang="en", extra_labels=()):
     cast_p = Path(run_dir) / "cast" / "cast.json"
     pool_p = Path(__file__).resolve().parents[1] / "dream" / "voices.json"
     if not (cast_p.is_file() and pool_p.is_file()):
         return {}
     pool = _load(pool_p)
     labels = {c.get("voice") for c in _load(cast_p).values() if isinstance(c, dict)}
-    return {k: pool[k] for k in sorted(labels) if k in pool}
+    labels |= {l for l in extra_labels if l}
+    out = {}
+    for k in sorted(l for l in labels if l in pool):
+        rid, warn = _pick_voice(pool, k, lang)
+        if warn:
+            print(f"stage: warning: {warn}")
+        out[k] = rid
+    return out
 
 
 def _actors(run_dir, brief):
@@ -246,7 +263,7 @@ def pick_start(places, actors, room=None):
     return {who: names[i % len(names)] for i, who in enumerate(actors)}
 
 
-def write_stage(run_dir, out, brief=None, freestyle=False):
+def write_stage(run_dir, out, brief=None, freestyle=False, lang="en"):
     """Writes out/places.json and out/stage.json; -> the stage.json dict.
 
     stage.json holds exactly the spec schema (dist, places, cast, mode, book,
@@ -265,13 +282,33 @@ def write_stage(run_dir, out, brief=None, freestyle=False):
     start = pick_start(res["places"], actors, room=room)
     sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
           "mode": brief.get("mode"), "book": None, "seed": None,
-          "objects": [p["name"] for p in res["places"]], "voices": _voices(run_dir),
+          "objects": [p["name"] for p in res["places"]], "voices": {},
           "narrator_voice": None, "start": start}
+    # book cast voices for stage (book actors use voices from book.json, not only cast.json)
+    # contract: без --lang всё побайтно как раньше — book голоса только для ru
+    book_voices = []
+    if lang == "ru" and brief.get("mode") == "book" and brief.get("book"):
+        try:
+            bj = json.loads(Path(brief["book"]["dir"], "book.json").read_text())
+            for c in (bj.get("cast") or {}).values():
+                if isinstance(c, dict) and c.get("voice"):
+                    book_voices.append(c["voice"])
+        except (OSError, ValueError):
+            pass
     if brief.get("mode") == "book" and brief.get("book"):
         b = brief["book"]
         sj["book"] = {"dir": b["dir"], "scene": b["scene"], "score": "story/score.json"}
         sj["narrator_voice"] = _book_voice(b["dir"])
+        if lang == "ru":
+            sj["lang"] = "ru"
+            sj["book"]["score"] = "story/score.ru.json"
     elif (run_dir / "story" / "seed.txt").is_file():
         sj["seed"] = (run_dir / "story" / "seed.txt").read_text().strip()
+    extra = []
+    if lang == "ru":
+        if sj.get("narrator_voice"):
+            extra.append(sj["narrator_voice"])
+        extra.extend(book_voices)
+    sj["voices"] = _voices(run_dir, lang, extra)
     (out / "stage.json").write_text(json.dumps(sj, ensure_ascii=False, indent=2))
     return sj

@@ -78,7 +78,7 @@ def _wait_for_viewer(timeout):
 
 
 def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None,
-         wait_viewer=False, wait_timeout=120):
+         wait_viewer=False, wait_timeout=120, lang="en"):
     """-> (outdir, log.jsonl path) as sim.run. `serve`: port (0 = any) for the sim's SSE server."""
     run_dir = Path(run_dir)
     sj = json.loads((run_dir / "stage" / "stage.json").read_text())
@@ -106,7 +106,13 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
         kw["on_sim"] = _wait_for_viewer(wait_timeout)
     if sj["mode"] == "book":
         b = sj["book"]
-        score = json.loads((run_dir / b["score"]).read_text()) if (run_dir / b["score"]).is_file() else None
+        if lang == "ru":
+            score_p = run_dir / "story" / "score.ru.json"
+            if not score_p.is_file():
+                raise FileNotFoundError(f"{score_p}: run `make --lang ru` first")
+        else:
+            score_p = run_dir / "story" / "score.json"
+        score = json.loads(score_p.read_text()) if score_p.is_file() else None
         plan = sim._load_book_plan(b["dir"], [b["scene"]], score)
         for sc in plan["scenes"]:
             sc["dict"]["objects"] = list(objects)
@@ -141,6 +147,7 @@ def main(argv=None, hold=_hold):
     ap.add_argument("--wait-viewer", dest="wait_viewer", action="store_true", default=None,
                     help="start the sim when a page connects (default on unless --fake)")
     ap.add_argument("--no-wait-viewer", dest="wait_viewer", action="store_false")
+    ap.add_argument("--lang", choices=["en", "ru"], default="en", help="ru: play story/score.ru.json")
     a = ap.parse_args(argv)
     wait = (not a.fake) if a.wait_viewer is None else (a.wait_viewer and not a.fake)
     srv = None
@@ -150,7 +157,8 @@ def main(argv=None, hold=_hold):
         print(static_url(a.run, sp, sim_port or 8770), flush=True)
     try:
         out, log = play(a.run, fake=a.fake, freestyle=a.freestyle or None,
-                        serve=None if a.fake else (sim_port or 8770), wait_viewer=wait)
+                        serve=None if a.fake else (sim_port or 8770), wait_viewer=wait,
+                        **({"lang": a.lang} if a.lang != "en" else {}))
         print(log)
         if wait:
             hold()
