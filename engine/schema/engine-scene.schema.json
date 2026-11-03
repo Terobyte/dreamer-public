@@ -23,7 +23,9 @@
       "additionalProperties": false,
       "properties": {
         "ambient": { "type": "number", "default": 1.0 },
-        "exterior": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#808080" }
+        "exterior": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#808080" },
+        "tone": { "type": "string", "enum": ["neutral", "none"], "description": "runtime tone mapping; none = off (unlit, shadowless worlds)" },
+        "exposure": { "type": "number", "exclusiveMinimum": 0, "maximum": 4, "description": "tone mapping exposure, default 0.9" }
       }
     },
     "materials": {

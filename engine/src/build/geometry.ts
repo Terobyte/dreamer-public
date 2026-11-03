@@ -87,7 +87,7 @@ export interface Geometry {
   lights: Light[];
   cameras: Camera[];
   spawn: { at: V2; y: number; yaw: number };
-  style: { ambient: number; exterior: string };
+  style: { ambient: number; exterior: string; tone?: string; exposure?: number };
   /** sky dome + fading ground disc, only for a scene with `outdoor` (В2) */
   outdoor?: Outdoor;
   /** `scatter` sets, one InstancedMesh per entry (spec "scatter") */
@@ -307,7 +307,13 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     lights: ((scene.lights ?? []) as any[]).map((l) => (l?.kind === "sun" ? sunOf(l) : l)) as Light[],
     cameras: ((scene.cameras ?? []) as Camera[]).map((c) => ({ ...c })),
     spawn: { at: scene.spawn.at as V2, y: spawnY, yaw: Number(scene.spawn.yaw ?? 0) },
-    style: { ambient: Number(scene.style?.ambient ?? 1.0), exterior: String(scene.style?.exterior ?? "#808080") },
+    style: {
+      ambient: Number(scene.style?.ambient ?? 1.0),
+      exterior: String(scene.style?.exterior ?? "#808080"),
+      // the runtime's tone mapping (main.ts): only when the world sets them, so older worlds hash the same
+      ...(scene.style?.tone !== undefined ? { tone: String(scene.style.tone) } : {}),
+      ...(scene.style?.exposure !== undefined ? { exposure: Number(scene.style.exposure) } : {}),
+    },
     ...(scene.outdoor ? { outdoor: outdoorOf(scene, assetFiles, levelY) } : {}),
   };
 }
