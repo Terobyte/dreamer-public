@@ -70,6 +70,11 @@ class IdeaQueue:
             self._ack(id_, text)
 
     # --- reads ---------------------------------------------------------------
+    def reply_of(self, id_):
+        """The answer `add` gave this id, or None (D2: a repeat is answered before any re-clean)."""
+        with self._lock:
+            return self._replies.get(str(id_ or ""))
+
     def get(self, id_):
         with self._lock:
             it = self._items.get(id_)

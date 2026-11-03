@@ -117,3 +117,41 @@ describe("D2 operator panel", () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe("D2 debt: revision races in the panel (Nov 3)", () => {
+  it("an error about an older text is stale: the current text is cleaned again", async () => {
+    let rev = 1;
+    let text = "старый";
+    const sent: any[] = [];
+    const post = async (body: any): Promise<any> => {
+      sent.push(body);
+      if (sent.length === 1) {
+        rev = 2;
+        text = "поговорите о сестре сейчас";
+        return { error: "clean_failed" };
+      }
+      return { clean: "поговорите о сестре", intent: "steer", draft_revision: body.draft_revision };
+    };
+    const r = await cleanDraft(post, "operator", () => text, () => rev);
+    expect(r.ok).toBe(true);
+    expect(sent.map((b) => b.value)).toEqual(["старый", "поговорите о сестре сейчас"]);
+  });
+  it("raw is the text of the cleaned revision, so a trailing «сейчас» the cleaner dropped still sets now", async () => {
+    let rev = 1;
+    let text = "поговорите о сестре";
+    const post = async (body: any): Promise<any> => {
+      if (body.kind === "draft" && body.draft_revision === 1) {
+        rev = 2;
+        text = "поговорите о сестре сейчас";
+      }
+      return body.kind === "draft" ? { clean: "поговорите о сестре", intent: "steer", draft_revision: body.draft_revision } : { ok: true, id: body.id };
+    };
+    const r = await cleanDraft(post, "operator", () => text, () => rev);
+    expect(r.ok && r.raw).toBe("поговорите о сестре сейчас");
+    const sent: any[] = [];
+    const post2 = async (body: any): Promise<any> => (sent.push(body), { ok: true, id: body.id });
+    if (!r.ok) throw new Error("clean failed");
+    await sendIdea(post2, "operator", r.draft.clean, r.raw, r.draft, 2, () => 2, () => "id1");
+    expect(sent[0].now).toBe(true);
+  });
+});

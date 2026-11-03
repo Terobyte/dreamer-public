@@ -68,18 +68,22 @@ export async function cleanDraft(
   source: Source,
   getText: () => string,
   getRev: () => number,
-): Promise<{ ok: true; draft: Draft } | { ok: false; error: string }> {
+): Promise<{ ok: true; draft: Draft; raw: string } | { ok: false; error: string }> {
   for (let i = 0; i < 3; i++) {
     const rev = getRev();
+    // the raw text of this very revision: the idea's `raw` and its `now` come from it, never an older one
+    const raw = getText();
     let d: any;
     try {
-      d = await post({ kind: "draft", source, draft_revision: rev, value: getText() });
+      d = await post({ kind: "draft", source, draft_revision: rev, value: raw });
     } catch {
+      if (rev !== getRev()) continue; // edited meanwhile: the failure was about the old text
       return { ok: false, error: "clean_failed" };
     }
+    // revision first (D2 debt): an error about an older text is stale, the current text is cleaned again
+    if (rev !== getRev() || (d && !d.error && d.draft_revision !== getRev())) continue;
     if (!d || d.error) return { ok: false, error: d?.error ?? "clean_failed" };
-    if (d.draft_revision !== getRev()) continue; // edited while the cleaner ran: clean the new text
-    return { ok: true, draft: d as Draft };
+    return { ok: true, draft: d as Draft, raw };
   }
   return { ok: false, error: "stale" };
 }
@@ -106,8 +110,11 @@ export async function sendIdea(
   if (draft.scene_id) body.scene_id = draft.scene_id;
   // F10: \b is ASCII-only ([A-Za-z0-9_]), so it never matches around Cyrillic
   // «сейчас» — use explicit separator classes instead of \b.
-  const t = `${raw} ${value}`;
-  if (/^\s*(?:сейчас|now)(?:$|[\s.,!?;:\-—])/iu.test(raw) || /(?:^|[\s.,!?;:\-—])(?:сейчас|now)\s*$/iu.test(t)) body.now = true;
+  // D2 debt: the raw text of the cleaned revision and the cleaned value each on its own (a «сейчас» at the end
+  // of raw that the cleaner dropped used to sit in the middle of the `raw value` join and was missed)
+  const lead = /^\s*(?:сейчас|now)(?:$|[\s.,!?;:\-—])/iu;
+  const tail = /(?:^|[\s.,!?;:\-—])(?:сейчас|now)[\s.,!?;:\-—]*$/iu;
+  if ([raw, value].some((x) => lead.test(x) || tail.test(x))) body.now = true;
   const r = await post(body).catch(() => ({ ok: false, error: "network" }));
   if (getRev() !== rev) {
     if (r?.ok) await post({ kind: "idea_drop", id }).catch(() => undefined);
@@ -158,11 +165,10 @@ function promptLine(doc: Document, post: Post, source: Source, onNote: (t: strin
       return;
     }
     // step 1: clean the draft and show the result in the line; nothing goes to the queue yet
-    const raw = input.value;
     void cleanDraft(post, source, () => input.value, () => rev).then((c) => {
       if (c.ok) {
         input.value = c.draft.clean;
-        cleaned = { text: c.draft.clean.trim(), raw, draft: c.draft };
+        cleaned = { text: c.draft.clean.trim(), raw: c.raw, draft: c.draft };
         onNote("проверь команду, Enter — отправить");
       } else if (c.error === "clean_failed") onNote("не вышло почистить команду, текст остался");
       else onNote(`не принято: ${c.error}`);

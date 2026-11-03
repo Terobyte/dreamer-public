@@ -2164,6 +2164,11 @@ class Sim:
         raw = sanitize(str(payload.get("raw") or value), "human")[0]
         addr = sanitize(str(payload.get("addressee") or ""), "human")[0]
         unsafe = any(t and self._safety_check(t) for t in (raw, value, addr))
+        # D2 debt: a repeat of a known id gets its first answer, even after the clean cache was
+        # cleared or a re-clean would fail now (idempotency was only inside ideas.add)
+        prior = self.ideas.reply_of(payload.get("id"))
+        if prior is not None:
+            return prior
         p = {k: payload.get(k) for k in ("id", "source", "now") if payload.get(k) is not None}
         p.update(value=value, raw=raw)
         if unsafe or not value:
