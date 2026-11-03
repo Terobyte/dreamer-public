@@ -297,6 +297,7 @@ async function start(): Promise<void> {
       stageUrl,
       sim,
       film: params.get("film") === "1",
+      cameraStyle: params.get("camera_style") ?? undefined,
       geo,
       nav,
       layers: all,
