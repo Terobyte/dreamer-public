@@ -28,9 +28,8 @@ def _spark_translate(ctx):
     h0 = str(Path(__file__).resolve().parents[1])
     if h0 not in sys.path:
         sys.path.insert(0, h0)
-    from pipe2.ledger import Ledger, load_prices
     from pipe2.spark import Spark
-    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
+    ledger = core.spark_ledger(ctx, 2)
     spark = Spark(core._spark_transport(), ledger)
     names = {"ru": "Russian"}
 
@@ -54,9 +53,8 @@ def _spark_director(ctx):
     h0 = str(Path(__file__).resolve().parents[1])
     if h0 not in sys.path:
         sys.path.insert(0, h0)
-    from pipe2.ledger import Ledger, load_prices
     from pipe2.spark import Spark
-    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
+    ledger = core.spark_ledger(ctx, 2)
     spark = Spark(core._spark_transport(), ledger)
 
     paid = [0.0]  # ledger.spent is cumulative: charge only the growth

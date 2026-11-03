@@ -51,6 +51,24 @@ class Ctx:
         self.usd += float(usd)
 
 
+def spark_ledger(ctx, calls):
+    """A Spark ledger for one make stage (L78). The cap is the stage's dollar share, but never under one
+    worst-case call (64k out tokens at the max-effort price), or a small budget could not ask Spark at
+    all; no share known (no --max-dollars) = no dollar cap, the call cap still holds."""
+    import sys
+    h0 = str(Path(__file__).resolve().parents[1])
+    if h0 not in sys.path:
+        sys.path.insert(0, h0)
+    from pipe2.ledger import Ledger, load_prices
+    from pipe2.spark import MAX_TOKENS
+    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), calls)
+    budget = getattr(ctx, "budget_usd", None)
+    if budget is not None and math.isfinite(budget):
+        one = ledger.cost_of("spark", {"effort": "max", "in": 32000, "out": MAX_TOKENS})
+        ledger.cap_usd = max(float(budget), one)
+    return ledger
+
+
 def _slow_stub(ctx):
     start = time.time()
     time.sleep(STUB_SLEEP)
@@ -101,11 +119,10 @@ def _run_brief(ctx):
         h0 = str(Path(__file__).resolve().parents[1])
         if h0 not in sys.path:
             sys.path.insert(0, h0)
-        from pipe2.ledger import Ledger, load_prices
         from pipe2.spark import Spark
         # two calls max (answer + one retry); the stage share is enforced by run_make after the
         # fact - Spark's worst-case reserve (64k out tokens) is bigger than 2 % of a small budget
-        ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 2)
+        ledger = spark_ledger(ctx, 2)
         ask = _brief.spark_ask(Spark(_spark_transport(), ledger), ctx.opts.get('effort') or 'medium')
         try:
             b = _brief.make_brief(prompt, ask, note, expect)
@@ -142,9 +159,8 @@ def _run_refs(ctx):
             h0 = str(Path(__file__).resolve().parents[1])
             if h0 not in sys.path:
                 sys.path.insert(0, h0)
-            from pipe2.ledger import Ledger, load_prices
             from pipe2.spark import Spark
-            ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 64)
+            ledger = spark_ledger(ctx, 64)
             spark = Spark(_spark_transport(), ledger)
 
             def ask(slot, images):
