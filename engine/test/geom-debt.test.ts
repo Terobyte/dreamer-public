@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { runCheck } from "../src/check.js";
+import { buildGeometry } from "../src/build/geometry.js";
 import type { Mesh } from "../src/build/geometry.js";
 import { intervalMeshes } from "../src/build/walls.js";
 import type { WallRoom } from "../src/build/walls.js";
@@ -202,5 +203,61 @@ describe("geometry debt", () => {
     raw.rooms[1].beams = [{ from: [1.15, 10.7], to: [1.15, 11.1], material: "wood", w: 0.25, h: 0.5 }];
     const { report } = runCheck(raw);
     expect(report.errors.find((i) => i.code === "STAIR_HEADROOM")).toBeDefined();
+  });
+
+  // spec "Вырез … там, где просвет < 2.0" is silent on a disjoint footprint;
+  // test_stair_notch_stranded_span_in_headroom pins today's rule (stranded
+  // piece → STAIR_HEADROOM). A multi-polygon `cut` changes the passport format
+  it.skip("L103 every piece of to.room over the flight is cut, not just the one at the exit (needs spec + passport change)", () => {
+    const raw = demo();
+    raw.rooms[2].shape = [[-2, 4], [2, 4], [2, 12], [-2, 12], [-2, 10], [1.8, 10], [1.8, 8], [-2, 8]];
+    const { report } = runCheck(raw);
+    const up = (report.passport as any).stairs[0];
+    expect(Array.isArray(up.cut[0][0])).toBe(true);
+    expect(up.cut).toHaveLength(2);
+  });
+
+  // considering the bar height breaks F2/F3 r1–r4 (no rail past a hall wall
+  // stub the rail runs 3.6–3.9 m over); the spec does not say which height or level
+  it.skip("L104 a low free wall by the flight top does not remove the rail running over it (needs spec decision)", () => {
+    const raw = demo();
+    // a 1.0 m free wall 0.10 m off the left face, by the top of the flight
+    // where the rail bar is ~4 m up
+    raw.walls = [{ level: "L0", from: [0.79, 6.2], to: [0.79, 7.0], thickness: 0.12, material: "white", h: 1.0 }];
+    const { report, ctx } = runCheck(raw);
+    expect(report.errors).toEqual([]);
+    expect(buildGeometry(ctx).meshes.some((m) => m.id === "up:rail:left")).toBe(true);
+  });
+
+  it("L105 rail threshold: a side needs strictly more than 0.15 m to the wall face", () => {
+    // free wall 0.12 thick, flight's left edge at x 0.95: face at x + 0.06
+    const railAt = (x: number): boolean => {
+      const raw = demo();
+      raw.walls = [{ level: "L0", from: [x, 9.0], to: [x, 10.0], thickness: 0.12, material: "white", h: 1.0 }];
+      const { report, ctx } = runCheck(raw);
+      expect(report.errors).toEqual([]);
+      return buildGeometry(ctx).meshes.some((m) => m.id === "up:rail:left");
+    };
+    expect(railAt(0.735)).toBe(true); // 0.155 m
+    expect(railAt(0.74)).toBe(false); // exactly 0.15 m: no rail
+  });
+
+  it("L105 a door beside the flight is a wall (lintel), a full-height opening is not", () => {
+    // flight moved next to hall's west wall: left edge at x -1.8, ~0.1 m off
+    // its face, so the plain wall takes the left rail away
+    const railWith = (h: number | null): boolean => {
+      const raw = demo();
+      raw.stairs[0].from.at = [-1.35, 11.6];
+      raw.spawn.at = [-0.5, 5];
+      if (h !== null) {
+        raw.openings.push({ id: "side", kind: "door", on: { room: "hall", edge: 3, t: 0.475 }, width: 7.4, height: h, sill: 0, outside: { backdrop: "d_sea" } });
+      }
+      const { report, ctx } = runCheck(raw);
+      expect(report.errors).toEqual([]);
+      return buildGeometry(ctx).meshes.some((m) => m.id === "up:rail:left");
+    };
+    expect(railWith(null)).toBe(false);
+    expect(railWith(2.1)).toBe(false);
+    expect(railWith(3.0)).toBe(true);
   });
 });
