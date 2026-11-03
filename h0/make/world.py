@@ -88,7 +88,33 @@ def _write_task(ctx, brief):
     return task
 
 
+_READY_FILES = ("scene.json", "dist/geometry.json", "dist/nav.json")
+
+
+def ready_inputs(world_dir):
+    """[[name, sha]] of what a ready world feeds the later stages: rebuild the world -> story and stage rerun."""
+    import hashlib
+    w = Path(world_dir)
+    return [[f, hashlib.sha256((w / f).read_bytes()).hexdigest()] for f in _READY_FILES if (w / f).is_file()]
+
+
+def _link_ready(ctx, world_dir):
+    """`make --world DIR`: the engine already built this world (scene.json + dist/): link it, generate nothing.
+    The link is absolute: make moves world.tmp into .pub/ and a relative one breaks (Squidward, Nov 3)."""
+    w = Path(world_dir).resolve()
+    if not all((w / f).is_file() for f in _READY_FILES[:2]):
+        raise RuntimeError(f"--world {w}: no scene.json + dist/geometry.json (run `dreamer build` first)")
+    link = ctx.out / "run"
+    if link.is_symlink() or link.is_file():
+        link.unlink()  # a kept world.tmp from an earlier try
+    link.symlink_to(w)
+    (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time(), "ready": str(w)}))
+    return 0.0
+
+
 def run_world(ctx, runner=subprocess.run):
+    if ctx.opts.get("world"):
+        return _link_ready(ctx, ctx.opts["world"])
     brief = json.loads((ctx.run_dir / "brief" / "brief.json").read_text())
     task = _write_task(ctx, brief)
     run = ctx.out / "run"

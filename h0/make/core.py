@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
-OPTIONAL_PARAMS = {"book", "scene", "freestyle", "mesh", "lang"}  # в хэше только если заданы
+OPTIONAL_PARAMS = {"book", "scene", "freestyle", "mesh", "lang", "world"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -196,7 +196,7 @@ def default_stages():
     return {s.id: s for s in (
         S("brief", (), 3, _run_brief, ("fake", "prompt", "book", "scene")),
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
-        S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh")),
+        S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh", "world")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
         S("story", ("refs", "world", "cast"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
         S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle", "lang")),
@@ -394,7 +394,8 @@ def _publish(run_dir, sid, tmp):
 
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
              fresh=False, fake=False, check=False, max_dollars=None, split=None,
-             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False, mesh=None, lang="en"):
+             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False, mesh=None, lang="en",
+             world=None):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
     run_dir = Path(run_dir)
@@ -411,7 +412,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
     opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort,
             "book": str(book) if book else None, "scene": scene,
             "freestyle": True if freestyle else None, "live": bool(live), "mesh": mesh,
-            "lang": lang if lang and lang != "en" else None}  # en = как раньше: ключа нет в хеше
+            "lang": lang if lang and lang != "en" else None,  # en = как раньше: ключа нет в хеше
+            "world": str(world) if world else None}  # a world dreamer already built: linked, not generated
 
     enabled = {k for k, s in stages.items() if not s.optional or check}
     forced = set()
@@ -458,6 +460,10 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
                         if p.is_file():
                             inputs.append([p.relative_to(run_dir).as_posix(), _sha_file(p)])
                     inputs = sorted(inputs)
+            if sid == "world" and opts.get("world"):
+                # a ready world: its build is the input (rebuilt room -> world, story, stage rerun)
+                from . import world as _world
+                inputs = sorted(inputs + [["world/" + n, h] for n, h in _world.ready_inputs(opts["world"])])
             if sid == "story":
                 # прямые входы story вне предков: score.edited.json и файлы книги
                 ed = run_dir / "story" / "score.edited.json"
