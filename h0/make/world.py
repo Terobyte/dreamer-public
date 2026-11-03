@@ -1,5 +1,6 @@
 """Stage `world`: brief + refs -> world/task/TASK.md -> `pipe2 run` (or the fixture with --fake)."""
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -50,7 +51,7 @@ def build_task_md(brief):
                 "A staircase cuts its stairwell only in the floor of the room it leads to, so its whole run "
                 "must lie under that room's footprint.",
                 "Keep stairs straight and along a wall.", ""]
-    style = (brief.get("style") or "").strip().rstrip(".")
+    style = brandless((brief.get("style") or "").strip().rstrip("."))
     out += [f"Style for every image prompt (tiles, decals, objects): {style}.",
             "Nobody lives in the scene: no people, animals or characters in any image. In asset prompts never "
             "write show, character or brand names: describe only what the object looks like "
@@ -58,6 +59,31 @@ def build_task_md(brief):
             "Each room should be recognisable from its reference images (see cues.md and refs/ next to this "
             "file). A few large signature objects per room beat many small ones."]
     return "\n".join(out) + "\n"
+
+
+# L80: a brief's style names a studio or a show ("Studio Ghibli"); image models filter brand names or
+# copy the brand. The look it stands for goes into TASK.md instead.
+BRAND_LOOKS = {
+    "studio ghibli": "soft hand-painted watercolour animation look, warm natural light",
+    "ghibli": "soft hand-painted watercolour animation look, warm natural light",
+    "pixar": "smooth stylised 3D animation look, soft rounded shapes",
+    "dreamworks": "stylised 3D animation look, saturated colours",
+    "disney": "classic hand-drawn animation look, clean outlines",
+    "nickelodeon": "bright flat cartoon look, bold outlines",
+    "spongebob": "bright underwater cartoon look, bold outlines",
+    "wes anderson": "symmetrical pastel storybook look, flat frontal compositions",
+    "studio trigger": "bold cel-shaded anime look, strong colours",
+    "makoto shinkai": "luminous painted anime look, detailed skies",
+}
+
+
+def brandless(style):
+    """The style with every known studio/show/director name replaced by the look it stands for."""
+    out = style
+    for name in sorted(BRAND_LOOKS, key=len, reverse=True):
+        out = re.sub(r"(?i)(?:in the style of\s+|à la\s+)?\b%s\b(?:['’]s)?(?:\s+style)?" % re.escape(name),
+                     BRAND_LOOKS[name], out)
+    return re.sub(r"\s{2,}", " ", out).strip()
 
 
 def pipe2_argv(task_dir, run_dir, *, usd=None, calls=None, tokens=None, effort=None, resume=False, mesh=None):
