@@ -67,6 +67,21 @@ describe("camera calm", () => {
     expect(inFrame(o, mirai().head!)).toBe(true);
   });
 
+  it("a line by Mama sitting by lying Mirai keeps both in frame (k13_true 30 s: a close over Mirai, Mama alone)", () => {
+    const d = createDirector(() => 0.5, { style: "storybook" });
+    const sit: DActor = { ...act("Mama", [-1.65, 2.28], 315), head: [-1.64, 1.02, 2.29] };
+    const A = [sit, mirai()];
+    d.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A, room: BED });
+    d.step({ event: { kind: "narrator", durationS: 6, dt: 6, beat: 1 }, actors: A, room: BED });
+    for (const r of [0.1, 0.5, 0.9]) {
+      const e = createDirector(() => r, { style: "storybook" });
+      e.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A, room: BED });
+      const o = e.step({ event: { kind: "line", speaker: "Mama", durationS: 4, dt: 6, beat: 1, tags: { look: true } }, actors: A, room: BED });
+      expect(inFrame(o, sit.head!)).toBe(true);
+      expect(inFrame(o, mirai().head!)).toBe(true);
+    }
+  });
+
   it("the base wide does not look steeply down (k12_calm: 2.2 m, 30–39° down, the walls keystoned)", () => {
     const d = createDirector(() => 0.5);
     const o = d.step({ event: { kind: "narrator", durationS: 6, dt: 0 }, actors: [mama(), mirai()], room: BED });

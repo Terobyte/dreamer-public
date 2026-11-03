@@ -428,66 +428,80 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       let atom = SCHEME_ATOM[pk.id] ?? pk.id;
       // a lying listener has no shoulder: over it the ots framed Mama alone, huge (k12_calm 32–40 s) -> a two-shot
       if (atom === "ots" && listener && (listener.lying || speaker.lying)) atom = "two";
+      // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
+      const hiY = Math.max(floorY + 0.3, height - 0.3);
+      const lo = Math.min(floorY + style.height[0], hiY);
+      const hi = Math.max(lo, Math.min(floorY + style.height[1], hiY));
+      const cy = (v: V3): V3 => [v[0], Math.min(hi, Math.max(lo, v[1])), v[2]];
+      const cf = (f: number): number => Math.min(style.fov[1], Math.max(style.fov[0], f));
+      const headOf = (a: DActor): V3 => a.head ?? [a.pos[0], floorY + a.height * 0.93, a.pos[1]];
+      /** shoot true: every subject's head inside the frame (k12_calm 6–16 s: the establishing master aimed at the
+       *  room, Mirai lying under the frame; 30 s: a close over lying Mirai showed Mama alone, huge) */
+      const inView = (who: DActor[], cam: V3, look: V3, fov: number): boolean => who.every((a) => {
+        const p = ndcOf(headOf(a), cam, look, fov, inp.aspect ?? 16 / 9);
+        return p.depth > 0.2 && Math.abs(p.x) <= IN_FRAME && Math.abs(p.y) <= IN_FRAME;
+      });
+      const pt = (l: ShotLook): V3 => {
+        if (Array.isArray(l)) return l as V3;
+        const a = crew.find((x) => x.name === (l as any).actor);
+        const h: V3 = a?.head ?? [a?.pos[0] ?? 0, (a?.height ?? 1.5) * 0.93, a?.pos[1] ?? 0];
+        const o = (l as any).o as V3;
+        return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
+      };
       // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
-      const pairAtom = atom === "ots" || atom === "two" || atom === "close_reaction";
-      const roomAtom = atom === "wide" || atom === "master";
-      const usePair = Boolean(listener) && !roomAtom && atom !== "close" && (pairAtom || style.cut === "long");
-      const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (atom === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
-      curPair = usePair;
-      pairNames = usePair ? [speaker.name, listener!.name] : [];
-      try {
-        const r = resolveMove(atom, subj, {
-          actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
-          durationS: ev.durationS ?? style.asl[0], rng, speaker: speaker.name, clear: inp.clear,
-          // a walker's straight route: where it ends, from its heading and what is left of the walk
-          walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
-          side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
-        });
-        const pt = (l: ShotLook): V3 => {
-          if (Array.isArray(l)) return l as V3;
-          const a = crew.find((x) => x.name === (l as any).actor);
-          const h: V3 = a?.head ?? [a?.pos[0] ?? 0, (a?.height ?? 1.5) * 0.93, a?.pos[1] ?? 0];
-          const o = (l as any).o as V3;
-          return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
-        };
-        const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
-        // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
-        const hiY = Math.max(floorY + 0.3, height - 0.3);
-        const lo = Math.min(floorY + style.height[0], hiY);
-        const hi = Math.max(lo, Math.min(floorY + style.height[1], hiY));
-        const cy = (v: V3): V3 => [v[0], Math.min(hi, Math.max(lo, v[1])), v[2]];
-        const cf = (f: number): number => Math.min(style.fov[1], Math.max(style.fov[0], f));
-        r.from.pos = cy(r.from.pos);
-        r.from.fov = cf(r.from.fov);
-        if (r.end) {
-          r.end.pos = cy(r.end.pos);
-          r.end.fov = cf(r.end.fov);
+      const subjOf = (at: string): { subj: MoveSubject; usePair: boolean; who: DActor[] } => {
+        const pairAtom = at === "ots" || at === "two" || at === "close_reaction";
+        const roomAtom = at === "wide" || at === "master";
+        const usePair = Boolean(listener) && !roomAtom && at !== "close" && (pairAtom || style.cut === "long");
+        const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (at === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
+        const names = "pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : [];
+        const who = roomAtom ? crew.filter((a) => !a.offstage && a.room === speaker.room && a.level === speaker.level) : crew.filter((a) => names.includes(a.name));
+        return { subj, usePair, who };
+      };
+      const attempt = (at: string): typeof curMove => {
+        const { subj, usePair, who } = subjOf(at);
+        try {
+          const r = resolveMove(at, subj, {
+            actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
+            durationS: ev.durationS ?? style.asl[0], rng, speaker: speaker.name, clear: inp.clear,
+            // a walker's straight route: where it ends, from its heading and what is left of the walk
+            walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
+            side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
+          });
+          const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
+          r.from.pos = cy(r.from.pos);
+          r.from.fov = cf(r.from.fov);
+          if (r.end) {
+            r.end.pos = cy(r.end.pos);
+            r.end.fov = cf(r.end.fov);
+          }
+          const mv = {
+            cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
+            ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
+            fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: pk.id,
+            warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
+          };
+          if (!inView(who, mv.cam, mv.look, mv.fov) || (mv.end && mv.lookEnd && !inView(who, mv.end, mv.lookEnd, mv.fovEnd ?? mv.fov))) return null;
+          curPair = usePair;
+          pairNames = usePair ? [speaker.name, listener!.name] : [];
+          return mv;
+        } catch {
+          return null;
         }
-        curMove = {
-          cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
-          ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
-          fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: pk.id,
-          warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
-        };
-        {
-          const a = crew.find((x) => x.name === speaker.name);
-          const fd = a ? faceDir(a) : null;
-          if (a && fd) faceBase = { name: a.name, dir: fd };
-        }
-        // shoot true: a move that leaves a subject's head out of frame is no shot (k12_calm 6–16 s: the establishing
-        // master aimed at the room, Mirai lying under the frame); the base frame stays instead
-        const who = roomAtom ? crew.filter((a) => !a.offstage && a.room === speaker.room && a.level === speaker.level) : crew.filter((a) => ("pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : []).includes(a.name));
-        const headOf = (a: DActor): V3 => a.head ?? [a.pos[0], floorY + a.height * 0.93, a.pos[1]];
-        const sees = (cam: V3, look: V3, fov: number): boolean => who.every((a) => {
-          const p = ndcOf(headOf(a), cam, look, fov, inp.aspect ?? 16 / 9);
-          return p.depth > 0.2 && Math.abs(p.x) <= IN_FRAME && Math.abs(p.y) <= IN_FRAME;
-        });
-        const m = curMove!;
-        // the base frame at the style's height (ozu stays low) and still, no move name
-        if (!sees(m.cam, m.look, m.fov ?? 50) || (m.end && m.lookEnd && !sees(m.end, m.lookEnd, m.fovEnd ?? m.fov ?? 50)))
-          curMove = { cam: cy(out.cam), look: out.look, fov: cf(out.fov ?? (style.fov[0] + style.fov[1]) / 2), shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
-      } catch {
-        curMove = null;
+      };
+      // the picked move; a pair that it loses gets a two-shot; then the base frame if it sees the subjects, else the
+      // base wide; both still, at the style's height (ozu stays low)
+      curPair = false;
+      pairNames = [];
+      curMove = attempt(atom) ?? (listener && atom !== "two" && atom !== "close" && !subjOf(atom).subj.hasOwnProperty("room") ? attempt("two") : null);
+      if (curMove) {
+        const a = crew.find((x) => x.name === speaker.name);
+        const fd = a ? faceDir(a) : null;
+        if (a && fd) faceBase = { name: a.name, dir: fd };
+      } else {
+        const who = subjOf(atom).who;
+        const base = inView(who, out.cam, out.look, out.fov ?? 50) ? out : frame("wide", speaker, frameOther, crew, walkers, inp, 0, clock, cutSeq, st, snap, speaker);
+        curMove = { cam: cy(base.cam), look: base.look, fov: cf(base.fov ?? (style.fov[0] + style.fov[1]) / 2), shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
       }
     }
     return curMove ? { ...out, ...curMove, cut: heldCut } : out;
