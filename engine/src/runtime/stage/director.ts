@@ -425,7 +425,14 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // a base cut sooner than asl.min after the move began is swallowed (k12_storybook: every narrator sentence and
     // reaction cut re-picked a move, 3 cuts in 1.5 s); a scene start/end, an entrance and a new room still cut
     const t = ev.tags ?? {};
-    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line";
+    /** a narration about an actor the running frame does not hold (Squidward v12 64–71 s: "SpongeBob waved his arms"
+     *  3.7 s after Squidward's line, the close on Squidward kept, the wave off screen) */
+    const subjectOut = (o: Pick<DirectorOut, "cam" | "look" | "fov"> | null | undefined): boolean => {
+      if (!o || ev.kind !== "narrator" || !ev.about || speaker.name !== ev.about) return false;
+      const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
+      return !(p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1);
+    };
+    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line" || subjectOut(curMove);
     if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) moveCut = cutSeq;
     // "shoot rarely, shoot true" (accent styles): a beat that is not a scene start/end, an entrance, a look or a
     // spoken line gets the base planner's frame, the readable legacy wide of restage12
@@ -457,7 +464,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       moveCut = cutSeq;
       curMove = null;
       // the base cuts no sooner than asl.min either: a too-early cut keeps the frame on screen
-      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0] && !hidesHead(shown.out) && !showsBack(shown.out)) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
+      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0] && !hidesHead(shown.out) && !showsBack(shown.out) && !subjectOut(shown.out)) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
       if (!shown || out.cut !== shown.out.cut) {
         shown = { out, at: clock };
         shownRoom = key;
