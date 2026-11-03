@@ -77,11 +77,13 @@ export function validateStyles<T extends Record<string, Style>>(table: T): T {
 export const STYLES: Record<string, Style> = validateStyles(TABLE);
 
 /** One draw, fixed order: tag forcing, candidates, moving coin, weighted draw. `line` = the event is a spoken line. */
-export function pickMove(style: Style, tags: MoveTags, rng: () => number, opts: { line?: boolean; noWalk?: boolean } = {}): Pick {
+export function pickMove(style: Style, tags: MoveTags, rng: () => number, opts: { line?: boolean; noWalk?: boolean; walking?: boolean } = {}): Pick {
   const warnings: string[] = [];
-  const forced = tags.last ? "final_pull_out" : tags.first ? "establishing" : tags.enter ? (opts.noWalk ? "crane_down" : "follow_side") : tags.look ? "over_the_shoulder" : null;
+  // `walking`: the speaker of the line walks on (Squidward v18 154–157 s: "Welcome to my pineapple!" on the way to the
+  // table, a still frame, he walked out of it): the line is followed
+  const forced = tags.last ? "final_pull_out" : tags.first ? "establishing" : opts.walking && !opts.noWalk ? "follow_side" : tags.enter ? (opts.noWalk ? "crane_down" : "follow_side") : tags.look ? "over_the_shoulder" : null;
   if (forced) {
-    const bad = (style.move === 0 && isMoving(forced)) || (!!opts.line && WALK_ONLY.has(forced));
+    const bad = (style.move === 0 && isMoving(forced)) || (!!opts.line && !opts.walking && WALK_ONLY.has(forced));
     if (!bad) return { id: forced, warnings };
     warnings.push(`TAG_STATIC ${forced}`);
     return { id: staticOf(forced), warnings };

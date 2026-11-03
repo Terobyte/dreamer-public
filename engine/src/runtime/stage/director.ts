@@ -533,7 +533,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         }
         return (cs = (Math.imul(cs, 1664525) + 1013904223) >>> 0) / 4294967296;
       };
-      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
+      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0, walking: ev.kind === "line" && walkers.some((w) => w.name === speaker.name) });
       /** the move being tried (its id labels the frame) */
       let pk: { id: string; warnings: string[] } = { id: "", warnings: [] };
       let frontalRejected = false;
