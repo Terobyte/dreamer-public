@@ -23,6 +23,8 @@ export interface DActor {
   /** the face: between the head bone and the eye (a box figure's head bone sits mid-body); the sight probe and the
    *  frame's edge look at it (Squidward v20: SpongeBob's face behind a chair back, his head bone seen under the seat) */
   face?: V3;
+  /** the eye (`Actor.eye()`, 0.92 of the height: the top of a box figure); the probe must see it as well as the face */
+  eye?: V3;
   /** measured face yaw (head bone), same convention as yaw; none = the body yaw */
   faceYaw?: number;
   /** lying down: the face looks up, yaw is where the head points, so a face angle off yaw means nothing */
@@ -433,7 +435,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       if (a.offstage) return false;
       const h = a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
       const p = ndcOf(h, o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
-      return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(o.cam, a.face ?? h);
+      return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !probePoints(a, h).every((q) => inp.clear!(o.cam, q));
     });
     const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hidesHead(out);
     if (baseHidden) {
@@ -474,7 +476,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         if (a.offstage) return false;
         const h = a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
         const p = ndcOf(h, cam, look, f, inp.aspect ?? 16 / 9);
-        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(cam, a.face ?? h);
+        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !probePoints(a, h).every((q) => inp.clear!(cam, q));
       });
       hiddenFor = lost ? hiddenFor + (ev.dt ?? 0) : 0;
       if (hiddenFor >= HIDDEN_RECUT_S) {
@@ -533,7 +535,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const sf = ev.kind === "line" ? faceDir(speaker) : null;
       const faces = (cam: V3): boolean => !sf || angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) <= WIDE_FACE_OK;
       /** the probe sees every subject's head from `cam` (no probe: always) */
-      const seesAll = (who: DActor[], cam: V3): boolean => !inp.clear || who.every((a) => inp.clear!(cam, a.face ?? headOf(a)));
+      const seesAll = (who: DActor[], cam: V3): boolean => !inp.clear || who.every((a) => probePoints(a, headOf(a)).every((q) => inp.clear!(cam, q)));
       const pt = (l: ShotLook): V3 => {
         if (Array.isArray(l)) return l as V3;
         const a = crew.find((x) => x.name === (l as any).actor);
@@ -634,7 +636,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
             const cam = cy([p[0], look[1] + 0.35, p[1]]);
             if (Math.hypot(cam[0] - look[0], cam[2] - look[2]) < 1.2) continue;
             if (!inView(pair, cam, look, fov) || !faces(cam)) continue;
-            if (inp.clear && !pair.every((a, i) => inp.clear!(cam, a.face ?? hs[i]!))) continue;
+            if (inp.clear && !pair.every((a, i) => probePoints(a, hs[i]!).every((q) => inp.clear!(cam, q)))) continue;
             const score = angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) + Math.abs(d - 2.2) * 10;
             if (!best || score < best.score) best = { o: { ...out, plan: "two", cam, look, fov }, score };
           }
@@ -701,6 +703,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   };
 }
 
+/** what the probe must see of an actor: the face and the eye (`DActor.eye`, where the film critic asks) both; without
+ *  them the head point stands in (Squidward v7 21–25 s: the face point past a chair's scroll, the top of the box behind it) */
+function probePoints(a: DActor, head: V3): V3[] {
+  return [a.face ?? head, ...(a.eye ? [a.eye] : [])];
+}
+
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
@@ -722,7 +730,7 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
   const heads = crew
     .filter((a) => !a.offstage)
     .filter((a) => { const p = ndcOf(a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3), out.cam, L, fov, 16 / 9); return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1; })
-    .map((a) => a.face ?? a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3));
+    .flatMap((a) => probePoints(a, a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3)));
   const sees = (c: V3): boolean => !clear || (heads.length ? heads.every((h) => clear(c, h)) : clear(c, L));
   const y0 = Math.max(floorY + MIN_CAM_Y, L[1] + flat * tan);
   if (y0 >= cy) return out;
@@ -802,7 +810,7 @@ export function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law:
   const heads = inp.actors
     .filter((a) => !a.offstage)
     .filter((a) => { const p = ndcOf(a.head ?? ([a.pos[0], (inp.room.floorY ?? 0) + a.height * 0.93, a.pos[1]] as V3), out.cam, out.look, fov, inp.aspect ?? 16 / 9); return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1; })
-    .map((a) => a.face ?? a.head ?? ([a.pos[0], (inp.room.floorY ?? 0) + a.height * 0.93, a.pos[1]] as V3));
+    .flatMap((a) => probePoints(a, a.head ?? ([a.pos[0], (inp.room.floorY ?? 0) + a.height * 0.93, a.pos[1]] as V3)));
   const clear = (c: V3, l: V3): boolean => (heads.length ? heads.every((h) => probe(c, h)) : probe(c, l));
   if (clear(out.cam, out.look)) return out;
   const room = inp.room;

@@ -364,6 +364,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       return {
         head: h?.p,
         face,
+        eye: h && !lying ? a.eye() : undefined,
         // L173: no head bone -> the clip's measured face turn (clipfacts.json), else the director uses yaw
         faceYaw: h?.yaw ?? clipFaceYaw(a.yaw(), clipfacts?.[a.who]?.[a.idleName?.() ?? ""]),
         name: a.who,

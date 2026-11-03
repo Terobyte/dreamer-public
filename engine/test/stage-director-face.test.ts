@@ -55,3 +55,33 @@ describe("the face, not the head bone", () => {
     expect(r < 0.9 || r > 1.3).toBe(true);
   });
 });
+
+/** Squidward, Nov 3 (v7 21–25 s): the director's probe saw SpongeBob's face point past a chair's scroll while the top
+ *  of his box (the eye, where the film critic asks) stood behind it; the frame showed the side of a box behind a chair.
+ *  A head counts as seen when both its face and its eye are. */
+describe("the face and the eye", () => {
+  it("a held frame whose eye goes behind the chair (face point still seen) is cut again", () => {
+    let recut = 0, tried = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      let s = seed >>> 0;
+      const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0), s / 4294967296);
+      const d = createDirector(rng, { style: "storybook" });
+      const sb: any = { name: "SpongeBob", pos: [-2.25, 0.1], yaw: 60, height: 1.0, head: [-2.25, 0.57, 0.1], face: [-2.25, 0.75, 0.1], eye: [-2.25, 0.92, 0.1], level: null, room: "r", walking: false };
+      let hide: number[] | null = null;
+      const clear = (c: [number, number, number], l: [number, number, number]): boolean =>
+        !(hide && Math.hypot(l[0] - sb.eye[0], l[1] - sb.eye[1], l[2] - sb.eye[2]) < 0.02 && Math.hypot(c[0] - hide[0], c[1] - hide[1], c[2] - hide[2]) < 0.3);
+      let out = d.step({ event: { kind: "line", speaker: "SpongeBob", durationS: 6, dt: 0.5, tags: { look: true } }, actors: [sq, sb], room: ROOM, rng, clear });
+      for (let k = 0; k < 2; k++) out = d.step({ event: { kind: "tick", dt: 0.5 }, actors: [sq, sb], room: ROOM, rng, clear });
+      if (out.end) continue;
+      const p = ndcOf(sb.head, out.cam, out.look, out.fov ?? 50, 16 / 9);
+      if (!(p.depth > 0.2 && Math.abs(p.x) < 1 && Math.abs(p.y) < 1)) continue;
+      tried++;
+      hide = [...out.cam];
+      const cut0 = out.cut;
+      for (let k = 0; k < 4; k++) out = d.step({ event: { kind: "tick", dt: 0.5 }, actors: [sq, sb], room: ROOM, rng, clear });
+      if (out.cut !== cut0) recut++;
+    }
+    expect(tried).toBeGreaterThan(0);
+    expect(recut).toBe(tried);
+  });
+});
