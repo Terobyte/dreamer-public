@@ -368,6 +368,21 @@ def _ancestors(stages, sid):
 PUB = ".pub"
 
 
+def _migrate_legacy(run_dir, sids):
+    """L76: a stage dir of the old format (a real folder, not a link to .pub/) moves into .pub/ once,
+    under the run lock and before any step runs; _publish then only ever swaps one link for another,
+    and a reader never meets the window where <sid> is missing."""
+    store = run_dir / PUB
+    for sid in sids:
+        final = run_dir / sid
+        if final.is_symlink() or not final.is_dir():
+            continue
+        store.mkdir(exist_ok=True)
+        target = store / f"{sid}-{time.time_ns()}"
+        os.replace(final, target)
+        os.symlink(os.path.relpath(target, run_dir), final)
+
+
 def _publish(run_dir, sid, tmp):
     """<sid> — симлинк на .pub/<sid>-<ns>; замена ссылки одним os.replace,
     так что читатель всегда видит старый или новый результат."""
@@ -428,6 +443,7 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
         sel = set(enabled)
 
     with _Lock(run_dir / ".lock"):
+        _migrate_legacy(run_dir, stages)
         man = _Manifest(run_dir, prompt)
         opts["prompt"] = man.data.get("prompt")
         need = set()
