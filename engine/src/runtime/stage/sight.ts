@@ -13,6 +13,48 @@ export function markNoblock(root: Object3D, id: string): void {
   root.traverse((o) => { o.userData.noblock = true; });
 }
 
+/** static meshes of the world with their world boxes (actors, hidden and see-through meshes left out) */
+function worldMeshes(world: Object3D, skip: Object3D[]): Array<{ o: Object3D; box: Box3 }> {
+  const out: Array<{ o: Object3D; box: Box3 }> = [];
+  const banned = new Set(skip);
+  world.updateMatrixWorld(true);
+  const walk = (o: Object3D): void => {
+    if (banned.has(o) || !o.visible || o.userData.noblock === true) return;
+    if ((o as any).isMesh && !(o as any).isSkinnedMesh) {
+      const box = new Box3().setFromObject(o);
+      if (!box.isEmpty()) out.push({ o, box });
+    }
+    for (const ch of o.children) walk(ch);
+  };
+  walk(world);
+  return out;
+}
+
+/** Top of the world under a floor point (metres), null = nothing there: one ray straight down through the meshes
+ *  whose box covers the point. The bed's pillow is not a flat surface, so places.json never knows it (k19_true). */
+export function createHeight(world: Object3D, skip: () => Object3D[]): (x: number, z: number) => number | null {
+  let items: Array<{ o: Object3D; box: Box3 }> | null = null;
+  const rc = new Raycaster();
+  const from = new Vector3();
+  const down = new Vector3(0, -1, 0);
+  return (x, z) => {
+    items ??= worldMeshes(world, skip());
+    let top: number | null = null;
+    for (const it of items) {
+      const b = it.box;
+      if (x < b.min.x || x > b.max.x || z < b.min.z || z > b.max.z) continue;
+      if (top !== null && b.max.y <= top) continue;
+      from.set(x, b.max.y + 0.01, z);
+      rc.set(from, down);
+      rc.near = 0;
+      rc.far = b.max.y - b.min.y + 0.02;
+      const h = rc.intersectObject(it.o, false)[0];
+      if (h && (top === null || h.point.y > top)) top = h.point.y;
+    }
+    return top;
+  };
+}
+
 /** The director's eyes: is anything of the world between the camera and what it looks at? Actors never block
  *  (the subject is the target; the listener in front is a fine foreground). Koshakan, Nov 1: the pure director
  *  put the close behind the bed's footboard. Meshes are collected once (the world is static), each with its
@@ -20,21 +62,7 @@ export function markNoblock(root: Object3D, id: string): void {
  *  ground under a 1 m sightline never cost a triangle test. Answers are cached on a 10 cm grid. */
 export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, look: V3) => boolean {
   let items: Array<{ o: Object3D; box: Box3 }> | null = null;
-  const collect = (): Array<{ o: Object3D; box: Box3 }> => {
-    const out: Array<{ o: Object3D; box: Box3 }> = [];
-    const banned = new Set(skip());
-    world.updateMatrixWorld(true);
-    const walk = (o: Object3D): void => {
-      if (banned.has(o) || !o.visible || o.userData.noblock === true) return;
-      if ((o as any).isMesh && !(o as any).isSkinnedMesh) {
-        const box = new Box3().setFromObject(o);
-        if (!box.isEmpty()) out.push({ o, box });
-      }
-      for (const ch of o.children) walk(ch);
-    };
-    walk(world);
-    return out;
-  };
+  const collect = (): Array<{ o: Object3D; box: Box3 }> => worldMeshes(world, skip());
   const cache = new Map<string, boolean>();
   const rc = new Raycaster();
   const ray = new Ray();

@@ -239,3 +239,15 @@ export function floorAt(floors: FloorRef[], p: V2, level?: string | null): Floor
   const own = level !== undefined && level !== null ? floors.filter((f) => (f.level ?? null) === level) : [];
   return own.find(inPoly) ?? floors.find(inPoly) ?? own.find(inBox) ?? floors.find(inBox) ?? null;
 }
+
+/** How far a lying actor slides toward the foot of the bed so the pillow is under her head, not around it: the
+ *  smallest shift (3 cm steps, at most `max`) where the top under the head is at least half a head radius below
+ *  the head bone. 0 = the head is already clear. k19_true: Mirai's head at y 0.68 sat inside a 0.75 m pillow. */
+export function pillowShift(head: [number, number, number], r: number, foot: V2, heightAt: (x: number, z: number) => number | null, max = 0.4): number {
+  const clear = (s: number): boolean => {
+    const h = heightAt(head[0] + foot[0] * s, head[2] + foot[1] * s);
+    return h === null || h <= head[1] - r * 0.5;
+  };
+  for (let s = 0; s < max; s += 0.03) if (clear(s)) return Math.round(s * 1000) / 1000;
+  return max;
+}

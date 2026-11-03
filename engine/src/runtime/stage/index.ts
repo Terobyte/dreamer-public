@@ -6,11 +6,11 @@ import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { floorAt, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { BED_TUCK_M, floorAt, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
-import { createSight } from "./sight.js";
+import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { legalCameraPoint, roomRect, type V3 } from "./camera.js";
 import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
@@ -195,6 +195,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
   const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
+  /** top of the furniture under a floor point (the pillow, which places.json does not know) */
+  const heightAt = createHeight(c.scene, () => [...actors.values()].map((a) => a.group));
   const offstageActors = new Set<string>();
   /** actors walking to a door on `exit`: they become offstage only once they stop there */
   const exiting = new Set<string>();
@@ -416,7 +418,44 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const cur = a?.idleName?.();
     if (!a || !cur) return;
     const next = idleForPose(pose, cur, Object.keys(cast[who]?.clips ?? {}), clipfacts?.[who] ?? null);
-    if (next) a.setIdle?.(next);
+    if (!next || !a.setIdle?.(next)) return;
+    // in a bed: lying sinks BED_TUCK_M under the blanket, sitting up sits on top of it (k19_true: Mirai sunk in the mattress)
+    if (bedOf(who) && a.act() !== "sit") a.teleport(a.pos(), a.yaw(), a.act(), a.y() + (pose === "lie" ? -BED_TUCK_M : BED_TUCK_M));
+  };
+  /** the bed an actor lies in: a place with a lie spot she claimed, or whose lie spot she is on */
+  const bedOf = (who: string): Place | undefined => {
+    const a = actors.get(who);
+    if (!a) return undefined;
+    const p = a.pos();
+    return places.find((pl) => pl.lie && (claims[pl.name] === who || Math.hypot(pl.lie.at[0] - p[0], pl.lie.at[1] - p[1]) < 0.3));
+  };
+  /** a lying head inside the pillow slides the body toward the foot of the bed, once per rest clip, after the
+   *  crossfade settles (k19_true: Mirai's head bone at 0.68 m inside a 0.75 m pillow) */
+  const pillowDone = new Map<string, number>();
+  const settleBeds = (now: number): void => {
+    for (const a of actors.values()) {
+      if (poseOf.get(a.who) !== "lie" || a.moving() || offstageActors.has(a.who)) continue;
+      const bed = bedOf(a.who);
+      if (!bed?.lie) continue;
+      const key = `${a.who}|${a.idleName?.() ?? ""}|${bed.name}`;
+      const seen = pillowDone.get(key);
+      if (seen === undefined) {
+        pillowDone.set(key, now);
+        continue;
+      }
+      if (seen < 0 || now - seen < 0.6) continue;
+      pillowDone.set(key, -1);
+      const hp = headPose(a.group);
+      if (!hp) continue;
+      const [hx, hz] = bed.lie.head ?? [bed.lie.at[0], bed.lie.at[1] + 1];
+      const l = Math.hypot(bed.lie.at[0] - hx, bed.lie.at[1] - hz) || 1;
+      const foot: V2 = [(bed.lie.at[0] - hx) / l, (bed.lie.at[1] - hz) / l];
+      const sh = pillowShift(hp.pos, heightOf(a.who) * 0.11, foot, heightAt);
+      if (sh > 0) {
+        const p = a.pos();
+        a.teleport([p[0] + foot[0] * sh, p[1] + foot[1] * sh], a.yaw(), a.act(), a.y());
+      }
+    }
   };
   /** deterministic per-line seed for gesture variants: no Math.random in the runtime */
   let lineSeq = 0;
@@ -867,6 +906,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       a.update(dt, now);
     }
     spread(dt);
+    settleBeds(now);
     for (const who of [...exiting]) {
       const act = actors.get(who);
       if (!act?.moving()) {
