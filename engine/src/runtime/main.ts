@@ -407,6 +407,8 @@ async function start(): Promise<void> {
     },
     look: (yaw: number): void => keys.setYaw(yaw),
     stage: stage ? stage.api : null,
+    /** what the stage could not do as asked (no shotplan, unknown place, pose fallback...): record.mjs writes it out */
+    stageWarnings: (): string[] => (stage ? stage.warnings() : []),
     /** host access to the live three.js objects (same three instance as the engine) */
     three: { THREE, scene, camera, renderer, loadGltf: (url: string) => new GLTFLoader().loadAsync(url) },
     onFrame: (cb: (dt: number, now: number) => void): void => { frameHooks.push(cb); },

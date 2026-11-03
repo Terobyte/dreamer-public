@@ -1,7 +1,7 @@
 // Record one stage page: a video (no sound, Playwright never captures audio) plus the moment the page got every
 // sim event, so make.film lays each voice wav under the picture at the time it played live.
 //   node bin/record.mjs <page url> <out dir> [max seconds] [WxH]
-// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur, beat}], plus {ms, type: "ready"} when the world is built), last.png, critic.jsonl (window.__critic facts). Exit 3: no book_end/stop.
+// -> <out dir>/<page>.webm, events.json ([{ms, type, who, text, audio, dur, beat}], plus {ms, type: "ready"} when the world is built), last.png, critic.jsonl (window.__critic facts), stage_warnings.json (Stage.warnings()). Exit 3: no book_end/stop.
 import { writeFileSync } from "node:fs";
 import { chromium } from "playwright";
 import { pickEvent } from "./rec_event.mjs";
@@ -52,7 +52,10 @@ const timeOrigin = await page.evaluate(() => performance.timeOrigin).catch(() =>
 const facts = await page.evaluate(() => window.__critic ?? []).catch(() => []);
 for (const f of facts) f.t = Math.round((f.t + (timeOrigin - t0) / 1000) * 100) / 100;
 writeFileSync(`${outDir}/critic.jsonl`, facts.map((f) => JSON.stringify(f)).join("\n") + (facts.length ? "\n" : ""));
+// the stage's own warnings (Stage.warnings(): no shotplan, unknown place, pose fallback...) were never read
+const stageWarnings = await page.evaluate(() => window.__dreamer?.stageWarnings?.() ?? []).catch(() => []);
+writeFileSync(`${outDir}/stage_warnings.json`, JSON.stringify(stageWarnings, null, 1));
 await ctx.close();
 await browser.close();
-console.log(`record: ${events.length} events, ${events.filter((e) => e.audio).length} voiced, ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`record: ${events.length} events, ${events.filter((e) => e.audio).length} voiced, ${stageWarnings.length} stage warnings, ${Math.round((Date.now() - t0) / 1000)} s`);
 process.exit(over() ? 0 : 3);

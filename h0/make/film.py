@@ -8,6 +8,7 @@ arrived. Playwright never records sound, so each voiced event's wav is laid unde
 (ffmpeg adelay); the scene ends TAIL_MS after book_end. Scenes are joined in the order given.
 """
 import argparse
+import json
 import os
 import queue
 import shutil
@@ -170,6 +171,16 @@ def film(runs, out, max_s=600, size="1280x720", lang="en", strict=False):
             critic_code = max(critic_code, critic.run(jl, strict=strict, duration=_video_duration(parts[-1])))
         elif strict:
             critic_code = max(critic_code, 3)
+        sw = Path(run).resolve() / "film" / "stage_warnings.json"
+        if sw.exists():
+            try:
+                warns = json.loads(sw.read_text() or "[]")
+            except ValueError:
+                warns = []
+            for w in warns[:20]:
+                print(f"film: stage warning: {w}", flush=True)
+            if len(warns) > 20:
+                print(f"film: ... {len(warns) - 20} more in {sw}", flush=True)
     if len(parts) == 1:
         shutil.move(parts[0], out)
     else:
