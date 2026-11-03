@@ -17,6 +17,7 @@ SOURCES = ("operator", "headset")
 # effects the engine confirms with effect_ack; steer/npc live in the dialogue
 ENGINE_EFFECT = ("scene", "spawn")
 TERMINAL = ("done", "failed", "dropped")
+NO_ADDRESSEE_S = 60.0  # 2в: an addressed npc idea waits this long for its NPC
 
 ACK_UNCLEAR = "не понял, повтори"
 ACK_DONE_ALREADY = "уже исполнено"
@@ -24,13 +25,17 @@ ACK_DELETED = "идея удалена"
 ACK_EXPIRED = "не нашёл момента, идея снята"
 ACK_SAFETY = "эту идею исполнить нельзя"
 ACK_NOT_DELIVERED = "не вышло, повтори идею"
+ACK_NO_ADDRESSEE = "этого персонажа нет в сцене, идея снята"
+ACK_ADDRESSEE_GONE = "персонаж ушёл из сцены, идея не исполнена"
 
 
 class IdeaQueue:
-    def __init__(self, wall, log, effect=None, confidence_min=CONFIDENCE_MIN):
+    def __init__(self, wall, log, effect=None, confidence_min=CONFIDENCE_MIN, on_fire=None):
         self.wall = wall
         self._log = log
         self._effect = effect or (lambda idea: None)
+        # D3: steer/npc have no engine effect; the dialogue takes them at fire
+        self._on_fire = on_fire or (lambda idea: None)
         self.confidence_min = confidence_min
         self._items = {}
         self._order = []
@@ -169,15 +174,45 @@ class IdeaQueue:
                     self._op("fail", idea)
                     self._ack(id_, ACK_NOT_DELIVERED)
 
-    def select(self, speaking=False, scene_ok=None, spawn_hidden=None):
+    def _no_addressee(self, idea):
+        """2в: the addressed NPC is not in the scene: hold (no consult), and after
+        NO_ADDRESSEE_S of waiting the idea is dropped; a later NPC needs a new idea."""
+        now = self.wall()
+        since = idea.setdefault("no_addr_since", now)
+        if now - since >= NO_ADDRESSEE_S:
+            idea.update(status="dropped", reason="no_addressee")
+            self._op("drop", idea)
+            self._ack(idea["id"], ACK_NO_ADDRESSEE)
+            return
+        idea.update(status="held", retry_at=now + HOLD_RETRY_S, wait="no_addressee")
+        self._op("hold", idea)
+
+    def fail(self, id_, reason, text=""):
+        """A fired steer/npc idea that could not be played after all (2в: addressee_gone)."""
+        with self._lock:
+            idea = self._items.get(id_)
+            if idea is None or idea["status"] not in ("done", "firing"):
+                return None
+            idea.update(status="failed", reason=reason)
+            self._op("fail", idea)
+            self._ack(id_, text or ACK_ADDRESSEE_GONE)
+            return dict(idea)
+
+    def select(self, speaking=False, scene_ok=None, spawn_hidden=None, present=None):
         """Code conditions first; the one idea that passes goes pending -> consulting.
-        One consult at a time: nothing is picked while another idea is consulting."""
+        One consult at a time: nothing is picked while another idea is consulting.
+        `present(name)`: is an addressed NPC in the scene (2в)."""
         with self._lock:
             if any(self._items[i]["status"] == "consulting" for i in self._order):
                 return None
             cands = [self._items[i] for i in self._order if self._items[i]["status"] == "pending"]
             cands.sort(key=lambda it: (not it["now"], it["intent"] != "npc", it["created_t"]))
             for idea in cands:
+                if idea["intent"] == "npc" and (
+                        idea.get("no_addr_since") is not None
+                        or (present is not None and not present(idea.get("addressee")))):
+                    self._no_addressee(idea)
+                    continue
                 why = self._waits(idea, speaking, scene_ok, spawn_hidden)
                 if why:
                     if idea.get("wait") != why:
@@ -202,8 +237,9 @@ class IdeaQueue:
             return "visible"  # (b)
         return None
 
-    def resolve(self, id_, decision, text=""):
-        """The director's answer for a consulting idea: fire or hold (+ one short line)."""
+    def resolve(self, id_, decision, text="", present=None):
+        """The director's answer for a consulting idea: fire or hold (+ one short line).
+        `present(name)`: 2в, an addressed npc idea is re-checked here, before op:fire."""
         with self._lock:
             idea = self._items.get(id_)
             if idea is None or idea["status"] != "consulting":
@@ -214,6 +250,10 @@ class IdeaQueue:
                 self._ack(id_, ACK_DELETED)
                 return dict(idea)
             now = self.wall()
+            if (decision == "fire" and idea["intent"] == "npc" and present is not None
+                    and not present(idea.get("addressee"))):
+                self._no_addressee(idea)
+                return dict(idea)
             if decision == "fire":
                 idea["fired_t"] = now
                 idea["status"] = "firing" if idea["intent"] in ENGINE_EFFECT else "done"
@@ -221,6 +261,8 @@ class IdeaQueue:
                 self._ack(id_, text)
                 if idea["status"] == "firing":
                     self._effect(dict(idea))
+                else:
+                    self._on_fire(dict(idea))
                 return dict(idea)
             if idea["holds"] >= MAX_HOLDS:
                 idea.update(status="dropped", reason="expired")

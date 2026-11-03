@@ -377,7 +377,12 @@ class Sim:
                                  pause_lock=self._image_lock)
         # D2: the operator's idea queue (wall clock: hold/retry/delivery are real seconds)
         self.ideas = IdeaQueue(wall=time.monotonic, log=self._diagnostic,
-                               effect=self._idea_effect)
+                               effect=self._idea_effect, on_fire=self._idea_fired)
+        # D3: a fired steer topic per addressee (None = any NPC of the scene), and the
+        # addressed npc cues each played once in the addressee's next line
+        self._steer = {}
+        self._npc_cues = {}
+        self._npc_inflight = {}  # cues at the prompter: fail if the actor leaves pre-line
         self.cleaner = None        # raw -> {clean, intent, addressee?, scene_id?, confidence}
         self.idea_decider = None   # idea -> (fire|hold, short line); None = fake or director LLM
         # scene_id -> {bridge, destination, aliases, ...}; D4 fills bridge/destination, so
@@ -1504,11 +1509,26 @@ class Sim:
             if self._human_backlog:
                 self.next_line = self._human_backlog.pop(0)
         elif self.prepared_npc is not None:
-            queued = dict(self._prepared_meta or {}, owner="npc", text=self.prepared_npc)
-            self.prepared_npc = None
-            self._prepared_meta = None
-            self._prepared_taken = None
-            audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
+            meta = dict(self._prepared_meta or {})
+            who = meta.get("who")
+            if (who is not None and who != getattr(self, "hero", None)
+                    and who not in self.actors):
+                # F3: prepared while present, gone before voicing -- no line
+                # from a missing actor; his cues fail explicitly
+                text, self.prepared_npc = self.prepared_npc, None
+                self._prepared_meta = None
+                self._prepared_audio_seconds = None
+                self._drop_prepared_taken()
+                self._recycle_npc_cues(who)
+                self._emit({"type": "line_discarded", "turn_owner": "npc",
+                            "text": text, "who": who, "reason": "addressee_gone"})
+                queued = None
+            else:
+                queued = dict(meta, owner="npc", text=self.prepared_npc)
+                self.prepared_npc = None
+                self._prepared_meta = None
+                self._prepared_taken = None
+                audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
         if queued is not None:
             self._start_line(queued, audio_seconds)
         else:
@@ -1560,6 +1580,16 @@ class Sim:
         self._event_hits.pop(who, None)
         self._actor_streak = self._actor_streak + 1 if role == "actor" else 0
         self._said_count[who] = self._said_count.get(who, 0) + 1
+        steers = getattr(self, "_steer", {})  # tests build a bare Sim without __init__
+        for key in (who, None):
+            s = steers.get(key)
+            if s is not None and (key == who or role == "actor"):
+                s["left"] -= 1
+                if s["left"] <= 0:
+                    steers.pop(key)
+        inflight = getattr(self, "_npc_inflight", None)  # 2в: his line played the cue
+        if inflight is not None:
+            inflight.pop(who, None)
         if role == "actor":
             # 0.3: the notes his prompt was built with are now played; a note that
             # landed while the line was being written stays for his next prompt
@@ -1581,6 +1611,68 @@ class Sim:
         prompt holds one note, not the whole history)."""
         notes = self._notes.get(who, [])
         return list(notes[self._notes_seen.get(who, 0):][-1:])
+
+    def _line_notes(self, who, consume=False):
+        """D3: the notes an actor's next line is built with -- the operator's addressed
+        npc cue first (decision 7), then the steer topic, then the director's note,
+        in the one notes slot actor_system shows. `consume`: the npc cue is played
+        by this line (once). TRIED is never touched: the topic is its own field."""
+        cues = [c["text"] for c in getattr(self, "_npc_cues", {}).get(who, [])]
+        self._expire_steer()
+        steer = self._steer.get(who) or self._steer.get(None)
+        parts = []
+        if cues:
+            parts.append("do this in this very line: %s" % "; ".join(cues))
+            if steer is not None:  # decision 7: the addressed cue outranks the common topic
+                parts.append("after that, not in this line, steer the talk to this: %s"
+                             % steer["topic"])
+        elif steer is not None:
+            parts.append("steer the talk to this: %s" % steer["topic"])
+        notes = self._notes_for(who)
+        if consume:
+            taken = getattr(self, "_npc_cues", {}).pop(who, None)
+            if taken:
+                inflight = getattr(self, "_npc_inflight", None)
+                if inflight is None:
+                    self._npc_inflight = inflight = {}
+                inflight.setdefault(who, []).extend(taken)
+        if not parts:
+            return notes
+        return ["; ".join(parts + notes)]
+
+    def _expire_steer(self):
+        now = self.ideas.wall()
+        for key in [k for k, v in self._steer.items() if now >= v["until"]]:
+            self._steer.pop(key)
+
+    def _recycle_npc_cues(self, who):
+        """F3/F4: an npc cue is lost only with a played line of its addressee. A
+        failed generation or a discarded result gives the cue back for his next
+        line; a gone addressee fails the idea instead (2в: addressee_gone)."""
+        inflight = getattr(self, "_npc_inflight", None)
+        if not inflight:
+            return
+        cues = inflight.pop(who, None)
+        if not cues:
+            return
+        actors = getattr(self, "actors", None)
+        if actors is not None and who in actors:
+            self._npc_cues.setdefault(who, [])
+            self._npc_cues[who][:] = list(cues) + self._npc_cues[who]
+        elif getattr(self, "ideas", None) is not None:
+            for cue in cues:
+                self.ideas.fail(cue["id"], "addressee_gone")
+
+    def _idea_fired(self, idea):
+        """D3: a fired steer/npc goes into the dialogue (the queue already logged op:fire)."""
+        if idea["intent"] == "steer":
+            # decision 7: a new steer for the same NPC replaces the old one
+            self._steer[idea.get("addressee")] = {
+                "id": idea["id"], "topic": idea["clean"], "left": self.STEER_LINES,
+                "until": self.ideas.wall() + self.STEER_TTL_S}
+        elif idea["intent"] == "npc" and idea.get("addressee"):
+            self._npc_cues.setdefault(idea["addressee"], []).append(
+                {"id": idea["id"], "text": idea["clean"]})
 
     def _pick_speaker(self):
         """One free tick: silence grows for everyone, pressure is logged, and the
@@ -1706,20 +1798,34 @@ class Sim:
                     self._diagnostic({"type": "narrator", "text": line["text"],
                                       "cause": line["cause"]})
             elif line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
-                ev = (self.npc_start(line) or [None])[0] or {}  # B19: a voicing line has no event yet
-                if ev.get("type") == "line_prepared":
-                    self._prepared_taken = taken
-                elif ev.get("type") == "line_discarded" and taken is not None:
+                actors = getattr(self, "actors", None)
+                if (who is not None and who != getattr(self, "hero", None)
+                        and actors is not None and who not in actors):
+                    # F3: the addressee left while his line was in flight -- no
+                    # line from a missing actor; his cues fail explicitly
+                    self._recycle_npc_cues(who)
                     self._return_taken(taken)
+                    self._emit({"type": "line_discarded", "turn_owner": "npc",
+                                "text": line["text"] if isinstance(line, dict) else line,
+                                "who": who, "reason": "addressee_gone"})
+                else:
+                    ev = (self.npc_start(line) or [None])[0] or {}  # B19: a voicing line has no event yet
+                    if ev.get("type") == "line_prepared":
+                        self._prepared_taken = taken
+                    elif ev.get("type") == "line_discarded" and taken is not None:
+                        self._return_taken(taken)
+                        self._recycle_npc_cues(who)  # F4: not played, try again next line
             elif line is not None and epoch != self._turn_epoch:
                 # 1.2a: the turn moved on while this line was in flight -- a human
                 # line took it, or an event this speaker never saw changed the world
                 self._emit({"type": "line_discarded", "turn_owner": "npc",
                             "text": line["text"] if isinstance(line, dict) else line,
                             "who": who, "reason": self._discard_reason})
+                self._recycle_npc_cues(who)  # F4: the turn moved on, the cue waits
                 self._discard_reason = "human"
             elif line is None:
                 self._diagnostic({"type": "turn_skip", "who": who})
+                self._recycle_npc_cues(who)  # F4: the generation failed, the cue waits
                 self._gen_not_before = self.clock.now() + self.clock.scale(TICK)
                 self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
@@ -1761,7 +1867,7 @@ class Sim:
             events = self._pending.pop(who, [])
             taken = (who, role, list(events))
             self._notes_shown[who] = len(self._notes.get(who, []))
-            args = (who, world, transcript, state, self._notes_for(who), events,
+            args = (who, world, transcript, state, self._line_notes(who, consume=True), events,
                     self._personas.get(who, ""))
             fn = self.dialogue.actor_line
         scene_no, epoch = self.n_transitions, self._turn_epoch
@@ -1893,6 +1999,8 @@ class Sim:
 
     # --- D2: operator ideas (POST /event kind draft|idea|idea_drop|effect_ack) ----
     CLEAN_TIMEOUT_S = 8.0
+    STEER_LINES = 6     # D3: K lines of the addressee (any NPC without one)
+    STEER_TTL_S = 60.0  # wall seconds; a steer not used up by then expires
     IDEA_CONSULT_S = 20.0
     _FILLERS = re.compile(r"\b(э+-?э*|эм+|ну|короче|типа)\b[,]?\s*", re.I)
     _STEER_WORDS = ("поговори", "обсуди", "расскажи", "уведи", "говорите", "тема")
@@ -2058,22 +2166,42 @@ class Sim:
         t = sanitize(str(text or ""), "human")[0]
         return "не могу ответить на это" if not t or self._safety_check(t) else t
 
+    def _present(self, name):
+        return name in self.actors
+
+    def _line_busy(self):
+        """F7: a line is playing, being generated, or generated and unplayed -- its prompt
+        was built without a topic fired now, so a steer/npc fire waits for it."""
+        return (self.active_line is not None
+                or (self._gen_thread is not None and self._gen_thread.is_alive())
+                or self._gen_result is not None)
+
     def _idea_step(self):
         """Every tick: code conditions, one idea per consult, the answer applied here."""
         self.ideas.tick()
+        self._expire_steer()
+        for store in (self._npc_cues, getattr(self, "_npc_inflight", {})):
+            for who in [w for w in store if w not in self.actors]:
+                for cue in store.pop(who):  # 2в: gone between fire and his line
+                    self.ideas.fail(cue["id"], "addressee_gone")
         if self.director.in_flight:
             return  # a running director consult finishes first; the idea goes to the next one
         if self._idea_thread is not None:
             th, started, id_ = self._idea_thread
             if self._idea_result is not None:
                 dec, text = self._idea_result
+                if dec == "fire" and self._line_busy():
+                    # F7: a line began generating (or playing) while the director thought;
+                    # it was built without the topic, so the fire waits for it to be played
+                    return
                 self._idea_thread = self._idea_result = None
-                self.ideas.resolve(id_, dec, self._safe_ack(text))
+                self.ideas.resolve(id_, dec, self._safe_ack(text), present=self._present)
             elif time.monotonic() - started > self.IDEA_CONSULT_S:
                 self._idea_thread = None  # a late answer finds no consult and is dropped
                 self.ideas.resolve(id_, "hold", "думаю дольше обычного, вернусь к идее")
             return
-        idea = self.ideas.select(speaking=self.active_line is not None, scene_ok=self._scene_ok)
+        idea = self.ideas.select(speaking=self._line_busy(),
+                                 scene_ok=self._scene_ok, present=self._present)
         if idea is None:
             return
         if self.fake or self.idea_decider is not None:
@@ -2081,7 +2209,7 @@ class Sim:
                 dec, text = self._decide_idea(idea)
             except Exception:
                 dec, text = "hold", "не вышло, вернусь к идее"
-            self.ideas.resolve(idea["id"], dec, self._safe_ack(text))
+            self.ideas.resolve(idea["id"], dec, self._safe_ack(text), present=self._present)
             return
         token = object()
 
