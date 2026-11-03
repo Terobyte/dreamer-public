@@ -996,7 +996,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
             // measured head bone after animation (F10/F11); unrigged stand-ins keep the gaze/yaw fallback
             const hp = headPose(a.group);
             const faceYaw = hp?.faceYaw ?? (g ? (Math.atan2(g[0] - e[0], g[2] - e[2]) * 180) / Math.PI : a.yaw());
-            // rendered feet (group.position.y carries the actor's sit drop `Actor.drop()` and bob; eye() lowers by the
+            // rendered feet (group.position.y carries the actor's sit drop (`sitDrop`) and bob; eye() lowers by the
             // same drop), head from the bone so sit follows the pose
             return { who: a.who, pos: a.pos(), y: a.group.position.y, yaw: a.yaw(), faceYaw, facePitch: hp?.facePitch, headPos: hp?.pos, headY: e[1], height: h, clear: sight([cam.x, cam.y, cam.z], e), boneSig: boneSig(a.group) };
           }),

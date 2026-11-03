@@ -51,8 +51,6 @@ export interface Actor {
   /** height of the feet right now (climbs along the walk when `go` gets a `yEnd`) */
   y(): number;
   act(): "idle" | "sit";
-  /** how far the feet go down while seated now (L154 `sitDrop`: standing hip height − seat height) */
-  drop(): number;
   /** walk the waypoints, then turn to `yaw` and take `act`. `ys` = feet height at each waypoint (the height
    * changes only along a segment whose ends differ, i.e. a ramp, F24); a single number = height of the last one.
    * `seat` = seat height above the feet level for `act` "sit" (the place's `top`); none = the rig's shin.
@@ -265,7 +263,6 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     yaw: () => ((cur % 360) + 360) % 360,
     y: () => y,
     act: () => act,
-    drop: () => drop,
     go(p: V2[], fy: number, fa: "idle" | "sit", ys?: number | number[], st?: number) {
       path = [...p];
       pivot = null;
