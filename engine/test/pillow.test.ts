@@ -9,16 +9,21 @@ const bedHeight = (x: number, z: number): number | null => (Math.abs(x + 1.25) >
 
 describe("head on the pillow, not in it", () => {
   it("a head sunk in the pillow slides toward the foot until the pillow is under it", () => {
-    const s = pillowShift([-1.3, 0.68, 2.92], 0.1, [0, -1], bedHeight);
+    const s = pillowShift([-1.3, 0.68, 2.92], [0, -1], bedHeight, 0.57);
     expect(s).toBeGreaterThan(0);
     expect(s).toBeLessThanOrEqual(0.15);
     expect(bedHeight(-1.3, 2.92 - s)!).toBeLessThanOrEqual(0.68 - 0.05);
   });
   it("a head already clear of the pillow stays", () => {
-    expect(pillowShift([-1.3, 0.68, 2.7], 0.1, [0, -1], bedHeight)).toBe(0);
+    expect(pillowShift([-1.3, 0.68, 2.7], [0, -1], bedHeight, 0.57)).toBe(0);
+  });
+  it("a body tucked under the blanket (head bone below the mattress top) still only clears the pillow (k20_true: slid the 0.4 m cap)", () => {
+    const s = pillowShift([-1.3, 0.47, 2.92], [0, -1], bedHeight, 0.57);
+    expect(s).toBeGreaterThan(0);
+    expect(s).toBeLessThanOrEqual(0.1);
   });
   it("never slides more than the cap", () => {
-    expect(pillowShift([-1.3, 0.4, 2.92], 0.1, [0, -1], bedHeight, 0.3)).toBe(0.3);
+    expect(pillowShift([-1.3, 0.68, 3.25], [0, -1], (x, z) => (z > 2.0 ? 0.75 : 0.57), 0.57, 0.3)).toBe(0.3);
   });
 
   it("the height probe finds the top of the furniture under a point, actors skipped", () => {

@@ -106,11 +106,13 @@ describe("camera calm", () => {
   });
 
   it("a spoken line shows the speaker's face, not the back of her head (k18_true 34–45 s: the two-shot sat behind Mama)", () => {
-    const A = (): DActor[] => [
-      { ...act("Mama", [-1.65, 2.28], 25), faceYaw: 25, level: "L0", room: "bedroom", head: [-1.64, 1.02, 2.28] },
-      { ...act("Mirai", [-1.21, 2.63], 180), height: 0.95, level: null, room: "bedroom", lying: true, head: [-1.34, 0.69, 2.91] },
-    ];
+    // Mirai where the bed puts her, and slid 0.4 m toward the foot (k20_true)
+    for (const [mp, mh] of [[[-1.21, 2.63], [-1.34, 0.69, 2.91]], [[-1.19, 2.23], [-1.3, 0.6, 2.5]]] as Array<[[number, number], V3]>)
     for (const r of [0.1, 0.5, 0.9]) {
+      const A = (): DActor[] => [
+        { ...act("Mama", [-1.65, 2.28], 25), faceYaw: 25, level: "L0", room: "bedroom", head: [-1.64, 1.02, 2.28] },
+        { ...act("Mirai", mp, 180), height: 0.95, level: null, room: "bedroom", lying: true, head: mh },
+      ];
       const d = createDirector(() => r, { style: "storybook" });
       d.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A(), room: BED });
       const o = d.step({ event: { kind: "line", speaker: "Mama", durationS: 4, dt: 6, beat: 3, tags: { look: true } }, actors: A(), room: BED });
@@ -120,6 +122,8 @@ describe("camera calm", () => {
       const face: [number, number] = [Math.sin((25 * Math.PI) / 180), Math.cos((25 * Math.PI) / 180)];
       const deg = (Math.acos((toCam[0] * face[0] + toCam[1] * face[1]) / Math.hypot(...toCam)) * 180) / Math.PI;
       expect(deg).toBeLessThanOrEqual(100);
+      // k20_true 34–46 s: the camera behind the pillow had Mirai's head 0.4 m off the lens, filling the frame
+      for (const h of A().map((a) => a.head!)) expect(Math.hypot(h[0] - o.cam[0], h[1] - o.cam[1], h[2] - o.cam[2])).toBeGreaterThanOrEqual(0.9);
     }
   });
 

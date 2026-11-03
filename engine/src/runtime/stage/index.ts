@@ -450,7 +450,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const [hx, hz] = bed.lie.head ?? [bed.lie.at[0], bed.lie.at[1] + 1];
       const l = Math.hypot(bed.lie.at[0] - hx, bed.lie.at[1] - hz) || 1;
       const foot: V2 = [(bed.lie.at[0] - hx) / l, (bed.lie.at[1] - hz) / l];
-      const sh = pillowShift(hp.pos, heightOf(a.who) * 0.11, foot, heightAt);
+      const p0 = a.pos();
+      const base = heightAt(p0[0], p0[1]);
+      if (base === null) continue;
+      const sh = pillowShift(hp.pos, foot, heightAt, base);
       if (sh > 0) {
         const p = a.pos();
         a.teleport([p[0] + foot[0] * sh, p[1] + foot[1] * sh], a.yaw(), a.act(), a.y());
