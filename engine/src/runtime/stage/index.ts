@@ -11,7 +11,7 @@ import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
 import { approachGap, BED_TUCK_M, bedLift, floorAt, hugSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
-import { separate } from "./separate.js";
+import { separate, yieldPace } from "./separate.js";
 import { createSubs } from "./subs.js";
 import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
@@ -1235,10 +1235,17 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const all = [...actors.values()];
       for (const a of all) a.look(gazeOf(a, all));
     }
+    // walkers on one level go single file: the one behind waits (v22 2:27–2:39, two walkers inside each other)
+    const onStage = [...actors.values()].filter((a) => !offstageActors.has(a.who));
+    const pace = new Map<string, number>();
+    for (const lvl of new Set(onStage.map((a) => toucher.levelOf(a.who)))) {
+      const list = onStage.filter((a) => toucher.levelOf(a.who) === lvl).map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), radius: a.radius(), moving: a.moving() }));
+      for (const [who, v] of yieldPace(list)) pace.set(who, v);
+    }
     for (const a of actors.values()) {
       // offstage = not in the room: not drawn either (Koshakan: Mama stood by the shelf before her entrance)
       a.group.visible = !offstageActors.has(a.who);
-      a.update(dt, now);
+      a.update(dt, now, pace.get(a.who) ?? 1);
     }
     spread(dt);
     settleBeds(now);

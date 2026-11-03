@@ -83,7 +83,8 @@ export interface Actor {
   clip?(): string;
   /** bounded procedural nod (1.5 s): head/chest bones on a rig, the group on a box; never moves a bone out of range */
   gesture(): void;
-  update(dt: number, now: number): void;
+  /** `pace` scales the walk this frame (0 = wait behind another walker, `yieldPace`); clips play on */
+  update(dt: number, now: number, pace?: number): void;
 }
 
 /** collision capsule radius (Н9): half the wider bbox side, 0.12..0.3 m. The cap: a rig at rest is often a
@@ -325,10 +326,10 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     look(p) {
       gaze = p;
     },
-    update(dt, now) {
+    update(dt, now, pace = 1) {
       clock = now;
       let moving = false;
-      let budget = WALK_SPEED * dt;
+      let budget = WALK_SPEED * dt * Math.max(0, Math.min(1, pace));
       while (path.length && budget > 0) {
         const [tx, tz] = path[0];
         const d = Math.hypot(tx - x, tz - z);

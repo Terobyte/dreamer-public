@@ -67,3 +67,32 @@ export function separate(
   }
   return { pos: out, iterations };
 }
+
+/** how much room past the two capsules a walker keeps behind another walker (m) */
+const SINGLE_FILE_GAP = 0.25;
+/**
+ * Walkers go single file (Squidward v22 video 2:27–2:39: two walkers on one route, through one door, inside each other
+ * all the way; `separate` lets walkers be). For each pair of walkers closer than their capsules plus the gap, the one
+ * that has the other ahead of it waits (pace 0) this frame; on one spot, or each ahead of the other, the later name
+ * waits. A standing actor is never waited for. Pure: pace per actor, 1 = walk on.
+ */
+export function yieldPace(list: ReadonlyArray<{ who: string; pos: readonly [number, number]; yaw: number; radius: number; moving: boolean }>): Map<string, number> {
+  const pace = new Map<string, number>(list.map((a) => [a.who, 1]));
+  const dir = (yaw: number): [number, number] => [Math.sin((yaw * Math.PI) / 180), Math.cos((yaw * Math.PI) / 180)];
+  for (let i = 0; i < list.length; i++)
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i]!;
+      const b = list[j]!;
+      if (!a.moving || !b.moving) continue;
+      const dx = b.pos[0] - a.pos[0];
+      const dz = b.pos[1] - a.pos[1];
+      if (Math.hypot(dx, dz) >= a.radius + b.radius + SINGLE_FILE_GAP) continue;
+      const da = dir(a.yaw);
+      const db = dir(b.yaw);
+      const bAhead = dx * da[0] + dz * da[1] > 1e-3;
+      const aAhead = -dx * db[0] - dz * db[1] > 1e-3;
+      const waits = bAhead && !aAhead ? a : aAhead && !bAhead ? b : a.who > b.who ? a : b;
+      pace.set(waits.who, 0);
+    }
+  return pace;
+}
