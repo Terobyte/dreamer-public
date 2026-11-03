@@ -336,7 +336,7 @@ describe("assets live", () => {
     process.env.META_MODEL_API_KEY = "sk-test";
     try {
       const provider = new MuseImageProvider({ baseUrl: `http://127.0.0.1:${port}` });
-      await expect(provider.generate("a tile", "512x512")).rejects.toThrow();
+      await expect(provider.generate("a tile", "512x512" as any)).rejects.toThrow();
     } finally {
       if (prev === undefined) delete process.env.META_MODEL_API_KEY;
       else process.env.META_MODEL_API_KEY = prev;

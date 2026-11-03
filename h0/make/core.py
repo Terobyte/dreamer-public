@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
-OPTIONAL_PARAMS = {"book", "scene", "freestyle", "mesh", "lang", "world"}  # в хэше только если заданы
+OPTIONAL_PARAMS = {"book", "scene", "mesh", "lang", "world"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -34,7 +34,6 @@ class Stage:
     fn: Callable
     params: tuple = ("fake",)  # ключи opts, влияющие на стадию
     marker: str = "marker.txt"
-    optional: bool = False  # включается только флагом
 
 
 @dataclasses.dataclass
@@ -49,6 +48,24 @@ class Ctx:
 
     def spend(self, usd):
         self.usd += float(usd)
+
+
+def spark_ledger(ctx, calls):
+    """A Spark ledger for one make stage (L78). The cap is the stage's dollar share, but never under one
+    worst-case call (64k out tokens at the max-effort price), or a small budget could not ask Spark at
+    all; no share known (no --max-dollars) = no dollar cap, the call cap still holds."""
+    import sys
+    h0 = str(Path(__file__).resolve().parents[1])
+    if h0 not in sys.path:
+        sys.path.insert(0, h0)
+    from pipe2.ledger import Ledger, load_prices
+    from pipe2.spark import MAX_TOKENS
+    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), calls)
+    budget = getattr(ctx, "budget_usd", None)
+    if budget is not None and math.isfinite(budget):
+        one = ledger.cost_of("spark", {"effort": "max", "in": 32000, "out": MAX_TOKENS})
+        ledger.cap_usd = max(float(budget), one)
+    return ledger
 
 
 def _slow_stub(ctx):
@@ -101,11 +118,10 @@ def _run_brief(ctx):
         h0 = str(Path(__file__).resolve().parents[1])
         if h0 not in sys.path:
             sys.path.insert(0, h0)
-        from pipe2.ledger import Ledger, load_prices
         from pipe2.spark import Spark
         # two calls max (answer + one retry); the stage share is enforced by run_make after the
         # fact - Spark's worst-case reserve (64k out tokens) is bigger than 2 % of a small budget
-        ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 2)
+        ledger = spark_ledger(ctx, 2)
         ask = _brief.spark_ask(Spark(_spark_transport(), ledger), ctx.opts.get('effort') or 'medium')
         try:
             b = _brief.make_brief(prompt, ask, note, expect)
@@ -142,9 +158,8 @@ def _run_refs(ctx):
             h0 = str(Path(__file__).resolve().parents[1])
             if h0 not in sys.path:
                 sys.path.insert(0, h0)
-            from pipe2.ledger import Ledger, load_prices
             from pipe2.spark import Spark
-            ledger = Ledger(ctx.out / 'events.jsonl', load_prices(), float('inf'), 64)
+            ledger = spark_ledger(ctx, 64)
             spark = Spark(_spark_transport(), ledger)
 
             def ask(slot, images):
@@ -199,8 +214,7 @@ def default_stages():
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh", "world")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
         S("story", ("refs", "world", "cast"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
-        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle", "lang")),
-        S("check", ("world", "refs"), 1, _fast_stub, optional=True),
+        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "lang")),
     )}
 
 
@@ -368,6 +382,21 @@ def _ancestors(stages, sid):
 PUB = ".pub"
 
 
+def _migrate_legacy(run_dir, sids):
+    """L76: a stage dir of the old format (a real folder, not a link to .pub/) moves into .pub/ once,
+    under the run lock and before any step runs; _publish then only ever swaps one link for another,
+    and a reader never meets the window where <sid> is missing."""
+    store = run_dir / PUB
+    for sid in sids:
+        final = run_dir / sid
+        if final.is_symlink() or not final.is_dir():
+            continue
+        store.mkdir(exist_ok=True)
+        target = store / f"{sid}-{time.time_ns()}"
+        os.replace(final, target)
+        os.symlink(os.path.relpath(target, run_dir), final)
+
+
 def _publish(run_dir, sid, tmp):
     """<sid> — симлинк на .pub/<sid>-<ns>; замена ссылки одним os.replace,
     так что читатель всегда видит старый или новый результат."""
@@ -393,8 +422,8 @@ def _publish(run_dir, sid, tmp):
 
 
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
-             fresh=False, fake=False, check=False, max_dollars=None, split=None,
-             effort=None, pick="first", book=None, scene=None, freestyle=False, live=False, mesh=None, lang="en",
+             fresh=False, fake=False, max_dollars=None, split=None,
+             effort=None, pick="first", book=None, scene=None, live=False, mesh=None, lang="en",
              world=None):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
@@ -411,11 +440,11 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
             raise ValueError(f"invalid max_dollars: {max_dollars!r}")
     opts = {"fake": bool(fake), "prompt": prompt, "pick": pick, "effort": effort,
             "book": str(book) if book else None, "scene": scene,
-            "freestyle": True if freestyle else None, "live": bool(live), "mesh": mesh,
+            "live": bool(live), "mesh": mesh,
             "lang": lang if lang and lang != "en" else None,  # en = как раньше: ключа нет в хеше
             "world": str(world) if world else None}  # a world dreamer already built: linked, not generated
 
-    enabled = {k for k, s in stages.items() if not s.optional or check}
+    enabled = set(stages)
     forced = set()
     if only:
         sel = {only}
@@ -428,6 +457,7 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
         sel = set(enabled)
 
     with _Lock(run_dir / ".lock"):
+        _migrate_legacy(run_dir, stages)
         man = _Manifest(run_dir, prompt)
         opts["prompt"] = man.data.get("prompt")
         need = set()

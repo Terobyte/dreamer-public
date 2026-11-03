@@ -87,7 +87,7 @@ describe("toucher: a bed sit ignores the look yaw", () => {
       if (x >= -1.8 && x <= -0.7 && z >= 1.475 && z <= 3.525) bits[(j * N + i) >> 3]! &= ~(1 << ((j * N + i) & 7));
     }
     let got: { path: V2[]; yaw: number; act: string; ys?: number[] } | null = null;
-    const actor = { pos: (): V2 => [-2.68, 2.65], y: () => 0,
+    const actor = { pos: (): V2 => [-2.68, 2.65], y: () => 0, yaw: () => 0,
       go: (path: V2[], yaw: number, act: "idle" | "sit", ys?: number[]) => void (got = { path, yaw, act, ys }) };
     const t = createToucher({
       places: [BED], claims: {}, levels: [{ layer: navLayer as any, bits, y: 0 }], ramps: [], doors: {}, doorOpen: () => false,

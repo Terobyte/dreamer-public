@@ -28,9 +28,8 @@ def _spark_translate(ctx):
     h0 = str(Path(__file__).resolve().parents[1])
     if h0 not in sys.path:
         sys.path.insert(0, h0)
-    from pipe2.ledger import Ledger, load_prices
     from pipe2.spark import Spark
-    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
+    ledger = core.spark_ledger(ctx, 2)
     spark = Spark(core._spark_transport(), ledger)
     names = {"ru": "Russian"}
 
@@ -54,9 +53,8 @@ def _spark_director(ctx):
     h0 = str(Path(__file__).resolve().parents[1])
     if h0 not in sys.path:
         sys.path.insert(0, h0)
-    from pipe2.ledger import Ledger, load_prices
     from pipe2.spark import Spark
-    ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
+    ledger = core.spark_ledger(ctx, 2)
     spark = Spark(core._spark_transport(), ledger)
 
     paid = [0.0]  # ledger.spent is cumulative: charge only the growth
@@ -196,37 +194,3 @@ def run_stage(ctx):
     (ctx.out / "stage.json").write_text(json.dumps(sj, ensure_ascii=False, indent=2))
     (ctx.out / "marker.txt").write_text(json.dumps({"start": time.time(), "end": time.time()}))
     return 0.0
-
-
-def run_sim(stage_json, run=None, freestyle=False):
-    """stage.json -> sim.run(...): freestyle is a play-time flag, not a stage.json field
-    (older stage.json files may still carry it; the explicit argument wins)."""
-    stage_json = Path(stage_json)
-    sj = json.loads(stage_json.read_text())
-    # stage.json обычно симлинк run/stage -> .pub/stage-N: resolve() увёл бы
-    # корень в run/.pub, поэтому сначала пробуем путь без резолва, затем резолв,
-    # затем их родителей; берём первого кандидата с признаком корня прогона.
-    abs_p = stage_json.absolute()
-    cands = [abs_p.parent.parent]
-    try:
-        cands.append(abs_p.resolve().parent.parent)
-    except OSError:
-        pass
-    cands += [c.parent for c in list(cands)]
-    root = cands[0]
-    for c in cands:
-        if (c / "story" / "score.json").is_file() or (c / "make.json").is_file():
-            root = c
-            break
-    kw = {"freestyle": bool(freestyle or sj.get("freestyle"))}
-    if sj.get("book"):
-        kw["book"] = sj["book"]["dir"]
-        kw["scenes"] = [sj["book"]["scene"]]
-        sc = root / sj["book"]["score"]
-        if sc.is_file():
-            kw["score"] = json.loads(sc.read_text())
-    if run is None:
-        _dream()
-        import sim
-        run = sim.run
-    return run(**kw)

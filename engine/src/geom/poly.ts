@@ -37,9 +37,3 @@ export function segInt(p1: V2, p2: V2, p3: V2, p4: V2): boolean {
   return false;
 }
 
-export function segIntersectionPoint(p1: V2, p2: V2, p3: V2, p4: V2): V2 | null {
-  const d = (p2[0] - p1[0]) * (p4[1] - p3[1]) - (p2[1] - p1[1]) * (p4[0] - p3[0]);
-  if (Math.abs(d) < EPS) return null;
-  const t = ((p3[0] - p1[0]) * (p4[1] - p3[1]) - (p3[1] - p1[1]) * (p4[0] - p3[0])) / d;
-  return [p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1])];
-}

@@ -11,6 +11,7 @@ import copy
 import functools
 import http.server
 import json
+import os
 import random
 import sys
 import threading
@@ -25,9 +26,22 @@ def _dream():
         sys.path.insert(0, str(DREAM))
 
 
+def dist_of(run_dir):
+    """The world page dir, relative to the run: stage.json's `dist` (written by the stage step),
+    `world/run/dist` when the file or the field is missing."""
+    try:
+        d = json.loads((Path(run_dir) / "stage" / "stage.json").read_text()).get("dist")
+    except (OSError, ValueError):
+        d = None
+    return str(d) if isinstance(d, str) and d and not os.path.isabs(d) and ".." not in Path(d).parts \
+        else "world/run/dist"
+
+
 def static_url(run_dir, static_port, sim_port):
-    return (f"http://127.0.0.1:{static_port}/world/run/dist/index.html"
-            f"?sim=http://127.0.0.1:{sim_port}&stage=../../../stage/stage.json")
+    dist = dist_of(run_dir)
+    stage = os.path.relpath("stage/stage.json", dist).replace(os.sep, "/")
+    return (f"http://127.0.0.1:{static_port}/{dist}/index.html"
+            f"?sim=http://127.0.0.1:{sim_port}&stage={stage}")
 
 
 def serve_static(run_dir, port=0):
@@ -78,19 +92,26 @@ def _wait_for_viewer(timeout):
 
 
 def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None,
-         wait_viewer=False, wait_timeout=120, lang="en"):
+         wait_viewer=False, wait_timeout=120, lang=None):
     """-> (outdir, log.jsonl path) as sim.run. `serve`: port (0 = any) for the sim's SSE server."""
     run_dir = Path(run_dir)
     sj = json.loads((run_dir / "stage" / "stage.json").read_text())
     freestyle = bool(sj.get("freestyle")) if freestyle is None else freestyle
+    # `make --lang ru` wrote it into stage.json: a plain `make.play RUN` plays that score
+    lang = lang or sj.get("lang") or "en"
     _dream()
     import sim
     from dialogue import Dialogue
     from fake import FakeTransport
     from voice import Voice, load_pool  # no network at import; Fish is only called by Voice.say
     objects = list(sj.get("objects") or [])
+    pp = run_dir / "stage" / "places.json"
+    places = json.loads(pp.read_text()).get("places") if pp.is_file() else None
+    # the sim's door events name the place ("bedroom door"), the engine keys its doors by id
+    door_ids = {q["name"]: q["id"] for q in places or []
+                if isinstance(q, dict) and q.get("kind") == "door" and q.get("name") and q.get("id")}
     run = run or sim.run
-    media, kw = None, {}
+    media, kw = None, ({"door_ids": door_ids} if door_ids else {})
     if not fake:
         media = {"voice": Voice(pool={**load_pool(), **(sj.get("voices") or {})})}
     dlg = None
@@ -149,7 +170,7 @@ def main(argv=None, hold=_hold):
     ap.add_argument("--wait-viewer", dest="wait_viewer", action="store_true", default=None,
                     help="start the sim when a page connects (default on unless --fake)")
     ap.add_argument("--no-wait-viewer", dest="wait_viewer", action="store_false")
-    ap.add_argument("--lang", choices=["en", "ru"], default="en", help="ru: play story/score.ru.json")
+    ap.add_argument("--lang", choices=["en", "ru"], default=None, help="ru: play story/score.ru.json (default: stage.json lang)")
     a = ap.parse_args(argv)
     wait = (not a.fake) if a.wait_viewer is None else (a.wait_viewer and not a.fake)
     srv = None
@@ -160,7 +181,7 @@ def main(argv=None, hold=_hold):
     try:
         out, log = play(a.run, fake=a.fake, freestyle=a.freestyle or None,
                         serve=None if a.fake else (sim_port or 8770), wait_viewer=wait,
-                        **({"lang": a.lang} if a.lang != "en" else {}))
+                        **({"lang": a.lang} if a.lang else {}))
         print(log)
         if wait:
             hold()

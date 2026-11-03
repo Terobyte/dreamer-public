@@ -10,12 +10,6 @@ export interface CamSetup {
   error?: string;
 }
 
-/** Facing direction of a `yaw` in degrees, by the angle table (0 = +Z). */
-export function yawDir(yaw: number): Vector3 {
-  const a = (yaw * Math.PI) / 180;
-  return new Vector3(Math.sin(a), 0, Math.cos(a));
-}
-
 /** Look direction of a `yaw` and a `pitch` (up +) in degrees: yaw, then pitch. */
 export function lookDir(yaw: number, pitch: number): Vector3 {
   const a = (yaw * Math.PI) / 180;

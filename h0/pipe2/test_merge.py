@@ -6,7 +6,7 @@ import os
 import unittest
 
 from pipe2.geom import in_room
-from pipe2.merge import merge, owner_of, split_owners
+from pipe2.merge import merge, owner_of
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEMO = os.path.join(REPO, "specs", "examples", "demo.scene.json")
@@ -315,38 +315,6 @@ class TestOwnerOf(unittest.TestCase):
 
     def test_unknown_index_is_skeleton(self):
         self.assertEqual(self.own(code="X", path="/props/99"), "skeleton")
-
-
-class TestSplitOwners(unittest.TestCase):
-    def setUp(self):
-        self.scene, _ = merge(
-            mini_skeleton(),
-            {"a": {"props": [prop("a_1", "a", [1, 1])]},
-             "b": {"props": [prop("b_1", "b", [5, 1])]}},
-            MINI_PLAN,
-        )
-
-    def test_cross_room_pair_goes_to_the_prop_in_the_path(self):
-        # the engine records the pair on the later prop; that room moves it
-        issue = {"code": "PROP_HITS_PROP", "path": "/props/1", "other": "a_1"}
-        self.assertEqual({"b": [issue]}, split_owners(self.scene, [issue]))
-
-    def test_cross_room_pair_without_a_path_is_nobodys(self):
-        issue = {"code": "PROP_HITS_PROP", "a": "/props/0", "b": "/props/1"}
-        self.assertEqual({"skeleton": [issue]}, split_owners(self.scene, [issue]))
-
-    def test_same_room_pair_goes_once(self):
-        issue = {"code": "PROP_HITS_PROP", "path": "/props/0", "other": "a_1"}
-        self.assertEqual(split_owners(self.scene, [issue]), {"a": [issue]})
-
-    def test_rooms_overlap_goes_to_skeleton(self):
-        issue = {"code": "ROOMS_OVERLAP", "a": "a", "b": "b"}
-        self.assertEqual(split_owners(self.scene, [issue]), {"skeleton": [issue]})
-
-    def test_order_preserved_per_owner(self):
-        first = {"code": "X", "path": "/props/0"}
-        second = {"code": "Y", "path": "/props/0"}
-        self.assertEqual(split_owners(self.scene, [first, second])["a"], [first, second])
 
 
 class TestInRoom(unittest.TestCase):

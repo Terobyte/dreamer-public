@@ -4,7 +4,7 @@ usage: cd h0/dream && python3 -m unittest test_contract_r10 -q
 
 import unittest
 
-from director import Director, validate_decision
+from director import Director
 from fsm import BuildFSM
 from sim import Sim, _scripted_decisions
 
@@ -97,12 +97,6 @@ class NextSceneTypesTest(unittest.TestCase):
     def test_valid_next_scene_builds(self):
         f, _ = self._finish(NEXT)
         self.assertEqual(f.state, "building")
-
-    def test_validate_decision_agrees_with_fsm(self):
-        ok, errs = validate_decision({"bridge": "lamp", "next_scene": {"actors": NEXT["actors"],
-                                      "objects": "abcde"}}, OBJECTS, ["Squidward"], {"old_woman"})
-        self.assertEqual((ok, errs), (False, ["next_scene"]))
-
 
 if __name__ == "__main__":
     unittest.main()

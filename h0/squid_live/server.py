@@ -64,32 +64,40 @@ Answer ONLY with JSON: {{"gesture": "<one of {', '.join(GESTURES)}>", "action": 
 "place": "<for goto: one of {', '.join(PLACES)}; else empty>", "line": "<your spoken line>"}}"""
 
 
+def _shared():
+    """h0/keys.py and h0/llm_http.py: the one Spark client (L71) -- paid-model guard, host allowlist, keys."""
+    h0 = str(HERE.parent)
+    if h0 not in sys.path:
+        sys.path.insert(0, h0)
+    import keys
+    import llm_http
+    return keys, llm_http
+
+
 def _post(url, auth, model, system, messages, effort):
     body = {"model": model, "reasoning_effort": effort, "max_tokens": 1500,
             "messages": [{"role": "system", "content": system}, *messages]}
-    req = urllib.request.Request(url, json.dumps(body).encode(),
-                                 {"Authorization": auth, "Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=40) as r:
-        return json.load(r)["choices"][0]["message"].get("content") or ""
+    # one attempt each: think() walks its own list of tries twice
+    return _shared()[1].post(url, auth, body, 40, 0)["content"]
 
 
-def _baseten_key():
-    key = os.environ.get("BASETEN_API_KEY", "").strip()
-    env = ACTIVE / "meta" / ".env"
-    if not key and env.exists():
-        key = next((l.split("=", 1)[1].strip().strip('"') for l in env.read_text().splitlines()
-                    if l.startswith("BASETEN_API_KEY=")), "")
-    return key
+def _key(name):
+    keys = _shared()[0]
+    try:
+        return keys.get(name)
+    except keys.MissingKey:
+        return ""
 
 
 def think(messages):
     """Squidward's next line -> (gesture, action, place, line, model). Meta Muse Spark first, the open Spark on Baseten
     if it fails; empty content (reasoning ate the budget) counts as a failure and is retried."""
     tries = []
-    if os.environ.get("META_MODEL_API_KEY"):
-        tries.append((META_API, "Bearer " + os.environ["META_MODEL_API_KEY"], META_MODEL, "minimal"))
-    if _baseten_key():
-        tries.append((BASETEN_API, "Api-Key " + _baseten_key(), BASETEN_MODEL, "low"))
+    meta, baseten = _key("META"), _key("BASETEN")
+    if meta:
+        tries.append((META_API, "Bearer " + meta, META_MODEL, "minimal"))
+    if baseten:
+        tries.append((BASETEN_API, "Api-Key " + baseten, BASETEN_MODEL, "low"))
     for url, auth, model, effort in tries * 2:
         try:
             text = _post(url, auth, model, SYSTEM, messages, effort)

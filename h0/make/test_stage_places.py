@@ -172,7 +172,7 @@ class StageJson(unittest.TestCase):
         synth_world.write(world)
         out = d / "stage"
         out.mkdir()
-        sj = stage.write_stage(d, out, brief={"mode": "seed", "book": None}, freestyle=False)
+        sj = stage.write_stage(d, out, brief={"mode": "seed", "book": None})
         self.assertTrue((out / "places.json").is_file())
         for k in ("dist", "places", "cast", "mode", "book", "seed", "objects", "voices", "narrator_voice", "start"):
             self.assertIn(k, sj)

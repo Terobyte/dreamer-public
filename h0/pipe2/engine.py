@@ -26,13 +26,31 @@ BLOCKING_WARNINGS = ("NAV_ROOM_CUT",)
 KEYS_TS = Path(__file__).resolve().parent / "keys.ts"
 
 
+ENGINE_ERROR_HEAD = 40  # lines of the CLI output the exception message keeps
+
+
 class EngineError(RuntimeError):
-    """The CLI failed as a program: a usage error or a crash, not findings."""
+    """The CLI failed as a program: a usage error or a crash, not findings.
+
+    L53: the whole output goes to a file (`self.path`); the message keeps its first lines and names the
+    file, so a big scene's report is never cut off where logs truncate a long exception."""
 
     def __init__(self, code: int, raw: str):
-        super().__init__(f"dreamer exited with {code}:\n{raw}")
         self.code = code
         self.raw = raw
+        self.path = None
+        lines = raw.splitlines()
+        head = "\n".join(lines[:ENGINE_ERROR_HEAD])
+        try:
+            fd, name = tempfile.mkstemp(prefix="dreamer-engine-error-", suffix=".txt")
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(raw)
+            self.path = name
+        except OSError:
+            pass
+        more = len(lines) - ENGINE_ERROR_HEAD
+        tail = ("\n... %d more lines" % more if more > 0 else "") + ("\nfull output: %s" % self.path if self.path else "")
+        super().__init__(f"dreamer exited with {code}:\n{head}{tail}")
 
 
 def blocking(report: dict) -> list[dict]:

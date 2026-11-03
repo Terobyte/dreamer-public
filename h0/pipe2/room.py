@@ -162,9 +162,6 @@ class RoomStore:
     def last_green(self, room: str) -> dict | None:
         return self.green_state(room).get("partial")
 
-    def last_report(self, room: str) -> dict:
-        return self.green_state(room).get("report") or {}
-
     def done_state(self, room: str) -> dict | None:
         """The finished result, if this room already ran to completion."""
         path = room_path(self.root / "rooms", room) / "done.json"

@@ -78,5 +78,30 @@ class PageUrl(unittest.TestCase):
         self.assertTrue(film.page_url("runs/x", 9001, 9002).endswith("&film=1"))
 
 
+
+
+class StageWarningsPrinted(unittest.TestCase):
+    def test_film_prints_stage_warnings(self):
+        import contextlib
+        import io
+        import json as _json
+        import tempfile
+        from pathlib import Path as _P
+        from unittest import mock
+        from make import film as _film
+        run = _P(tempfile.mkdtemp())
+        (run / "film").mkdir()
+        (run / "film" / "stage_warnings.json").write_text(_json.dumps(["stage: no shotplan -> director"]))
+        out = _P(tempfile.mkdtemp()) / "f.mp4"
+
+        def rec(run_, part, *a):
+            _P(part).write_bytes(b"x")
+            return part
+        buf = io.StringIO()
+        with mock.patch.object(_film, "record_scene", rec), contextlib.redirect_stdout(buf):
+            _film.film([run], out)
+        self.assertIn("stage warning: stage: no shotplan -> director", buf.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

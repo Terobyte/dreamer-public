@@ -1,5 +1,6 @@
 import { PerspectiveCamera, Quaternion, Vector3, type Object3D } from "three";
-import type { V2, V3 } from "./camera.js";
+import type { V3 } from "./camera.js";
+import type { V2 } from "./places.js";
 
 /** The film critic's eyes (runtime half): every 0.5 s one fact per frame goes to window.__critic; make/critic.py judges them. */
 export interface CriticActorIn {

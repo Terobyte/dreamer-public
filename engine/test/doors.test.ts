@@ -91,12 +91,12 @@ describe("doors: closed leaf sits on the hinge plane, handle on the far edge", (
     const g = (ctx.openings as OpeningGeo[]).find((x) => x.id === "front")!;
     // the runtime turns the leaf about hinge_at: the built closed leaf must
     // already contain that point (half leaf thickness of slack)
-    expect(distPtBBox([g.hingeAt![0], g.sill + 1, g.hingeAt![1]], bboxOf(leaf))).toBeLessThan(0.025);
+    expect(distPtBBox([g.hingeAt![0], g.sill + 1, g.hingeAt![1]], bboxOf(leaf!))).toBeLessThan(0.025);
     // the handle is a small box on the edge opposite the hinge
     const handle = meshes.find((m: any) => m.id === "front:handle");
     expect(handle).toBeDefined();
     const def = doorDefs(ctx).find((d) => d.id === "front")!;
-    const hb = bboxOf(handle);
+    const hb = bboxOf(handle!);
     const hc = [(hb.min[0] + hb.max[0]) / 2, (hb.min[2] + hb.max[2]) / 2];
     expect(Math.hypot(hc[0] - def.closed_end[0], hc[1] - def.closed_end[1])).toBeLessThan(0.2);
   });
@@ -121,7 +121,7 @@ describe("doors: closed leaf sits on the hinge plane, handle on the far edge", (
       leaf: { decal: "d_door", open: false },
     });
     const ctx = runCheck(scene).ctx as any;
-    const leaf = doorMeshes(ctx).find((m: any) => m.id === "loft-exit:leaf");
+    const leaf = doorMeshes(ctx).find((m: any) => m.id === "loft-exit:leaf")!;
     expect(leaf).toBeDefined();
     const ys = leaf.positions.filter((_: number, i: number) => i % 3 === 1);
     // L1 floor is at y=3.6: the leaf spans 3.6..5.7, not 0..2.1

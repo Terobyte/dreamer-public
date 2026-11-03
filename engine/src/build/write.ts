@@ -187,7 +187,7 @@ function copyRefs(cameras: Camera[], outDir: string, scenePath?: string): string
   const shotNames = shotBaseNames(cameras);
   cameras.forEach((cam, i) => {
     const ref = cam.ref;
-    if (ref === undefined) return;
+    if (ref === undefined || ref === null) return;
     const src = scenePath === undefined ? ref : resolve(dirname(scenePath), ref);
     if (!existsSync(src) || !statSync(src).isFile()) {
       cam.ref = null;

@@ -61,9 +61,11 @@ export function createBridge(engine: BridgeEngine, io: BridgeIO, stage: StageHan
         io.warn(`sim event of unknown type "${e.type}" skipped`);
         return;
       }
-      const door = engine.door(String(e.object));
+      // the sim names the door's place ("bedroom door"); `id` is the engine's own door id when it knows it
+      const id = (e as { id?: unknown }).id;
+      const door = (typeof id === "string" && engine.door(id)) || engine.door(String(e.object));
       if (!door) {
-        io.warn(`sim door "${String(e.object)}" is not in the engine scene`);
+        io.warn(`sim door "${String(e.object)}"${typeof id === "string" ? ` (id "${id}")` : ""} is not in the engine scene`);
         return;
       }
       if (e.state === "locked") door.lock();

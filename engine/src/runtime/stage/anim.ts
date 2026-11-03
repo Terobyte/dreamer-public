@@ -59,7 +59,7 @@ function calibrationEnd(tracks: KeyframeTrack[], bind: Record<string, Quaternion
     if (m && p.propertyName === "quaternion") side[m[1].toLowerCase()] = t;
   }
   if (!side.l || !side.r || !bind.l || !bind.r) return null;
-  const itp = { l: side.l.createInterpolant(), r: side.r.createInterpolant() };
+  const itp = { l: interpolant(side.l), r: interpolant(side.r) };
   const q = new Quaternion();
   const devAt = (t: number): [number, number] => {
     const dev = (s: "l" | "r"): number => toDeg(q.fromArray(Array.from(itp[s].evaluate(t)) as number[]), bind[s]);
@@ -85,14 +85,15 @@ function calibrationEnd(tracks: KeyframeTrack[], bind: Record<string, Quaternion
     lo = t;
   }
   if (hi === null) return null;
+  let up: number = hi;
   for (let i = 0; i < 40; i++) {
-    const mid = (lo + hi) / 2;
-    if (hi - lo < 1e-6) break;
+    const mid = (lo + up) / 2;
+    if (up - lo < 1e-6) break;
     const [dl, dr] = devAt(mid);
-    if (dl >= TPOSE_DEG && dr >= TPOSE_DEG) hi = mid;
+    if (dl >= TPOSE_DEG && dr >= TPOSE_DEG) up = mid;
     else lo = mid;
   }
-  return hi;
+  return up;
 }
 
 /** rebuild a track with new times/values, keeping its interpolation and custom interpolant factory (STEP, GLTF CUBICSPLINE).
@@ -113,10 +114,15 @@ function cloneTrack(track: KeyframeTrack, times: ArrayLike<number>, values: Arra
 const isCubic = (track: KeyframeTrack): boolean =>
   (track as any).createInterpolant?.isInterpolantFactoryMethodGLTFCubicSpline === true;
 
+/** three's KeyframeTrack.createInterpolant exists at runtime; @types/three keeps it off the public type */
+function interpolant(track: KeyframeTrack): { evaluate(t: number): ArrayLike<number> } {
+  return (track as unknown as { createInterpolant(): { evaluate(t: number): ArrayLike<number> } }).createInterpolant();
+}
+
 function cutHead(track: KeyframeTrack, t0: number): KeyframeTrack {
   if (t0 <= 0) return track;
   const vs = track.getValueSize();
-  const itp = track.createInterpolant();
+  const itp = interpolant(track);
   const head = Array.from(itp.evaluate(t0) as ArrayLike<number>);
   // CUBICSPLINE: one key is [inTangent, vertex, outTangent]; the head key keeps the sampled
   // vertex with the sampled derivative on both sides, so the remaining curve keeps its shape

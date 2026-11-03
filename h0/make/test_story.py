@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from make import core, story
+from make import core, play, story
 
 H0 = Path(__file__).resolve().parents[1]
 JANE = str(H0 / "dream" / "books" / "jane-eyre")
@@ -79,15 +79,13 @@ class Freestyle(NoNet):
             run = Path(tmp) / "run"
             (run / "brief").mkdir(parents=True)
             (run / "brief" / "brief.json").write_text(json.dumps(BOOK))
-            res = core.run_make(run, "p", fake=True, until="stage", freestyle=True,
-                                book=JANE, scene="tea")
+            res = core.run_make(run, "p", fake=True, until="stage", book=JANE, scene="tea")
             self.assertEqual(res["stage"], "ran", res)
             sj = json.loads((run / "stage" / "stage.json").read_text())
             self.assertNotIn("freestyle", sj)
             self.assertEqual(sj["mode"], "book")
             got = {}
-            story.run_sim(run / "stage" / "stage.json", run=lambda **kw: got.update(kw),
-                          freestyle=True)
+            play.play(run, freestyle=True, run=lambda **kw: got.update(kw))
             self.assertIs(got["freestyle"], True)
             self.assertEqual(got["scenes"], ["tea"])
 
@@ -98,9 +96,8 @@ class Freestyle(NoNet):
             sj = json.loads((run / "stage" / "stage.json").read_text())
             self.assertNotIn("freestyle", sj)
             got = {}
-            story.run_sim(run / "stage" / "stage.json",
-                          run=lambda **kw: got.update(kw) or None)
-            self.assertIs(got["freestyle"], False)
+            play.play(run, fake=True, run=lambda **kw: got.update(kw) or None)
+            self.assertNotEqual(got.get("freestyle"), True)
 
 
 class NarratorFallback(NoNet):

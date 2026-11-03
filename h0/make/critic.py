@@ -16,6 +16,8 @@ JUMP_M = 0.5            # the camera moving more than this between two facts is 
 SAME_POINT_M = 1.0
 OVERLAP_NDC = 0.02
 MIN_VISIBLE, MAX_BACK, MAX_SMALL_CLOSE, MAX_SERIES = 0.9, 0.10, 0.15, 3
+BED_FLOAT_M = 0.35      # a lying head this far above the top under it hangs over the bed (bed_saw)
+MAX_CLAMPED = 0.25      # share of Г8 plan frames whose point the camera law moved > 0.3 m (shot_clamped)
 
 
 def load_facts(path):
@@ -110,6 +112,27 @@ def _overlap(f):
                for i in range(len(hs)) for j in range(i + 1, len(hs)))
 
 
+def bed_float(facts):
+    """L172: the highest a lying head hung over what is under it (`bed_saw`: head [x, y, z], under = top y)."""
+    worst = 0.0
+    for f in facts:
+        b = f.get("bed_saw")
+        if isinstance(b, dict) and isinstance(b.get("head"), list) and len(b["head"]) == 3 \
+                and isinstance(b.get("under"), (int, float)):
+            worst = max(worst, b["head"][1] - b["under"])
+    return round(worst, 3)
+
+
+def director_asl(facts):
+    """L172: mean seconds per director plan from the cut counter `dcut` (None without it)."""
+    cuts = [f["dcut"] for f in facts if isinstance(f.get("dcut"), (int, float))]
+    if len(cuts) < 2:
+        return None
+    ts = [f["t"] for f in facts if isinstance(f.get("dcut"), (int, float))]
+    plans = max(cuts) - min(cuts) + 1
+    return round((max(ts) - min(ts)) / plans, 2)
+
+
 def analyse(facts, events, duration=None):
     reps = replies(events)
     visible = back = 0
@@ -132,6 +155,8 @@ def analyse(facts, events, duration=None):
     # unverifiable, so the facts must not silently pass the 80% check (F8)
     gaps = bool(facts) and (duration is None or len(facts) < 0.8 * dur / STEP or any(e / 1000 > last_t for _, e, _ in reps))
     n = len(reps)
+    planned = [f for f in facts if f.get("shot")]
+    clamped = [f for f in planned if f.get("shot_clamped")]
     return {
         "facts": len(facts), "replies": n, "duration_s": dur,
         "face_visible_frac": visible / n if n else 0.0,
@@ -142,6 +167,10 @@ def analyse(facts, events, duration=None):
         "back_replies": back, "back_frac": back / n if n else 0.0,
         "overlap_frames": sum(1 for f in facts if _overlap(f)),
         "statues": statues(facts),
+        "plan_frames": len(planned), "clamped_frames": len(clamped),
+        "clamped_frac": len(clamped) / len(planned) if planned else 0.0,
+        "bed_float_m": bed_float(facts),
+        "director_asl_s": director_asl(facts),
         "CRITIC_GAPS": gaps,
     }
 
@@ -151,7 +180,8 @@ def verdict(m):
     if not m["facts"] or not m["replies"]:
         return 3
     if (m["face_visible_frac"] < MIN_VISIBLE or m["overlap_frames"] or m["back_frac"] > MAX_BACK
-            or m["close_small_frac"] > MAX_SMALL_CLOSE or m["max_series"] > MAX_SERIES):
+            or m["close_small_frac"] > MAX_SMALL_CLOSE or m["max_series"] > MAX_SERIES
+            or m.get("bed_float_m", 0) > BED_FLOAT_M or m.get("clamped_frac", 0) > MAX_CLAMPED):
         return 3
     return 4 if m["CRITIC_GAPS"] else 0
 
@@ -165,6 +195,9 @@ def summary(m):
         f"  from the back: {m['back_frac']:.0%} of replies",
         f"  body overlap frames: {m['overlap_frames']}",
         f"  statues: {', '.join(m['statues']) or '-'}",
+        f"  plan frames clamped: {m.get('clamped_frames', 0)}/{m.get('plan_frames', 0)}",
+        f"  lying head above the bed: {m.get('bed_float_m', 0):.2f} m",
+        f"  director mean plan: {m['director_asl_s']} s" if m.get("director_asl_s") is not None else "  director mean plan: -",
     ] + (["  CRITIC_GAPS"] if m["CRITIC_GAPS"] else []))
 
 

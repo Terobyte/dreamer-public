@@ -104,16 +104,6 @@ def seed_scene(text, transport=None):
     return None
 
 
-def validate_decision(decision, objects, actors, pool):
-    """Check a director decision (spec 8) with the same rules the FSM applies. Returns (ok, errs)."""
-    if not isinstance(decision, dict):
-        return False, ["json"]
-    err = check_messages(decision, actors or [])
-    if err is None and decision.get("bridge") is not None:
-        err = check_target(decision, objects or [], pool or set())
-    return (False, [err[0]]) if err else (True, [])
-
-
 def _sanitize_human(text):
     return sanitize(text, "human")[0]
 

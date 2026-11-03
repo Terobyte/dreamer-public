@@ -8,15 +8,6 @@ EPS = 1e-6
 _ARC_STEP = 0.25
 
 
-def room_polygon(room):
-    """Chord vertices of a `shape` room as [(x, z), ...].
-
-    Curved edges (`bulge`) are stored as chords here; use `in_room` for the
-    true footprint, which honors the arcs.
-    """
-    return [(float(v[0]), float(v[1])) for v in room.get("shape", [])]
-
-
 def _bulge_of(vertex):
     """Bulge annotated on an edge's start vertex; 0 for straight edges."""
     if len(vertex) == 3 and isinstance(vertex[2], dict):
