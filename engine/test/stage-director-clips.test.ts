@@ -37,6 +37,10 @@ describe("a staged clip fits the pose (as a picked one does)", () => {
   it("seated on the bed edge: a standing clip turns into the procedural nod (Nov 2: hunched Mama)", () => {
     expect(fitStaged({ clip: "bend_whisper", idle: "idle_warm" }, "sit", facts)).toEqual({ idle: "idle_warm", procedural: true });
   });
+  it("standing: a clip measured lying is not played (Squidward v19 158 s: SpongeBob's happy_walk, lying: true, tipped him over at the table)", () => {
+    expect(fitStaged({ clip: "sleep_curled", idle: "idle_warm" }, "stand_at", facts)).toEqual({ idle: "idle_warm", procedural: true });
+    expect(fitStaged({ clip: "bend_whisper", idle: "sleep_curled" }, undefined, facts)).toEqual({ clip: "bend_whisper" });
+  });
   it("lying: a lying clip plays, a standing idle is dropped", () => {
     expect(fitStaged({ clip: "sleep_curled", idle: "idle_warm" }, "lie", facts)).toEqual({ clip: "sleep_curled" });
   });

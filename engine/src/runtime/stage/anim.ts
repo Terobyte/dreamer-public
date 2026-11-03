@@ -557,8 +557,16 @@ export function fitStaged(
   facts: Record<string, { lying?: boolean } | undefined> | null,
 ): { clip?: string; idle?: string; procedural?: true } {
   const standing = !pose || pose === "stand" || pose === "stand_at" || pose === "stand_on";
-  if (standing) return { ...sc };
   const lying = (c: string): boolean => facts?.[c]?.lying === true;
+  // standing plays any clip but one measured lying (Squidward v19 158 s: SpongeBob's happy_walk, lying: true in its
+  // facts, tipped him over by the table): that one turns into the procedural beat
+  if (standing) {
+    const out: { clip?: string; idle?: string; procedural?: true } = {};
+    if (sc.clip && !lying(sc.clip)) out.clip = sc.clip;
+    else if (sc.clip) out.procedural = true;
+    if (sc.idle && !lying(sc.idle)) out.idle = sc.idle;
+    return out;
+  }
   const out: { clip?: string; idle?: string; procedural?: true } = {};
   if (pose === "lie") {
     if (sc.clip && lying(sc.clip)) out.clip = sc.clip;
