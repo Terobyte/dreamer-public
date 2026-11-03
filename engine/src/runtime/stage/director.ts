@@ -361,7 +361,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = choose();
       lastPlan = p;
       cut(p);
-      focus = ev.kind === "line" ? speaker.name : focus;
+      // a narration about an actor hands the ticks after it to that actor (v13 67.9 s: a tick re-cut to a close on
+      // Squidward, the last speaker, while the narrator still read about SpongeBob)
+      focus = ev.kind === "line" || (ev.kind === "narrator" && ev.about === speaker.name) ? speaker.name : focus;
       const otherActor = nearestOther(crew, speaker);
       const isClose = Boolean(ev.kind === "line" && otherActor && dist(speaker.pos, otherActor.pos) < 0.3);
       closeLineAxis = isClose ? faceOf(speaker.yaw) : null;

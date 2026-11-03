@@ -28,4 +28,23 @@ describe("narration about an actor", () => {
     }
     expect(missed).toEqual([]);
   });
+
+  it("holds on that actor through the ticks of the narration, not a close on the last speaker (v13 67.9 s)", () => {
+    // v13 positions, shifted to the origin: SpongeBob 0.8 m from Squidward, under his chin
+    const sq: DActor = { name: "Squidward", pos: [0.77, -0.25], yaw: 250, height: 1.8, level: null, room: "R", walking: false, head: [0.77, 1.16, -0.25] };
+    const bob: DActor = { name: "SpongeBob", pos: [0, 0], yaw: 75, height: 1.0, level: null, room: "R", walking: false, head: [0, 0.59, 0] };
+    const missed: string[] = [];
+    for (const r of [0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95]) {
+      const d = createDirector(() => r, { style: "storybook" });
+      const A = [sq, bob];
+      d.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A, room: ROOM });
+      d.step({ event: { kind: "line", speaker: "Squidward", durationS: 2.3, dt: 6, beat: 1 }, actors: A, room: ROOM });
+      let o = d.step({ event: { kind: "narrator", durationS: 4.2, dt: 3, beat: 2, about: "SpongeBob" }, actors: A, room: ROOM });
+      for (let i = 0; i <= 8; i++) {
+        if (!inFrame(o, bob.head!)) missed.push(`${r}@${i}`);
+        o = d.step({ event: { kind: "tick", dt: 0.5 }, actors: A, room: ROOM });
+      }
+    }
+    expect(missed).toEqual([]);
+  });
 });
