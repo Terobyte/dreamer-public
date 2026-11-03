@@ -68,6 +68,8 @@ export function msg(code: Code, params: Record<string, string>): string {
       return `${params.path}: взаимоисключающие поля ${params.keys}`;
     case "ID_DUPLICATE":
       return `дублирующийся id "${params.v}"`;
+    case "ID_RESERVED":
+      return `id "${params.v}" содержит ":": так называются меши, которые сборка делает сама (cap:0, room:beam:0); убери ":"`;
     case "REF_UNKNOWN":
       if (params.cycle) return `${params.path}: цикл top_of: ${params.cycle}; убери одну из опор`;
       return `${params.path}: ${params.kind} "${params.v}" не найден; есть: ${params.have}`;

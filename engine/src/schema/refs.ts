@@ -82,6 +82,8 @@ export function checkRefs(raw: any): Issue[] {
 
   const seen = new Map<string, string>();
   const reg = (id: string, path: string) => {
+    // L99: generated mesh ids are `cap:0`, `living:beam:0`, `door1:leaf`: an authored id with ":" can collide
+    if (id.includes(":")) out.push({ code: "ID_RESERVED", stage: "schema", path, msg: msg("ID_RESERVED", { v: id }) });
     if (seen.has(id)) {
       out.push({ code: "ID_DUPLICATE", stage: "schema", path, msg: msg("ID_DUPLICATE", { v: id }) });
     } else seen.set(id, path);

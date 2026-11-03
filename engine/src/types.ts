@@ -20,6 +20,7 @@ export type Code =
   | "SCHEMA_REQUIRED"
   | "SCHEMA_EXCLUSIVE"
   | "ID_DUPLICATE"
+  | "ID_RESERVED"
   | "REF_UNKNOWN"
   | "REF_KIND"
   | "ROOM_REF_MISMATCH"
