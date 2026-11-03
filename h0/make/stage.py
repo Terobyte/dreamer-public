@@ -268,6 +268,45 @@ def build_places(world_run):
         places.append({"name": n if k == 1 else f"{n} {k}", "id": d["id"], "kind": "door", "room": room, "level": lv,
                        "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
                        "poses": ["door"]})
+    # a door with no leaf (a hole: the pineapple's front) is not in build.json; one that leads elsewhere (`to`) still
+    # is a door place: a step in from the opening, in the room on that side, facing in
+    built = {d["id"] for d in build.get("doors", [])}
+    floors = geo.get("floors") or []
+
+    def _inside(pt, poly):
+        x, z, n, ins = pt[0], pt[1], len(poly), False
+        for i in range(n):
+            (x1, z1), (x2, z2) = poly[i][:2], poly[(i + 1) % n][:2]
+            if (z1 > z) != (z2 > z) and x < x1 + (z - z1) * (x2 - x1) / (z2 - z1):
+                ins = not ins
+        return ins
+    for o in scene.get("openings", []):
+        if o.get("kind") != "door" or not o.get("to") or o["id"] in built or not o.get("at"):
+            continue
+        ox, oz = float(o["at"][0]), float(o["at"][1])
+        spot = None
+        for dx, dz in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            q = (ox + dx * 0.6, oz + dz * 0.6)
+            f = next((f for f in floors if _inside(q, f["outline"])), None)
+            if f is None:
+                continue
+            lv = f.get("level")
+            at = nav.snap(lv, q[0], q[1])
+            if at is not None:
+                spot = (f["room"], lv, at)
+                break
+        if spot is None:
+            warnings.append(f"door {o['id']}: no room with a walkable cell beside it, no place")
+            continue
+        room, lv, at = spot
+        n = f"{room} door"
+        used = {q["name"] for q in places}
+        k = 1
+        while (n if k == 1 else f"{n} {k}") in used:
+            k += 1
+        yaw = math.degrees(math.atan2(at[0] - ox, at[1] - oz)) % 360
+        places.append({"name": n if k == 1 else f"{n} {k}", "id": o["id"], "kind": "door", "room": room, "level": lv,
+                       "at": at, "yaw": round(yaw, 3), "look": [ox, oz], "obstacle": None, "poses": ["door"]})
     # San Andreas doors (engine stage `Place.to`): portals are door spots on an open place (the street has no wall
     # to cut a door in), an opening's or a portal's `to` names a door id or a portal id; it becomes a place name
     for pt in scene.get("portals", []):

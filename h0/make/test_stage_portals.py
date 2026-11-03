@@ -58,5 +58,37 @@ class Portals(unittest.TestCase):
         self.assertNotIn("to", d)
 
 
+class LeaflessDoor(unittest.TestCase):
+    """the pineapple's front door is a hole, no leaf: build.json has no door for it, yet with `to` it is a door place
+    (inside its room, a step in from the opening, facing in), and the portal outside leads to it"""
+    def setUp(self):
+        self.enterContext(mock.patch("urllib.request.urlopen", side_effect=AssertionError("network")))
+
+    def _res(self):
+        d = Path(tempfile.mkdtemp())
+        synth_world.write(d, glb=False)
+        s = json.loads((d / "scene.json").read_text())
+        s["openings"] = [{"id": "hole", "kind": "door", "at": [3.0, 0.0], "width": 1.0, "to": "out"}]
+        s["portals"] = [{"id": "out", "room": "kitchen", "at": [8.0, 2.0], "yaw": 0, "name": "street spot", "to": "hole"}]
+        (d / "scene.json").write_text(json.dumps(s))
+        g = json.loads((d / "dist" / "geometry.json").read_text())
+        g["floors"] = [{"room": "living", "level": "L0", "y": 0, "outline": [[0, 0], [6, 0], [6, 5], [0, 5]]},
+                       {"room": "kitchen", "level": "L0", "y": 0, "outline": [[6, 0], [10, 0], [10, 5], [6, 5]]}]
+        (d / "dist" / "geometry.json").write_text(json.dumps(g))
+        return stage.build_places(d)
+
+    def test_hole_with_to_is_a_door_place(self):
+        res = self._res()
+        p = {q["name"]: q for q in res["places"]}
+        hole = next(q for q in res["places"] if q["id"] == "hole")
+        self.assertEqual(hole["kind"], "door")
+        self.assertEqual(hole["room"], "living")
+        self.assertEqual(hole["to"], "street spot")
+        self.assertGreater(hole["at"][1], 0.2)  # a step in from the wall at z = 0
+        self.assertLess(abs(hole["at"][0] - 3.0), 0.5)
+        self.assertLess(abs((hole["yaw"] - 0 + 180) % 360 - 180), 20)  # into the room: +z
+        self.assertEqual(p["street spot"]["to"], hole["name"])
+
+
 if __name__ == "__main__":
     unittest.main()
