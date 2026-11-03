@@ -245,11 +245,12 @@ export function floorAt(floors: FloorRef[], p: V2, level?: string | null): Floor
  *  `base`, the top under her body (the mattress). 0 = the head is already clear. Measured against the mattress, not
  *  the head bone: a body tucked under the blanket has its head bone below the mattress top (k20_true slid the cap).
  *  k19_true: Mirai's head inside a 0.75 m pillow on a 0.57 m mattress. */
-export function pillowShift(head: [number, number, number], foot: V2, heightAt: (x: number, z: number) => number | null, base: number, max = 0.4): number {
-  const clear = (s: number): boolean => {
-    const h = heightAt(head[0] + foot[0] * s, head[2] + foot[1] * s);
+export function pillowShift(head: [number, number, number], foot: V2, heightAt: (x: number, z: number, below?: number) => number | null, base: number, r: number, max = 0.4): number {
+  // the head centre and the back of the head (`r` toward the pillow; k21_dbg: the centre cleared, the back did not)
+  const clear = (s: number): boolean => [s, s - r].every((d) => {
+    const h = heightAt(head[0] + foot[0] * d, head[2] + foot[1] * d, base + 0.6);
     return h === null || h <= base + 0.03;
-  };
+  });
   for (let s = 0; s < max; s += 0.03) if (clear(s)) return Math.round(s * 1000) / 1000;
   return max;
 }

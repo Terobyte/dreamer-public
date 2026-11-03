@@ -32,22 +32,24 @@ function worldMeshes(world: Object3D, skip: Object3D[]): Array<{ o: Object3D; bo
 
 /** Top of the world under a floor point (metres), null = nothing there: one ray straight down through the meshes
  *  whose box covers the point. The bed's pillow is not a flat surface, so places.json never knows it (k19_true). */
-export function createHeight(world: Object3D, skip: () => Object3D[]): (x: number, z: number) => number | null {
+export function createHeight(world: Object3D, skip: () => Object3D[]): (x: number, z: number, below?: number) => number | null {
   let items: Array<{ o: Object3D; box: Box3 }> | null = null;
   const rc = new Raycaster();
   const from = new Vector3();
   const down = new Vector3(0, -1, 0);
-  return (x, z) => {
+  // `below`: only what is under that height (k21_dbg: over the bed the ray hit the ceiling at 3.4 m)
+  return (x, z, below = Infinity) => {
     items ??= worldMeshes(world, skip());
     let top: number | null = null;
     for (const it of items) {
       const b = it.box;
-      if (x < b.min.x || x > b.max.x || z < b.min.z || z > b.max.z) continue;
+      if (x < b.min.x || x > b.max.x || z < b.min.z || z > b.max.z || b.min.y >= below) continue;
       if (top !== null && b.max.y <= top) continue;
-      from.set(x, b.max.y + 0.01, z);
+      const y0 = Math.min(b.max.y + 0.01, below);
+      from.set(x, y0, z);
       rc.set(from, down);
       rc.near = 0;
-      rc.far = b.max.y - b.min.y + 0.02;
+      rc.far = y0 - b.min.y + 0.02;
       const h = rc.intersectObject(it.o, false)[0];
       if (h && (top === null || h.point.y > top)) top = h.point.y;
     }

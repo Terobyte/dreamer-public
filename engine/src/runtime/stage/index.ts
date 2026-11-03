@@ -432,6 +432,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   /** a lying head inside the pillow slides the body toward the foot of the bed, once per rest clip, after the
    *  crossfade settles (k19_true: Mirai's head bone at 0.68 m inside a 0.75 m pillow) */
   const pillowDone = new Map<string, number>();
+  /** the last bed settle (critic `bed_saw`): head bone, top under it, mattress under the body, shift */
+  let bedSaw: unknown = null;
   const settleBeds = (now: number): void => {
     for (const a of actors.values()) {
       if (poseOf.get(a.who) !== "lie" || a.moving() || offstageActors.has(a.who)) continue;
@@ -451,9 +453,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const l = Math.hypot(bed.lie.at[0] - hx, bed.lie.at[1] - hz) || 1;
       const foot: V2 = [(bed.lie.at[0] - hx) / l, (bed.lie.at[1] - hz) / l];
       const p0 = a.pos();
-      const base = heightAt(p0[0], p0[1]);
+      // the mattress under her body: below her head bone + 0.3 m, never the ceiling
+      const base = heightAt(p0[0], p0[1], hp.pos[1] + 0.3);
       if (base === null) continue;
-      const sh = pillowShift(hp.pos, foot, heightAt, base);
+      const sh = pillowShift(hp.pos, foot, heightAt, base, heightOf(a.who) * 0.1);
+      bedSaw = { who: a.who, head: hp.pos.map((v) => Math.round(v * 100) / 100), under: heightAt(hp.pos[0], hp.pos[2], base + 0.6), base, foot, shift: sh, t: now };
       if (sh > 0) {
         const p = a.pos();
         a.teleport([p[0] + foot[0] * sh, p[1] + foot[1] * sh], a.yaw(), a.act(), a.y());
@@ -843,6 +847,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           move: shotName ?? dirMove?.out.move ?? null,
           dcut: dirCut,
           dir_saw: dirCutSaw,
+          bed_saw: bedSaw,
           shot_clamped: shotClamped,
           cam: [cam.x, cam.y, cam.z] as [number, number, number],
           look: [look.x, look.y, look.z] as [number, number, number],
