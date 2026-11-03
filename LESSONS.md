@@ -193,20 +193,20 @@
 |---|---|---|---|
 | L166 | **Г8 shotplan без автора:** рантайм играет `shotplan/plan.json` (`stage/shotplan.ts`, `index.ts` читает `stage.shotplan`), но ни Python, ни `bin/` его не пишут, в каждом прогоне «no shotplan -> director». Полоса B (`moves.json` от Spark) закрывает ту же задачу иначе: решить, нужен ли Г8 автор или Г8 убрать | сверка 11-03 | план (решение) |
 | L167 | **`planScheme` (`moves.ts`) без вызовов:** схемы oner / rhythm_cut / open_from_light не играются никогда, `BRIDGE_ONLY` не даёт их и жребию. Подключать с Г8 (L166) или в режиссёре по `score.beats` | сверка 11-03 | план |
-| L168 | **Поля бита `shot` / `gesture` / `tone`:** движок их читает (`index.ts`, `director.ts`, `clipForBeat`), sim передаёт, но ни `book.py`, ни `stage_director.py` их не пишут. `gesture` заменён `clip` постановки, `shot` — выбором Spark полосы B; `tone` движок игнорирует. Решить: писать или убрать из движка | сверка 11-03 | долг |
 | L169 | **`places[].tiers` пишутся (`stage.py`), не читаются:** верх полки или второй ярус кровати не используется. Нужен ярус в постановке (`stand_on`/`sit` + `tier`) | сверка 11-03 | план |
 | L170 | **`Sam3dProvider.fromScene` нет:** путь вырезки из сцены (Н2б) есть только у фейка, живой ассет с маской всегда `MASK_FALLBACK unavailable`; `build.json assets.pose` всегда null | сверка 11-03 | план |
 | L171 | **XR-хост (`app/src/engine-host.ts`) берёт только ассеты, свет и ходьбу:** нет дверей, рассыпки, улицы, сцены. Переиспользовать блоки `main.ts`. Полоса C не влита | сверка 11-03 | план (полоса C) |
-| L172 | **Факты критика без судьи:** `shot`, `shot_clamped`, `move`, `dcut`, `dir_saw`, `bed_saw`, `look` пишутся (`critic.ts`), `make/critic.py` их не проверяет. Нужны пороги (кровать висит, план потерял актёра, камера зажата) | сверка 11-03 | долг |
-| L173 | **Мерки клипов `face_dir` / `face_yaw` / `head_y` не используются рантаймом** (`clipfacts.ts`); `faceYaw` режиссёра можно брать из них до загрузки GLB | сверка 11-03 | долг |
-| L174 | **Флаги make без действия:** `make --freestyle` меняет только хэш (спека: freestyle — флаг `make.play`), `make --check` включает заглушку `_fast_stub`; `stage.json` `dist` пишется и не читается. Удалить или наполнить | сверка 11-03 | долг |
 | L175 | **B55 / B59 / B61 в `anymove`** (зеркалить лимиты L/R в `blender/common.py` и `rig.json`; цвет по стороне экрана; «что движется» в выходе архитектора). В `anymove/blender/common.py` идут незакоммиченные правки — не трогал | bugs.md | долг (anymove) |
-| L176 | **`story.run_sim` дублирует `make.play`** и вызывается только тестами; `sim.stop_reason`, `sim.playing`, `director.out_of_turn` читают только тесты | сверка 11-03 | долг |
 
 ---
 
 ## Архив (готово)
 
+- L168 не баг (11-03): `tone` пишет `voice_tone.add_tones` в стадии story; `gesture` и `shot` — ручные указания автора бита, движок их уважает, тесты проверяют.
+- L172 Факты критика без судьи: `make/critic.py` читает `bed_saw` (голова лежащего выше кровати > 0,35 м), `shot_clamped` (> ¼ зажатых планов), средняя длина плана в сводке (`ace1969`).
+- L173 `face_yaw` клипа: актёр без кости головы показывает режиссёру поворот лица `clipFaceYaw` (`ef71ddc`).
+- L174 Флаги make без действия: `--check`, `--freestyle` и заглушка удалены, `dist` из `stage.json` читает `play.dist_of` (`4abc18f`).
+- L176 `story.run_sim` удалён, тесты переехали на `make.play` (`4abc18f`).
 - Неподключённое, подключено 11-03 (ветка `debt-sweep`): событие двери из sim несёт id двери движка, дверь качается (`54e3203`); клик по предмету ведёт героя (`87baefe`); `Stage.warnings()` и упавшие GLB попадают в `stage_warnings.json` и лог фильма (`13283f8`, `c8942fd`); `style.tone` / `exposure` проходят сборку (`c8330be`); `make.play` играет партитуру языка из `stage.json` (`3c80d31`).
 - Мёртвый код 11-03: `directShot`, `pointToAz`, `segIntersectionPoint`, `yawDir`, `pickHinge`/`hingeAtInner`, `Actor.drop` (`90a422c`, ...); h0: `split_owners`, `validate_decision`, `_real_complete`, `room_polygon`, `last_report` и др. (`20d9977`).
 - L1 Мизансцена на старте сцены: кто на каком месте, в какой позе, кто за дверью (Мирай лежит в кровати, Мама в ван: места `lie`/`stand_on` в `places.ts`, `separate()` в `spread` (сверка 11-03).
