@@ -64,6 +64,11 @@ class IdeaQueue:
         if it is not None:  # replay: the journal also holds the ack as a queue op
             self._op("ack", it, text=text)
 
+    def ack(self, id_, text):
+        """A late answer to the operator about an idea (D4: the build was aborted)."""
+        with self._lock:
+            self._ack(id_, text)
+
     # --- reads ---------------------------------------------------------------
     def get(self, id_):
         with self._lock:

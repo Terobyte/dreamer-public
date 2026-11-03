@@ -23,7 +23,7 @@ from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, names_in,
                       W_SILENT, W_SPOKE_LAST)
 from director import Director, seed_scene
 from fsm import BuildFSM
-from ideas import IdeaQueue
+from ideas import ACK_NOT_DELIVERED, IdeaQueue
 from inputs import resolve_touch, sanitize
 from memory import Memory
 from safety import SOFT_NOTE
@@ -241,7 +241,7 @@ class Sim:
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
                  max_dollars=20.0, dialogue=None, first_events=(), book=None,
-                 hero_owner=None, no_build=False):
+                 hero_owner=None, no_build=False, build_mode="live", scene_world=None):
         self.profile = profile
         self.book = None  # K2: the score being played (see _book_step)
         self._book_hold_until = -1e9
@@ -349,7 +349,8 @@ class Sim:
         self._load_goals(emit=False)
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
                              now=self.clock.now(), params=fsm_params,
-                             actors=list(self.actors), hero=self.hero, no_build=no_build)
+                             actors=list(self.actors), hero=self.hero, no_build=no_build,
+                             build_mode=build_mode)
         self.script = script if script is not None else _scripted_decisions(profile, 8)
         self.outdir = outdir
         if outdir:
@@ -385,10 +386,26 @@ class Sim:
         self._npc_inflight = {}  # cues at the prompter: fail if the actor leaves pre-line
         self.cleaner = None        # raw -> {clean, intent, addressee?, scene_id?, confidence}
         self.idea_decider = None   # idea -> (fire|hold, short line); None = fake or director LLM
-        # scene_id -> {bridge, destination, aliases, ...}; D4 fills bridge/destination, so
-        # until then the shop alias resolves but (c) keeps the idea waiting
-        self.scene_registry = {"kozb7_yard_shop": {
-            "aliases": ["внутри магазина", "в магазин", "в магазине"]}}
+        # decision 6: the known scenes of the world being played (one dist each)
+        # F3/F10: no silent fallback to the yard: a registry dict (the active dist's
+        # metadata), a known world name, or None = no known scenes ("такого нет")
+        if isinstance(scene_world, dict):
+            self.scene_world, reg = "dist", scene_world
+        elif scene_world is None:
+            self.scene_world, reg = None, {}
+        elif scene_world in self.SCENE_WORLDS:
+            self.scene_world, reg = scene_world, self.SCENE_WORLDS[scene_world]
+        else:
+            raise ValueError("unknown scene_world %r (known: %s)"
+                             % (scene_world, ", ".join(self.SCENE_WORLDS)))
+        self.scene_registry = json.loads(json.dumps(reg))
+        self._stall_topic = None
+        self._stall_empty = 0
+        # D4: the cache build an idea started {id, bridge, destination, stall_bank, i}
+        self._cache_build = None
+        self._silent_since = None
+        self._hero_after_abort = None  # sim time until which a silence is the hero's to break
+        self._abandoned_workers = []  # F19: director threads of consults given up on (20 s)
         self._clean_cache = {}     # clean text -> draft reply, so an unedited send is not cleaned twice
         self._idea_thread = None
         self._idea_result = None
@@ -652,7 +669,7 @@ class Sim:
 
     def close(self):
         """Finish owned workers before releasing temporary memory files."""
-        self.director.wait(timeout=None)
+        self._join_director()
         if self._gen_thread is not None:
             self._gen_thread.join()
         self._join_judge()
@@ -721,6 +738,14 @@ class Sim:
         self._diagnostic(event)
         self.memory.add_event(event)
         kind = event.get("type")
+        if getattr(self, "_cache_build", None) is not None and kind in ("door", "build"):
+            try:
+                return self._emit_world(event, kind)
+            finally:
+                self._on_build_event(event)
+        return self._emit_world(event, kind)
+
+    def _emit_world(self, event, kind):
         if kind == "message" and event.get("to"):
             self._notes.setdefault(event["to"], []).append(str(event.get("note") or ""))
         elif kind == "door":
@@ -1159,6 +1184,13 @@ class Sim:
                                          "hero_desc": self._hero_desc})
         else:
             self.scene = dict(self.scene, events=[], goals=[])
+            # D4 F1: a cache build has next_scene None (the room is already in the
+            # dist); the FSM still has to leave `transition`, so re-open the idle
+            # scene with the current objects/actors instead of staying stuck.
+            for e in self.fsm.new_scene(self.clock.now(), self.scene["objects"],
+                                        actors=self.actors):
+                if self.logger:
+                    self.logger.write_event(e)
         # a "Just now" left for someone who is not on this stage is dropped here:
         # the queue is keyed by its recipient, so it can never be handed to another
         self._pending = {k: v for k, v in self._pending.items() if k in self.actors}
@@ -1621,13 +1653,15 @@ class Sim:
         self._expire_steer()
         steer = self._steer.get(who) or self._steer.get(None)
         parts = []
+        # D4 F11: the stall lives to `ready` beside the steer, which keeps its own K / TTL
+        topic = "; ".join(t for t in (steer["topic"] if steer is not None else None,
+                                      getattr(self, "_stall_topic", None)) if t)
         if cues:
             parts.append("do this in this very line: %s" % "; ".join(cues))
-            if steer is not None:  # decision 7: the addressed cue outranks the common topic
-                parts.append("after that, not in this line, steer the talk to this: %s"
-                             % steer["topic"])
-        elif steer is not None:
-            parts.append("steer the talk to this: %s" % steer["topic"])
+            if topic:  # decision 7: the addressed cue outranks the common topic
+                parts.append("after that, not in this line, steer the talk to this: %s" % topic)
+        elif topic:
+            parts.append("steer the talk to this: %s" % topic)
         notes = self._notes_for(who)
         if consume:
             taken = getattr(self, "_npc_cues", {}).pop(who, None)
@@ -1999,6 +2033,30 @@ class Sim:
 
     # --- D2: operator ideas (POST /event kind draft|idea|idea_drop|effect_ack) ----
     CLEAN_TIMEOUT_S = 8.0
+    # D4 (decision 6): scene_id -> {bridge, destination, build_s, next_scene, aliases,
+    # stall_bank}. koshakan = the test world (bedroom -> bathroom door plays the shop);
+    # kozb7_yard waits for D0: its door and room ids are placeholders until the dist exists
+    SCENE_WORLDS = {
+        "koshakan": {"koshakan_shop": {
+            "bridge": "door", "destination": "bathroom", "build_s": 45, "next_scene": None,
+            "aliases": ["внутри магазина", "в магазин", "в магазине"],
+            "stall_bank": ["Погоди, дверь что-то заело. Расскажи пока, как ты сюда добрался?",
+                           "Слышишь? За дверью кто-то возится. Давай подождём, поболтаем.",
+                           "Пока не открыли, скажи: ты сам-то что хотел там купить?"]}},
+        "kozb7_yard": {"kozb7_yard_shop": {
+            "bridge": "shop_door", "destination": "shop", "build_s": 45, "next_scene": None,
+            "aliases": ["внутри магазина", "в магазин", "в магазине"],
+            "stall_bank": ["Магазин ещё закрыт, сейчас откроют. Как там у тебя дома?",
+                           "Глянь, продавщица уже гремит ключами. Подождём чуток.",
+                           "Пока ждём, расскажи, во что вы тут во дворе играли?"]}},
+    }
+    STALL_TOPIC = ("keep the hero busy talking right here until the door opens; "
+                   "small talk about this place, never about waiting")
+    STALL_SILENCE_S = 4.5  # D4: silence step; consult, consult, bank = 13.5 s < 15 s
+    CONSULT_GIVE_UP_S = 20.0
+    HERO_AFTER_ABORT_S = 20.0
+    HERO_LINE_LEAD_S = 2.0  # F18: the hero's line starts this long before the 20 s run out
+    HERO_AFTER_ABORT_TEXT = "Ладно, не открывается. Ну и пусть, давай тут."
     STEER_LINES = 6     # D3: K lines of the addressee (any NPC without one)
     STEER_TTL_S = 60.0  # wall seconds; a steer not used up by then expires
     IDEA_CONSULT_S = 20.0
@@ -2136,13 +2194,172 @@ class Sim:
         return {"ideas": [{k: v for k, v in it.items() if k in keep} for it in self.ideas.list()]}
 
     def _idea_effect(self, idea):
-        # the bridge event for scene/spawn is D4/D5; the engine answers with effect_ack
+        # scene = D4 (cache build + placard); spawn is D5; the engine answers with effect_ack
         self._diagnostic({"type": "idea_effect", "id": idea["id"], "intent": idea["intent"],
                           "scene_id": idea.get("scene_id")})
+        if idea["intent"] == "scene":
+            self._start_scene_build(idea)
+
+    # --- D4: the next scene as a cache build on the FSM ---------------------
+    def _start_scene_build(self, idea):
+        entry = self.scene_registry.get(idea.get("scene_id")) or {}
+        if not entry.get("bridge") or not entry.get("destination"):
+            self._diagnostic({"type": "idea_effect", "id": idea["id"], "intent": "scene",
+                              "reason": "no_destination"})
+            self.ideas.fail(idea["id"], "build_refused", ACK_NOT_DELIVERED)
+            return
+        now = self.clock.now()
+        ns = entry.get("next_scene")
+        if not ns:
+            # F1/F8: the room is already in the dist; the scene context after the walk is
+            # the destination room, the cast comes along
+            ns = {"objects": [entry["destination"]], "events": [], "goals": []}
+        if ns.get("actors") is None:
+            # F15: a registry from the dist (make.play scene_registry) names the room's things;
+            # the cast walks in with the hero
+            ns = dict(ns, actors=list(self.scene.get("actors") or []))
+        ev = self.fsm.start_build(now, entry.get("bridge"), entry.get("destination"), ns)
+        if ev[0]["type"] == "invalid":
+            for e in ev:
+                self._emit(e)
+            self.ideas.fail(idea["id"], "build_refused", ACK_NOT_DELIVERED)
+            return
+        self._cache_build = {"id": idea["id"], "bridge": entry["bridge"],
+                             "destination": entry["destination"],
+                             "stall_bank": list(entry.get("stall_bank") or []), "i": 0}
+        for e in ev:
+            self._emit(e)
+        # decision 5: the placard hangs on the door from start_build; its id is what the
+        # engine confirms with effect_ack
+        self._emit({"type": "placard", "door": entry["bridge"], "text": "загрузка",
+                    "id": idea["id"]})
+        # 2а: the stall is a topic for any NPC with no K, living until ready (FSM TTL);
+        # F11: it is NOT written into _steer, so a sister-steer keeps its K / TTL
+        self._stall_topic = self.STALL_TOPIC
+        self._stall_empty = 0
+        self._diagnostic({"type": "stall", "id": idea["id"], "seconds": self.stall_seconds()})
+
+    def stall_seconds(self):
+        """How long the NPCs still keep the hero talking: what build_pct says is left."""
+        if self._cache_build is None:
+            return 0.0
+        return self.fsm.build_left(self.clock.now())
+
+    def _end_stall(self):
+        self._stall_topic = None
+
+    def send_goto(self, place):
+        """2а: the hero walks to the destination (the engine knows come/goto/enter)."""
+        self._emit({"type": "stage", "who": self.hero, "action": "goto", "place": place})
+
+    def abort_build(self, reason):
+        for e in self.fsm.abort(self.clock.now(), reason):
+            self._emit(e)
+
+    def _on_build_event(self, event):
+        """_emit hook for a cache build: door open -> placard off, goto, walk through;
+        abort -> placard off, door stays locked, the operator hears it did not work."""
+        cb = self._cache_build
+        if cb is None:
+            return
+        kind = event.get("type")
+        if kind == "door" and event.get("state") == "open":
+            self._cache_build = None
+            self._end_stall()
+            self._emit({"type": "placard", "door": cb["bridge"], "clear": True})
+            self.send_goto(cb["destination"])
+            ev = self.fsm.walk_through(self.clock.now())
+            for e in ev:
+                self._emit(e)
+            if any(e["type"] == "transition" for e in ev):
+                self._apply_transition()
+        elif kind == "build" and event.get("phase") == "abort":
+            self._cache_build = None
+            self._end_stall()
+            self._emit({"type": "placard", "door": cb["bridge"], "clear": True})
+            self._emit({"type": "door", "state": "locked", "object": cb["bridge"]})
+            self.ideas.ack(cb["id"], ACK_NOT_DELIVERED)
+            # F5: wall-clock wait, untouched by sim speed (Clock.now is real seconds)
+            self._hero_after_abort = self.clock.now() + self.HERO_AFTER_ABORT_S
+
+    ABANDONED_JOIN_S = 2.0
+
+    def _join_director(self):
+        """Wait for the director's worker: unbounded for a live consult (its cost row must land
+        before the journal closes), bounded for one the sim already gave up on (F19: a director
+        hung forever would hang the shutdown too); a late charge from it is logged, not awaited."""
+        t = getattr(self.director, "_thread", None)
+        if t is not None and t in self._abandoned_workers:
+            self.director.wait(timeout=self.ABANDONED_JOIN_S)
+            if t.is_alive():
+                self._emit({"type": "consult_unjoined", "reason": "abandoned"})
+        else:
+            self.director.wait(timeout=None)
+
+    def _stall_step(self, now):
+        """2а: wall-clock safety of a cache build, independent of the director: a consult
+        over 20 s is given up, a silence near 15 s gets a stall_bank line (after an
+        abort the hero breaks it). Book mode ticks the build here too."""
+        if self.book is not None and self.fsm.state == "building":
+            for e in self.fsm.tick(now):
+                self._emit(e)
+        building = self._cache_build is not None and self.fsm.state == "building"
+        after_abort = self._hero_after_abort is not None and now < self._hero_after_abort
+        if not (building or after_abort):
+            self._silent_since = None
+            return
+        if (building and self.director.in_flight and self.fsm.last_call is not None
+                and now - self.fsm.last_call > self.CONSULT_GIVE_UP_S):
+            for e in self.fsm.abandon_consult(now):
+                self._emit(e)
+            self._abandoned_workers.append(getattr(self.director, "_thread", None))
+            self.director.in_flight = False
+        if (after_abort and not building and self.active_line is not None
+                and self.active_line.get("role") != "hero" and self._line_started_at is not None
+                and self.next_line is None):
+            # F18: a long NPC line playing at the abort would outlast the hero's 20 s: it is cut
+            # short of the deadline and the hero's line goes first in the queue
+            cut_at = self._hero_after_abort - self.HERO_LINE_LEAD_S
+            if self._line_started_at + self._line_duration > cut_at:
+                self._line_duration = max(0.0, min(self._line_duration, cut_at - self._line_started_at))
+                self._hero_after_abort = None
+                self.next_line = {"owner": "npc", "who": self.hero, "role": "hero",
+                                  "text": self.HERO_AFTER_ABORT_TEXT, "stall": True}
+                return
+        if self.active_line is not None or self.next_line is not None:
+            self._silent_since = None
+            line = self.active_line if self.active_line is not None else self.next_line
+            if not (isinstance(line, dict) and line.get("stall")):
+                self._stall_empty = 0  # a real line resets the run of empty consults
+            return
+        if self._silent_since is None:
+            self._silent_since = now
+            return
+        if now - self._silent_since < self.STALL_SILENCE_S:
+            return
+        self._silent_since = None
+        if building and not self.director.in_flight and self._stall_empty < 2:
+            # F7/F12: the director gets the first say -- an out-of-turn consult; the bank
+            # is the fallback after two empty ones in a row or a consult that is stuck
+            self._stall_empty += 1
+            self.director.consult_async(now, events=[{"t": now, "type": "consult_due",
+                                                      "reason": "silence"}])
+            return
+        if building:
+            bank = self._cache_build["stall_bank"] or ["Подожди, сейчас откроют."]
+            text = bank[self._cache_build["i"] % len(bank)]
+            self._cache_build["i"] += 1
+            who = self.actors[self._cache_build["i"] % len(self.actors)] if self.actors else self.hero
+            role = "actor" if who != self.hero else "hero"
+        else:
+            self._hero_after_abort = None
+            who, role, text = self.hero, "hero", self.HERO_AFTER_ABORT_TEXT
+        self._start_line({"owner": "npc", "who": who, "role": role, "text": text,
+                          "stall": True})
 
     def _scene_ok(self, idea):
         entry = self.scene_registry.get(idea.get("scene_id"))
-        return bool(entry and entry.get("bridge")) and self.fsm.state == "idle"
+        return bool(entry and entry.get("bridge") and entry.get("destination")) and self.fsm.state == "idle"
 
     def _decide_idea(self, idea):
         if self.idea_decider is not None:
@@ -2262,6 +2479,7 @@ class Sim:
             return []
         # D2: the idea queue runs in both modes (make.play plays the test world as a book)
         self._idea_step()
+        self._stall_step(now)
         if self.book is not None:
             self._maybe_start_scene_background()
             self._cycle_line()
@@ -2347,7 +2565,7 @@ class Sim:
         # charge, with no timeout. On Ф1 a 23 s Wonder consult outlived the old 5 s
         # wait, charged after the row and verify_run killed the run ("actual spent
         # != journal cost"); the goal judge and a line in flight were never joined
-        self.director.wait(timeout=None)
+        self._join_director()
         self._drain_director()
         self._join_judge(timeout=None)
         if self._gen_thread is not None:
@@ -2369,7 +2587,8 @@ class Sim:
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
         label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
-        freestyle=False, plan=None, no_build=False, on_outdir=None):
+        freestyle=False, plan=None, no_build=False, on_outdir=None, build_mode="live",
+        fsm_params=None, scene_world=None):
     """plan: a ready book plan (make/play.py), run() does not load the book itself;
     no_build: the world is one, the director may not send the dream anywhere else.
     serve=port (0 = any) starts the comic viewer on the live run (spec 11);
@@ -2410,7 +2629,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
              max_dollars=max_dollars, dialogue=dialogue,
              first_events=first_events, book=plan, hero_owner=hero_owner,
-             no_build=no_build, script=[] if plan is not None else None) as sim:
+             no_build=no_build, script=[] if plan is not None else None,
+             build_mode=build_mode, fsm_params=fsm_params, scene_world=scene_world) as sim:
         viewer = None
         if serve is not None:
             from server import Viewer

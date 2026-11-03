@@ -196,7 +196,7 @@ class SimIdeasTest(unittest.TestCase):
         dlg = Dialogue(load_profile("A"), transport=FakeTransport(reply=_reply),
                        rng=random.Random(0))
         dlg.background = False
-        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg)
+        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg, scene_world="kozb7_yard")
         self.addCleanup(self.sim.close)
         self.consult = self.enterContext(mock.patch.object(self.sim.director, "consult_async"))
         self.wall = Wall()
@@ -302,7 +302,7 @@ class IdeaSafetyRawTest(unittest.TestCase):
         dlg = Dialogue(load_profile("A"), transport=FakeTransport(reply=_reply),
                        rng=random.Random(0))
         dlg.background = False
-        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg)
+        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg, scene_world="kozb7_yard")
         self.addCleanup(self.sim.close)
 
     def test_queue_safety_wins_over_unclear(self):
@@ -415,7 +415,7 @@ class IdeaReviewSimTest(unittest.TestCase):
         dlg = Dialogue(load_profile("A"), transport=FakeTransport(reply=_reply),
                        rng=random.Random(0))
         dlg.background = False
-        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg)
+        self.sim = Sim(profile="A", fake=True, speed=1.0, outdir=self.root, dialogue=dlg, scene_world="kozb7_yard")
         self.addCleanup(self.sim.close)
         self.enterContext(mock.patch.object(self.sim.director, "consult_async"))
 

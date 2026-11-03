@@ -13,6 +13,8 @@ export interface BridgeEngine {
 export interface BridgeIO {
   post(path: string, body: unknown): void;
   warn(msg: string): void;
+  /** quiet notes (D4: a non-book `transition` the page has nothing to do with) */
+  info?(msg: string): void;
 }
 
 export interface Bridge {
@@ -38,8 +40,10 @@ export interface StageHandlers {
   idea?(e: StageEvent): void;
   /** D2: the director's one short answer to the operator about an idea */
   director_ack?(e: StageEvent): void;
+  /** D4: the "загрузка" plaque on a door `{door, text, id?}` or `{clear: true}` (placard.ts) */
+  placard?(e: StageEvent): void;
 }
-const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage", "book_end", "idea", "director_ack"] as const;
+const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage", "book_end", "idea", "director_ack", "placard"] as const;
 /** the sim's own names for what the stage calls `mode` / `story` (snapshot carries the mode; schedule and story events the pieces) */
 const ALIAS: Record<string, (typeof STAGE_TYPES)[number]> = { snapshot: "mode", schedule: "story", event: "story" };
 
@@ -53,6 +57,11 @@ export function createBridge(engine: BridgeEngine, io: BridgeIO, stage: StageHan
       }
       if (e.type === "transition" && (e as { cause?: unknown }).cause === "book" && stage.scene_end) {
         stage.scene_end(e as StageEvent);
+        return;
+      }
+      if (e.type === "transition" && (e as { cause?: unknown }).cause !== "book") {
+        // D4: the sim's own scene change (npc_walk / touch); the hero's `goto` moves him
+        io.info?.(`sim transition ${JSON.stringify(ev)} ignored`);
         return;
       }
       const key = ALIAS[e.type] ?? e.type;
