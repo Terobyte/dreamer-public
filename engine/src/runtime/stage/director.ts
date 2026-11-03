@@ -821,6 +821,8 @@ function probePoints(a: DActor, head: V3): V3[] {
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
+/** how fast the base orbit's camera drifts along its circle, m/s */
+const ORBIT_DRIFT_MS = 0.4;
 /** a cut on a walk's start comes this long after the last cut at the soonest (a cut on the action, not asl.min) */
 const WALK_CUT_S = 1.5;
 /** a still camera stands at least this far off the line a walking speaker walks */
@@ -1336,8 +1338,10 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       return { plan: p, cut, cam: [best.cam[0], y, best.cam[2]], look };
     }
     case "orbit": {
-      const a0 = Math.atan2(sideDir[1], sideDir[0]) + 0.25 * t;
+      // a drift, not a trip: 0.4 m/s along the circle whatever its radius (v28 video 100 s: 0.25 rad/s on 4.5 m
+      // swung the camera 1 m in half a second and the next beat cut back near its start)
       const r = Math.max(3, span + 2.5);
+      const a0 = Math.atan2(sideDir[1], sideDir[0]) + (ORBIT_DRIFT_MS / r) * t;
       return { plan: p, cut, cam: place(m[0] + Math.cos(a0) * r, m[1] + Math.sin(a0) * r, meanH * 0.8), look: at(m, meanH * 0.6) };
     }
     case "dolly": {
