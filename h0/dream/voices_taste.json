@@ -1,0 +1,230 @@
+[
+ {
+  "book": "Jane Eyre",
+  "name": "John Reed",
+  "brief": {
+   "sex": "male",
+   "age": 14,
+   "accent": "British RP",
+   "pitch": "low",
+   "pace": "slow",
+   "texture": [
+    "thick",
+    "puffy",
+    "nasal",
+    "whiny"
+   ],
+   "search": [
+    "british",
+    "boy",
+    "teen",
+    "young male",
+    "english boy",
+    "british teen",
+    "schoolboy",
+    "teen boy"
+   ],
+   "why": "A low, thick and puffy schoolboy voice with a slow whiny swagger fits the large, stout, flabby-cheeked 14-year-old bully."
+  },
+  "picked": "A plump, overfed English teenage boy aged fourteen, posh southern English accent, adolescent voice wavering between high and low, lazy drawl, sulky and cruel, talking down to a younger girl.",
+  "passed_over": [
+   "A fourteen-year-old English schoolboy from a wealthy family, posh British Received Pronunciation. His voice is just starting to break: mostly a boy's voice, a little thick and nasal. Spoiled, sneering and arrogant, he speaks slowly with a whiny, bullying swagger.",
+   "A spoiled English boy of fourteen, upper-class British accent, an unbroken clear boyish voice, petulant and mocking, slightly nasal, contemptuous and bossy.",
+   "A young British boy, about fourteen, aristocratic Victorian English accent, boyish voice before puberty, haughty and taunting, slow and deliberate, with a sneer in every word."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.97,
+    "male": 0.01,
+    "child": 0.01
+   },
+   "age": 34,
+   "f0": 239,
+   "pace_wps": 2.88,
+   "cy_share": 0.13,
+   "gate": "sex female"
+  },
+  "note": "design #6 of batch 1, cloned 4fd50ab0, heard best on drama-3; ears had gated it 'sex female'"
+ },
+ {
+  "book": "Jane Eyre",
+  "name": "John Reed",
+  "brief": {
+   "sex": "male",
+   "age": 14,
+   "accent": "British RP",
+   "pitch": "low",
+   "pace": "slow",
+   "texture": [
+    "thick",
+    "puffy",
+    "nasal",
+    "whiny"
+   ],
+   "search": [
+    "british",
+    "boy",
+    "teen",
+    "young male",
+    "english boy",
+    "british teen",
+    "schoolboy",
+    "teen boy"
+   ],
+   "why": "A low, thick and puffy schoolboy voice with a slow whiny swagger fits the large, stout, flabby-cheeked 14-year-old bully."
+  },
+  "picked": "Male. A fourteen-year-old English boy with a posh southern English British Received Pronunciation accent. Low-pitched for his age with a thick, puffy and nasal texture, slow swaggering pace, whiny and puffed-up tone, wavering slightly between high and low as a teenage boy's voice does, spoiled and bullying.",
+  "passed_over": [
+   "Male. A fourteen-year-old English boy with a pampered southern English British Received Pronunciation accent. Thick, puffy and nasal timbre, low pitch that still wavers unsteadily as a teenage boy's does, very slow deliberate pace, whiny entitled drawl, hectoring and domineering, like a spoiled stout schoolboy talking down to a dependent.",
+   "Male. A fourteen-year-old English schoolboy speaking with a clear British Received Pronunciation accent, posh southern English. His low, thick voice is puffy and slightly nasal, slow and lazy with a whining sneer, cracking and wavering between boyish high notes and early low tones, arrogant, sulky and cruel to those beneath him."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.53,
+    "male": 0.47,
+    "child": 0.0
+   },
+   "age": 50,
+   "f0": 165,
+   "pace_wps": 2.12,
+   "cy_share": 0.05
+  },
+  "note": "live voicedesign run 1, row 3 (d0_s1.wav): 'охуенный, это не female'; ears had gated it 'age 50'; clone 3 (cd4bdd0d) liked best of all, replaced c1 drama-3 as John's voice"
+ },
+ {
+  "book": "Jane Eyre",
+  "name": "John Reed",
+  "brief": {
+   "sex": "male",
+   "age": 14,
+   "accent": "British RP",
+   "pitch": "low",
+   "pace": "slow",
+   "texture": [
+    "thick",
+    "puffy",
+    "nasal",
+    "whiny"
+   ],
+   "search": [
+    "british",
+    "boy",
+    "teen",
+    "young male",
+    "english boy",
+    "british teen",
+    "schoolboy",
+    "teen boy"
+   ],
+   "why": "A low, thick and puffy schoolboy voice with a slow whiny swagger fits the large, stout, flabby-cheeked 14-year-old bully."
+  },
+  "picked": "Male. A fourteen-year-old English schoolboy with a pampered posh southern English British Received Pronunciation accent. Thick, puffy and nasal timbre, low and heavy but still wavering unsteadily between boyish treble and gruff low notes, very slow swaggering pace, whiny entitled sneer, bullying and domineering.",
+  "passed_over": [
+   "Male. A fourteen-year-old English boy with a posh southern English accent, British Received Pronunciation. Low-pitched and thick for his age, puffy and slightly nasal, voice wavering between high and low as a teenager's does, slow lazy drawl, sulky, spoiled and cruel, talking down to a younger girl.",
+   "Male. A fourteen-year-old English boy, large and stout for his age, posh southern English British Received Pronunciation accent. Low, thick voice with puffy cheeks and a bleary nasal resonance, slow drawling pace, wavering adolescent crack between high and low, sallow, flabby and sullen, arrogant and hectoring toward inferiors."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.04,
+    "male": 0.96,
+    "child": 0.0
+   },
+   "age": 37,
+   "f0": 176,
+   "pace_wps": 2.59,
+   "cy_share": 0.08
+  },
+  "note": "on-demand run, row 5 (d1_s0.wav): '5 голос!'; ears had gated it 'age 37' as a sure man; same instruct gave men at f0 95-111 on other seeds"
+ },
+ {
+  "book": "Jane Eyre",
+  "name": "Georgiana Reed",
+  "brief": {
+   "sex": "child",
+   "age": 11,
+   "accent": "British RP",
+   "pitch": "high",
+   "pace": "medium",
+   "texture": [
+    "bright",
+    "clear",
+    "sharp",
+    "petulant"
+   ],
+   "search": [
+    "british",
+    "english girl",
+    "british girl",
+    "young girl",
+    "girl",
+    "child",
+    "schoolgirl",
+    "princess"
+   ],
+   "why": "A beautiful but spoiled 11-year-old needs a bright high-pitched clear British child voice with a sharp petulant insolence to convey her pampered carriage."
+  },
+  "picked": "Female. An eleven-year-old English child with posh British Received Pronunciation accent, southern English. Very high clear bright tone, crisp articulation, steady medium pace, spoiled and haughty with a pretty petulant snap, pink-cheeked princess manner, all charm curdled into insolent disdain for an inferior.",
+  "passed_over": [
+   "Female. An eleven-year-old English girl with posh southern English British Received Pronunciation accent. High bright clear voice, medium pace with sharp petulant edge, pretty and spoiled, insolent carriage, chin-up and dismissive as a pampered beauty speaking down to a lesser cousin.",
+   "Female. An eleven-year-old English schoolgirl, British Received Pronunciation with soft southern English lilt. Light high-pitched child voice, clear and bright, neat medium tempo, vain and prickly, sweet-sounding at first then turning sharp and pouty, the insolence of a pretty golden-curled darling used to being adored."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.44,
+    "male": 0.01,
+    "child": 0.55
+   },
+   "age": 22,
+   "f0": 302,
+   "pace_wps": 3.21,
+   "cy_share": 0.25,
+   "gate": null
+  }
+ },
+ {
+  "book": "The Tenement Stair",
+  "name": "Wee Jamie",
+  "brief": {
+   "sex": "child",
+   "gender": "boy",
+   "age": 8,
+   "accent": "Scottish (Glaswegian / broad Glaswegian Scots)",
+   "pitch": "high",
+   "pace": "fast",
+   "texture": [
+    "thin",
+    "bright",
+    "nasal",
+    "cheeky"
+   ],
+   "search": [
+    "scottish",
+    "scottish boy",
+    "glasgow",
+    "glaswegian",
+    "boy",
+    "child",
+    "kid",
+    "young boy"
+   ],
+   "why": "Scrawny 8-year-old Glasgow tenement boy requires a high, fast, cheeky child voice with a broad Glaswegian Scots accent to match his quoted Scots dialogue."
+  },
+  "picked": "Male. An eight-year-old Scottish boy with a broad Glaswegian accent. High, thin and bright voice, slightly nasal and reedy, fast chattering pace, cheeky and quick-witted, breathless with mischief, chirpy and insistent like a scrawny tenement kid standing his ground.",
+  "passed_over": [
+   "Male. An eight-year-old Glaswegian boy with a thick broad Glasgow Scots accent. High, skinny and reedy child's timbre, thin and nasal but clear, very fast and choppy rhythm, cheeky and fearless, impish and talkative, darting from word to word like a wiry kid on a tenement stair.",
+   "Male. An eight-year-old boy from Glasgow with a strong broad Glaswegian Scots accent. Very high-pitched child's voice, light and wiry with a bright nasal edge, rapid eager patter, cheeky, bold and streetwise, bubbling with energy, quick to talk back with scrappy confidence."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.1,
+    "male": 0.89,
+    "child": 0.0
+   },
+   "age": 40,
+   "f0": 262,
+   "pace_wps": 4.28,
+   "cy_share": 0.07
+  },
+  "note": "e2e run 3, row 6 (d0_s1.wav): 'был нормальным по идее' -- lukewarm yes; the library won that run"
+ }
+]

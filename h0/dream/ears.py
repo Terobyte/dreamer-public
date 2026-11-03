@@ -180,6 +180,27 @@ def measure(vid, cache=CACHE):
     return r
 
 
+def measure_wav(path, text, title=None):
+    """the same facts for a local wav that reads `text` (a designed voice, a clone's line); not cached"""
+    import numpy as np
+    import torch
+    pcm = subprocess.run(["ffmpeg", "-v", "quiet", "-i", path, "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
+                         capture_output=True, check=True).stdout
+    x = np.frombuffer(pcm, np.float32).copy()[:30 * SR]
+    proc, ag = _model("agegender")
+    with torch.no_grad():
+        age, g = ag(proc(x, sampling_rate=SR, return_tensors="pt").input_values)
+    heard = _model("asr")({"raw": x, "sampling_rate": SR}, generate_kwargs={"language": "en"})["text"]
+    r = {"id": os.path.basename(path), "title": title or os.path.basename(path), "langs": ["en"], "tags": [],
+         "uses": 0, "dur": round(len(x) / SR, 1), "age": round(float(age[0, 0]) * 100),
+         "sex": dict(zip(["female", "male", "child"], [round(float(v), 2) for v in g[0]])),
+         "heard": heard[:120], "wer": round(wer(text, heard), 2),
+         "pace_wps": round(len(words(heard)) / max(1.0, len(x) / SR), 2), "f0": round(f0_median(x) or 0),
+         "lang_p": lang_probs(x)}
+    r["p_nonen"], r["ru_share"], r["cy_share"] = shares(r["lang_p"])
+    return r
+
+
 if __name__ == "__main__":
     for vid in sys.argv[1:]:
         try:

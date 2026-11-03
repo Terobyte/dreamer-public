@@ -247,10 +247,19 @@ def _smart_voices(ctx, book):
     people = [p for p in people if p["name"] not in kept]
     if not people:
         return kept
-    res = voicecast.cast_voices(people, title, taken=[pool[l] for l in kept.values()])
+    res = voicecast.cast_voices(people, title, taken=[pool[l] for l in kept.values()],
+                                briefs_path=str(VOICES_PATH.with_name("voices_briefs.json")))
     (ctx.out / "voicecast.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
     voicecast.page(res, str(ctx.out / "listen.html"))
-    return dict(voicecast.add_to_pool(title, voicecast.choose(res), str(VOICES_PATH)), **kept)
+    chosen = voicecast.choose(res)
+    # no library voice passed the ears (no British boy of 14 for John Reed): design one, clone the best into Fish;
+    # design.html stays for the ear, voicedesign --pick re-chooses. A failure leaves the sex/age label.
+    try:
+        from dream import voicedesign
+        chosen.update(voicedesign.design_missing(people, res, title, str(ctx.out)))
+    except Exception as e:
+        print("voicedesign failed: %s: %s" % (type(e).__name__, e))
+    return dict(voicecast.add_to_pool(title, chosen, str(VOICES_PATH)), **kept)
 
 
 def _step_voices(ctx):

@@ -75,7 +75,38 @@ class Gates(unittest.TestCase):
         kid["sex"] = {"female": 0.0, "male": 0.1, "child": 0.9}
         self.assertIsNone(vc.gate(boy, kid))
         self.assertEqual(vc.gate(BRIEF, kid), "sex child")          # a grown man is not a child's voice
-        self.assertEqual(vc.gate(boy, LIB[GIRL]), "sex female")
+        self.assertEqual(vc.gate(boy, dict(LIB[GIRL], title="girl voice")), "sex female")
+
+    def test_a_boy_the_ears_call_female_is_kept(self):
+        # John Reed design #6 (d2_s0): the ears said female 0.97, the user picked it by ear; a library
+        # voice titled as a woman is still out
+        boy = dict(BRIEF, age=14)
+        unbroken = dict(facts("u" * 32, sex="female", age=34, f0=239, cy=3e-4))
+        self.assertIsNone(vc.gate(boy, unbroken))
+        self.assertEqual(vc.gate(boy, dict(unbroken, title="Young Woman Soft")), "sex female")
+        self.assertEqual(vc.gate(BRIEF, unbroken), "sex female")             # a grown man is still not a woman
+        self.assertEqual(vc.gate(dict(boy, sex="female"), facts("m" * 32)), "sex male")
+
+    def test_a_boy_s_age_is_trusted_only_on_a_sure_man(self):
+        # John Reed design run 2, row 3: ears "female 0.53, age 50", the user: "охуенный, не female"
+        boy = dict(BRIEF, age=14, pitch="low")
+        unsure = dict(facts("u" * 32, age=50, f0=165), sex={"female": 0.53, "male": 0.47, "child": 0.0})
+        sure_man = dict(facts("m" * 32, age=50, f0=120), sex={"female": 0.01, "male": 0.98, "child": 0.0})
+        self.assertIsNone(vc.gate(boy, unsure))
+        self.assertIn("age", vc.gate(boy, sure_man))
+        self.assertGreater(vc.score(boy, unsure), vc.score(boy, dict(unsure, age=20)) - 0.01)   # no age penalty
+        self.assertIn("age", vc.gate(BRIEF, dict(unsure, sex=sure_man["sex"], age=70)))           # men: as before
+        # on-demand run, row 5: "male 0.96, age 37" but f0 176 -- the user: "5 голос!"; the real men sat at 95-111 Hz
+        light = dict(sure_man, age=37, f0=176)
+        self.assertIsNone(vc.gate(boy, light))
+
+    def test_a_child_s_gender_is_kept_by_title(self):
+        # Wee Jamie, 8, Glasgow: "e girl" passed for a boy, a child brief had no sex gate
+        kid = dict(facts("k" * 32, age=10, f0=290), sex={"female": 0.4, "male": 0.0, "child": 0.6})
+        boy = dict(BRIEF, sex="child", gender="boy", age=8)
+        self.assertEqual(vc.gate(boy, dict(kid, title="e girl ")), "a girl's voice by title")
+        self.assertIsNone(vc.gate(boy, dict(kid, title="Energetic Child")))
+        self.assertEqual(vc.gate(dict(boy, gender="girl"), dict(kid, title="Boy ")), "a boy's voice by title")
 
     def test_a_low_boy_is_low_for_a_child(self):
         # the brief said pitch "low" for John Reed, 14: f0 246 lost ~5 points to men at 115 Hz
@@ -117,6 +148,22 @@ class Cast(unittest.TestCase):
         firsts = [v["pick"][0] for v in res.values()]
         self.assertEqual(len(set(firsts)), 3)
         self.assertEqual(firsts[0], N)
+
+    def test_a_book_keeps_its_briefs_across_runs(self):
+        # the Glasgow narrator: "Scottish" on one run, "British RP" on the next, a different voice each time
+        with tempfile.TemporaryDirectory() as d:
+            bp = os.path.join(d, "briefs.json")
+            lib = lambda term, n=12: [{"id": i} for i in (H, W, N)]
+            people = [{"name": "Narrator", "narrator": True}]
+            run = lambda accent: vc.cast_voices(people, "The Stair", call=judge({"Narrator": dict(BRIEF, accent=accent)}),
+                                                search=lib, measure=lambda i: LIB[i], pool={}, log=lambda *_: None,
+                                                briefs_path=bp)
+            first, second = run("Scottish"), run("British RP")
+            other = vc.cast_voices(people, "Another Book", call=judge({"Narrator": dict(BRIEF, accent="American")}),
+                                   search=lib, measure=lambda i: LIB[i], pool={}, log=lambda *_: None, briefs_path=bp)
+        self.assertEqual(first["Narrator"]["brief"]["accent"], "Scottish")
+        self.assertEqual(second["Narrator"]["brief"]["accent"], "Scottish")
+        self.assertEqual(other["Narrator"]["brief"]["accent"], "American")
 
     def test_a_voice_already_in_the_cast_is_not_picked_again(self):
         res = vc.distinct({"Murray": {"pick": [N, W], "ok": [{"id": N}, {"id": W}]}}, taken=[N])
@@ -186,6 +233,14 @@ class Apply(unittest.TestCase):
         self.assertEqual(cast["Watson"]["voice"], labels["Watson"])
         self.assertEqual(pool[labels["Watson"]], res["Watson"]["pick"][1])
         self.assertEqual(ear, labels)                             # a choice by ear is remembered for re-casts
+
+    def test_a_character_with_no_voice_is_left_out_not_fatal(self):
+        # John Reed: no library voice passed, choose() raised and the whole cast fell back to sex/age labels
+        res = Cast().run_cast()
+        res["Holmes"]["pick"], res["Holmes"]["ok"] = [], []
+        got = vc.choose(res)
+        self.assertNotIn("Holmes", got)
+        self.assertIn("Watson", got)
 
     def test_bad_choice_says_so(self):
         res = Cast().run_cast()

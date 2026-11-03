@@ -423,6 +423,22 @@ class TestSmartVoices(Base):
         got = json.loads((ctx.out / "book.json").read_text())
         self.assertEqual(got["cast"][names[0]]["voice"], "old_man")
 
+    def test_a_character_no_library_voice_fits_gets_a_designed_one(self):
+        from dream import voicecast, voicedesign
+        ctx, book = self._voices_ctx()
+        names = list(book["cast"])
+        res = {n: {"brief": {}, "rows": [], "ok": [], "pick": ["%032x" % i]} for i, n in enumerate(names + ["Narrator"])}
+        res[names[0]]["pick"] = []                         # nothing passed the ears
+        with mock.patch.object(voicecast, "cast_voices", return_value=res), \
+             mock.patch.object(voicecast, "page"), \
+             mock.patch.object(voicedesign, "design_missing", return_value={names[0]: "d" * 32}) as dm, \
+             mock.patch.object(voicecast, "add_to_pool",
+                               side_effect=lambda t, ch, p: {n: "vc_" + ch[n][:2] for n in ch}):
+            mb._step_voices(ctx)
+        self.assertIs(dm.call_args[0][1], res)
+        got = json.loads((ctx.out / "book.json").read_text())
+        self.assertEqual(got["cast"][names[0]]["voice"], "vc_dd")
+
     def test_live_cast_goes_into_the_book(self):
         from dream import voicecast
         ctx, book = self._voices_ctx()

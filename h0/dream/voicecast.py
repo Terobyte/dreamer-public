@@ -27,12 +27,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 POOL_PATH = os.path.join(HERE, "voices.json")
-HEARD_PATH = os.path.join(HERE, "voices_heard.json")   # {book slug: {name: label}} chosen by a person's ear, a re-cast keeps them
+HEARD_PATH = os.path.join(HERE, "voices_heard.json")
+BRIEFS_PATH = os.path.join(HERE, "voices_briefs.json")   # {book slug: {name: brief}}: a re-cast hears the same ask   # {book slug: {name: label}} chosen by a person's ear, a re-cast keeps them
 _ID = re.compile(r"^[0-9a-f]{32}$")
 NARRATOR = "Narrator"
 
 BRIEF = """You are a casting director for an audio drama. For the character below write a voice brief as JSON:
-{"sex": "male|female|child", "age": <apparent age in years>, "accent": "e.g. British RP / Scottish / General American",
+{"sex": "male|female|child", "gender": "boy|girl (for a child; the ears cannot tell)", "age": <apparent age in years>, "accent": "e.g. British RP / Scottish / General American",
  "pitch": "low|mid|high", "pace": "slow|medium|fast", "texture": ["3-5 words: dry, raspy, warm, crisp, nasal..."],
  "search": ["8 Fish library search terms. Fish matches them as a SUBSTRING of the voice's TITLE (titles are short, like
             'British Narrator', 'Old Man', 'Deep British Male', 'Doctor'), so use 1-2 plain words that would appear in a title:
@@ -64,6 +65,10 @@ NONEN_MAX = 0.05     # more than this is another language, not an accent
 WER_MAX = 0.15
 AGE_GAP = 22
 YOUNG = 16          # below this age a male/female brief also takes a voice the ears hear as a child
+SURE_MAN = 0.8      # p(male) above which the ears' age of a teen's voice is believed ...
+MAN_F0 = 140        # ... and only below this pitch
+BOYISH = re.compile(r"\b(boys?|lad|man|men|male|guy|son|prince)\b", re.I)
+WOMAN = re.compile(r"\b(wom[ae]n|girls?|female|lady|ladies|mother|mom|mum|grandma)\b", re.I)
 
 
 def _json(text):
@@ -147,8 +152,17 @@ def gate(b, r):
     """hard gates on measured facts -> reason or None"""
     want = b.get("sex")
     young = _num(b.get("age")) is not None and _num(b.get("age")) < YOUNG   # a boy of 14 sounds like a child
-    if want in ("male", "female") and top_sex(r) != want and not (young and top_sex(r) == "child"):
-        return "sex %s" % top_sex(r)
+    heard = top_sex(r)
+    # the ears hear an unbroken boy as a woman (John Reed design #6: female 0.97, the user's pick), so a
+    # young male brief keeps "female" unless the title itself says woman/girl
+    boyish = young and want == "male" and heard == "female" and not WOMAN.search(r.get("title") or "")
+    if want in ("male", "female") and heard != want and not (young and heard == "child") and not boyish:
+        return "sex %s" % heard
+    title = r.get("title") or ""
+    if want == "child" and b.get("gender") == "boy" and WOMAN.search(title):
+        return "a girl's voice by title"        # Wee Jamie got "e girl": a child brief had no sex gate at all
+    if want == "child" and b.get("gender") == "girl" and BOYISH.search(title):
+        return "a boy's voice by title"
     if "en" not in (r.get("langs") or []):
         return "langs %s" % r.get("langs")
     if r.get("wer") is None or r["wer"] > WER_MAX:
@@ -159,7 +173,7 @@ def gate(b, r):
     if r.get("p_nonen", 0) > NONEN_MAX:
         return "not english p=%s" % r.get("p_nonen")
     try:
-        if want != "child" and not b.get("narrator") and abs(r["age"] - float(b["age"])) > AGE_GAP:
+        if want != "child" and not b.get("narrator") and age_heard(b, r) and abs(r["age"] - float(b["age"])) > AGE_GAP:
             return "age %s" % r["age"]
     except (TypeError, ValueError):
         pass
@@ -171,9 +185,19 @@ def _british(b):
     return "brit" in a or " rp " in a or "english" in a
 
 
+def age_heard(b, r):
+    """the ears' age means something on an adult; on a teen it is noise (John Reed: the user's picks were
+    "female 0.97, 34", "female 0.53, 50", "male 0.96, 37"), so for a young brief only a sure, low man's age counts"""
+    young = _num(b.get("age")) is not None and _num(b.get("age")) < YOUNG
+    if not young:
+        return True
+    # a sure man with a man's pitch; John's "male 0.96, 37" at f0 176 was the user's pick, the men sat at 95-111 Hz
+    return (r.get("sex") or {}).get("male", 0) >= SURE_MAN and 0 < (r.get("f0") or 0) < MAN_F0
+
+
 def score(b, r):
     try:
-        s = -abs(r["age"] - float(b["age"])) / 10
+        s = -abs(r["age"] - float(b["age"])) / 10 if age_heard(b, r) else 0.0
     except (TypeError, ValueError):
         s = 0.0
     young = _num(b.get("age")) is not None and _num(b.get("age")) < YOUNG
@@ -224,12 +248,26 @@ def _facts_line(r):
         r["f0"], r["pace_wps"], r["wer"], r.get("cy_share"), r["score"])
 
 
-def cast_voices(people, book, call=_llm, search=_search, measure=_measure, pool=None, log=print, taken=()):
-    """people: [{name, look|cues, lines?, narrator?}] -> {name: {brief, rows, ok, pick}}"""
+def cast_voices(people, book, call=_llm, search=_search, measure=_measure, pool=None, log=print, taken=(),
+                briefs_path=None):
+    """people: [{name, look|cues, lines?, narrator?}] -> {name: {brief, rows, ok, pick}}. With briefs_path a
+    person's brief is written once per book and reused: the judge said "Scottish" then "British RP" for one narrator"""
     pool = load_pool() if pool is None else pool
+    kept = {}
+    if briefs_path and os.path.exists(briefs_path):
+        with open(briefs_path, encoding="utf-8") as f:
+            kept = json.load(f)
+    mine = kept.setdefault(_slug(book), {})
     res = {}
     for p in people:
-        b = brief(p, book, call)
+        if p["name"] in mine:
+            b = dict(mine[p["name"]])
+        else:
+            b = brief(p, book, call)
+            mine[p["name"]] = dict(b)
+            if briefs_path:
+                with open(briefs_path, "w", encoding="utf-8") as f:
+                    json.dump(kept, f, ensure_ascii=False, indent=1)
         if p.get("narrator"):
             b["narrator"] = True     # a storyteller's age is a taste, not a gate (old_man tells Squid's story)
         rows = []
@@ -311,8 +349,10 @@ def choose(res, choice=None):
     pool = load_pool()
     out = {}
     for n, v in res.items():
-        c = str(choice.get(n, "1"))
         order = v["pick"] + [r["id"] for r in v["ok"] if r["id"] not in v["pick"]][:2]
+        if n not in choice and not order:
+            continue                     # nothing passed the ears: voicedesign makes this one
+        c = str(choice.get(n, "1"))
         if c.isdigit() and 1 <= int(c) <= len(order):
             out[n] = order[int(c) - 1]
         elif _ID.match(c):
