@@ -1,6 +1,6 @@
 import { INSET, insideInset, legalCameraPoint, roomRect, snapInside, type CameraSide, type CameraLaw, type V3 } from "./camera.js";
 import type { V2 } from "./places.js";
-import { resolveMove, type MoveSubject } from "./moves.js";
+import { ndcOf, resolveMove, type MoveSubject } from "./moves.js";
 import { STYLES, pickMove, type Style } from "./styles.js";
 import type { Ease, ShotLook } from "./shotplan.js";
 
@@ -91,6 +91,11 @@ const LONG_LINE = 7;
 const WIDE_FACE_OK = 100;
 /** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
 const WIDE_SWING = 60;
+/** the wide's camera height above the floor (metres) and its largest look down (degrees) */
+const WIDE_EYE = 1.6;
+const WIDE_TILT = 18;
+/** a move must keep its subjects' heads inside this share of the frame (ndc), else the base frame stays */
+const IN_FRAME = 0.9;
 
 const dist = (a: V2, b: V2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const norm = (v: V2, fallback: V2 = [0, 1]): V2 => {
@@ -420,7 +425,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       faceBase = null;
       const tags = ev.tags ?? {};
       const pk = driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, rng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
-      const atom = SCHEME_ATOM[pk.id] ?? pk.id;
+      let atom = SCHEME_ATOM[pk.id] ?? pk.id;
+      // a lying listener has no shoulder: over it the ots framed Mama alone, huge (k12_calm 32–40 s) -> a two-shot
+      if (atom === "ots" && listener && (listener.lying || speaker.lying)) atom = "two";
       // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
       const pairAtom = atom === "ots" || atom === "two" || atom === "close_reaction";
       const roomAtom = atom === "wide" || atom === "master";
@@ -467,6 +474,18 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           const fd = a ? faceDir(a) : null;
           if (a && fd) faceBase = { name: a.name, dir: fd };
         }
+        // shoot true: a move that leaves a subject's head out of frame is no shot (k12_calm 6–16 s: the establishing
+        // master aimed at the room, Mirai lying under the frame); the base frame stays instead
+        const who = roomAtom ? crew.filter((a) => !a.offstage && a.room === speaker.room && a.level === speaker.level) : crew.filter((a) => ("pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : []).includes(a.name));
+        const headOf = (a: DActor): V3 => a.head ?? [a.pos[0], floorY + a.height * 0.93, a.pos[1]];
+        const sees = (cam: V3, look: V3, fov: number): boolean => who.every((a) => {
+          const p = ndcOf(headOf(a), cam, look, fov, inp.aspect ?? 16 / 9);
+          return p.depth > 0.2 && Math.abs(p.x) <= IN_FRAME && Math.abs(p.y) <= IN_FRAME;
+        });
+        const m = curMove!;
+        // the base frame at the style's height (ozu stays low) and still, no move name
+        if (!sees(m.cam, m.look, m.fov ?? 50) || (m.end && m.lookEnd && !sees(m.end, m.lookEnd, m.fovEnd ?? m.fov ?? 50)))
+          curMove = { cam: cy(out.cam), look: out.look, fov: cf(out.fov ?? (style.fov[0] + style.fov[1]) / 2), shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
       } catch {
         curMove = null;
       }
@@ -850,7 +869,12 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
         } else setSide(keep);
       }
       st.wideCut = cut;
-      return { plan: p, cut, cam: best.cam, look: at(c, ht * 0.5) };
+      // no steep look down: in a small room the 2.2 m wide looked 30–39° down and keystoned the walls (k12_calm,
+      // Nov 3); the camera comes down to a grown-up's eye, then lower until the tilt is under WIDE_TILT
+      const look = at(c, ht * 0.5);
+      const flat = Math.hypot(best.cam[0] - look[0], best.cam[2] - look[2]);
+      const y = Math.max(floorY + 0.9, Math.min(best.cam[1], floorY + WIDE_EYE, look[1] + flat * Math.tan(WIDE_TILT * DEG)));
+      return { plan: p, cut, cam: [best.cam[0], y, best.cam[2]], look };
     }
     case "orbit": {
       const a0 = Math.atan2(sideDir[1], sideDir[0]) + 0.25 * t;
