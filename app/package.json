@@ -10,6 +10,8 @@
     "dev:status": "iwsdk dev status",
     "reference:status": "iwsdk reference status",
     "reference:warmup": "iwsdk reference warmup",
+    "xr:check": "node tools/xr-check-runner.mjs",
+    "xr:doors": "XR_MODE=doors node tools/xr-check-runner.mjs",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
     "preview": "vite preview"

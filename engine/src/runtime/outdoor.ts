@@ -12,7 +12,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   RepeatWrapping,
-  Scene,
+  Object3D,
   SphereGeometry,
   SRGBColorSpace,
   Texture,
@@ -114,8 +114,9 @@ function groundDisc(def: OutdoorDef["ground"]): BufferGeometry {
 }
 
 /**
- * The street (В2): sky dome, ground disc, sun + hemi. The dome is unlit and
- * fog-free; `scene.background` takes the mean colour of the panorama's lower
+ * The street (В2): sky dome, ground disc, sun + hemi, returned as objects for
+ * the caller's root. The dome is unlit and fog-free; `background` (the host sets
+ * `scene.background`) takes the mean colour of the panorama's lower
  * band so nothing under the horizon shows black. Hemi colours come from the
  * upper/lower halves of the panorama (or of the gradient stand-in).
  */
@@ -129,7 +130,11 @@ export function skyTexture(t: Texture): Texture {
   return t;
 }
 
-export async function addOutdoor(scene: Scene, def: OutdoorDef, groundMaterial: MeshStandardMaterial): Promise<void> {
+export async function addOutdoor(
+  def: OutdoorDef,
+  groundMaterial: MeshStandardMaterial,
+): Promise<{ objects: Object3D[]; background: Color }> {
+  const objects: Object3D[] = [];
   let sky: Texture;
   let fromFile = false;
   if (def.sky.file) {
@@ -153,8 +158,7 @@ export async function addOutdoor(scene: Scene, def: OutdoorDef, groundMaterial: 
   );
   dome.name = "outdoor:sky";
   dome.renderOrder = -1;
-  scene.add(dome);
-  scene.background = low;
+  objects.push(dome);
 
   const mat = groundMaterial.clone();
   mat.vertexColors = true;
@@ -166,10 +170,10 @@ export async function addOutdoor(scene: Scene, def: OutdoorDef, groundMaterial: 
   }
   const ground = new Mesh(groundDisc(def.ground), mat);
   ground.name = "outdoor:ground";
-  scene.add(ground);
+  objects.push(ground);
 
   const sun = new DirectionalLight(0xfff4e0, 1.6);
   sun.position.set(60, 120, 40);
-  scene.add(sun);
-  scene.add(new HemisphereLight(top, below, 0.8));
+  objects.push(sun, new HemisphereLight(top, below, 0.8));
+  return { objects, background: low };
 }

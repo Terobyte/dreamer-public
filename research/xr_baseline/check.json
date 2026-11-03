@@ -1,0 +1,617 @@
+{
+  "ok": false,
+  "stages": [
+    {
+      "stage": "schema",
+      "status": "pass"
+    },
+    {
+      "stage": "plan",
+      "status": "pass"
+    },
+    {
+      "stage": "openings",
+      "status": "pass"
+    },
+    {
+      "stage": "stairs",
+      "status": "skipped"
+    },
+    {
+      "stage": "props",
+      "status": "fail"
+    },
+    {
+      "stage": "decals",
+      "status": "skipped"
+    },
+    {
+      "stage": "cameras",
+      "status": "skipped"
+    },
+    {
+      "stage": "nav",
+      "status": "skipped"
+    },
+    {
+      "stage": "routes",
+      "status": "skipped"
+    }
+  ],
+  "passport": {
+    "edges": [
+      {
+        "id": "bedroom#0",
+        "from": [
+          -2,
+          -1.75
+        ],
+        "to": [
+          2,
+          -1.75
+        ],
+        "len": 4,
+        "arc": null,
+        "normal_in": [
+          0,
+          1
+        ],
+        "sides": []
+      },
+      {
+        "id": "bedroom#1",
+        "from": [
+          2,
+          -1.75
+        ],
+        "to": [
+          2,
+          1.75
+        ],
+        "len": 3.5,
+        "arc": null,
+        "normal_in": [
+          -1,
+          0
+        ],
+        "sides": []
+      },
+      {
+        "id": "bedroom#2",
+        "from": [
+          2,
+          1.75
+        ],
+        "to": [
+          -2,
+          1.75
+        ],
+        "len": 4,
+        "arc": null,
+        "normal_in": [
+          0,
+          -1
+        ],
+        "sides": []
+      },
+      {
+        "id": "bedroom#3",
+        "from": [
+          -2,
+          1.75
+        ],
+        "to": [
+          -2,
+          -1.75
+        ],
+        "len": 3.5,
+        "arc": null,
+        "normal_in": [
+          1,
+          0
+        ],
+        "sides": []
+      }
+    ],
+    "snaps": [],
+    "openings": [],
+    "props": [
+      {
+        "id": "bedroom_bed",
+        "yaw": 0,
+        "obb": [
+          [
+            -0.89,
+            -1.917
+          ],
+          [
+            0.29,
+            -1.917
+          ],
+          [
+            0.29,
+            -0.383
+          ],
+          [
+            -0.89,
+            -0.383
+          ]
+        ],
+        "y": [
+          3,
+          3.75
+        ],
+        "aabb": [
+          [
+            -0.89,
+            -1.917
+          ],
+          [
+            0.29,
+            -0.383
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 1.179,
+          "d": 1.533,
+          "h": 0.75
+        }
+      },
+      {
+        "id": "bedroom_nightstand",
+        "yaw": 0,
+        "obb": [
+          [
+            -1.899,
+            -1.482
+          ],
+          [
+            -1.301,
+            -1.482
+          ],
+          [
+            -1.301,
+            -1.018
+          ],
+          [
+            -1.899,
+            -1.018
+          ]
+        ],
+        "y": [
+          3,
+          3.6
+        ],
+        "aabb": [
+          [
+            -1.899,
+            -1.482
+          ],
+          [
+            -1.301,
+            -1.018
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 0.597,
+          "d": 0.463,
+          "h": 0.6
+        }
+      },
+      {
+        "id": "bedroom_lamp",
+        "yaw": 0,
+        "obb": [
+          [
+            -1.769,
+            -1.418
+          ],
+          [
+            -1.431,
+            -1.418
+          ],
+          [
+            -1.431,
+            -1.082
+          ],
+          [
+            -1.769,
+            -1.082
+          ]
+        ],
+        "y": [
+          3.6,
+          4.05
+        ],
+        "aabb": [
+          [
+            -1.769,
+            -1.418
+          ],
+          [
+            -1.431,
+            -1.082
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 0.339,
+          "d": 0.336,
+          "h": 0.45
+        }
+      },
+      {
+        "id": "bedroom_shelf",
+        "yaw": 270,
+        "obb": [
+          [
+            1.958,
+            -1.254
+          ],
+          [
+            1.958,
+            -0.546
+          ],
+          [
+            1.602,
+            -0.546
+          ],
+          [
+            1.602,
+            -1.254
+          ]
+        ],
+        "y": [
+          3,
+          4
+        ],
+        "aabb": [
+          [
+            1.602,
+            -1.254
+          ],
+          [
+            1.958,
+            -0.546
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 0.708,
+          "d": 0.356,
+          "h": 1
+        }
+      },
+      {
+        "id": "bedroom_plant",
+        "yaw": 0,
+        "obb": [
+          [
+            1.279,
+            -1.95
+          ],
+          [
+            2.281,
+            -1.95
+          ],
+          [
+            2.281,
+            -0.35
+          ],
+          [
+            1.279,
+            -0.35
+          ]
+        ],
+        "y": [
+          4,
+          4.4
+        ],
+        "aabb": [
+          [
+            1.279,
+            -1.95
+          ],
+          [
+            2.281,
+            -0.35
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 1.002,
+          "d": 1.6,
+          "h": 0.4
+        }
+      },
+      {
+        "id": "bedroom_toyhouse",
+        "yaw": 270,
+        "obb": [
+          [
+            1.963,
+            -0.842
+          ],
+          [
+            1.963,
+            -0.458
+          ],
+          [
+            1.597,
+            -0.458
+          ],
+          [
+            1.597,
+            -0.842
+          ]
+        ],
+        "y": [
+          4,
+          4.26
+        ],
+        "aabb": [
+          [
+            1.597,
+            -0.842
+          ],
+          [
+            1.963,
+            -0.458
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 0.383,
+          "d": 0.366,
+          "h": 0.26
+        }
+      },
+      {
+        "id": "bedroom_rockhorse",
+        "yaw": 0,
+        "obb": [
+          [
+            1.716,
+            -1.034
+          ],
+          [
+            1.844,
+            -1.034
+          ],
+          [
+            1.844,
+            -0.766
+          ],
+          [
+            1.716,
+            -0.766
+          ]
+        ],
+        "y": [
+          4,
+          4.25
+        ],
+        "aabb": [
+          [
+            1.716,
+            -1.034
+          ],
+          [
+            1.844,
+            -0.766
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 0.127,
+          "d": 0.269,
+          "h": 0.25
+        }
+      },
+      {
+        "id": "bedroom_rug",
+        "yaw": 0,
+        "obb": [
+          [
+            -0.812,
+            -0.525
+          ],
+          [
+            0.412,
+            -0.525
+          ],
+          [
+            0.412,
+            0.725
+          ],
+          [
+            -0.812,
+            0.725
+          ]
+        ],
+        "y": [
+          3,
+          3.03
+        ],
+        "aabb": [
+          [
+            -0.812,
+            -0.525
+          ],
+          [
+            0.412,
+            0.725
+          ]
+        ],
+        "wall": null,
+        "size": {
+          "w": 1.225,
+          "d": 1.25,
+          "h": 0.03
+        }
+      }
+    ],
+    "decals": []
+  },
+  "errors": [
+    {
+      "code": "PROP_HITS_WALL",
+      "stage": "props",
+      "path": "/props/0/at",
+      "msg": "bedroom_bed заходит в стену bedroom#0 на 0.227 м",
+      "fix": {
+        "at": [
+          -0.3,
+          -0.913
+        ]
+      },
+      "data": {
+        "depth": 0.22662170623923478
+      }
+    },
+    {
+      "code": "PROP_HITS_WALL",
+      "stage": "props",
+      "path": "/props/3/at",
+      "msg": "bedroom_shelf заходит в стену bedroom#1 на 0.018 м",
+      "fix": {
+        "at": [
+          1.752,
+          -0.9
+        ]
+      },
+      "data": {
+        "depth": 0.018109627552665486
+      }
+    },
+    {
+      "code": "PROP_ON_TOO_SMALL",
+      "stage": "props",
+      "path": "/props/4/at",
+      "msg": "bedroom_plant: след 1.002 × 1.6 м не лежит на опоре bedroom_shelf 0.708 × 0.356 м"
+    },
+    {
+      "code": "PROP_ON_TOO_SMALL",
+      "stage": "props",
+      "path": "/props/5/at",
+      "msg": "bedroom_toyhouse: след 0.383 × 0.366 м не лежит на опоре bedroom_shelf 0.708 × 0.356 м"
+    }
+  ],
+  "warnings": [
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/0/size",
+      "msg": "bedroom_bed: факт 1.179×1.533×0.75 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 1.179,
+          "d": 1.533,
+          "h": 0.75
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/2/size",
+      "msg": "bedroom_lamp: факт 0.339×0.336×0.45 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 0.339,
+          "d": 0.336,
+          "h": 0.45
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/3/size",
+      "msg": "bedroom_shelf: факт 0.708×0.356×1 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 0.708,
+          "d": 0.356,
+          "h": 1
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/4/size",
+      "msg": "bedroom_plant: факт 1.002×1.6×0.4 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 1.002,
+          "d": 1.6,
+          "h": 0.4
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/5/size",
+      "msg": "bedroom_toyhouse: факт 0.383×0.366×0.26 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 0.383,
+          "d": 0.366,
+          "h": 0.26
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/6/size",
+      "msg": "bedroom_rockhorse: факт 0.127×0.269×0.25 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 0.127,
+          "d": 0.269,
+          "h": 0.25
+        }
+      }
+    },
+    {
+      "code": "PROP_SIZE_ODD",
+      "stage": "props",
+      "path": "/props/7/size",
+      "msg": "bedroom_rug: факт 1.225×1.25×0.03 расходится с size > 20%",
+      "fix": {
+        "size": {
+          "w": 1.225,
+          "d": 1.25,
+          "h": 0.03
+        }
+      }
+    },
+    {
+      "code": "TRI_PROP_BUDGET",
+      "stage": "routes",
+      "path": "/props/4",
+      "msg": "bedroom_plant: 8294 треугольников, для его класса не больше 1000",
+      "data": {
+        "id": "bedroom_plant",
+        "tris": 8294,
+        "limit": 1000
+      }
+    },
+    {
+      "code": "TRI_PROP_BUDGET",
+      "stage": "routes",
+      "path": "/props/5",
+      "msg": "bedroom_toyhouse: 22856 треугольников, для его класса не больше 1000",
+      "data": {
+        "id": "bedroom_toyhouse",
+        "tris": 22856,
+        "limit": 1000
+      }
+    }
+  ]
+}
