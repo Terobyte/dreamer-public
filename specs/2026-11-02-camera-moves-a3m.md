@@ -6,7 +6,7 @@
 
 ### Территория
 
-- **Пишет только:** `engine/bin/moves.ts` (новый, только `--catalog`), `engine/src/runtime/stage/index.ts`, `engine/src/runtime/stage/director.ts`, одна строка в `engine/src/runtime/main.ts` (`?camera_style=`), тесты `engine/test/stage-moves-catalog.test.ts` (новый), `engine/test/stage-director-forced.test.ts` (новый), `research/feature_map_camera_a.md`.
+- **Пишет только:** `engine/bin/moves.ts` (новый, только `--catalog`), `engine/src/runtime/stage/index.ts`, `engine/src/runtime/stage/director.ts`, одна строка в `engine/src/runtime/main.ts` (`?camera_style=`), тесты `engine/test/stage-moves-catalog.test.ts` (новый), `engine/test/stage-director-forced.test.ts` (новый), `engine/test/stage-k2-fixes.test.ts` (новый), `research/feature_map_camera_a.md`.
 - **Не пишет:** `h0/**`, `app/**`, `engine/src/runtime/stage/moves.ts` и `styles.ts` (К1/К2 готовы; нужна правка — `BLOCKED` в долг).
 - Карта кода: строки в `research/feature_map_camera_a.md`, хозяин переносит при слиянии.
 
@@ -44,6 +44,14 @@
 7. **Приоритет Г8.** Если у сцены есть и `shotplan` (Г8), и `moves`, план Г8 приоритетнее, как сегодня; `moves` действует там, где плана Г8 нет. Тест на фейковой сцене.
 8. **Факт критика.** `move` в факте — принуждённый ID, если он был (после раскладки схемы — атом), иначе как в К2. Тест читает JSONL.
 
+9. **Долг К2 на пути рантайма** (К2 шипнута на фьюзе, судья раунда 8). Каждый пункт — свой тест в `stage-k2-fixes.test.ts`:
+   - валидный `goto` ставит walk-событие с `tags.enter` и `speaker` = идущий актёр, как `enter`; `turn_away` `tags.enter` не ставит;
+   - `follow_side` на входе вызывает `resolveMove` с `ctx.walk` (маршрут актёра) → есть `end`, не `MOVE_STATIC`; `index.ts` не обнуляет `speaker` у walk-событий;
+   - один переход комнаты даёт ровно `cut +1` (не `forceCut` и `roomKey` дважды);
+   - `frontal` у `anderson`: угол к `faceYaw` ≤ 10°, иначе другой приём или предупреждение, но не план с меткой `frontal`;
+   - первое событие сцены получает `tags.first`, даже если это вход актёра.
+   Доли движения по стилям и точная фикстура Кошакана в `stage-styles.test.ts` — не в этой версии (долг).
+
 Проверки:
-- [ ] красные тесты по правилам 1–8
+- [ ] красные тесты по правилам 1–9
 - [ ] код; `research/feature_map_camera_a.md` дописан; все существующие тесты режиссёра и `shotplan` зелёные; гейт зелёный
