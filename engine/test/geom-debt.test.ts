@@ -260,4 +260,32 @@ describe("geometry debt", () => {
     expect(railWith(2.1)).toBe(false);
     expect(railWith(3.0)).toBe(true);
   });
+
+  it("L106 a slab over two lower rooms meets each one's ceiling", () => {
+    const raw = demo();
+    // loft reaches 2 m over living (ceiling 3.4) besides hall (ceiling 3.0)
+    raw.rooms[2].shape = [[-2, 2], [2, 2], [2, 10.5], [-2, 10.5]];
+    const { report, ctx } = runCheck(raw);
+    expect(report.errors).toEqual([]);
+    const slabs = buildGeometry(ctx).meshes.filter((m) => m.kind === "slab" && m.room === "loft");
+    /** y of the slab's underside over (x, z) */
+    const bottomAt = (x: number, z: number): number[] => {
+      const ys: number[] = [];
+      for (const m of slabs) {
+        for (let t = 0; t < m.indices.length; t += 3) {
+          const ix = [0, 1, 2].map((k) => m.indices[t + k]);
+          if (ix.some((i) => m.normals[i * 3 + 1] > -0.99)) continue;
+          const p = ix.map((i) => [m.positions[i * 3], m.positions[i * 3 + 1], m.positions[i * 3 + 2]]);
+          const side = (a: number[], b: number[]): number => (b[0] - a[0]) * (z - a[2]) - (b[2] - a[2]) * (x - a[0]);
+          const d = [side(p[0], p[1]), side(p[1], p[2]), side(p[2], p[0])];
+          if (d.every((v) => v >= -1e-9) || d.every((v) => v <= 1e-9)) ys.push(p[0][1]);
+        }
+      }
+      return ys;
+    };
+    expect(bottomAt(0.3, 8.1)).toEqual([3.0]);
+    expect(bottomAt(0.3, 3.1)).toEqual([3.4]);
+    // whatever the slab covers, its top is the loft floor
+    for (const m of slabs) for (let i = 1; i < m.positions.length; i += 3) expect(m.positions[i]).toBeLessThanOrEqual(3.6 + 1e-9);
+  });
 });

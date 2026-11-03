@@ -18,7 +18,7 @@ import { sunOf, type SunLight } from "./lights.js";
 import { doorMeshes } from "./doors.js";
 import { fixtureMeshes } from "./fixtures.js";
 import { stairMeshes } from "./stairs.js";
-import { extrudeFace, footprintsOverlap } from "./slab.js";
+import { extrudeFace, footprintsOverlap, slabRegions } from "./slab.js";
 import { roofMeshes } from "./roof.js";
 import type { StairGeo } from "../stairs/place.js";
 
@@ -226,11 +226,17 @@ export function buildGeometry(ctx: Ctx, assetFiles: AssetFiles = {}, glbSizes: G
     // the slab a room on an upper level stands on, between it and the ceiling
     // of the room below: footprint × [y − slab, y] (spec "Уровни"), ends in
     // `exterior`
-    const below = slabUnder(r, y, geoRooms, levelY);
-    if (below !== null) {
+    const lowers = slabUnder(r, y, geoRooms, levelY);
+    if (lowers.length > 0 && lowers.every((l) => Math.abs(l.ceil - lowers[0].ceil) <= EPS)) {
       meshes.push(
-        extrudeFace({ id: `${r.id}:slab`, kind: "slab", material: EXTERIOR, room: r.id }, r.outline, floorCuts.get(r.id) ?? [], below, y),
+        extrudeFace({ id: `${r.id}:slab`, kind: "slab", material: EXTERIOR, room: r.id }, r.outline, floorCuts.get(r.id) ?? [], lowers[0].ceil, y),
       );
+    } else if (lowers.length > 0) {
+      // lower rooms of different heights: each gets the slab down to its own ceiling
+      slabRegions(r.outline, floorCuts.get(r.id) ?? [], lowers).forEach((f, k) => {
+        const id = k === 0 ? `${r.id}:slab` : `${r.id}:slab:${k}`;
+        meshes.push(extrudeFace({ id, kind: "slab", material: EXTERIOR, room: r.id }, f.outer, f.holes, f.yBot, y));
+      });
     }
   }
 
@@ -371,24 +377,22 @@ function wallRoom(
  * it, so touching corners or a contained centroid are neither necessary nor
  * sufficient. Whether the area is positive is decided exactly
  * (`footprintsOverlap`), not by the millimetre-rounded `overlapArea`, which
- * only ranks the candidates: where several qualify, the largest overlap wins,
- * the first in `rooms` on a tie.
+ * only ranks the candidates: the largest overlap comes first, the first in
+ * `rooms` on a tie. Every qualifying room is returned, so a slab over rooms
+ * of different heights can meet each ceiling (Д13).
  */
-function slabUnder(r: any, y: number, geoRooms: any[], levelY: Map<string, number>): number | null {
+function slabUnder(r: any, y: number, geoRooms: any[], levelY: Map<string, number>): Array<{ outline: V2[]; ceil: number }> {
   let bestY = -Infinity;
   for (const ly of levelY.values()) if (ly < y - EPS && ly > bestY) bestY = ly;
-  if (!Number.isFinite(bestY)) return null;
-  let top: number | null = null;
-  let bestArea = 0;
-  for (const other of geoRooms) {
-    if ((levelY.get(String(other.level)) ?? 0) !== bestY) continue;
-    if (!footprintsOverlap(r.outline as V2[], other.outline as V2[])) continue;
+  if (!Number.isFinite(bestY)) return [];
+  const found: Array<{ outline: V2[]; ceil: number; area: number; k: number }> = [];
+  geoRooms.forEach((other, k) => {
+    if ((levelY.get(String(other.level)) ?? 0) !== bestY) return;
+    if (!footprintsOverlap(r.outline as V2[], other.outline as V2[])) return;
     const ceil = bestY + Number(other.height);
-    if (ceil >= y - EPS) continue;
-    const area = overlapArea(r.outline as V2[], other.outline as V2[]);
-    if (top !== null && area <= bestArea) continue;
-    bestArea = area;
-    top = ceil;
-  }
-  return top;
+    if (ceil >= y - EPS) return;
+    found.push({ outline: other.outline as V2[], ceil, area: overlapArea(r.outline as V2[], other.outline as V2[]), k });
+  });
+  found.sort((a, b) => b.area - a.area || a.k - b.k);
+  return found.map(({ outline, ceil }) => ({ outline, ceil }));
 }

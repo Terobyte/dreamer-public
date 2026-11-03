@@ -1,3 +1,5 @@
+import { Clipper, FillRule } from "clipper2-ts";
+import type { Path64 } from "clipper2-ts";
 import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
 import type { Mesh } from "./geometry.js";
@@ -238,4 +240,45 @@ export function footprintsOverlap(pa: V2[], pb: V2[]): boolean {
     }
   }
   return false;
+}
+
+const toUm = (poly: V2[]): Path64 => poly.map(([x, z]) => ({ x: Math.round(x * 1e6), y: Math.round(z * 1e6) }));
+const fromUm = (path: Path64): V2[] => path.map((q) => [q.x / 1e6, q.y / 1e6] as V2);
+
+/** clipper output as faces: each positive ring with the negative rings inside it */
+function asFaces(paths: Path64[]): Array<{ outer: V2[]; holes: V2[][] }> {
+  const live = paths.filter((p) => Math.abs(Clipper.area(p)) >= 1e6);
+  const faces = live.filter((p) => Clipper.isPositive(p)).map((p) => ({ outer: fromUm(p), holes: [] as V2[][] }));
+  for (const p of live) {
+    if (Clipper.isPositive(p)) continue;
+    const hole = fromUm(p);
+    const host = faces.find((f) => inPoly(f.outer, hole[0])) ?? faces[0];
+    host?.holes.push(hole);
+  }
+  return faces;
+}
+
+/**
+ * The slab under an upper room split by the ceiling it sits on: over each
+ * lower room whose ceiling differs from the first one's (the largest overlap)
+ * the slab reaches down to that room's own ceiling; the rest of the footprint
+ * keeps the first ceiling (Д13). `cuts` are stair holes through it.
+ */
+export function slabRegions(
+  outline: V2[],
+  cuts: V2[][],
+  lowers: Array<{ outline: V2[]; ceil: number }>,
+): Array<{ outer: V2[]; holes: V2[][]; yBot: number }> {
+  const main = lowers[0];
+  const others = lowers.slice(1).filter((l) => Math.abs(l.ceil - main.ceil) > EPS);
+  const cutPaths = cuts.map(toUm);
+  const out: Array<{ outer: V2[]; holes: V2[][]; yBot: number }> = [];
+  const rest = Clipper.difference([toUm(outline)], [...cutPaths, ...others.map((l) => toUm(l.outline))], FillRule.NonZero);
+  for (const f of asFaces(rest)) out.push({ ...f, yBot: main.ceil });
+  for (const l of others) {
+    const over = Clipper.intersect([toUm(outline)], [toUm(l.outline)], FillRule.NonZero);
+    const piece = cutPaths.length > 0 ? Clipper.difference(over, cutPaths, FillRule.NonZero) : over;
+    for (const f of asFaces(piece)) out.push({ ...f, yBot: l.ceil });
+  }
+  return out;
 }
