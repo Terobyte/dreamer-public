@@ -68,6 +68,22 @@ class Gates(unittest.TestCase):
         self.assertIn("langs", vc.gate(BRIEF, facts("x" * 32, langs=("ru",))))
         self.assertIsNone(vc.gate(BRIEF, LIB[H]))
 
+    def test_a_boy_may_sound_like_a_child(self):
+        # John Reed, 14: the ears call "Boy" and "Teen" child, the sex gate kept only men of 20-30 (Jane Eyre run)
+        boy = dict(BRIEF, age=14)
+        kid = facts("k" * 32, sex="male", age=14, f0=230)
+        kid["sex"] = {"female": 0.0, "male": 0.1, "child": 0.9}
+        self.assertIsNone(vc.gate(boy, kid))
+        self.assertEqual(vc.gate(BRIEF, kid), "sex child")          # a grown man is not a child's voice
+        self.assertEqual(vc.gate(boy, LIB[GIRL]), "sex female")
+
+    def test_a_low_boy_is_low_for_a_child(self):
+        # the brief said pitch "low" for John Reed, 14: f0 246 lost ~5 points to men at 115 Hz
+        boy = dict(BRIEF, age=14, pitch="low", pace="medium")
+        kid = dict(facts("k" * 32, age=13, f0=246, cy=2e-3), sex={"female": 0.0, "male": 0.1, "child": 0.9})
+        man = facts("m" * 32, age=22, f0=115, cy=2e-3)
+        self.assertGreater(vc.score(boy, kid), vc.score(boy, man))
+
     def test_a_noisy_sample_is_not_a_russian_accent(self):
         # ashley: p(ru) 4.6e-4 but ru is 3% of the non-English mass; gavrilov@ru: 8e-4 and 22%
         noisy = facts("n" * 32, ru=4.6e-4, cy=1e-2)
@@ -101,6 +117,10 @@ class Cast(unittest.TestCase):
         firsts = [v["pick"][0] for v in res.values()]
         self.assertEqual(len(set(firsts)), 3)
         self.assertEqual(firsts[0], N)
+
+    def test_a_voice_already_in_the_cast_is_not_picked_again(self):
+        res = vc.distinct({"Murray": {"pick": [N, W], "ok": [{"id": N}, {"id": W}]}}, taken=[N])
+        self.assertEqual(res["Murray"]["pick"][0], W)
 
     def test_a_franchise_title_is_rejected_whatever_the_judge_picks(self):
         res = self.run_cast(pick={"Holmes": [FAN]})
@@ -153,7 +173,9 @@ class Apply(unittest.TestCase):
                 chosen = vc.choose(res, {"Watson": "2", "Narrator": "old_man"})
             finally:
                 vc.load_pool = vc_load
-            labels = vc.apply(d, "A Study in Scarlet", chosen, pool_path=pool_p)
+            heard_p = os.path.join(d, "heard.json")
+            labels = vc.apply(d, "A Study in Scarlet", chosen, pool_path=pool_p, heard_path=heard_p)
+            ear = vc.heard("A Study in Scarlet", heard_p)
             pool = rd(pool_p)
             cast = rd(os.path.join(d, "cast", "cast.json"))
             stage = rd(os.path.join(d, "stage", "stage.json"))
@@ -163,6 +185,7 @@ class Apply(unittest.TestCase):
         self.assertEqual(stage["narrator_voice"], "old_man")
         self.assertEqual(cast["Watson"]["voice"], labels["Watson"])
         self.assertEqual(pool[labels["Watson"]], res["Watson"]["pick"][1])
+        self.assertEqual(ear, labels)                             # a choice by ear is remembered for re-casts
 
     def test_bad_choice_says_so(self):
         res = Cast().run_cast()

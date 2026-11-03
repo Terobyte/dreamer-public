@@ -39,8 +39,9 @@ class BriefTest(unittest.TestCase):
     def test_schema_voice_enum_is_voices_json(self):
         with open(brief.SCHEMA_PATH, encoding='utf-8') as f:
             s = json.load(f)
-        # `<label>@ru` keys are lookups for --lang ru, not labels a brief may pick
-        labels = [k for k in VOICES if '@' not in k]
+        # `<label>@ru` keys are lookups for --lang ru, `vc_` keys one book's voicecast picks (L177):
+        # neither is a label a brief may pick
+        labels = [k for k in VOICES if '@' not in k and not k.startswith('vc_')]
         self.assertEqual(s['properties']['cast']['items']['properties']['voice']['enum'], labels)
 
     def test_valid(self):

@@ -27,6 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 POOL_PATH = os.path.join(HERE, "voices.json")
+HEARD_PATH = os.path.join(HERE, "voices_heard.json")   # {book slug: {name: label}} chosen by a person's ear, a re-cast keeps them
 _ID = re.compile(r"^[0-9a-f]{32}$")
 NARRATOR = "Narrator"
 
@@ -52,6 +53,7 @@ film, show, anime, game or book franchise (e.g. "Gojo Satoru English Dub", "Squi
 Generic descriptions ("British Narrator", "Old Man", "Detective") are fine. Reply JSON {"flagged": [<n>, ...]}."""
 
 PITCH = {"low": (60, 115), "mid": (95, 170), "high": (150, 320)}
+YOUNG_PITCH = {"low": (140, 240), "mid": (180, 280), "high": (220, 340)}   # "low" for a boy of 14 is not a man's low
 PACE = {"slow": 2.3, "medium": 2.7, "fast": 3.2}
 SEARCH_TERMS = 8
 PER_TERM = 12
@@ -61,6 +63,7 @@ RU_FLOOR = 2e-4      # below this p(ru) the share is noise
 NONEN_MAX = 0.05     # more than this is another language, not an accent
 WER_MAX = 0.15
 AGE_GAP = 22
+YOUNG = 16          # below this age a male/female brief also takes a voice the ears hear as a child
 
 
 def _json(text):
@@ -133,10 +136,18 @@ def top_sex(r):
     return max(r["sex"], key=r["sex"].get)
 
 
+def _num(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
 def gate(b, r):
     """hard gates on measured facts -> reason or None"""
     want = b.get("sex")
-    if want in ("male", "female") and top_sex(r) != want:
+    young = _num(b.get("age")) is not None and _num(b.get("age")) < YOUNG   # a boy of 14 sounds like a child
+    if want in ("male", "female") and top_sex(r) != want and not (young and top_sex(r) == "child"):
         return "sex %s" % top_sex(r)
     if "en" not in (r.get("langs") or []):
         return "langs %s" % r.get("langs")
@@ -165,7 +176,8 @@ def score(b, r):
         s = -abs(r["age"] - float(b["age"])) / 10
     except (TypeError, ValueError):
         s = 0.0
-    lo, hi = PITCH.get(b.get("pitch"), (60, 320))
+    young = _num(b.get("age")) is not None and _num(b.get("age")) < YOUNG
+    lo, hi = (YOUNG_PITCH if young else PITCH).get(b.get("pitch"), (60, 340))
     if r.get("f0") and not lo <= r["f0"] <= hi:
         s -= min(abs(r["f0"] - lo), abs(r["f0"] - hi)) / 25
     s -= abs((r.get("pace_wps") or 2.7) - PACE.get(b.get("pace"), 2.7)) * 1.5
@@ -194,9 +206,10 @@ def ip_flags(rows, call=_llm):
     raise RuntimeError("voicecast: the title check failed, no pick without it")
 
 
-def distinct(res):
-    """every character's first choice its own voice, in cast order; the judge's order kept otherwise"""
-    used = set()
+def distinct(res, taken=()):
+    """every character's first choice its own voice, in cast order, none of the taken ones (voices already
+    in the cast); the judge's order kept otherwise"""
+    used = set(taken)
     for v in res.values():
         own = [i for i in v["pick"] + [r["id"] for r in v["ok"]] if i not in used]
         if own:
@@ -211,7 +224,7 @@ def _facts_line(r):
         r["f0"], r["pace_wps"], r["wer"], r.get("cy_share"), r["score"])
 
 
-def cast_voices(people, book, call=_llm, search=_search, measure=_measure, pool=None, log=print):
+def cast_voices(people, book, call=_llm, search=_search, measure=_measure, pool=None, log=print, taken=()):
     """people: [{name, look|cues, lines?, narrator?}] -> {name: {brief, rows, ok, pick}}"""
     pool = load_pool() if pool is None else pool
     res = {}
@@ -255,7 +268,7 @@ def cast_voices(people, book, call=_llm, search=_search, measure=_measure, pool=
         ids = {r["id"] for r in v["ok"]}
         got = picks.get(n) if isinstance(picks.get(n), list) else []
         v["pick"] = [i for i in got if i in ids][:3] or [r["id"] for r in v["ok"][:3]]
-    return distinct(res)
+    return distinct(res, taken)
 
 
 def page(res, out_html, cache=None):
@@ -331,11 +344,28 @@ def add_to_pool(book, chosen, pool_path=POOL_PATH):
     return labels
 
 
-def apply(run_dir, book, chosen, pool_path=POOL_PATH):
-    """write the voices in: pool labels, cast.json voice, stage.json narrator_voice -> {name: label}"""
-    with open(pool_path, encoding="utf-8") as f:
-        pool = json.load(f)
+def heard(book, path=HEARD_PATH):
+    """{name: pool label} a person chose by ear for this book; make.book's live cast does not re-cast them"""
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding="utf-8") as f:
+        return dict(json.load(f).get(_slug(book)) or {})
+
+
+def hear(book, labels, path=HEARD_PATH):
+    d = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+    d.setdefault(_slug(book), {}).update(labels)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(d, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def apply(run_dir, book, chosen, pool_path=POOL_PATH, heard_path=HEARD_PATH):
+    """a person's choice: pool labels, cast.json voice, stage.json narrator_voice, voices_heard.json -> {name: label}"""
     labels = add_to_pool(book, chosen, pool_path)
+    hear(book, labels, heard_path)
     cast_p = os.path.join(run_dir, "cast", "cast.json")
     with open(cast_p, encoding="utf-8") as f:
         cast = json.load(f)

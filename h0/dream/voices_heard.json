@@ -1,0 +1,19 @@
+{
+ "a_study_in_scarlet": {
+  "Holmes": "man",
+  "Narrator": "vc_a_study_in_scarlet_narrator",
+  "Watson": "vc_a_study_in_scarlet_watson"
+ },
+ "jane_eyre": {
+  "Bessie": "woman",
+  "Eliza Reed": "vc_jane_eyre_eliza_reed",
+  "Georgiana Reed": "vc_jane_eyre_georgiana_reed",
+  "Jane Eyre": "vc_jane_eyre_jane_eyre",
+  "John Reed": "vc_jane_eyre_john_reed",
+  "Miss Abbot": "vc_jane_eyre_miss_abbot",
+  "Mr. Miles": "vc_jane_eyre_mr_miles",
+  "Mr. Reed": "vc_jane_eyre_mr_reed",
+  "Mrs. Reed": "vc_jane_eyre_mrs_reed",
+  "Narrator": "vc_jane_eyre_narrator"
+ }
+}
