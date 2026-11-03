@@ -198,4 +198,161 @@ describe("buildWorld", () => {
     expect(withBase("./worlds/x/", "/absolute.glb")).toBe("/absolute.glb");
     expect(withBase("", "assets/foo.glb")).toBe("assets/foo.glb");
   });
+
+  // X2 contract: host must not allocate in update() and package script must guard XR exit / sessionActive
+  it("xr_host_no_alloc_in_update_and_package_guards", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const host = readFileSync(join(root, "app/src/engine-host.ts"), "utf8");
+    // F4: no toFixed / template that allocates per frame inside update()
+    const updateBlock = host.slice(host.indexOf("update()"));
+    expect(updateBlock.includes("toFixed")).toBe(false);
+    const pkg = JSON.parse(readFileSync(join(root, "app/package.json"), "utf8"));
+    const script: string = pkg.scripts["xr:check"] ?? "";
+    // F1: xr exit must run even if browser run fails — no bare && chain before exit
+    // detect pattern "&& iwsdk xr exit" which skips on failure
+    expect(script.includes("&& iwsdk xr exit")).toBe(false);
+    const runnerContent = readFileSync(join(root, "app/tools/xr-check-runner.mjs"), "utf8");
+    expect(runnerContent.includes("xr exit")).toBe(true);
+    // F2: sessionActive must be checked in runner (not via comment in package.json)
+    expect(runnerContent.includes("sessionActive")).toBe(true);
+    const gi = readFileSync(join(root, ".gitignore"), "utf8");
+    // F5: single rule
+    const count = (gi.match(/app\/public\/worlds\//g) ?? []).length;
+    expect(count).toBe(1);
+    const fmap = readFileSync(join(root, "research/feature_map_xr.md"), "utf8");
+    // F3: map mentions pickWorld and xr-check
+    expect(fmap.includes("pickWorld")).toBe(true);
+    expect(fmap.includes("xr-check")).toBe(true);
+  });
+
+  // F9/F10: runner must treat signal termination and xr exit failures as errors.
+  // Behavioral: a fake `iwsdk` on PATH plays each failure; the real runner must exit non-zero
+  // and still try `xr exit`.
+  it("xr_check_runner_handles_signal_and_exit_error", async () => {
+    const { mkdtempSync, writeFileSync, readFileSync, chmodSync, rmSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const { fileURLToPath } = await import("node:url");
+    const { spawnSync } = await import("node:child_process");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const runner = join(root, "app/tools/xr-check-runner.mjs");
+    const dir = mkdtempSync(join(tmpdir(), "xrcheck-"));
+    const fake = join(dir, "iwsdk");
+    writeFileSync(fake, [
+      "#!/bin/sh",
+      'echo "$*" >> "$XR_LOG"',
+      'case "$*" in',
+      '  "runtime status") echo \'{"data":{"result":{"browser":{"lifecycle":{"state":"running"},"status":"connected"}}}}\' ;;',
+      '  "browser run"*) [ "$XR_MODE" = signal ] && kill -TERM $$; printf \'{\\n"data":{"result":{"code":0}}}\\n\' ;;',
+      '  "xr status") echo \'{"sessionActive": true}\' ;;',
+      '  "xr exit") [ "$XR_MODE" = exitfail ] && exit 7; [ "$XR_MODE" = exitsignal ] && kill -TERM $$ ;;',
+      "esac",
+      "exit 0",
+      "",
+    ].join("\n"));
+    chmodSync(fake, 0o755);
+    const play = (mode: string) => {
+      const log = join(dir, `${mode}.log`);
+      writeFileSync(log, "");
+      const r = spawnSync(process.execPath, [runner], {
+        cwd: dir,
+        env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, XR_MODE: mode, XR_LOG: log },
+        encoding: "utf8",
+        timeout: 30_000,
+      });
+      return { code: r.status, calls: readFileSync(log, "utf8") };
+    };
+    try {
+      const ok = play("ok");
+      expect(ok.code).toBe(0); // the fake is a passing run: failures below are the runner's doing
+      for (const mode of ["signal", "exitfail", "exitsignal"]) {
+        const r = play(mode);
+        expect(r.code, mode).not.toBe(0);
+        expect(r.calls, mode).toContain("xr exit");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // RED test X2 contract: strict checks that fail before fix (F16, F11, F14) — behavioral for missing __dreamerXr
+  it("xr_host_strict_contract_red", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const host = readFileSync(join(root, "app/src/engine-host.ts"), "utf8");
+    const pkg = JSON.parse(readFileSync(join(root, "app/package.json"), "utf8"));
+    const script: string = pkg.scripts["xr:check"] ?? "";
+    const runner = readFileSync(join(root, "app/tools/xr-check-runner.mjs"), "utf8");
+    const checker = readFileSync(join(root, "app/tools/xr-check.mjs"), "utf8");
+    // F11: package.json must not cheat via comment — script itself must be clean
+    expect(script.includes("#")).toBe(false);
+    // runner must contain real sessionActive guard, not via package.json comment
+    expect(runner.includes("sessionActive")).toBe(true);
+    expect(runner.includes("finally")).toBe(true);
+    // checker must handle missing __dreamerXr with timeout code 2
+    expect(checker.includes("no __dreamerXr")).toBe(true);
+    expect(checker.includes("TIMEOUT_MS") || checker.includes("60_000")).toBe(true);
+    // behavioral: actually run checker against a page with no report -> code 2
+    const { default: run } = await import("../../app/tools/xr-check.mjs");
+    let evalCount = 0;
+    const target = {
+      isDetached: () => false,
+      evaluate: async (fn: any) => {
+        evalCount++;
+        if (evalCount === 1) return [false, null];
+        if (evalCount === 2) return undefined;
+        return null;
+      },
+    };
+    const page: any = {
+      $: async () => null,
+      mainFrame: () => target,
+      reload: async () => {},
+    };
+    const origNow = Date.now;
+    const origSetTimeout = global.setTimeout;
+    let now = 0;
+    (Date as any).now = () => now;
+    (global as any).setTimeout = (cb: any, ms: number) => {
+      now += ms + 1;
+      cb();
+      return 1 as any;
+    };
+    try {
+      const res: any = await run({ page, frame: target });
+      expect(res.code).toBe(2);
+      expect(res.reason).toMatch(/no __dreamerXr|timeout/);
+    } finally {
+      (Date as any).now = origNow;
+      (global as any).setTimeout = origSetTimeout;
+    }
+    // F16: report.player must be read from world.player.position, not spawn copy
+    expect(host.includes("world.player.position")).toBe(true);
+    // F14: update() must not allocate via throwing probe.teleport — use non-throwing check
+    const upd = host.slice(host.indexOf("update()"));
+    expect(upd.includes("throw") || upd.includes("Error(")).toBe(false);
+    expect(upd.includes("probe.teleport")).toBe(false);
+  });
+
+  it("xr_host_no_rollback_no_alloc", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join, dirname } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
+    const host = readFileSync(join(root, "app/src/engine-host.ts"), "utf8");
+    const upd = host.slice(host.indexOf("update()"));
+    // X3: страж только считает offNav, не откатывает (иначе дрожание F8) — 0 вызовов setPlayerPosition из update
+    expect(upd.includes("setPlayerPosition")).toBe(false);
+    // В update нельзя выделять: rampUnder возвращает новый объект и аллоцирует, floorAtRooms аллоцирует массив
+    expect(upd.includes("rampUnder")).toBe(false);
+    expect(upd.includes("floorAtRooms")).toBe(false);
+    // также не должно быть создания массивов/объектов в update (isWalkable как helper с аллокацией вынесен)
+    // дополнительно: отчет должен обновляться без toFixed
+    expect(upd.includes("toFixed")).toBe(false);
+  });
 });

@@ -1,199 +1,201 @@
 /**
- * XR spike (2026-11-02): a world built by `engine/` inside an IWSDK World.
- *
- * Question it answers: can the engine's built world (geometry/nav/build json +
- * assets) live as content inside Meta's IWSDK host, with one three.js, the
- * player on the engine spawn and the engine nav keeping the player in bounds.
- *
- * meshOf/materialOf are copied from engine/src/runtime/main.ts (private there);
- * spec phase X1 extracts `buildWorld(scene)` so this copy goes away.
+ * IWSDK host for an engine-built world (spec X2). `buildWorld` (engine/) makes the plain three.js
+ * subtree; this file only puts it into the IWSDK World: one entity for `root`, the shell for the
+ * locomotor, the player on the engine spawn, and the engine nav as the last word on where to stand.
+ * It does not import `three` itself (app/AGENTS.md): classes come from `@iwsdk/core`.
  */
 import {
-  BufferAttribute,
   Color,
-  DoubleSide,
-  Float32BufferAttribute,
   Group,
   LocomotionEnvironment,
+  LocomotionSystem,
   Mesh,
-  MeshStandardMaterial,
-  NeutralToneMapping,
-  RepeatWrapping,
-  SRGBColorSpace,
-  BufferGeometry,
-  type Texture,
-  type World,
   Vector3,
   createSystem,
-  LocomotionSystem,
+  type World,
 } from '@iwsdk/core';
-import * as THREE_APP from 'three';
-import { loadGlb, loadMaps, type MaterialDef } from '../../engine/src/runtime/assets.js';
-import { addSceneLights } from '../../engine/src/build/lights.js';
-import { EYE, makeWalker, type Walker } from '../../engine/src/runtime/walk.js';
+import { TONE, buildWorld } from '../../engine/src/runtime/world.js';
+import { navBit } from '../../engine/src/nav/floor.js';
 
-function unbase64(s: string): Uint8Array {
-  const bin = atob(s);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
+export interface DreamerXrReport {
+  oneThree: boolean;
+  meshes: number;
+  glb: { ok: number; total: number; failed: number };
+  shell: number;
+  /** [x, floorY, z, yawDeg] in metres and degrees */
+  spawn: number[];
+  /** [x, y, z] in metres */
+  player: number[];
+  offNav: number;
+  ready: boolean;
+  error: string;
 }
 
-function materialOf(def: MaterialDef, map?: Texture): MeshStandardMaterial {
-  const m = new MeshStandardMaterial({
-    color: new Color(def.color || '#808080'),
-    metalness: 0,
-    roughness: 0.9,
-    side: DoubleSide,
-  });
-  if (def.map && map) {
-    map.colorSpace = SRGBColorSpace;
-    m.map = map;
-    m.color.set(0xffffff);
-    if (def.transparent) m.transparent = true;
-    if (def.repeat_m) {
-      map.wrapS = map.wrapT = RepeatWrapping;
-      map.repeat.set(1 / def.repeat_m, 1 / def.repeat_m);
-    }
-  } else if (def.transparent) {
-    m.transparent = true;
-  }
-  return m;
-}
+/** Created before any loading so a failure has somewhere to go. */
+const report: DreamerXrReport = {
+  oneThree: false,
+  meshes: 0,
+  glb: { ok: 0, total: 0, failed: 0 },
+  shell: 0,
+  spawn: [],
+  player: [],
+  offNav: 0,
+  ready: false,
+  error: '',
+};
 
-function meshOf(src: any, material: MeshStandardMaterial): Mesh {
-  const g = new BufferGeometry();
-  g.setAttribute('position', new Float32BufferAttribute(src.positions, 3));
-  g.setAttribute('normal', new Float32BufferAttribute(src.normals, 3));
-  g.setAttribute('uv', new Float32BufferAttribute(src.uvs, 2));
-  g.setIndex(new BufferAttribute(new Uint32Array(src.indices), 1));
-  const mesh = new Mesh(g, material);
-  mesh.userData.kind = src.kind;
-  mesh.name = String(src.id);
-  return mesh;
+async function fetchJson(url: string): Promise<any> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
+  return r.json();
 }
-
-/** Report for the spike: what the page proved, read by the CLI via console. */
-const report: Record<string, unknown> = {};
-(window as any).__xrspike = report;
 
 export async function hostEngineWorld(world: World, base: string): Promise<void> {
-  (window as any).__xrworld = world;
-  const url = (p: string) => (p.startsWith('http') || p.startsWith('/') ? p : base + p);
-  const [geo, nav] = await Promise.all([
-    fetch(url('geometry.json')).then((r) => r.json()),
-    fetch(url('nav.json')).then((r) => r.json()),
+  (window as unknown as { __dreamerXr: DreamerXrReport }).__dreamerXr = report;
+  report.ready = false;
+  report.error = '';
+  try {
+    await host(world, base);
+  } catch (e) {
+    report.error = String(e instanceof Error ? e.message : e) || 'unknown error';
+    report.ready = false;
+    console.error('dreamer xr:', report.error);
+  }
+}
+
+async function host(world: World, base: string): Promise<void> {
+  const b = base.endsWith('/') ? base : base + '/';
+  const [geo, nav, built] = await Promise.all([
+    fetchJson(b + 'geometry.json'),
+    fetchJson(b + 'nav.json'),
+    fetchJson(b + 'build.json').catch(() => ({})), // as main.ts: no build.json is no doors
   ]);
+  const ew = await buildWorld({ geo, nav, built }, { base: b });
 
-  // fact 1: one three. A Mesh class from the engine's import graph must be
-  // the same class IWSDK renders with, or instanceof checks fail silently.
-  const engineGroup = new Group();
-  engineGroup.name = 'EngineWorld';
-  report.oneThree = engineGroup instanceof THREE_APP.Group && (Group as unknown) === THREE_APP.Group;
-
-  if (geo.style?.tone !== 'none') {
-    world.renderer.toneMapping = NeutralToneMapping;
-    world.renderer.toneMappingExposure = Number(geo.style?.exposure ?? 0.9);
-  }
-  world.scene.background = new Color(geo.style?.exterior || '#808080');
-
-  const materials: Record<string, MaterialDef> = {};
-  for (const [id, def] of Object.entries((geo.materials ?? {}) as Record<string, MaterialDef>)) {
-    materials[id] = def.map ? { ...def, map: url(def.map) } : def;
-  }
-  const maps = await loadMaps(materials);
-  const mats = new Map<string, MeshStandardMaterial>();
-  const material = (id: string) => {
-    let m = mats.get(id);
-    if (!m) mats.set(id, (m = materialOf(materials[id] ?? { color: '#808080' }, maps.get(id))));
-    return m;
-  };
-
-  const swaps: Promise<void>[] = [];
-  let glbOk = 0;
-  for (const src of geo.meshes as any[]) {
-    const mesh = meshOf(src, material(String(src.material)));
-    engineGroup.add(mesh);
-    if (typeof src.glb === 'string') {
-      mesh.geometry.computeBoundingBox();
-      const bb = mesh.geometry.boundingBox!;
-      swaps.push(
-        loadGlb({ ...src, glb: url(src.glb) }, { min: bb.min, max: bb.max })
-          .then((root) => {
-            root.name = mesh.name;
-            engineGroup.remove(mesh);
-            engineGroup.add(root);
-            glbOk++;
-          })
-          .catch((e) => console.warn(`xrspike: GLB ${src.glb} failed: ${String(e)}`)),
-      );
+  // one three: objects made inside buildWorld must be instances of IWSDK's classes
+  let meshes = 0;
+  let allMesh = true;
+  ew.root.traverse((o) => {
+    if ((o as Mesh).isMesh) {
+      meshes++;
+      if (!(o instanceof Mesh)) allMesh = false;
     }
+  });
+  report.oneThree = ew.root instanceof Group && allMesh && meshes > 0;
+  report.meshes = (geo.meshes as unknown[]).length;
+  report.glb = { ...ew.loads };
+
+  if (ew.style.tone) {
+    world.renderer.toneMapping = TONE;
+    world.renderer.toneMappingExposure = ew.style.exposure;
   }
-  await Promise.all(swaps);
-  addSceneLights(engineGroup, geo);
-  report.meshes = (geo.meshes as any[]).length;
-  report.glb = `${glbOk}/${swaps.length}`;
+  if (ew.shadows) world.renderer.shadowMap.enabled = true;
+  world.scene.background = ew.background ?? new Color(ew.style.exterior);
 
-  // hybrid: IWSDK's physics locomotor gets only the shell (floors stand the
-  // player, walls stop it); furniture stays out of it, or the player steps up
-  // onto the bed. Where you may stand among props is the engine nav's call.
-  const rootEntity = world.createTransformEntity(engineGroup);
-  const shell = engineGroup.children.filter((o) => ['floor', 'wall', 'cap'].includes(o.userData.kind));
-  for (const o of shell) world.createTransformEntity(o, { parent: rootEntity }).addComponent(LocomotionEnvironment);
-  report.shell = shell.length;
+  // the locomotor gets only the shell; props are the engine nav's business. Children of rootEntity,
+  // or IWSDK re-parents the mesh to the active level and root loses its shell.
+  const rootEntity = world.createTransformEntity(ew.root);
+  for (const o of ew.shell) world.createTransformEntity(o, { parent: rootEntity }).addComponent(LocomotionEnvironment);
+  report.shell = ew.shell.length;
 
-  // engine nav: the same walker the desktop page uses, here only as a judge
-  const all = (nav.layers ?? []).map((l: any) => ({ layer: l, bits: unbase64(String(l?.bits ?? '')) }));
-  const walker: Walker = makeWalker(all[0].layer, all[0].bits, geo.floors ?? [], geo.spawn.at, {
-    layers: all.slice(1),
-    ramps: nav.ramps ?? [],
-  });
-  const [sx, sy, sz] = walker.pos();
-  const floorY = sy - EYE;
-  // engine yaw: 0 faces +Z; a three Object3D faces -Z, hence + PI
-  world.player.rotation.y = (Number(geo.spawn.yaw ?? 0) * Math.PI) / 180 + Math.PI;
-  // the locomotor owns the player position (physics in a worker): a direct
-  // player.position write is overwritten, placement goes through the system
+  const { x, floorY, z, yawDeg } = ew.spawn;
+  // engine yaw 0 faces +Z, a three Object3D faces -Z, hence + PI (F5)
+  world.player.rotation.y = (yawDeg * Math.PI) / 180 + Math.PI;
   const loco = world.getSystem(LocomotionSystem);
-  report.locomotor = !!loco;
-  loco?.setPlayerPosition(new Vector3(sx, floorY, sz));
-  report.spawn = [sx, floorY, sz, geo.spawn.yaw];
+  loco?.setPlayerPosition(new Vector3(x, floorY, z));
+  report.spawn = [x, floorY, z, yawDeg];
+  // F16: player is the real player position, not a spawn copy
+  report.player = [world.player.position.x, world.player.position.y, world.player.position.z];
 
-  // nav judge: never moves the player, counts frames where the player stands
-  // on a cell the engine nav forbids (0 = IWSDK walls agree with engine nav)
-  const probe = makeWalker(all[0].layer, all[0].bits, geo.floors ?? [], geo.spawn.at, {
-    layers: all.slice(1),
-    ramps: nav.ramps ?? [],
-  });
-  // nav guard: the locomotor moves the player, the engine nav has the last
-  // word. A step onto a forbidden cell is undone to the last allowed spot.
-  let offNav = 0;
-  let pushedBack = 0;
-  const good = new Vector3(sx, floorY, sz);
-  const NavJudge = class extends createSystem({}) {
+  // nav guard: counts off-nav frames, does not allocate in update() and does not rollback (X3 без дрожания)
+  const layers = ew.layers;
+  const navRamps: any[] = ew.nav?.ramps ?? [];
+  const STEP_MAX = 0.25;
+  const CAPSULE_R = 0.25;
+  const REPS = 1e-6;
+  // precompute ramp geometry so update() does not allocate
+  const rampInfos: Array<{ fromx: number; fromz: number; d0: number; d1: number; px0: number; px1: number; len: number; hw: number; y0: number; y1: number }> = [];
+  for (const r of navRamps) {
+    const deg = Number(r.axis?.dir ?? 0);
+    const a = (deg * Math.PI) / 180;
+    const s = Math.sin(a);
+    const c = Math.cos(a);
+    const d0 = Math.abs(s) < REPS ? 0 : s;
+    const d1 = Math.abs(c) < REPS ? 0 : c;
+    const px0 = -d1;
+    const px1 = d0;
+    let hw = 0;
+    for (const p of r.poly as number[][]) {
+      const q = Math.abs((p[0] - r.axis.from[0]) * px0 + (p[1] - r.axis.from[1]) * px1);
+      if (q > hw) hw = q;
+    }
+    rampInfos.push({ fromx: r.axis.from[0], fromz: r.axis.from[1], d0, d1, px0, px1, len: r.axis.len, hw, y0: r.y0, y1: r.y1 });
+  }
+  const NavGuard = class extends createSystem({}) {
+    private fy = floorY;
     update() {
       const p = world.player.position;
-      try {
-        probe.teleport(p.x, p.z);
-        good.set(p.x, p.y, p.z);
-      } catch {
-        offNav++; // engine nav says this cell is not walkable
-        if (!loco) return;
-        // slide like the desktop walker: keep the axis that is still allowed
-        let fixed = false;
-        for (const [x, z] of [[p.x, good.z], [good.x, p.z]]) {
-          try { probe.teleport(x, z); good.set(x, p.y, z); fixed = true; break; } catch { /* next axis */ }
+      const x = p.x;
+      const z = p.z;
+      let inside = false;
+      let bestRamp: typeof rampInfos[0] | null = null;
+      let bestRampY = 0;
+      let bestRampT = 0;
+      let bestRampHw = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < rampInfos.length; i++) {
+        const ri = rampInfos[i];
+        const ox = x - ri.fromx;
+        const oz = z - ri.fromz;
+        const s = ox * ri.d0 + oz * ri.d1;
+        const t = ox * ri.px0 + oz * ri.px1;
+        if (s < -REPS || s > ri.len + REPS || Math.abs(t) > ri.hw + REPS) continue;
+        inside = true;
+        const sc = s < 0 ? 0 : s > ri.len ? ri.len : s;
+        const y = ri.len > 0 ? ri.y0 + ((ri.y1 - ri.y0) * sc) / ri.len : ri.y0;
+        if (y < this.fy - 0.5 || y > this.fy + STEP_MAX) continue;
+        const d = y > this.fy ? y - this.fy : this.fy - y;
+        if (d < bestDist) {
+          bestDist = d;
+          bestRamp = ri;
+          bestRampY = y;
+          bestRampT = t;
+          bestRampHw = ri.hw;
         }
-        void fixed;
-        loco.setPlayerPosition(good);
-        pushedBack++;
-        report.pushedBack = pushedBack;
       }
-      report.offNav = offNav;
-      report.player = [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3)];
+      let walkable: boolean;
+      if (inside) {
+        if (bestRamp !== null) walkable = Math.abs(bestRampT) <= bestRampHw - CAPSULE_R + REPS;
+        else walkable = false;
+        if (walkable) this.fy = bestRampY;
+      } else {
+        let best = layers[0];
+        let bestD = best.layer.y > this.fy ? best.layer.y - this.fy : this.fy - best.layer.y;
+        for (let i = 1; i < layers.length; i++) {
+          const L = layers[i];
+          const d = L.layer.y > this.fy ? L.layer.y - this.fy : this.fy - L.layer.y;
+          if (d < bestD) {
+            bestD = d;
+            best = L;
+          }
+        }
+        walkable = navBit(best.layer, best.bits, x, z);
+        if (walkable) this.fy = best.layer.y;
+      }
+      if (!walkable) report.offNav++;
+      report.player[0] = x;
+      report.player[1] = p.y;
+      report.player[2] = z;
     }
   };
-  world.registerSystem(NavJudge);
-  report.ready = true;
-  console.log('xrspike ready', JSON.stringify(report));
+  world.registerSystem(NavGuard);
+  report.ready = true; // after buildWorld awaited every GLB swap, player already set
+}
+
+/** Which world to open: ?world= → localStorage → VITE_DREAMER_WORLD (F9: the managed browser drops the URL). */
+export function pickWorld(): string | null {
+  const fromUrl = new URLSearchParams(location.search).get('world');
+  const fromStore = localStorage.getItem('dreamer.world');
+  const fromEnv = (import.meta.env as Record<string, string | undefined>).VITE_DREAMER_WORLD;
+  return fromUrl || fromStore || fromEnv || null;
 }

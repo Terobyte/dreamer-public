@@ -9,18 +9,16 @@ import { World } from '@iwsdk/core';
 import projectOptions from 'virtual:iwsdk-project';
 import { addFloor } from './env.js';
 import { addSplats, DissolveSystem, SplatStatsSystem } from './splats.js';
-import { hostEngineWorld } from './engine-host.js';
+import { hostEngineWorld, pickWorld } from './engine-host.js';
 
 World.create(
   document.getElementById('scene-container') as HTMLDivElement,
   projectOptions,
 ).then((world) => {
-  // ?world=<name>: an engine-built world from public/worlds/<name>/ (XR spike)
-  // the managed dev browser resets the URL to `/`, so localStorage is the spike's fallback
-  const engineWorld =
-    new URLSearchParams(location.search).get('world') ?? localStorage.getItem('xrspike.world');
+  // engine-built world from public/worlds/<name>/ (?world= → localStorage → VITE_DREAMER_WORLD)
+  const engineWorld = pickWorld();
   if (engineWorld) {
-    hostEngineWorld(world, `./worlds/${engineWorld}/`).catch((e) => console.error('engine world failed', e));
+    void hostEngineWorld(world, `./worlds/${engineWorld}/`);
     return;
   }
   world.registerSystem(SplatStatsSystem);
