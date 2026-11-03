@@ -275,6 +275,27 @@ describe("runtime: holder offset by contact_y (Г4)", () => {
     expect(Math.abs(holderOf(a.group).position.y - -0.3)).toBeLessThanOrEqual(0.005);
   });
 
+  // k22_true 44–46 s: wake_up sits Mirai up, then lays her back; one mean contact_y (-0.104, from the sitting part)
+  // lifted the lying part 17 cm over the bed. The contact follows the clip in time.
+  /** hips at 1.2 for the first half (lowered skin at 0.2), then down to 1.0 (skin at 0) */
+  const SINK = (): AnimationClip => new AnimationClip("wake", -1, [new VectorKeyframeTrack("hips.position", [0, 0.5, 0.55, 1], [0, 1.2, 0, 0, 1.2, 0, 0, 1, 0, 0, 1, 0])]);
+  it("clipFacts records the contact along the clip, not one mean", () => {
+    const f = cliFacts({ stand: STILL(), wake: SINK() }, "stand", "wake");
+    expect(f.contact_curve?.length).toBe(16);
+    // the body is fitted to 1 m (scale 0.5): the 0.2 m lift reads 0.1
+    expect(f.contact_curve![2]! - f.contact_curve![12]!).toBeGreaterThan(0.08);
+  });
+  it("the holder follows the contact curve at the clip's time", async () => {
+    const curve = Array.from({ length: 16 }, (_, k) => (k < 8 ? 0.2 : 0));
+    const a = await actorWith({ stand: STILL(), wake: SINK() }, "stand", 0, { wake: { contact_y: 0.1, contact_curve: curve } });
+    a.update(1 / 60, 0.1);
+    a.play("wake", { once: true });
+    for (let t = 0.2; t <= 0.4; t += 0.05) a.update(0.05, t);
+    expect(holderOf(a.group).position.y).toBeCloseTo(-0.2, 2);
+    for (let t = 0.45; t <= 0.85; t += 0.05) a.update(0.05, t);
+    expect(holderOf(a.group).position.y).toBeCloseTo(0, 2);
+  });
+
   it("startStage without clipfacts.json: holder at 0, no clipfacts warning", async () => {
     const warns: string[] = [];
     vi.spyOn(console, "warn").mockImplementation((...a: any[]) => { warns.push(a.join(" ")); });

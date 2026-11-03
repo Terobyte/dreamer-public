@@ -18,6 +18,9 @@ export interface ClipFacts {
   head_y: number;
   /** head_y < 0.5 x height */
   lying: boolean;
+  /** contact_y at k/16 of the clip, k = 0..15: a clip that changes pose (wake_up sits up, lies back) rests on the
+   *  support all along, not on its mean (k22_true: the lying part floated 17 cm over the bed) */
+  contact_curve?: number[];
 }
 
 const MAX_POINTS = 2000;
@@ -81,6 +84,19 @@ const yawOf = (o: Object3D): number => {
   return Math.atan2(f.x, f.z);
 };
 
+const CURVE_N = 16;
+
+/** contact_y at `t01` (0..1 of the clip) from a contact curve, linear; a finished clip (t01 >= 1, clamped by
+ *  three) holds the last sample; null = no curve */
+export function contactAt(curve: number[] | undefined, t01: number): number | null {
+  if (!curve?.length) return null;
+  const n = curve.length;
+  const x = Math.max(0, Math.min(n - 1, t01 * n));
+  const i = Math.floor(x);
+  const j = Math.min(n - 1, i + 1);
+  return curve[i]! + (curve[j]! - curve[i]!) * (x - i);
+}
+
 /** Facts of `clip` on `root` (the holder of a prepared body), sampled at 0, 1/4, 1/2, 3/4 of the prepared
  *  clip (prepareClip, as the runtime plays it). Null when the body has no head/neck bone (headPose). */
 export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number): ClipFacts | null {
@@ -93,13 +109,17 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   const act = mixer.clipAction(c);
   act.play();
   const frames: Array<{ contact: number; dir: Vector3; head: number }> = [];
+  const curve: number[] = [];
   try {
     const d = c.duration > 0 ? c.duration : 0;
-    for (const s of [0, 0.25, 0.5, 0.75]) {
+    for (let k = 0; k < CURVE_N; k++) {
+      const s = k / CURVE_N;
       mixer.setTime(d * s);
       root.updateMatrixWorld(true);
       const low = supportY(root);
       const rootY = root.getWorldPosition(new Vector3()).y;
+      curve.push(low - rootY);
+      if (k % (CURVE_N / 4) !== 0) continue;
       const hp = headPose(root)!;
       const yaw = (hp.faceYaw * Math.PI) / 180;
       const pitch = (hp.facePitch * Math.PI) / 180;
@@ -122,7 +142,7 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   const dir = sum.length() < 1e-6 ? frames[0]!.dir.clone().normalize() : sum.normalize();
   const faceYaw = Math.abs(dir.y) > 0.8 ? null : (((Math.atan2(dir.x, dir.z) * 180) / Math.PI) % 360 + 360) % 360;
   const headY = mean("head");
-  return { contact_y: mean("contact"), face_dir: [dir.x, dir.y, dir.z], face_yaw: faceYaw, head_y: headY, lying: headY < 0.5 * heightM };
+  return { contact_y: mean("contact"), face_dir: [dir.x, dir.y, dir.z], face_yaw: faceYaw, head_y: headY, lying: headY < 0.5 * heightM, contact_curve: curve };
 }
 
 const r3 = (v: number): number => {
@@ -191,6 +211,7 @@ export async function writeClipfacts(castDir: string): Promise<string[]> {
         face_dir: f.face_dir.map(r3),
         face_yaw: f.face_yaw === null ? null : r3(f.face_yaw) % 360,
         head_y: r3(f.head_y),
+        ...(f.contact_curve ? { contact_curve: f.contact_curve.map(r3) } : {}),
         lying: f.lying,
       };
     }

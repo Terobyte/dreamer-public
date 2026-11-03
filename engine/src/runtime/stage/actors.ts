@@ -3,6 +3,7 @@ import { bindHeadToHead } from "./headbind.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
+import { contactAt } from "./clipfacts.js";
 import type { V2 } from "./places.js";
 import { legHeights, sitDrop, sitLegs } from "./pose.js";
 
@@ -133,7 +134,7 @@ async function loadClips(who: string, urls: Record<string, string>): Promise<Rec
 /** Cast member `who` from a GLB, scaled to `height_m`; a plain box stands in if the GLB does not load.
  *  `facts` = clipfacts.json of this actor (Г4): its `contact_y` per clip lowers/raises the holder so the skin lies on the support. */
 export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0, clipUrls: Record<string, string> = {}, idle?: string,
-  facts?: Record<string, { contact_y?: number } | undefined> | null): Promise<Actor> {
+  facts?: Record<string, { contact_y?: number; contact_curve?: number[] } | undefined> | null): Promise<Actor> {
   const group = new Group();
   group.name = `actor:${who}`;
   let body: Group;
@@ -164,7 +165,11 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   // Г4: the group stays on the support; the holder shifts by -contact_y of the current clip (metres, the
   // group is not scaled), linearly over the animator crossfade when the clip changes. No facts -> 0.
   const offOf = (clip: string): number => {
-    const c = Number(facts?.[clip]?.contact_y);
+    // a clip that changes pose follows its contact curve at the clip's time (k22_true: wake_up's lying part floated)
+    const fc = facts?.[clip] as { contact_y?: number; contact_curve?: number[] } | undefined;
+    const d = animator?.duration(clip) ?? 0;
+    const at = d > 0 ? contactAt(fc?.contact_curve, (animator?.time(clip) ?? 0) / d) : null;
+    const c = at ?? Number(fc?.contact_y);
     return Number.isFinite(c) && Math.abs(c) > 0.02 ? -c : 0;
   };
   let offClip = animator?.current() ?? "";
@@ -177,10 +182,10 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     const c = animator.current();
     if (c !== offClip) {
       offFrom = holder.position.y;
-      offTo = offOf(c);
       offT0 = now;
       offClip = c;
     }
+    offTo = offOf(c);
     const k = Math.max(0, Math.min(1, (now - offT0) / CLIP_FADE));
     holder.position.y = offFrom + (offTo - offFrom) * k;
   };
