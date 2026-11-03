@@ -399,6 +399,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | посадить кожу на опору при любой позе | последний параметр `createActor(..., facts)` |
 | вести камеру по плану съёмки | `stage.json → shotplan: "shotplan/plan.json"` или `StageCtx.plan`; `parseShotplan` / `createShotClock` / `shotFrame` (`runtime/stage/shotplan.ts`) |
 | ease плана и детерминированная тряска | `easeOf(name)` / `shakeOf(a, tau)` (`runtime/stage/shotplan.ts`) |
+| камера смотрит на кость идущего без качки шага | `steadyBone(tau?)` (`runtime/stage/shotplan.ts`): корень как есть + сглаженное смещение кости; рантайм — ходы режиссёра (`lookBone`), ручной план смотрит на саму кость |
 | какие стены/потолок спрятать, чтобы камера видела сквозь них | `cutMeshes(scene, cam, look)` (`runtime/stage/shotplan.ts`) |
 | конец сцены книги в рантайме | `book_end` / `scene_end` в `StageHandlers` (`runtime/bridge.ts`) |
 | индекс бита книги в событии | поле `beat` у `line`/`narrator` (`h0/dream/sim.py`); в `events.json` через `pickEvent` (`engine/bin/rec_event.mjs`) |

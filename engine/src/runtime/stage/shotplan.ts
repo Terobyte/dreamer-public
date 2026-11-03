@@ -210,6 +210,29 @@ export interface ShotFrame {
   cut: boolean;
 }
 
+/** how long the head's offset from the root takes to settle, s: a walk's bob (4 Hz) and sway (2 Hz) are cut to a
+ *  sixth, a lean or a turn of the head is followed in about a second */
+const STEADY_TAU_S = 0.5;
+
+/** a bone point for the camera to look at: the body's root as it is (it glides along the path, no lag) plus the
+ *  bone's offset from it smoothed (v31 147.9–149.8 s: follow_side on the walking head bone rocked the camera);
+ *  a first call or a gap of more than half a second takes the offset as it is */
+export function steadyBone(tau = STEADY_TAU_S) {
+  const held = new Map<string, { off: V3; at: number }>();
+  return (key: string, root: V3, bone: V3, now: number): V3 => {
+    const off: V3 = [bone[0] - root[0], bone[1] - root[1], bone[2] - root[2]];
+    const h = held.get(key);
+    const dt = h ? now - h.at : Infinity;
+    let o = off;
+    if (h && dt >= 0 && dt <= 0.5) {
+      const k = 1 - Math.exp(-dt / tau);
+      o = [h.off[0] + (off[0] - h.off[0]) * k, h.off[1] + (off[1] - h.off[1]) * k, h.off[2] + (off[2] - h.off[2]) * k];
+    }
+    held.set(key, { off: o, at: now });
+    return [root[0] + o[0], root[1] + o[1], root[2] + o[2]];
+  };
+}
+
 /** where the camera of an active plan is at `now`: eased from -> end, plus the shake; `bone` gives a bone's world point */
 /** baseFov: the camera's fov before the plan took it -- where a zoom with no `from.fov` starts (B65) */
 export function shotFrame(a: ActiveShot, now: number, bone: (actor: string, bone: "head" | "hips") => V3 | null, baseFov: number | null = null): ShotFrame {

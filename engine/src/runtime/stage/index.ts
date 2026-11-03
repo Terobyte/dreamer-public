@@ -16,7 +16,7 @@ import { createSubs } from "./subs.js";
 import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { bodyInTheWay, clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
-import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
+import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, steadyBone, type ActiveShot, type ShotClock } from "./shotplan.js";
 import { clipFaceYaw } from "./clipfacts.js";
 
 export interface StageCtx {
@@ -1111,7 +1111,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       shot: { name: o.move ?? o.plan, at: { k: "num", x: 0 }, to: { k: "num", x: m.durationS }, from: { pos: o.cam, look: o.lookRef ?? o.look, fov: o.fov }, end: { pos: o.end!, look: o.lookEndRef ?? o.lookEnd ?? o.look, fov: o.fovEnd }, cut: false, shake: o.shake ?? 0, ease: o.ease ?? "io" },
       index: 0, at: m.t0, to: m.t0 + m.durationS,
     };
-    const fr = shotFrame(act, now, boneOf, directorFov ?? c.camera.fov);
+    const fr = shotFrame(act, now, lookBone(now), directorFov ?? c.camera.fov);
     const f = roomAt([fr.pos[0], fr.pos[2]]) ?? (camRoom ? (c.geo.floors ?? []).find((q: any) => q.room === camRoom) : null) ?? (c.geo.floors ?? [])[0];
     let p: V3 = fr.pos;
     if (f?.outline?.length) {
@@ -1153,6 +1153,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     }
     const p = a.pos();
     return [p[0], a.group.position.y + heightOf(who) * (bone === "head" ? 0.93 : 0.5), p[1]];
+  };
+  // the director's moves look at a bone through steadyBone: the walk's bob and sway do not rock the camera (v31
+  // 147.9–149.8 s); a written shot plan looks at the bone itself
+  const camBone = steadyBone();
+  const lookBone = (now: number) => (who: string, bone: "head" | "hips"): V3 | null => {
+    const raw = boneOf(who, bone);
+    const a = actors.get(who);
+    if (!raw || !a) return raw;
+    const p = a.pos();
+    return camBone(`${who}|${bone}`, [p[0], a.group.position.y, p[1]], raw, now);
   };
   /** puts the camera on the active plan (no smoothing, a hard switch); false -> the director has the camera */
   const applyShot = (now: number): boolean => {
