@@ -1,7 +1,7 @@
 import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
-import { aliasesOf, clipForBeat } from "./anim.js";
+import { aliasesOf, clipForBeat, idleForPose } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
@@ -410,6 +410,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   for (const [who, p] of Object.entries((stage as any).start_pose ?? {})) {
     if (typeof p === "string" && p && actors.has(who)) poseOf.set(who, p);
   }
+  /** a staged pose the rest clip does not fit switches it (k18_true: Mirai staged to sit fell back to sleep_curled) */
+  const fitIdle = (who: string, pose: string | undefined): void => {
+    const a = actors.get(who);
+    const cur = a?.idleName?.();
+    if (!a || !cur) return;
+    const next = idleForPose(pose, cur, Object.keys(cast[who]?.clips ?? {}), clipfacts?.[who] ?? null);
+    if (next) a.setIdle?.(next);
+  };
   /** deterministic per-line seed for gesture variants: no Math.random in the runtime */
   let lineSeq = 0;
   const handlers: StageHandlers = {
@@ -420,7 +428,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const who = typeof it.who === "string" ? it.who : null;
         if (!who || !actors.has(who)) continue;
         const a = actors.get(who)!;
-        if (typeof it.pose === "string" && it.pose) poseOf.set(who, it.pose);
+        if (typeof it.pose === "string" && it.pose) {
+          poseOf.set(who, it.pose);
+          fitIdle(who, it.pose);
+        }
         cancelExit(who);
         if (it.offstage) {
           offstageActors.add(who);
@@ -458,7 +469,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const placeName = typeof e.place === "string" ? e.place : undefined;
       const lookTarget = typeof e.look === "string" ? e.look : undefined;
       const pose = typeof e.pose === "string" ? e.pose : undefined;
-      if (pose) poseOf.set(who, pose);
+      if (pose) {
+        poseOf.set(who, pose);
+        fitIdle(who, pose);
+      }
 
       const getTargetPos = (tgt?: string): V2 | null => {
         if (!tgt) return null;

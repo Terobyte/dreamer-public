@@ -18,6 +18,22 @@ export interface Animator {
   trackNames(name: string): string[];
   /** registered tracks (inspection: interpolation checks) */
   tracks(name: string): KeyframeTrack[];
+  /** the clip the body rests in between clips */
+  idleName?(): string;
+  /** rest in another clip from now on (looped); unknown name -> false, nothing changes */
+  setIdle?(name: string): boolean;
+}
+
+/** The idle a staged pose needs, or null = keep the current one. Only a lying idle against a non-lying pose (or the
+ *  reverse) changes: a standing idle on a sit is the procedural seated legs' job (Mama on the bed edge).
+ *  k18_true 50–58 s: Mirai staged to sit fell back to sleep_curled after wake_up and spoke lying down. */
+export function idleForPose(pose: string | undefined, cur: string, clips: string[], facts: Record<string, { lying?: boolean } | undefined> | null): string | null {
+  if (!pose || !facts) return null;
+  const lying = (c: string): boolean => facts[c]?.lying === true;
+  if (pose === "lie") return lying(cur) ? null : clips.find((c) => lying(c) && /sleep|lie|rest/i.test(c)) ?? clips.find(lying) ?? null;
+  if (!lying(cur)) return null;
+  const want = pose === "sit" ? ["sit_idle", "stand_idle"] : ["stand_idle", "idle"];
+  return want.find((c) => clips.includes(c)) ?? clips.find((c) => facts[c]?.lying === false && /idle/i.test(c)) ?? null;
 }
 
 const TPOSE_DEG = 30;
@@ -350,6 +366,15 @@ export function createAnimator(root: Object3D, clips: Record<string, AnimationCl
       life?.after(dt, { weight: state === "idle" ? 1 : 0.3, talking: !!o.talking, look: o.look });
     },
     current: () => (state === "idle" ? idleName : curName),
+    idleName: () => idleName,
+    setIdle(name) {
+      if (!reg.has(name)) return false;
+      if (name === idleName && hold == null) return true;
+      idleName = name;
+      hold = null;
+      if (state === "idle") goIdle();
+      return true;
+    },
     alive: () => !!life,
     has: (n) => reg.has(n),
     weight: (n) => actions.get(n)?.getEffectiveWeight() ?? 0,

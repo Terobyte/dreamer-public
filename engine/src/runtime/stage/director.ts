@@ -449,6 +449,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const p = ndcOf(headOf(a), cam, look, fov, inp.aspect ?? 16 / 9);
         return p.depth > 0.2 && Math.abs(p.x) <= IN_FRAME && Math.abs(p.y) <= IN_FRAME;
       });
+      /** on a spoken line the camera stands in front of the speaker (k18_true 34–45 s: the two-shot sat behind Mama,
+       *  her line was the back of her head) */
+      const sf = ev.kind === "line" ? faceDir(speaker) : null;
+      const faces = (cam: V3): boolean => !sf || angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) <= WIDE_FACE_OK;
       const pt = (l: ShotLook): V3 => {
         if (Array.isArray(l)) return l as V3;
         const a = crew.find((x) => x.name === (l as any).actor);
@@ -490,12 +494,38 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
             warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
           };
           if (!inView(who, mv.cam, mv.look, mv.fov) || (mv.end && mv.lookEnd && !inView(who, mv.end, mv.lookEnd, mv.fovEnd ?? mv.fov))) return null;
+          if (!faces(mv.cam) || (mv.end && !faces(mv.end))) return null;
           curPair = usePair;
           pairNames = usePair ? [speaker.name, listener!.name] : [];
           return mv;
         } catch {
           return null;
         }
+      };
+      /** a still two-shot from the speaker's front: a ring of points round the pair, inside the room, both heads in
+       *  frame, nothing in the way; the one most square to her face (k18_true: in the 3.6 m bedroom the base two and
+       *  the wide both stood behind Mama, the free corner was across the bed) */
+      const faceTwo = (): DirectorOut | null => {
+        if (!sf || !listener) return null;
+        const pair = [speaker, listener];
+        const hs = pair.map(headOf);
+        const look: V3 = [(hs[0][0] + hs[1][0]) / 2, (hs[0][1] + hs[1][1]) / 2, (hs[0][2] + hs[1][2]) / 2];
+        const fov = (style.fov[0] + style.fov[1]) / 2;
+        const outline = inp.room.outline;
+        const rect = roomRect(outline);
+        let best: { o: DirectorOut; score: number } | null = null;
+        for (const d of [2.6, 2.2, 1.8, 1.4])
+          for (let k = 0; k < 24; k++) {
+            const r = k * 15 * DEG;
+            const p = snap(outline, [look[0] + Math.sin(r) * d, look[2] + Math.cos(r) * d], rect, 0.25);
+            const cam = cy([p[0], look[1] + 0.35, p[1]]);
+            if (Math.hypot(cam[0] - look[0], cam[2] - look[2]) < 1.2) continue;
+            if (!inView(pair, cam, look, fov) || !faces(cam)) continue;
+            if (inp.clear && !hs.every((h) => inp.clear!(cam, h))) continue;
+            const score = angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) + Math.abs(d - 2.2) * 10;
+            if (!best || score < best.score) best = { o: { ...out, plan: "two", cam, look, fov }, score };
+          }
+        return best?.o ?? null;
       };
       // the picked move; a pair that it loses gets a two-shot; then the base frame if it sees the subjects, else the
       // base wide; both still, at the style's height (ozu stays low)
@@ -508,8 +538,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         if (a && fd) faceBase = { name: a.name, dir: fd };
       } else {
         const who = subjOf(atom).who;
-        const base = inView(who, out.cam, out.look, out.fov ?? 50) ? out : frame("wide", speaker, frameOther, crew, walkers, inp, 0, clock, cutSeq, st, snap, speaker);
-        curMove = { cam: cy(base.cam), look: base.look, fov: cf(base.fov ?? (style.fov[0] + style.fov[1]) / 2), shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+        // judged as it will be shot: at the style's height and fov (k18 0.9: a low base saw both at 0.35 m, lost Mirai at 1.1 m)
+        const fit = (o: DirectorOut): DirectorOut => ({ ...o, cam: cy(o.cam), fov: cf(o.fov ?? (style.fov[0] + style.fov[1]) / 2) });
+        const [b0, wide] = [out, frame("wide", speaker, frameOther, crew, walkers, inp, 0, clock, cutSeq, st, snap, speaker)].map(fit);
+        const sees = (o: DirectorOut): boolean => inView(who, o.cam, o.look, o.fov ?? 50);
+        const base = [b0, wide].find((o) => sees(o) && faces(o.cam)) ?? faceTwo() ?? (sees(b0) ? b0 : wide);
+        curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
       }
     }
     return curMove ? { ...out, ...curMove, cut: heldCut } : out;

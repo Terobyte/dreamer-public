@@ -105,6 +105,24 @@ describe("camera calm", () => {
     }
   });
 
+  it("a spoken line shows the speaker's face, not the back of her head (k18_true 34–45 s: the two-shot sat behind Mama)", () => {
+    const A = (): DActor[] => [
+      { ...act("Mama", [-1.65, 2.28], 25), faceYaw: 25, level: "L0", room: "bedroom", head: [-1.64, 1.02, 2.28] },
+      { ...act("Mirai", [-1.21, 2.63], 180), height: 0.95, level: null, room: "bedroom", lying: true, head: [-1.34, 0.69, 2.91] },
+    ];
+    for (const r of [0.1, 0.5, 0.9]) {
+      const d = createDirector(() => r, { style: "storybook" });
+      d.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A(), room: BED });
+      const o = d.step({ event: { kind: "line", speaker: "Mama", durationS: 4, dt: 6, beat: 3, tags: { look: true } }, actors: A(), room: BED });
+      expect(inFrame(o, A()[0].head!)).toBe(true);
+      expect(inFrame(o, A()[1].head!)).toBe(true);
+      const toCam: [number, number] = [o.cam[0] - -1.65, o.cam[2] - 2.28];
+      const face: [number, number] = [Math.sin((25 * Math.PI) / 180), Math.cos((25 * Math.PI) / 180)];
+      const deg = (Math.acos((toCam[0] * face[0] + toCam[1] * face[1]) / Math.hypot(...toCam)) * 180) / Math.PI;
+      expect(deg).toBeLessThanOrEqual(100);
+    }
+  });
+
   it("a child lying on the bed is in the scene of Mama standing in that room (k14_true 33 s: Mirai's feet off the floor -> level null -> the director never saw her)", () => {
     expect(inScene({ room: "bedroom", level: null }, "bedroom", "")).toBe(true);
     expect(inScene({ room: "bedroom", level: "" }, "bedroom", null)).toBe(true);

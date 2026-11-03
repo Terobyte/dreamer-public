@@ -73,6 +73,9 @@ export interface Actor {
   look(p: [number, number, number] | null): void;
   /** play a clip by name (no animator or no such clip -> stays in idle) */
   play(clip: string, o?: { once?: boolean }): void;
+  /** the rest clip; `setIdle` switches it (a staged pose that the cast idle does not fit) */
+  idleName?(): string;
+  setIdle?(clip: string): boolean;
   /** bounded procedural nod (1.5 s): head/chest bones on a rig, the group on a box; never moves a bone out of range */
   gesture(): void;
   update(dt: number, now: number): void;
@@ -279,6 +282,8 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     play(clip, o) {
       animator?.play(clip, o);
     },
+    idleName: () => animator?.idleName?.() ?? "",
+    setIdle: (clip) => animator?.setIdle?.(clip) ?? false,
     speak(seconds) {
       talkUntil = clock + seconds;
     },
