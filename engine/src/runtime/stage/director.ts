@@ -105,6 +105,8 @@ const BACK_AT = 0.75;
 const LONG_LINE = 7;
 /** a wide whose worst pair face is under this many degrees off the camera is kept square to the side */
 const WIDE_FACE_OK = 100;
+/** off a spoken line: the camera stays within this many degrees of a standing subject's face */
+const NARRATION_FACE_OK = 120;
 /** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
 const WIDE_SWING = 60;
 /** the wide's camera height above the floor (metres) and its largest look down (degrees) */
@@ -437,7 +439,16 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = ndcOf(h, o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
       return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !probePoints(a, h).every((q) => inp.clear!(o.cam, q));
     });
-    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hidesHead(out);
+    /** a plan on a standing subject taken from behind her (Koshakan k2 27–29 s: the base two-shot over Mama's back
+     *  while the narrator read about her); a wide and a walker are let be */
+    const showsBack = (o: DirectorOut): boolean => {
+      if (o.plan === "wide" || o.plan === "master" || speaker.walking || speaker.offstage) return false;
+      const fd = faceDir(speaker);
+      if (!fd) return false;
+      const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
+      return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - speaker.pos[0], o.cam[2] - speaker.pos[1]]) > NARRATION_FACE_OK;
+    };
+    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && (hidesHead(out) || showsBack(out));
     if (baseHidden) {
       moveCut = NaN;
       recut = true;  // its own cut id: the runtime cuts to the new frame, it does not glide out of the hidden one
@@ -446,7 +457,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       moveCut = cutSeq;
       curMove = null;
       // the base cuts no sooner than asl.min either: a too-early cut keeps the frame on screen
-      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0] && !hidesHead(shown.out)) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
+      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0] && !hidesHead(shown.out) && !showsBack(shown.out)) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
       if (!shown || out.cut !== shown.out.cut) {
         shown = { out, at: clock };
         shownRoom = key;
@@ -533,7 +544,14 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       /** on a spoken line the camera stands in front of the speaker (k18_true 34–45 s: the two-shot sat behind Mama,
        *  her line was the back of her head) */
       const sf = ev.kind === "line" ? faceDir(speaker) : null;
-      const faces = (cam: V3): boolean => !sf || angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) <= WIDE_FACE_OK;
+      // off a line (narration, a walk, a recut) a standing subject is not shot from behind either, with a looser limit;
+      // a walker may be followed (Koshakan k2 27–29 s: "Mama bent down..." over the back of her head)
+      const nf = !sf && !speaker.walking && !speaker.offstage ? faceDir(speaker) : null;
+      const faces = (cam: V3): boolean => {
+        const to: V2 = [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]];
+        if (sf) return angleBetween(sf, to) <= WIDE_FACE_OK;
+        return !nf || angleBetween(nf, to) <= NARRATION_FACE_OK;
+      };
       /** the probe sees every subject's head from `cam` (no probe: always) */
       const seesAll = (who: DActor[], cam: V3): boolean => !inp.clear || who.every((a) => probePoints(a, headOf(a)).every((q) => inp.clear!(cam, q)));
       const pt = (l: ShotLook): V3 => {
