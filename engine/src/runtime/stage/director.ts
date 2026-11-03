@@ -441,13 +441,27 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     }
     // Squidward v19 20–24 s: the frame saw SpongeBob at the cut, then he turned and his head went behind a chair back;
     // the frame held him hidden four seconds. A held still frame that loses a head it holds is cut again.
-    if (curMove && !curMove.end && inp.clear && cutSeq === moveCut && !driftNow) {
-      const f = curMove.fov ?? 50;
+    // A move is judged where its camera is by now (v21 19–24 s: a crane_down on SpongeBob coming in held him behind
+    // the chair backs to its end): start to end over its duration, a look on an actor at that actor's head now.
+    if (curMove && inp.clear && cutSeq === moveCut && !driftNow) {
+      const mv = curMove;
+      const u = mv.end ? Math.min(1, Math.max(0, (clock - moveStart) / Math.max(0.1, mv.moveDurationS ?? 1))) : 0;
+      const mix = (a: V3, b: V3 | undefined): V3 => (b ? [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u] : a);
+      const refHead = (r: ShotLook | undefined): V3 | null => {
+        if (!r || Array.isArray(r)) return null;
+        const a = crew.find((x) => x.name === (r as any).actor);
+        if (!a?.head) return null;
+        const o = ((r as any).o ?? [0, 0, 0]) as V3;
+        return [a.head[0] + o[0], a.head[1] + o[1], a.head[2] + o[2]];
+      };
+      const cam = mix(mv.cam, mv.end);
+      const look = refHead(u > 0.5 ? mv.lookEndRef ?? mv.lookRef : mv.lookRef) ?? mix(mv.look, mv.lookEnd);
+      const f = (mv.fov ?? 50) + ((mv.fovEnd ?? mv.fov ?? 50) - (mv.fov ?? 50)) * u;
       const lost = crew.some((a) => {
         if (a.offstage) return false;
         const h = a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
-        const p = ndcOf(h, curMove!.cam, curMove!.look, f, inp.aspect ?? 16 / 9);
-        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(curMove!.cam, a.face ?? h);
+        const p = ndcOf(h, cam, look, f, inp.aspect ?? 16 / 9);
+        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(cam, a.face ?? h);
       });
       hiddenFor = lost ? hiddenFor + (ev.dt ?? 0) : 0;
       if (hiddenFor >= HIDDEN_RECUT_S) {
