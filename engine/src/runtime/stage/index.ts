@@ -290,6 +290,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   // the bodies are taken once per director step (camBodies walks the bones; the probe runs hundreds of times a step)
   let stepBodies: CamBody[] = [];
   const seesPast = (cam: V3, look: V3): boolean => !bodyInTheWay(cam, look, stepBodies) && sight(cam, look);
+  /** what the director's probe says about an actor's face from `cam` (critic: `clear_face` next to the eye's `clear`) */
+  const faceClear = (a: Actor, cam: V3): boolean | undefined => {
+    const h = smoothHead(a);
+    if (!h) return undefined;
+    return seesPast(cam, [h.p[0], (h.p[1] + a.eye()[1]) / 2, h.p[2]]);
+  };
   /** top of the furniture under a floor point (the pillow, which places.json does not know) */
   const heightAt = createHeight(c.scene, () => [...actors.values()].map((a) => a.group));
   const offstageActors = new Set<string>();
@@ -1120,7 +1126,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
             const faceYaw = hp?.faceYaw ?? (g ? (Math.atan2(g[0] - e[0], g[2] - e[2]) * 180) / Math.PI : a.yaw());
             // rendered feet (group.position.y carries the actor's sit drop (`sitDrop`) and bob; eye() lowers by the
             // same drop), head from the bone so sit follows the pose
-            return { who: a.who, pos: a.pos(), y: a.group.position.y, yaw: a.yaw(), faceYaw, facePitch: hp?.facePitch, headPos: hp?.pos, headY: e[1], height: h, clear: sight([cam.x, cam.y, cam.z], e), boneSig: boneSig(a.group) };
+            return { who: a.who, pos: a.pos(), y: a.group.position.y, yaw: a.yaw(), faceYaw, facePitch: hp?.facePitch, headPos: hp?.pos, headY: e[1], height: h, clear: sight([cam.x, cam.y, cam.z], e), clearFace: faceClear(a, [cam.x, cam.y, cam.z]), boneSig: boneSig(a.group) };
           }),
         };
       })

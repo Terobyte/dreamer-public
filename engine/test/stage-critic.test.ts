@@ -158,3 +158,16 @@ describe("critic: per-frame fact", () => {
     expect(f.dcut).toBe(3);
   });
 });
+
+// Squidward, Nov 3: the critic's `clear` asks about the eye (0.92 of the height: the top of SpongeBob's box), the
+// director about the face; the fact carries the director's verdict too, so a film shows where the two disagree
+describe("computeFact: the director's face verdict next to the eye's", () => {
+  it("clear_face is passed through when given and absent when not", () => {
+    const i: any = base(180);
+    i.actors = i.actors.map((a: any, k: number) => (k === 0 ? { ...a, clear: false, clearFace: true } : a));
+    const f = computeFact(i);
+    expect(f.actors[0].clear).toBe(false);
+    expect(f.actors[0].clear_face).toBe(true);
+    expect("clear_face" in f.actors[1]).toBe(false);
+  });
+});

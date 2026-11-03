@@ -19,6 +19,8 @@ export interface CriticActorIn {
   headPos?: V3;
   height: number;
   clear: boolean;
+  /** the director's own probe on the face point (`DActor.face`): where it and `clear` (the eye) disagree */
+  clearFace?: boolean;
   boneSig: number;
 }
 export interface CriticIn {
@@ -48,6 +50,7 @@ export interface CriticActor {
   height_frac: number;
   face_deg: number;
   clear: boolean;
+  clear_face?: boolean;
   bone_sig: number;
   /** floor position and body yaw, and the measured face yaw when known: the trace replays a frame in a director test */
   pos?: V2;
@@ -144,6 +147,7 @@ export function computeFact(i: CriticIn): CriticFact {
       height_frac: round(Math.abs(crown.y - feet.y) / 2, 1000),
       face_deg: round((Math.acos(dot) * 180) / Math.PI, 10),
       clear: a.clear,
+      ...(a.clearFace !== undefined ? { clear_face: a.clearFace } : {}),
       bone_sig: a.boneSig,
       pos: [round(a.pos[0], 100), round(a.pos[1], 100)],
       yaw: round(a.yaw, 10),
