@@ -357,11 +357,18 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     }
     lostRecut = false;
     if (ev.kind !== "tick") lostTried = false;
-    if (ev.kind === "tick" && !lostTried && lastOut && !lastOut.end && plan !== null) {
+    if (ev.kind === "tick" && !lostTried && lastOut && plan !== null) {
       const fy = inp.room.floorY ?? 0;
+      // a frame of the room or the pair keeps everyone; any other keeps the one speaking (a reaction close leaves him out)
+      const holdsAll = ["two", "wide", "orbit", "master"].includes(String(lastOut.plan));
       const lost = crew.some((a) => {
         if (a.offstage || a.walking) return false;
-        const p = ndcOf(a.head ?? ([a.pos[0], fy + a.height * 0.93, a.pos[1]] as V3), lastOut!.cam, lastOut!.look, lastOut!.fov ?? 50, inp.aspect ?? 16 / 9);
+        if (!holdsAll && (a.name !== lastSpeaker || subjectIsListener || ev.kind !== "tick")) return false;
+        // a move is judged at its end frame (where it settles); a look on an actor follows that actor
+        const o = lastOut!;
+        const cam = o.end ?? o.cam;
+        const look = o.lookEnd ?? o.look;
+        const p = ndcOf(a.head ?? ([a.pos[0], fy + a.height * 0.93, a.pos[1]] as V3), cam, look, o.fovEnd ?? o.fov ?? 50, inp.aspect ?? 16 / 9);
         return !(p.depth > 0.2 && Math.abs(p.x) <= 1.05 && Math.abs(p.y) <= 1.05);
       });
       lostFor = lost ? lostFor + (ev.dt ?? 0) : 0;
@@ -407,7 +414,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         cut("wide");
       } else if ((forceCut || ev.tags?.enter) && plan !== null && sig === walkSig) {
         explicitPlan = false;
-        cut(plan);
+        cut(lostRecut ? "wide" : plan);
       }
       if (sig !== walkSig) {
         explicitPlan = false;
@@ -458,7 +465,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
       return !(p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1);
     };
-    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line" || subjectOut(curMove);
+    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line" || subjectOut(curMove) || lostRecut;
     if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) moveCut = cutSeq;
     // "shoot rarely, shoot true" (accent styles): a beat that is not a scene start/end, an entrance, a look or a
     // spoken line gets the base planner's frame, the readable legacy wide of restage12
@@ -557,7 +564,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         }
         return (cs = (Math.imul(cs, 1664525) + 1013904223) >>> 0) / 4294967296;
       };
-      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0, walking: ev.kind === "line" && walkers.some((w) => w.name === speaker.name) });
+      // a cut for a head the frame lost takes the room in (a random pick put the close back on the one left in view)
+      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : lostRecut ? { id: "wide", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0, walking: ev.kind === "line" && walkers.some((w) => w.name === speaker.name) });
       /** the move being tried (its id labels the frame) */
       let pk: { id: string; warnings: string[] } = { id: "", warnings: [] };
       let frontalRejected = false;

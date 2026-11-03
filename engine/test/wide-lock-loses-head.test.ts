@@ -32,4 +32,23 @@ describe("a locked wide", () => {
     }
     expect(bad).toEqual([]);
   });
+
+  it("a held move is cut anew too (v20 155–160 s: a medium on Squidward through SpongeBob's line, him at the table off screen)", () => {
+    const bad: string[] = [];
+    for (const r of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      const d = createDirector(() => r, { style: "storybook" });
+      d.step({ event: { kind: "narrator", durationS: 4, dt: 0, beat: 0, tags: { first: true } }, actors: [sq, bob(-0.2, 1.4, false)], room: ROOM });
+      d.step({ event: { kind: "line", speaker: "SpongeBob", durationS: 6, dt: 4, beat: 1 }, actors: [sq, bob(-0.2, 1.4, false)], room: ROOM });
+      for (let i = 1; i <= 4; i++) {
+        const u = i / 4;
+        d.step({ event: { kind: "tick", dt: 0.5 }, actors: [sq, bob(-0.2 + 2.46 * u, 1.4 - 1.4 * u, i < 4)], room: ROOM });
+      }
+      let o = d.step({ event: { kind: "tick", dt: 0.5 }, actors: [sq, bob(2.26, 0, false)], room: ROOM });
+      for (let i = 0; i < 3; i++) o = d.step({ event: { kind: "tick", dt: 0.5 }, actors: [sq, bob(2.26, 0, false)], room: ROOM });
+      const cam = o.end ?? o.cam;
+      const look = o.lookEnd ?? o.look;
+      if (!inFrame({ cam, look, fov: o.fovEnd ?? o.fov }, [2.26, 0.6, 0])) bad.push(`${r}:${o.plan}:${o.move}`);
+    }
+    expect(bad).toEqual([]);
+  });
 });
