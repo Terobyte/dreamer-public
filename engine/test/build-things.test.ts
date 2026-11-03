@@ -108,8 +108,10 @@ describe("props, decals and door leaves", () => {
     expect(m.material).toBe("d_sea");
     expect(m.positions.length / 3).toBe(4);
     const b = meshBBox(m);
-    expect(b.max[0] - b.min[0]).toBeCloseTo(2.0, 6);
-    expect(b.max[1] - b.min[1]).toBeCloseTo(1.4, 6);
+    // wide enough that a camera 60° off the window axis still sees city, not the void
+    // behind its edge (the avatar room's right window showed grey at ~45°): 1.6 + 2·1.0·tan60°
+    expect(b.max[0] - b.min[0]).toBeCloseTo(1.6 + 2 * Math.tan(Math.PI / 3), 6);
+    expect(b.max[1] - b.min[1]).toBeCloseTo(1.0 + 2 * 0.6, 6);
     expect(centroid(m)[1]).toBeCloseTo(1.5, 6);
     expect(m.room).toBe("living");
     expect(m.normals[2]).toBeGreaterThan(0);

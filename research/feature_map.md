@@ -112,7 +112,7 @@
 | `assets/alpha.ts` | белый фон -> альфа (наклейки/объекты) | `cutWhite(png)` | — | `foliage-cutout.test.ts` |
 | `assets/sky.ts` | шов панорамы неба | `seamSky`, `inpaintSky(png, edit)`, `SEAM_PROMPT`, `dropSeamLines(img, cx, half)` (тонкий тёмный мазок модели в полосе шва стирается: чёрный столб в небе луга) | — | `assets-live` ? |
 | `assets/providers/muse-image.ts` | Muse Image `meta-models/muse-image-1` на `api.meta-models.ai`; ключ ТОЛЬКО из env `META_MODEL_API_KEY` | `MuseImageProvider(opts)`, `RetryableError` | — | `assets-live` (с мок-fetch) |
-| `assets/providers/sam3d.ts` | SAM3D по HTTP `/v1/3d/generations` (model `meta-models/sam-3d-objects`) | `Sam3dProvider.mesh(png,name)` | — | `assets-live` |
+| `assets/providers/sam3d.ts` | **ЗАПАРКОВАН, мёртвый код (L163):** SAM3D по HTTP `/v1/3d/generations` — такого API у Meta нет | `Sam3dProvider.mesh(png,name)` | — | `assets-live` |
 | `assets/providers/fake.ts` | оффлайн-провайдеры для тестов | `FakeImageProvider`, `FakeObjectProvider`, `fakePng(w,h,rgb,whiteCorners)`, `fakeGlb()`, `fakeDenseGlb(tris)`, `FakeDenseObjectProvider` | — | почти все assets-тесты, `koshakan-accept.test.ts` |
 | `assets/providers/types.ts` | швы `ImageProvider{generate,edit?}`, `ObjectProvider{mesh}` | — | — | — |
 
@@ -307,7 +307,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | голос по роли/имени | `dream/voices.json` + `voice.load_pool`, `character_reference_id` |
 | картинка Muse Image (TS) | `assets/providers/muse-image.ts MuseImageProvider` |
 | картинка Muse Image (Python, пакет) | `pipe2/assets.py MuseImage`; для dream `dream/images.py Images` |
-| меш SAM3D (из движка по HTTP) | `assets/providers/sam3d.ts Sam3dProvider` |
+| меш SAM3D | только pipe2 `AssetQueue`/`ModalMesh` в кэш → `dreamer build --assets cache` (`sam3d.ts` мёртв, L163) |
 | меш SAM3D (Modal, параллельно на N GPU) | `pipe2/assets.py ModalMesh`/`AssetQueue`; `h0/sam3d_modal.py` |
 | прогрев GPU | `pipe2/gpu.py GpuWarmth` |
 | фейковые провайдеры для тестов (engine) | `assets/providers/fake.ts` (`FakeImageProvider`, `FakeObjectProvider`, `fakePng`, `fakeGlb`, `fakeDenseGlb`, `FakeDenseObjectProvider`); `engine/test/fake-shots.ts`; `test/helpers/{scene,broken,timing}.ts` |
@@ -424,7 +424,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | ключи | `h0/keys.py get(...)` — единый (Н16); `dream/llm.py:248 _baseten_key` берёт из него | `squid_live/server.py:76,115`; `live/rt.py` (`gate_test.fish_key`) | остаток после Н16; `voice.fish_key` и `images._image_key` уже оборачивают `keys.get` |
 | Fish TTS | `dream/voice.py:129 real_transport` (drama-3) | `squid_live/server.py:124 speak`; `live/rt.py` (PCM stream); вне repo `career/orchestration/tg.py` (s2-pro, Гаврилов) | разные модели: dream = `drama-3`, tg.py = `s2-pro` |
 | Muse Image | `engine/src/assets/providers/muse-image.ts:40` (`muse-image-1`, api.meta-models.ai) | `pipe2/assets.py:71 MuseImage` (`muse-image-1.0`, api.meta.ai); `dream/images.py:37`; `h0/gen_images.py` | разные endpoint и имена моделей |
-| SAM3D | `engine/src/assets/providers/sam3d.ts:17 Sam3dProvider` (HTTP meta-models) | `pipe2/assets.py:108 ModalMesh` (Modal `dreamer-sam3d`); `h0/world/twelve_oaks/sam3d_par.py` | боевой путь pipe2 = Modal; engine HTTP-провайдер = путь `--assets live` |
+| SAM3D | `engine/src/assets/providers/sam3d.ts:17 Sam3dProvider` (HTTP meta-models) | `pipe2/assets.py:108 ModalMesh` (Modal `dreamer-sam3d`); `h0/world/twelve_oaks/sam3d_par.py` | боевой путь pipe2 = Modal; engine HTTP-провайдер мёртв, запаркован (L163) |
 | учёт денег | `engine/src/assets/cost.ts:39 Budget` (центы) | `pipe2/ledger.py:24 Ledger` (usd/calls/tokens); `dream/llm.py:135 _charge`; `make/core.py Ctx.spend` | четыре счётчика, не связаны |
 | выбор жеста/клипа по тексту | `runtime/stage/anim.ts:378 pickClip` | `squid_live/duo.html:205 pick` (по ремарке голоса); `dream/dialogue.py:433 remarks` | pick из squid в движок не перенесён |
 | «кто куда идёт» по тексту | `places.ts:94 stageRegex` | `squid_live/duo.html:329 stageFrom` (+STAGE регэкспы) | движок взял регэксп, структурное поле `stage` не читает |

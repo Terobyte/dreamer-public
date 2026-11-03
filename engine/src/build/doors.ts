@@ -10,8 +10,10 @@ import type { V3 } from "./mesh.js";
 const LEAF = 0.04;
 /** How far behind the outer wall face an `outside` backdrop hangs. */
 const BACKDROP_BACK = 1.0;
-/** Margin the backdrop adds on each side so the opening never frames its edge. */
-const BACKDROP_MARGIN = 0.2;
+/** Margins the backdrop adds on each side so the opening never frames its edge:
+ * sideways it covers a camera up to 60° off the window axis (BACKDROP_BACK·tan60°). */
+const BACKDROP_MARGIN = BACKDROP_BACK * Math.tan(Math.PI / 3);
+const BACKDROP_MARGIN_Y = 0.6;
 
 /** Door leaves and `outside` backdrops, one mesh each. */
 export function doorMeshes(ctx: Ctx): Mesh[] {
@@ -120,7 +122,7 @@ export function doorMeshes(ctx: Ctx): Mesh[] {
           n,
           u,
           g.width / 2 + BACKDROP_MARGIN,
-          g.height / 2 + BACKDROP_MARGIN,
+          g.height / 2 + BACKDROP_MARGIN_Y,
         ),
       );
     }

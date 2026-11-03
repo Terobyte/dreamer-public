@@ -1,3 +1,10 @@
+/**
+ * PARKED (11-02, LESSONS L163): dead code. There is no SAM3D on the Meta API, so
+ * this HTTP provider never worked and `build --assets live` falls back to boxes
+ * for every object. Live meshes go through pipe2 (`AssetQueue` -> SAM3D on Modal)
+ * into the cache, then `dreamer build --assets cache`. Do not extend this file;
+ * remove it or make `live` fail loudly when the engine is next touched.
+ */
 import type { ObjectProvider } from "./types.js";
 
 export const SAM3D_BASE_URL = "https://api.meta-models.ai";

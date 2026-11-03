@@ -2,8 +2,8 @@ import { PNG } from "pngjs";
 import type { ImageSize } from "../templates.js";
 import type { ImageProvider } from "./types.js";
 
-export const MUSE_BASE_URL = "https://api.meta-models.ai";
-export const MUSE_IMAGE_MODEL = "meta-models/muse-image-1";
+export const MUSE_BASE_URL = "https://api.meta.ai";
+export const MUSE_IMAGE_MODEL = "muse-image-1.0";
 
 export const MUSE_TIMEOUT_MS = 120_000;
 
@@ -53,11 +53,11 @@ export class MuseImageProvider implements ImageProvider {
   }
 
   async generate(prompt: string, size: ImageSize): Promise<Buffer> {
-    const [width, height] = size.split("x").map(Number);
     const res = await fetch(`${this.baseUrl}/v1/images/generations`, {
       method: "POST",
       headers: { authorization: `Bearer ${this.key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: this.model, prompt, width, height, n: 1, response_format: "b64_json" }),
+      // the live API takes `size: "WxH"` and answers b64_json; `width`/`height` are a 400
+      body: JSON.stringify({ model: this.model, prompt, n: 1, size }),
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!res.ok) {
