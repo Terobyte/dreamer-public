@@ -774,8 +774,34 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         }
       }
     }
+    // a still camera on the path of a walking speaker is put off it (Squidward v24 134–136 s: follow_side came out
+    // still, 0.4 m off their way to the door; they walked through the lens): the camera moves aside, 1.2 m off the
+    // line he walks, at its cut only
+    if (curMove && !curMove.end && moveStart === clock) {
+      const w = walkers.find((x) => x.name === speaker.name);
+      if (w) {
+        const f = faceOf(w.yaw);
+        const L = Math.max(0.5, w.walkLeft ?? 2);
+        const c: V2 = [curMove.cam[0], curMove.cam[2]];
+        const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
+        const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
+        const off = Math.hypot(c[0] - near[0], c[1] - near[1]);
+        if (off < PATH_CLEAR_M) {
+          const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
+          const outline = inp.room.outline;
+          const q = snap(outline, [near[0] + n[0] * PATH_CLEAR_M, near[1] + n[1] * PATH_CLEAR_M], roomRect(outline), 0.25);
+          curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
+        }
+      }
+    }
     if (!curMove) return out;
-    const tracked = trackName && trackMove === curMove && !curMove.end ? crew.find((a) => a.name === trackName) : undefined;
+    // a still frame turns after a walking speaker, the director's fallback's or a move that came out still (v24 141–145 s)
+    // once on him the frame stays on him to its end (he stops where it turned to, not where it was cut)
+    if (!curMove.end && trackMove !== curMove && walkers.some((a) => a.name === speaker.name)) {
+      trackName = speaker.name;
+      trackMove = curMove;
+    }
+    const tracked = !curMove.end && trackName && trackMove === curMove ? crew.find((a) => a.name === trackName) : undefined;
     if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut };
     return { ...out, ...curMove, cut: heldCut };
   };
@@ -797,6 +823,8 @@ const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
 /** a cut on a walk's start comes this long after the last cut at the soonest (a cut on the action, not asl.min) */
 const WALK_CUT_S = 1.5;
+/** a still camera stands at least this far off the line a walking speaker walks */
+const PATH_CLEAR_M = 1.2;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
  *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
  *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
