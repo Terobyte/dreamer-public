@@ -39,6 +39,23 @@ class StoryDirector(NoNet):
             self.assertEqual(seen.get("places"), places)
             self.assertEqual(seen.get("cache_dir"), out)  # B51: inside ctx.out, so _publish keeps it
 
+    def test_cast_clips_go_to_the_director(self):
+        """Nov 3 meadow: the director names the clip a beat plays, so it gets each actor's clips from cast.json"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run, out = _prep(tmp, BOOK)
+            synth_world.write(run / "world" / "run", glb=False)
+            (run / "cast").mkdir(exist_ok=True)
+            (run / "cast" / "cast.json").write_text(json.dumps({"Mirai": {"clips": {"run_joy": "c/run.glb", "walk": "c/w.glb"}}}))
+            seen = {}
+
+            def score_scene(book_dir, scene_id, **kw):
+                seen.update(kw)
+                return {"scene": scene_id, "beats": []}
+            with mock.patch.object(book, "score_scene", side_effect=score_scene), \
+                 mock.patch.object(story, "_spark_director", return_value=lambda p: "", create=True):
+                story.run_story(_ctx(run, out))
+            self.assertEqual(seen.get("clips"), {"Mirai": ["run_joy", "walk"]})
+
     def test_second_identical_run_hits_stage_cache_without_director_call(self):
         with tempfile.TemporaryDirectory() as tmp:
             brief = dict(BOOK, book={"dir": JANE, "scene": "tea"})

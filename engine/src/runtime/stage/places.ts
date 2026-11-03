@@ -262,3 +262,13 @@ export function pillowShift(head: [number, number, number], foot: V2, heightAt: 
   for (let s = 0; s < max; s += 0.03) if (clear(s)) return Math.round(s * 1000) / 1000;
   return max;
 }
+
+/** where a walker stops to reach another actor (a hug, a lap, sitting by her): `gap` short of the target, on the
+ *  walker's side; the same spot -> a fixed side (+X). Koshakan meadow, Nov 3: "Mirai climbed into Mama's lap" */
+export function nearActor(from: V2, target: V2, gap: number): V2 {
+  const dx = from[0] - target[0];
+  const dz = from[1] - target[1];
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-6) return [target[0] + gap, target[1]];
+  return [target[0] + (dx / d) * gap, target[1] + (dz / d) * gap];
+}

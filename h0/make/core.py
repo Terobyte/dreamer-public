@@ -198,7 +198,7 @@ def default_stages():
         S("refs", ("brief",), 2, _run_refs, ("fake", "pick")),
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
-        S("story", ("refs", "world"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
+        S("story", ("refs", "world", "cast"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
         S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "freestyle", "lang")),
         S("check", ("world", "refs"), 1, _fast_stub, optional=True),
     )}

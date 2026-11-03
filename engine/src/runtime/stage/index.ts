@@ -1,18 +1,18 @@
 import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
-import { aliasesOf, clipForBeat, idleAfterClip, idleForPose } from "./anim.js";
+import { aliasesOf, clipForBeat, fitStaged, idleAfterClip, idleForPose, stagedClips } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { BED_TUCK_M, bedLift, floorAt, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { BED_TUCK_M, bedLift, floorAt, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
 import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
-import { legalCameraPoint, roomRect, type V3 } from "./camera.js";
+import { clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
 import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
 
 export interface StageCtx {
@@ -441,6 +441,30 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     poseOf.set(who, "sit");
     afterClip.set(who, clip);
   };
+  /** the clip / idle a stage directive names (Spark's staging, Nov 3): the idle takes over after the clip */
+  const actOut = (who: string, sc0: { clip?: string; idle?: string }): void => {
+    const a = actors.get(who);
+    if (!a) return;
+    const sc = fitStaged(sc0, poseOf.get(who), clipfacts?.[who] ?? null);
+    if (sc.idle) a.setIdle?.(sc.idle);
+    if (sc.clip) playOnce(who, sc.clip);
+    else if (sc.procedural) a.gesture();
+  };
+  /** actors whose clip this beat's staging named: the text pick of the same beat does not override it */
+  const stagedClipWho = new Set<string>();
+  /** clips that wait for the walk of their directive to end */
+  const onArrive = new Map<string, { clip?: string; idle?: string }>();
+  /** actors that walked up to another one (a hug, a lap): the pair is never pushed apart until one of them moves on */
+  const together = new Set<string>();
+  let nearSeq = 0;
+  const settleArrivals = (): void => {
+    for (const [who, sc] of [...onArrive]) {
+      const a = actors.get(who);
+      if (!a || a.moving()) continue;
+      onArrive.delete(who);
+      actOut(who, sc);
+    }
+  };
   const settleAfterClips = (): void => {
     for (const [who, clip] of afterClip) {
       const a = actors.get(who);
@@ -549,6 +573,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         poseOf.set(who, pose);
         fitIdle(who, pose);
       }
+      const sc = stagedClips(e as { clip?: unknown; idle?: unknown }, Object.keys(cast[who]?.clips ?? {}));
+      onArrive.delete(who);
+      if (sc.clip) stagedClipWho.add(who);
 
       const getTargetPos = (tgt?: string): V2 | null => {
         if (!tgt) return null;
@@ -563,8 +590,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           cancelExit(who);
           a.go([], a.yaw(), a.act());
         }
+        actOut(who, sc);
         return;
       }
+      // one of a pair moves on: the pair is over (both may be pushed apart again)
+      if (action !== "turn_away" && together.has(who)) together.clear();
       if (action === "turn_away") {
         cancelExit(who);
         const tgtPos = getTargetPos(lookTarget);
@@ -575,6 +605,24 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         } else {
           warnings.push(`stage: turn_away requires look target`);
         }
+        actOut(who, sc);
+        return;
+      }
+      if ((action === "come" || action === "goto") && placeName && placeName !== who && actors.has(placeName)) {
+        // walk up to another actor: a place made on the spot, `gap` short of her (a lap sits close in)
+        const other = actors.get(placeName)!;
+        const gap = /lap/i.test(`${sc.clip ?? ""} ${sc.idle ?? ""}`) ? 0.12 : 0.5;
+        const at = nearActor(a.pos(), other.pos(), gap);
+        const name = `@${placeName}#${nearSeq++}`;
+        for (let i = places.length - 1; i >= 0; i--) if (places[i]!.name.startsWith(`@`) && claims[places[i]!.name] === who) (delete claims[places[i]!.name], places.splice(i, 1));
+        const lvl = toucher.levelOf(placeName);
+        places.push({ name, id: name, kind: "stand", room: roomOfActor(other, lvl)?.room ?? "", level: lvl, at, yaw: yawTo(at, other.pos()), look: other.pos(), obstacle: null, poses: ["stand"] });
+        cancelExit(who);
+        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
+        touch(who, name, undefined, yawTo(at, other.pos()));
+        together.add(who);
+        together.add(placeName);
+        onArrive.set(who, sc);
         return;
       }
       if (action === "come" || action === "goto") {
@@ -592,6 +640,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
         pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
         touch(who, pl.name, pose, lookYaw);
+        onArrive.set(who, sc);
         return;
       }
       if (action === "enter") {
@@ -687,7 +736,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
-      const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
+      const pick0 = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
+      const pick = pick0 && stagedClipWho.has(pick0.who) ? null : pick0;
+      stagedClipWho.clear();
       if (pick?.procedural) actors.get(pick.who)?.gesture();
       else if (pick) playOnce(pick.who, pick.clip);
       const t = touchName(e.touch);
@@ -704,7 +755,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
-      const pick = clipForBeat({ who: null, text: e.text }, cast, aliases, clipPose);
+      const pick0 = clipForBeat({ who: null, text: e.text }, cast, aliases, clipPose);
+      const pick = pick0 && stagedClipWho.has(pick0.who) ? null : pick0;
+      stagedClipWho.clear();
       if (pick?.procedural) actors.get(pick.who)?.gesture();
       else if (pick) playOnce(pick.who, pick.clip);
       const hadStage = lastBeatHadStage || !!(e as any).stage;
@@ -799,12 +852,21 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       c.camera.fov = fr.fov;
       c.camera.updateProjectionMatrix();
     }
+    {
+      const q = clearOfBodies(p, fr.look, camBodies());
+      if (roomAt([q[0], q[2]])) p = q;
+    }
     c.camera.position.set(p[0], p[1], p[2]);
     look.set(fr.look[0], fr.look[1], fr.look[2]);
     c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();
     return true;
   };
+  /** every actor on stage as a column for the camera (clearOfBodies): feet to 12 cm over the head bone */
+  const camBodies = (): CamBody[] =>
+    [...actors.values()]
+      .filter((a) => !offstageActors.has(a.who) && a.group.visible)
+      .map((a) => ({ pos: a.pos(), y0: a.group.position.y, top: (boneOf(a.who, "head")?.[1] ?? a.group.position.y + heightOf(a.who)) + 0.12, r: a.radius() }));
   const boneOf = (who: string, bone: "head" | "hips"): V3 | null => {
     const a = actors.get(who);
     if (!a) return null;
@@ -909,7 +971,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const step = Math.max(0, dt) * WALK_SPEED;
     const byLevel = new Map<string, Actor[]>();
     for (const a of actors.values()) {
-      if (offstageActors.has(a.who) || exiting.has(a.who) || a.moving()) continue;
+      if (offstageActors.has(a.who) || exiting.has(a.who) || a.moving() || together.has(a.who)) continue;
       const lvl = toucher.levelOf(a.who);
       if (lvl === null) continue;
       (byLevel.get(lvl) ?? byLevel.set(lvl, []).get(lvl)!).push(a);
@@ -946,6 +1008,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     spread(dt);
     settleBeds(now);
     settleAfterClips();
+    settleArrivals();
     for (const who of [...exiting]) {
       const act = actors.get(who);
       if (!act?.moving()) {
@@ -1089,6 +1152,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       pos.set(pos.x + w[0], pos.y + w[1], pos.z + w[2]);
     }
     look.set(look.x + (s.look[0] - look.x) * k, look.y + (s.look[1] - look.y) * k, look.z + (s.look[2] - look.z) * k);
+    {
+      // never through a wall: a step back that leaves every room keeps the camera where it was
+      const q = clearOfBodies([pos.x, pos.y, pos.z], [look.x, look.y, look.z], camBodies());
+      if (roomAt([q[0], q[2]])) pos.set(q[0], q[1], q[2]);
+    }
     c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();
     lastPlan = s.plan;

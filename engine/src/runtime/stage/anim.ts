@@ -522,3 +522,38 @@ export function clipForBeat(
   const seed = typeof beat.seed === "string" ? beat.seed : "";
   return { who, clip: variants[strHash(`${seed}|${verb}|${text}`) % variants.length] };
 }
+
+/** The clip / idle a stage directive names (Spark's staging, Nov 3), kept only when this actor has it (case-insensitive) */
+export function stagedClips(e: { clip?: unknown; idle?: unknown }, clips: string[]): { clip?: string; idle?: string } {
+  const find = (v: unknown): string | undefined =>
+    typeof v === "string" && v.trim() ? clips.find((c) => c.toLowerCase() === v.trim().toLowerCase()) : undefined;
+  const out: { clip?: string; idle?: string } = {};
+  const clip = find(e.clip);
+  const idle = find(e.idle);
+  if (clip) out.clip = clip;
+  if (idle) out.idle = idle;
+  return out;
+}
+
+/** A staged clip against the actor's staged pose, by the rule `clipForBeat` keeps for a picked one: standing plays
+ *  anything; lying plays only a lying clip and keeps only a lying idle; seated (a bed edge, a stool) plays no clip
+ *  (no seated clip facts yet: the procedural nod instead), a standing idle stays (the seated legs are procedural) */
+export function fitStaged(
+  sc: { clip?: string; idle?: string },
+  pose: string | undefined,
+  facts: Record<string, { lying?: boolean } | undefined> | null,
+): { clip?: string; idle?: string; procedural?: true } {
+  const standing = !pose || pose === "stand" || pose === "stand_at" || pose === "stand_on";
+  if (standing) return { ...sc };
+  const lying = (c: string): boolean => facts?.[c]?.lying === true;
+  const out: { clip?: string; idle?: string; procedural?: true } = {};
+  if (pose === "lie") {
+    if (sc.clip && lying(sc.clip)) out.clip = sc.clip;
+    else if (sc.clip) out.procedural = true;
+    if (sc.idle && lying(sc.idle)) out.idle = sc.idle;
+    return out;
+  }
+  if (sc.idle && !lying(sc.idle)) out.idle = sc.idle;
+  if (sc.clip) out.procedural = true;
+  return out;
+}

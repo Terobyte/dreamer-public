@@ -490,8 +490,18 @@ const toPoint = (p: Pt, g: Geo, world: boolean): ShotPoint => ({
   fov: p.fov,
 });
 
-export function resolveMove(id: string, subject: MoveSubject, ctx: Ctx): Resolved {
+/** outdoors there are no walls to show: the "room" of a wide is the actors on stage (Koshakan meadow, Nov 3: the wide
+ *  of a 40 m field stood 11 m off and framed its centre, the pair 16 % of the frame) */
+function openSubject(subject: MoveSubject, ctx: Ctx): MoveSubject {
+  if (!("room" in subject) || !ctx.room.open) return subject;
+  const on = ctx.actors.filter((a) => !a.offstage).map((a) => a.name);
+  if (on.length >= 2) return { pair: [on[0]!, on[1]!] };
+  return on.length === 1 ? { actor: on[0]! } : subject;
+}
+
+export function resolveMove(id: string, subject0: MoveSubject, ctx: Ctx): Resolved {
   const warnings: string[] = [];
+  const subject = openSubject(subject0, ctx);
   let useId = id;
   const isRecord = Object.hasOwn(RECORDS, id);
   if (isRecord) useId = "medium";
@@ -553,7 +563,8 @@ export function resolveMove(id: string, subject: MoveSubject, ctx: Ctx): Resolve
     }
   }
   // the face cannot be kept: a wide on the room (face rule first, then without it)
-  const wide = run(MOVES.wide, { room: true }, true, false, true) ?? run(MOVES.wide, { room: true }, false, true, true);
+  const roomish = openSubject({ room: true }, ctx);
+  const wide = run(MOVES.wide, roomish, true, false, true) ?? run(MOVES.wide, roomish, false, true, true);
   if (wide && wide !== "NOWALK") {
     wide.f.end = null;
     return finish(out(wide, ["MOVE_FACE_FALLBACK"]));

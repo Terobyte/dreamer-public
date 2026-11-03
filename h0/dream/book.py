@@ -339,7 +339,8 @@ def warnings_for(beats):
             for b in beats if b["kind"] == "line" and b["who"] is None]
 
 
-def score_scene(dir, scene_id, places=None, director=None, cache_dir=None):
+def score_scene(dir, scene_id, places=None, director=None, cache_dir=None, clips=None):
+    """`clips` = {actor: [clip names]} of the built cast: the director names the clip a beat plays (Nov 3)."""
     book = load_book(dir)
     ch, sc = find_scene(book, scene_id)
     with open(os.path.join(dir, ch["file"]), encoding="utf-8") as f:
@@ -361,6 +362,8 @@ def score_scene(dir, scene_id, places=None, director=None, cache_dir=None):
         director,
         extra_warnings,
         cache_dir,
+        beats=[dict(b) for b in beats] if clips is not None else None,
+        clips=clips,
     )
 
     for b in beats:

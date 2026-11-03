@@ -95,6 +95,18 @@ def translate_score(ctx, score, lang):
     return dict(score, beats=beats)
 
 
+def cast_clips(run_dir):
+    """{actor: [clip names]} from the built cast (cast/cast.json), None when there is no cast yet: the staging
+    director names the clip a beat plays (Koshakan meadow, Nov 3: text words never fired the run or the lap)."""
+    p = Path(run_dir) / "cast" / "cast.json"
+    try:
+        cast = json.loads(p.read_text())
+    except (OSError, ValueError):
+        return None
+    out = {n: sorted((c.get("clips") or {}).keys()) for n, c in cast.items() if isinstance(c, dict)}
+    return {n: v for n, v in out.items() if v} or None
+
+
 def run_story(ctx):
     brief = json.loads((ctx.run_dir / "brief" / "brief.json").read_text())
     if brief.get("mode") == "book" and brief.get("book"):
@@ -121,8 +133,9 @@ def run_story(ctx):
             cache = ctx.out
             for f in (ctx.run_dir / "story").glob("stage_*.json"):
                 shutil.copyfile(f, ctx.out / f.name)
+        clips = cast_clips(ctx.run_dir)
         score = _book.score_scene(b["dir"], b["scene"], places=places, director=director,
-                                  cache_dir=cache)
+                                  cache_dir=cache, **({"clips": clips} if clips else {}))
         if places is None:
             score = dict(score, warnings=list(score.get("warnings") or [])
                          + ["story: no world, staging without places"])

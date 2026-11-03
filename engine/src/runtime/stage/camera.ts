@@ -158,3 +158,31 @@ export function legalCameraPoint(p: V3, law: CameraLaw): V3 {
   }
   return [cx, y, cz];
 }
+
+/** an actor's body for the camera: a vertical column from `y0` (feet) to `top` (over the head), radius `r` */
+export interface CamBody {
+  pos: V2;
+  y0: number;
+  top: number;
+  r: number;
+}
+
+/** The camera out of every body (Koshakan meadow, Nov 3: push_in / close ended 0.1–0.4 m from an actor, the frame full
+ *  of hair; a close-up of Mirai in Mama's lap stood inside Mama). A camera within `min` of a body steps back along its
+ *  look line, flat, 5 cm at a time, at most `cap` m; still inside at the cap -> the cap point. */
+export function clearOfBodies(cam: V3, look: V3, bodies: CamBody[], min = 0.35, cap = 4): V3 {
+  const inside = (p: V3): boolean =>
+    bodies.some((b) => p[1] >= b.y0 - min && p[1] <= b.top + min && Math.hypot(p[0] - b.pos[0], p[2] - b.pos[1]) < b.r + min);
+  if (!inside(cam)) return cam;
+  let dx = cam[0] - look[0];
+  let dz = cam[2] - look[2];
+  const d = Math.hypot(dx, dz);
+  if (d < 1e-6) [dx, dz] = [1, 0];
+  else [dx, dz] = [dx / d, dz / d];
+  let p: V3 = cam;
+  for (let s = 0.05; s <= cap + 1e-9; s += 0.05) {
+    p = [cam[0] + dx * s, cam[1], cam[2] + dz * s];
+    if (!inside(p)) return p;
+  }
+  return p;
+}

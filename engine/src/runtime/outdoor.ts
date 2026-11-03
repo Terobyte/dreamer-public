@@ -7,6 +7,7 @@ import {
   DirectionalLight,
   Float32BufferAttribute,
   HemisphereLight,
+  LinearFilter,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -118,6 +119,16 @@ function groundDisc(def: OutdoorDef["ground"]): BufferGeometry {
  * band so nothing under the horizon shows black. Hemi colours come from the
  * upper/lower halves of the panorama (or of the gradient stand-in).
  */
+/** the dome's panorama: wraps across the u = 0/1 seam and samples no mip (Koshakan meadow, Nov 3: the mip picked at
+ *  the seam's UV jump drew a black 4 px line from the zenith to the horizon) */
+export function skyTexture(t: Texture): Texture {
+  t.wrapS = RepeatWrapping;
+  t.generateMipmaps = false;
+  t.minFilter = LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
+
 export async function addOutdoor(scene: Scene, def: OutdoorDef, groundMaterial: MeshStandardMaterial): Promise<void> {
   let sky: Texture;
   let fromFile = false;
@@ -138,7 +149,7 @@ export async function addOutdoor(scene: Scene, def: OutdoorDef, groundMaterial: 
 
   const dome = new Mesh(
     new SphereGeometry(def.sky.radius, 64, 32),
-    new MeshBasicMaterial({ map: sky, side: BackSide, fog: false, depthWrite: false }),
+    new MeshBasicMaterial({ map: skyTexture(sky), side: BackSide, fog: false, depthWrite: false }),
   );
   dome.name = "outdoor:sky";
   dome.renderOrder = -1;

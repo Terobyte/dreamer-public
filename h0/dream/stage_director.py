@@ -23,12 +23,17 @@ def normalize_places(places: Any) -> Dict[str, Any]:
     return places if isinstance(places, dict) else {}
 
 
-def compute_director_cache_key(paragraphs: List[str], places: Dict[str, Any], model_name: str = "spark-contributor") -> str:
-    payload = {
+def compute_director_cache_key(paragraphs: List[str], places: Dict[str, Any], model_name: str = "spark-contributor",
+                               beats: Optional[List[Dict[str, Any]]] = None,
+                               clips: Optional[Dict[str, List[str]]] = None) -> str:
+    payload: Dict[str, Any] = {
         "paragraphs": paragraphs,
         "places": places,
         "model": model_name
     }
+    # the beat list and the clips change the question: a new key (an old answer without clips stays valid for old calls)
+    if beats is not None or clips is not None:
+        payload.update(beats=beats, clips=clips, v=2)
     dumped = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(dumped.encode("utf-8")).hexdigest()
 
@@ -71,7 +76,9 @@ def build_director_prompt(
     paragraphs: List[str],
     cast: List[str],
     places: Dict[str, Any],
-    needed_beats: Optional[List[int]] = None
+    needed_beats: Optional[List[int]] = None,
+    beats: Optional[List[Dict[str, Any]]] = None,
+    clips: Optional[Dict[str, List[str]]] = None,
 ) -> str:
     places_info = {}
     for name, p in normalize_places(places).items():
@@ -79,7 +86,7 @@ def build_director_prompt(
             "room": p.get("room", ""),
             "poses": p.get("poses", [])
         }
-    return json.dumps({
+    out: Dict[str, Any] = {
         "instruction": (
             "Determine staging (start placement and beat-by-beat movements) for the scene. "
             "Available actions: stay, come, goto, enter, exit, turn_away. "
@@ -89,7 +96,25 @@ def build_director_prompt(
         "places": places_info,
         "paragraphs": paragraphs,
         "needed_beats": needed_beats
-    }, ensure_ascii=False, indent=2)
+    }
+    if beats is not None:
+        out["beats"] = [{k: b[k] for k in ("id", "kind", "who", "text") if b.get(k) is not None} for b in beats]
+        out["instruction"] = (
+            "Determine staging beat by beat: where everyone starts, who moves where on which beat, and what each body "
+            "DOES. A children's picture-book film: when the text says someone runs, jumps, falls, sits down, laughs, "
+            "hugs, climbs into a lap, the audience must SEE it, so that beat gets the matching clip. "
+            "Actions: stay, come, goto, enter, exit, turn_away. `place` is a place name, or another actor's name = "
+            "walk up to that actor (to hug, to sit by them, to climb into their lap). "
+            "`clip` = one of THAT actor's clips (list `clips`), played once on that beat (after the walk, when there "
+            "is one). `idle` = one of that actor's clips that loops afterwards until the next change (a seated clip "
+            "after sitting down on the grass, a lap clip while held). Leave clip out on beats where nobody does "
+            "anything new. beat_id is the `id` of a beat in `beats`. "
+            "Return JSON: {start: [{who, place, pose, offstage?: bool}], "
+            "stage: [{beat_id, who, action, place?, pose?, look?, clip?, idle?}]}"
+        )
+    if clips is not None:
+        out["clips"] = clips
+    return json.dumps(out, ensure_ascii=False, indent=2)
 
 
 def validate_and_merge_staging(
@@ -99,7 +124,8 @@ def validate_and_merge_staging(
     places: Dict[str, Any],
     hand_start: Optional[List[Dict[str, Any]]],
     hand_stage_by_beat: Dict[int, List[Dict[str, Any]]],
-    warnings: List[str]
+    warnings: List[str],
+    clips: Optional[Dict[str, List[str]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]]]:
     if model_output is not None and not isinstance(model_output, dict):
         warnings.append("staging: model output is not a dict, ignored")
@@ -187,8 +213,13 @@ def validate_and_merge_staging(
             pose = st.get("pose")
             look = st.get("look")
 
+            # walking up to another actor: `place` is that actor's name (come / goto only)
+            to_actor = action in ("come", "goto") and cast_set is not None and place in cast_set
+            if to_actor and place == who:
+                warnings.append(f"beat {beat_id}: '{who}' goes to herself -> stay")
+                action, place, to_actor = "stay", None, False
             # Check mandatory place
-            if action in ("come", "goto", "enter"):
+            if action in ("come", "goto", "enter") and not to_actor:
                 if not place or place not in valid_places:
                     warnings.append(f"beat {beat_id}: action '{action}' requires valid place in bank, got '{place}' -> stay")
                     action = "stay"
@@ -218,6 +249,15 @@ def validate_and_merge_staging(
                 item["pose"] = pose
             if look:
                 item["look"] = look
+            # a clip the director names must be one of this actor's (another actor's clip on her rig is garbage)
+            for key in ("clip", "idle"):
+                c = st.get(key)
+                if not c:
+                    continue
+                if clips is not None and c in (clips.get(who) or []):
+                    item[key] = c
+                else:
+                    warnings.append(f"beat {beat_id}: {key} '{c}' is not a clip of '{who}' -> dropped")
 
             existing_for_beat.append(item)
 
@@ -237,6 +277,8 @@ def run_staging(
     director: Optional[Callable[[str], str]],
     warnings: List[str],
     cache_dir: Optional[str] = None,
+    beats: Optional[List[Dict[str, Any]]] = None,
+    clips: Optional[Dict[str, List[str]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[int, List[Dict[str, Any]]]]:
     """One director call per scene; hand-authored `start`/`stage` of the scene win.
 
@@ -255,7 +297,7 @@ def run_staging(
     output = None
     need_model = director is not None and (hand_start is None or not has_stage)
     if need_model:
-        key = compute_director_cache_key(paragraphs, places, "spark-contributor")
+        key = compute_director_cache_key(paragraphs, places, "spark-contributor", beats=beats, clips=clips)
         path = _cache_path(cache_dir, key) if cache_dir else None
         if path and os.path.isfile(path):
             try:
@@ -264,11 +306,11 @@ def run_staging(
             except (OSError, ValueError):
                 output = None
         if output is None:
-            prompt = build_director_prompt(paragraphs, list(cast or []), places)
+            prompt = build_director_prompt(paragraphs, list(cast or []), places, beats=beats, clips=clips)
             output = call_director_with_retry(director, prompt, warnings)
             if output is not None and path:
                 os.makedirs(cache_dir, exist_ok=True)
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(output, f, ensure_ascii=False)
     return validate_and_merge_staging(
-        output, paragraphs, list(cast or []), places, hand_start, hand_stage, warnings)
+        output, paragraphs, list(cast or []), places, hand_start, hand_stage, warnings, clips=clips)

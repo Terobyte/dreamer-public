@@ -91,7 +91,7 @@ class StoryPlaces(unittest.TestCase):
             self.assertEqual(json.loads((ctx.out / "score.json").read_text()), ed)
 
     def test_deps_and_missing_world(self):
-        self.assertEqual(core.default_stages()["story"].deps, ("refs", "world"))
+        self.assertEqual(core.default_stages()["story"].deps, ("refs", "world", "cast"))
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "run"
             with self.assertRaises(core.MissingInput):
@@ -160,6 +160,7 @@ class StoryPlaces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run = Path(tmp) / "run"
             core.run_make(run, "p", until="world", fake=True)
+            core.run_make(run, "p", only="cast", fake=True)
             stages = core.default_stages()
             calls = []
             real = core.input_hash

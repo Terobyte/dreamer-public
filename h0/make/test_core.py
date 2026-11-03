@@ -87,7 +87,7 @@ class TestManifestHash(Base):
         self.make()
         self.calls.clear()
         self.make(stages=self.stages(cast={"version": 99}))
-        self.assertEqual(sorted(self.calls), ["cast", "stage"])
+        self.assertEqual(sorted(self.calls), ["cast", "stage", "story"])  # story asks the director with the cast clips (Nov 3)
 
     def test_fake_flag_in_params(self):
         self.make()
