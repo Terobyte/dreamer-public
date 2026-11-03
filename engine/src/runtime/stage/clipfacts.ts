@@ -21,6 +21,9 @@ export interface ClipFacts {
   /** contact_y at k/16 of the clip, k = 0..15: a clip that changes pose (wake_up sits up, lies back) rests on the
    *  support all along, not on its mean (k22_true: the lying part floated 17 cm over the bed) */
   contact_curve?: number[];
+  /** where the seat rests: the support of the skin under the pelvis, relative to the root (m). A chair sit's
+   *  contact is the feet; in a bed the seat sits on the blanket (k23_true: sit_idle's seat 14 cm over the bed) */
+  seat_y?: number;
 }
 
 const MAX_POINTS = 2000;
@@ -67,8 +70,13 @@ const SUPPORT_BAND_M = 0.02;
 /** World y the body rests on: the lowest y whose 2 cm band above holds >= 1.5% of the skin points. The bare
  *  minimum is the tip of whatever dangles lowest (Koshakan: a lamb's ear hung under the sleeping body, 7 cm of air). */
 export function supportY(root: Object3D): number {
-  const ys = skinPoints(root).map((p) => p[1]).sort((a, b) => a - b);
-  if (!ys.length) return lowestSkinY(root);
+  const ys = skinPoints(root).map((p) => p[1]);
+  return ys.length ? bandLow(ys) : lowestSkinY(root);
+}
+
+/** the lowest y whose SUPPORT_BAND_M band holds SUPPORT_SHARE of `ys` */
+function bandLow(all: number[]): number {
+  const ys = [...all].sort((a, b) => a - b);
   const need = Math.max(1, Math.ceil(ys.length * SUPPORT_SHARE));
   let j = 0;
   for (let i = 0; i < ys.length; i++) {
@@ -77,6 +85,20 @@ export function supportY(root: Object3D): number {
     if (j - i >= need) return ys[i]!;
   }
   return ys[0]!;
+}
+
+/** World y the seat rests on: supportY of the skin within 0.1 x height (horizontally) of the pelvis bone and
+ *  below it; null without a pelvis/hips bone or skin there */
+export function seatY(root: Object3D, heightM: number): number | null {
+  let pelvis: Object3D | null = null;
+  root.traverse((o) => {
+    if (!pelvis && (o as any).isBone && /pelvis|hips?$/i.test(o.name)) pelvis = o;
+  });
+  if (!pelvis) return null;
+  const p = (pelvis as Object3D).getWorldPosition(new Vector3());
+  const r = 0.1 * heightM;
+  const ys = skinPoints(root).filter((q) => q[1] < p.y && Math.hypot(q[0] - p.x, q[2] - p.z) <= r).map((q) => q[1]);
+  return ys.length ? bandLow(ys) : null;
 }
 
 const yawOf = (o: Object3D): number => {
@@ -109,6 +131,7 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   const act = mixer.clipAction(c);
   act.play();
   const frames: Array<{ contact: number; dir: Vector3; head: number }> = [];
+  const seats: number[] = [];
   const curve: number[] = [];
   try {
     const d = c.duration > 0 ? c.duration : 0;
@@ -126,6 +149,8 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
       const f = new Vector3(Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch));
       f.applyAxisAngle(UP, -yawOf(root));
       frames.push({ contact: low - rootY, dir: f, head: hp.pos[1] - low });
+      const seat = seatY(root, heightM);
+      if (seat !== null) seats.push(seat - rootY);
     }
   } finally {
     act.stop();
@@ -142,7 +167,8 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   const dir = sum.length() < 1e-6 ? frames[0]!.dir.clone().normalize() : sum.normalize();
   const faceYaw = Math.abs(dir.y) > 0.8 ? null : (((Math.atan2(dir.x, dir.z) * 180) / Math.PI) % 360 + 360) % 360;
   const headY = mean("head");
-  return { contact_y: mean("contact"), face_dir: [dir.x, dir.y, dir.z], face_yaw: faceYaw, head_y: headY, lying: headY < 0.5 * heightM, contact_curve: curve };
+  return { contact_y: mean("contact"), face_dir: [dir.x, dir.y, dir.z], face_yaw: faceYaw, head_y: headY, lying: headY < 0.5 * heightM, contact_curve: curve,
+    ...(seats.length ? { seat_y: seats.reduce((a, b) => a + b, 0) / seats.length } : {}) };
 }
 
 const r3 = (v: number): number => {
@@ -212,6 +238,7 @@ export async function writeClipfacts(castDir: string): Promise<string[]> {
         face_yaw: f.face_yaw === null ? null : r3(f.face_yaw) % 360,
         head_y: r3(f.head_y),
         ...(f.contact_curve ? { contact_curve: f.contact_curve.map(r3) } : {}),
+        ...(f.seat_y !== undefined ? { seat_y: r3(f.seat_y) } : {}),
         lying: f.lying,
       };
     }

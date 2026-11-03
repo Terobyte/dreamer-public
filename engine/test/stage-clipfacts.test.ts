@@ -198,6 +198,28 @@ describe("clipFacts (Г4)", () => {
     const f = clipFacts(body, headClip("still", [0, 0, 0], qa(Y, 0)), 1.0)!;
     expect(Math.abs(f.contact_y - 0.1)).toBeLessThanOrEqual(0.01);
   });
+
+  it("seat_y: the skin under the pelvis, not the dangling feet (k23_true 46 s: sit_idle stood her feet on the blanket, the seat 14 cm in the air)", () => {
+    // seat: a dense box under the hips, bottom at 0.1; shins: a dense box 0.3 in front, bottom at 0 (the support)
+    const body = makeBody();
+    const torso = body.children.find((o) => (o as any).isSkinnedMesh) as SkinnedMesh;
+    const dense = (w: number, h: number, x: number, y: number): BoxGeometry => {
+      const g = new BoxGeometry(w, h, w, 10, 10, 10);
+      g.translate(x, y, 0);
+      const n = g.attributes.position.count;
+      g.setAttribute("skinIndex", new Uint16BufferAttribute(new Array(n).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+      g.setAttribute("skinWeight", new Float32BufferAttribute(new Array(n).fill(0).flatMap(() => [1, 0, 0, 0]), 4));
+      return g;
+    };
+    torso.geometry = dense(0.2, 0.2, 0, 0.2);
+    const shin = new SkinnedMesh(dense(0.1, 0.2, 0.3, 0.1), new MeshStandardMaterial());
+    body.add(shin);
+    body.updateMatrixWorld(true);
+    shin.bind(torso.skeleton);
+    const f = clipFacts(body, headClip("still", [0, 0.2, 0], qa(Y, 0)), 1.0)!;
+    expect(Math.abs(f.contact_y - 0)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(f.seat_y! - 0.1)).toBeLessThanOrEqual(0.01);
+  });
 });
 
 /** 2 m GLB (box 2 tall, hips at 1) whose clip lifts the hips to 1.2: at heightM 1 the skin is 0.1 above the root */

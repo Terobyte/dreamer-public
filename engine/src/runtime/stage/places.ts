@@ -26,6 +26,14 @@ export interface Place {
 
 /** a sleeper lies in the bed, not on the blanket: the body sinks this far below the top (Koshakan, Nov 2) */
 export const BED_TUCK_M = 0.1;
+
+/** how far a body tucked in a bed (BED_TUCK_M under the top) rises when its idle turns to a sitting clip: the
+ *  tuck, less the seat's height over the clip's contact. A chair sit stands on its feet; in a bed it sits on its
+ *  seat, legs under the blanket (k23_true 46 s: sit_idle's seat 14 cm over the bed) */
+export function bedLift(facts: { contact_y?: number; seat_y?: number } | undefined): number {
+  const over = facts?.seat_y === undefined ? 0 : Math.max(0, facts.seat_y - (facts.contact_y ?? 0));
+  return BED_TUCK_M - over;
+}
 /** a bed sitter's pelvis is this far in from the long edge */
 export const BED_EDGE_IN_M = 0.15;
 /** ...and this far from the sleeper's spot toward the foot, so the two bodies do not overlap */

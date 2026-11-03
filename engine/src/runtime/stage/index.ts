@@ -6,7 +6,7 @@ import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { BED_TUCK_M, floorAt, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { BED_TUCK_M, bedLift, floorAt, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -129,7 +129,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
   // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
-  const clipfacts: Record<string, Record<string, { contact_y?: number; lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+  const clipfacts: Record<string, Record<string, { contact_y?: number; seat_y?: number; lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
     .catch(() => null);
@@ -419,9 +419,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (!a || !cur) return;
     const next = idleForPose(pose, cur, Object.keys(cast[who]?.clips ?? {}), clipfacts?.[who] ?? null);
     if (!next || !a.setIdle?.(next)) return;
-    // in a bed: lying sinks BED_TUCK_M under the blanket, sitting up sits on top of it (k19_true: Mirai sunk in the mattress)
-    if (bedOf(who) && a.act() !== "sit") a.teleport(a.pos(), a.yaw(), a.act(), a.y() + (pose === "lie" ? -BED_TUCK_M : BED_TUCK_M));
+    // in a bed: lying sinks BED_TUCK_M under the blanket, sitting up sits its seat on top of it (k19_true: Mirai sunk
+    // in the mattress; k23_true: sit_idle stood its feet on the blanket, the seat in the air); lying again undoes the lift
+    if (!bedOf(who) || a.act() === "sit") return;
+    const up = pose === "lie" ? -(bedLifted.get(who) ?? BED_TUCK_M) : bedLift(clipfacts?.[who]?.[next]);
+    if (pose === "lie") bedLifted.delete(who);
+    else bedLifted.set(who, up);
+    a.teleport(a.pos(), a.yaw(), a.act(), a.y() + up);
   };
+  /** the lift fitIdle gave a body sitting up in its bed, undone when it lies back */
+  const bedLifted = new Map<string, number>();
   /** the bed an actor lies in: a place with a lie spot she claimed, or whose lie spot she is on */
   const bedOf = (who: string): Place | undefined => {
     const a = actors.get(who);

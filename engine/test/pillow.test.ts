@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from "three";
 import { createHeight } from "../src/runtime/stage/sight.js";
-import { pillowShift } from "../src/runtime/stage/places.js";
+import { BED_TUCK_M, bedLift, pillowShift } from "../src/runtime/stage/places.js";
 
 const bedHeight = (x: number, z: number): number | null => (Math.abs(x + 1.25) > 0.55 || z < 1.5 || z > 3.5 ? null : z > 2.9 && z < 3.3 ? 0.75 : 0.57);
 
@@ -25,6 +25,15 @@ describe("head on the pillow, not in it", () => {
   });
   it("never slides more than the cap", () => {
     expect(pillowShift([-1.3, 0.68, 3.25], [0, -1], (x, z) => (z > 2.0 ? 0.75 : 0.57), 0.57, 0.1, 0.3)).toBe(0.3);
+  });
+
+  // k23_true 46 s: Mirai sat up in bed on sit_idle, a chair sit: its contact is the feet (0.15 over the root), the
+  // seat 0.29. Feet on the blanket held the seat 14 cm in the air. In a bed she sits on the seat, the legs under the blanket.
+  it("sitting up in bed lifts by the tuck less the seat's height over the feet", () => {
+    expect(bedLift({ contact_y: 0.151, seat_y: 0.293 })).toBeCloseTo(BED_TUCK_M - 0.142, 3);
+    expect(bedLift({ contact_y: 0.0, seat_y: 0.0 })).toBeCloseTo(BED_TUCK_M, 3);
+    expect(bedLift({ contact_y: 0.0 })).toBeCloseTo(BED_TUCK_M, 3);
+    expect(bedLift(undefined)).toBeCloseTo(BED_TUCK_M, 3);
   });
 
   it("the height probe finds the top of the furniture under a point, actors skipped", () => {
