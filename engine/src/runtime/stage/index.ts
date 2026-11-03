@@ -13,7 +13,7 @@ import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
 import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
-import { clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
+import { bodyInTheWay, clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
 import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
 
 export interface StageCtx {
@@ -29,6 +29,9 @@ export interface StageCtx {
   nav: any;
   /** is this door open right now? */
   doorOpen(id: string): boolean;
+  /** swing a door of the page open or shut (main.ts: doors.ts `open`/`close`); an actor entering or exiting opens the
+   *  door it passes, it shuts 2 s after the last one is through */
+  door?(id: string, open: boolean): void;
   /** stage.json itself (tests; else fetched from stageUrl) */
   stage?: Record<string, unknown>;
   /** Г8: the shot plan, ready (tests; else `stage.shotplan` is fetched from the run folder) */
@@ -53,6 +56,8 @@ export interface Stage {
 const SPEAK_SECONDS = 3;
 /** time constant of the head point the camera frames (DActor.head) */
 const HEAD_SMOOTH_S = 1;
+/** a door an actor passed shuts this long after the last one is through */
+const DOOR_SHUT_S = 2;
 /** actor capsule radius, m; exit walks this far (+ margin) past the door plane */
 const CAPSULE_R = 0.3;
 const EXIT_PAST_M = CAPSULE_R + 0.1;
@@ -198,11 +203,32 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
   const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
+  /** the director's probe: nothing of the world and nobody else's body between the camera and the head it frames */
+  // the bodies are taken once per director step (camBodies walks the bones; the probe runs hundreds of times a step)
+  let stepBodies: CamBody[] = [];
+  const seesPast = (cam: V3, look: V3): boolean => !bodyInTheWay(cam, look, stepBodies) && sight(cam, look);
   /** top of the furniture under a floor point (the pillow, which places.json does not know) */
   const heightAt = createHeight(c.scene, () => [...actors.values()].map((a) => a.group));
   const offstageActors = new Set<string>();
   /** actors walking to a door on `exit`: they become offstage only once they stop there */
   const exiting = new Set<string>();
+  /** doors held open by who is passing them (door id -> actors), and when an unused one shuts */
+  const doorUsers = new Map<string, Set<string>>();
+  const exitDoor = new Map<string, string>();
+  const doorShut = new Map<string, number>();
+  const enteringBy = new Map<string, string>();
+  const passStart = (id: string, who: string): void => {
+    let u = doorUsers.get(id);
+    if (!u) doorUsers.set(id, (u = new Set()));
+    if (!u.size && !doorShut.has(id)) c.door?.(id, true);
+    u.add(who);
+    doorShut.delete(id);
+  };
+  const passEnd = (id: string, who: string): void => {
+    const u = doorUsers.get(id);
+    if (!u?.delete(who) || u.size) return;
+    doorShut.set(id, nowT + DOOR_SHUT_S);
+  };
   /** exit: door each actor still has to walk through before going offstage */
   const exitThrough = new Map<string, Place>();
   /** exit while the actor is on a ramp (`touch` -> queued): the door waits here until the actor steps off */
@@ -709,6 +735,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         if (doorYaw !== door.yaw) warnings.push(`stage: enter door "${door.name}" has no known side -> yaw 0`);
         const step = interRoomDoorStep(door.at, doorYaw, 1.0);
         a.teleport(step.doorPos, step.yaw, "idle", y);
+        passStart(door.id, who);
+        enteringBy.set(who, door.id);
         // the step in ends on a cell one can walk on (a table a step inside the door would trap her there)
         const route = toucher.stepIn(door.at, doorYaw, lvl);
         if (!route) warnings.push(`stage: enter "${door.name}": nothing walkable inside the door -> stays in the doorway`);
@@ -773,9 +801,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       // the gaze turns the head 60 deg at most: a standing speaker who names whom he talks to turns his body to
       // him (Squidward, Nov 3: SpongeBob said "It's beautiful, Squidward" with his back to him). Seated, lying or
       // walking keeps the body; the head still turns.
-      const addressee = who && lookName && lookName !== who ? actors.get(lookName) : undefined;
+      // a line that names no one, two in the room: it is said to the other one (Squidward spoke to his canvas)
       const sp = who ? actors.get(who) : undefined;
-      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving() && !offstageActors.has(lookName!)) {
+      const roomOf = (x: Actor): unknown => roomOfActor(x, toucher.levelOf(x.who))?.room;
+      const mates = sp ? [...actors.values()].filter((o) => o !== sp && !offstageActors.has(o.who) && roomOf(o) === roomOf(sp)) : [];
+      const addressee = lookName ? (lookName !== who && !offstageActors.has(lookName) ? actors.get(lookName) : undefined) : mates.length === 1 ? mates[0] : undefined;
+      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving()) {
         const y = yawTo(sp.pos(), addressee.pos());
         if (Math.abs((((y - sp.yaw()) % 360) + 540) % 360 - 180) > 30) sp.turn(y);
       }
@@ -1066,6 +1097,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           const lvl = door.level ?? toucher.levelOf(who) ?? null;
           const y = layerOf(lvl).layer.y ?? 0;
           act.go([door.at, beyond], yawTo(door.at, beyond), "idle", y);
+          passStart(door.id, who);
+          exitDoor.set(who, door.id);
           continue;
         }
         // the last step and the stop land in one update: go offstage on the next one,
@@ -1077,7 +1110,19 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         exitSettled.delete(who);
         exiting.delete(who);
         offstageActors.add(who);
+        const d = exitDoor.get(who);
+        if (d) (exitDoor.delete(who), passEnd(d, who));
       } else exitSettled.delete(who);
+    }
+    for (const [who, id] of [...enteringBy]) {
+      if (actors.get(who)?.moving()) continue;
+      enteringBy.delete(who);
+      passEnd(id, who);
+    }
+    for (const [id, at] of [...doorShut]) {
+      if (nowT < at) continue;
+      doorShut.delete(id);
+      c.door?.(id, false);
     }
     for (const [who, p] of [...exitPending]) {
       if (toucher.levelOf(who) === null) continue;
@@ -1137,6 +1182,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       // the speaker leads (a narrator line: the first actor by name), so the director's room is the one under `focus`
       if (ev.kind !== "line" && ev.kind !== ("walk" as string)) ev.speaker = undefined;
       ev.room = f.room;
+      stepBodies = camBodies();
       const out = director.step({
         event: ev,
         actors: here,
@@ -1144,7 +1190,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         rng,
         fov: directorFov ?? c.camera.fov,
         aspect: c.camera.aspect,
-        clear: sight,
+        clear: seesPast,
       });
       if (isLast) s = out;
       dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };

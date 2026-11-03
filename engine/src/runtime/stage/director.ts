@@ -565,20 +565,125 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     return curMove ? { ...out, ...curMove, cut: heldCut } : out;
   };
 
-  return { step };
+  // the last word on every frame: no steep look down (capTilt), nobody in the room cut by its edge (cleanEdges)
+  return {
+    step: (inp: DirectorInput): DirectorOut =>
+      cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear }),
+  };
+}
+
+const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
+/** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
+ *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
+ *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
+ *  that `clear` sees from. A move (`end`) and a frame on someone lying
+ *  (a look from above at a bed is meant) keep theirs. */
+export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (cam: V3, look: V3) => boolean, crew: DActor[] = [], outline: V2[] = []): T {
+  if (out.end) return out;
+  const [cx, cy, cz] = out.cam;
+  const L = out.look;
+  const tan = Math.tan((MAX_TILT_DEG * Math.PI) / 180);
+  const flat = Math.hypot(L[0] - cx, L[2] - cz);
+  if (Math.atan2(cy - L[1], flat) <= (MAX_TILT_DEG * Math.PI) / 180 + 1e-9) return out;
+  if (crew.some((a) => a.lying && Math.hypot(a.pos[0] - L[0], a.pos[1] - L[2]) < 1.2)) return out;
+  // what the frame must see is the heads in it, not its look point (a two-shot looks between them: v17, the line to
+  // the middle went through the canvas and every lower camera was "blocked")
+  const fov = out.fov ?? 50;
+  const heads = crew
+    .filter((a) => !a.offstage)
+    .map((a) => a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3))
+    .filter((h) => { const p = ndcOf(h, out.cam, L, fov, 16 / 9); return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1; });
+  const sees = (c: V3): boolean => !clear || (heads.length ? heads.every((h) => clear(c, h)) : clear(c, L));
+  const y0 = Math.max(floorY + MIN_CAM_Y, L[1] + flat * tan);
+  if (y0 >= cy) return out;
+  // 1) straight down
+  if (sees([cx, y0, cz])) return { ...out, cam: [cx, y0, cz] };
+  // 2) back along the flat look line, each height from the low point up, as far as 30° needs (inside the room)
+  const u: V2 = flat > 1e-6 ? [(cx - L[0]) / flat, (cz - L[2]) / flat] : [1, 0];
+  for (let y = y0; y < cy - 1e-9; y += 0.15) {
+    const d = (y - L[1]) / tan;
+    if (d <= flat) continue;
+    const c: V3 = [L[0] + u[0] * d, y, L[2] + u[1] * d];
+    if (outline.length >= 3 && !insideInset(outline, [c[0], c[2]])) continue;
+    if (sees(c)) return { ...out, cam: c };
+  }
+  // 3) the lowest clear height over the same spot: less steep, if not 30°
+  for (let y = y0 + 0.15; y < cy - 1e-9; y += 0.15) if (sees([cx, y, cz])) return { ...out, cam: [cx, y, cz] };
+  return out;
+}
+
+const EDGE_IN = 0.9, EDGE_OUT = 1.3;
+/** unblock's first pass keeps the camera this far (m, flat) from every actor */
+const UNBLOCK_OFF_BODY = 1.2;
+/** Nobody in the room is cut by the frame's edge (Squidward, Nov 3, v6 18–36 s: Squidward's head at ndc x 1.1–1.37,
+ *  half a head at the side of SpongeBob's frame). A head between EDGE_IN and EDGE_OUT of the frame is cut: first the
+ *  look re-aims at the middle of the heads in view and the fov widens (up to `maxFov`) until all are inside; else the
+ *  look turns (up to 25°) until the cut one is out and the rest stay in; else the frame stays. A move (`end`)
+ *  gets its end frame cleaned (look, fov). `clear` (the sight probe) must see every head the new frame keeps. */
+export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect: number, o: { maxFov?: number; clear?: (cam: V3, look: V3) => boolean } = {}): T {
+  const heads = crew.filter((a) => !a.offstage).map((a) => a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3));
+  const reach = (cam: V3, look: V3, fov: number, h: V3): number => {
+    const p = ndcOf(h, cam, look, fov, aspect);
+    return p.depth <= 0.2 ? Infinity : Math.max(Math.abs(p.x), Math.abs(p.y));
+  };
+  const isCut = (cam: V3, look: V3, fov: number): boolean => heads.some((h) => { const r = reach(cam, look, fov, h); return r > EDGE_IN && r < EDGE_OUT; });
+  // a move: its end frame (where it holds) gets the same word — its look and fov, never its path (Squidward v16 60–69 s:
+  // a push_in ended with SpongeBob's head on the bottom edge and held it nine seconds)
+  if (out.end) {
+    const endFrame = { ...out, cam: out.end, look: out.lookEnd ?? out.look, fov: out.fovEnd ?? out.fov, end: undefined };
+    const fixed = cleanEdges(endFrame, crew, aspect, o);
+    if (fixed === endFrame) return out;
+    return { ...out, lookEnd: fixed.look, fovEnd: fixed.fov, lookEndRef: undefined };
+  }
+  const fov0 = out.fov ?? 50;
+  if (!isCut(out.cam, out.look, fov0)) return out;
+  const held = out;
+  const sees = (look: V3, keep: V3[]): boolean => !o.clear || keep.every((h) => o.clear!(out.cam, h));
+  const cam = out.cam;
+  // 1) all the heads near the frame in: aim at their middle, widen
+  const near = heads.filter((h) => reach(cam, out.look, fov0, h) < EDGE_OUT);
+  if (near.length) {
+    const mid: V3 = [0, 1, 2].map((k) => near.reduce((s, h) => s + h[k], 0) / near.length) as V3;
+    for (let fov = fov0; fov <= Math.max(fov0, o.maxFov ?? 70) + 1e-9; fov += 2) {
+      if (near.every((h) => reach(cam, mid, fov, h) < EDGE_IN - 0.05) && !isCut(cam, mid, fov) && sees(mid, near))
+        return { ...held, look: mid, fov, lookRef: undefined };
+    }
+  }
+  // 2) the cut ones out: turn the look sideways about the camera
+  const inside = heads.filter((h) => reach(cam, out.look, fov0, h) <= EDGE_IN);
+  const f: V3 = [out.look[0] - cam[0], out.look[1] - cam[1], out.look[2] - cam[2]];
+  for (const deg of [3, -3, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25]) {
+    const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
+    const look: V3 = [cam[0] + f[0] * c + f[2] * s, out.look[1], cam[2] - f[0] * s + f[2] * c];
+    if (!isCut(cam, look, fov0) && inside.every((h) => reach(cam, look, fov0, h) <= EDGE_IN)) return { ...held, look, lookRef: undefined };
+  }
+  return held;
 }
 
 /** A blocked frame turns about its look point (smallest turn first, so the 180° side mostly holds), rises, and
  *  moves in or out, until the probe sees the subject; no clear spot in the room -> legal fallback. */
-function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law: CameraLaw): DirectorOut {
-  const clear = inp.clear;
-  if (!clear || clear(out.cam, out.look)) return out;
+export function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law: CameraLaw): DirectorOut {
+  const probe = inp.clear;
+  if (!probe) return out;
+  // the probe is asked about the heads the frame holds, not its look point (Squidward v18 20–22 s: a two-shot looked
+  // between the heads, SpongeBob's head stood behind a chair back and nobody asked about it)
+  const fov = out.fov ?? 50;
+  const heads = inp.actors
+    .filter((a) => !a.offstage)
+    .map((a) => a.head ?? ([a.pos[0], (inp.room.floorY ?? 0) + a.height * 0.93, a.pos[1]] as V3))
+    .filter((h) => { const p = ndcOf(h, out.cam, out.look, fov, inp.aspect ?? 16 / 9); return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1; });
+  const clear = (c: V3, l: V3): boolean => (heads.length ? heads.every((h) => probe(c, h)) : probe(c, l));
+  if (clear(out.cam, out.look)) return out;
   const room = inp.room;
   const L = out.look;
   const v: V2 = [out.cam[0] - L[0], out.cam[2] - L[2]];
   const r0 = Math.max(0.6, Math.hypot(v[0], v[1]));
   const d0 = norm(v);
   const side = law.side;
+  // first a point 1.2 m from everybody, then anywhere: the 0.55 ring about a follow's look point (1 m ahead of the
+  // walker) is 0.9 m behind him, over his head (Squidward, Nov 3: the frame was the top of Squidward's head)
+  const offBodies = (c: V3): boolean => inp.actors.every((a) => a.offstage || Math.hypot(c[0] - a.pos[0], c[2] - a.pos[1]) >= UNBLOCK_OFF_BODY);
+  for (const keepOff of [true, false])
   for (const a of [0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 120, -120])
     for (const dy of [0, 0.35, 0.7, 1.1])
       for (const k of [1, 0.75, 1.3, 0.55]) {
@@ -594,6 +699,7 @@ function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law: Camera
         if (room.outline.length >= 3 && !insideInset(room.outline, [c[0], c[2]])) {
           continue;
         }
+        if (keepOff && !offBodies(c)) continue;
         if (clear(c, L)) return { ...out, cam: c };
       }
   return { ...out, cam: legalCameraPoint(out.cam, law) };

@@ -116,11 +116,26 @@ export function createToucher(c: ToucherCtx) {
     const openCells: Record<string, number[]> = {};
     for (const [id, d] of Object.entries(c.doors)) if (c.doorOpen(id)) (openCells[d.level ?? lvl] ??= []).push(...d.cells);
     const obstacles = c.places.map((p) => ({ level: p.level, rect: p.obstacle }));
-    const r = (yaw * Math.PI) / 180;
-    for (let d = max; d >= 0.2 - 1e-9; d -= 0.1) {
+    const tryAt = (deg: number, d: number): V2[] | null => {
+      const r = ((yaw + deg) * Math.PI) / 180;
       const to: V2 = [doorAt[0] + Math.sin(r) * d, doorAt[1] + Math.cos(r) * d];
       const route = findStageRoute(c.levels, c.ramps, doorAt, lvl, to, lvl, { obstacles, openCells });
-      if (route) return [...route.path, to];  // the route ends on the goal cell's centre; the point is in that cell
+      return route ? [...route.path, to] : null;  // the route ends on the goal cell's centre; the point is in that cell
+    };
+    // straight in first, as far as it goes down to 0.6 m; then past the side of what stands in the way (a table
+    // right at the door, Squidward's living room); the last resort is a short straight step
+    for (let d = max; d >= 0.6 - 1e-9; d -= 0.1) {
+      const p = tryAt(0, d);
+      if (p) return p;
+    }
+    for (let d = max; d >= 0.6 - 1e-9; d -= 0.1)
+      for (const deg of [20, -20, 40, -40, 60, -60]) {
+        const p = tryAt(deg, d);
+        if (p) return p;
+      }
+    for (let d = 0.5; d >= 0.2 - 1e-9; d -= 0.1) {
+      const p = tryAt(0, d);
+      if (p) return p;
     }
     return null;
   };

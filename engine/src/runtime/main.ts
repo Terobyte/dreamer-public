@@ -310,6 +310,7 @@ async function start(): Promise<void> {
       nav,
       layers: all,
       doorOpen: (id) => doors.get(id)?.state() === "open",
+      door: (id, open) => { const d = doors.get(id); if (open) d?.open(); else d?.close(); },
     });
     Object.assign(stageHandlers, stage.handlers);
     // place the directed camera before the first render: the first frame is already inside the room (F36)

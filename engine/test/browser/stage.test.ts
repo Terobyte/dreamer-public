@@ -166,7 +166,12 @@ describe.skipIf(!HAS)("stage in the browser (?stage=)", () => {
     await new Promise((r) => setTimeout(r, 1500));
     const after = (await actors(page)).find((a) => a.who === cs[3].who)!;
     expect(Math.hypot(after.pos[0] - before.pos[0], after.pos[1] - before.pos[1])).toBeLessThanOrEqual(0.05);
-    expect(Math.abs(((after.yaw - before.yaw + 540) % 360) - 180)).toBeLessThanOrEqual(10);
+    // the missing piano moves no one; the line itself is said to the other one in the room, so the body may turn
+    // to him (Squidward, Nov 3: two in a room, a line that names no one turns the speaker to the other), never elsewhere
+    const other = (await actors(page)).find((a) => a.who !== cs[3].who)!;
+    const toOther = (Math.atan2(other.pos[0] - after.pos[0], other.pos[1] - after.pos[1]) * 180) / Math.PI;
+    const turn = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+    expect(Math.min(turn(after.yaw, before.yaw), turn(after.yaw, toOther))).toBeLessThanOrEqual(10);
     await sample();
 
     // the camera was inside the room of the shot, 0.3 m from the walls, below the ceiling - on every sample

@@ -22,6 +22,9 @@ export interface Place {
   /** per-pose spot: lie = centre of the top, yaw along the long side, head point; stand_on = centre of the top */
   lie?: { at: V2; yaw: number; head: V2 };
   stand_on?: { at: V2 };
+  /** the seat itself (make/stage.py): `at` is the nav cell one walks to, the last step lands on the seat — a chair
+   *  in the table's block of the nav had its sit point 0.65 m off the seat (Squidward, Nov 3) */
+  seat?: { at: V2 };
 }
 
 /** a sleeper lies in the bed, not on the blanket: the body sinks this far below the top (Koshakan, Nov 2) */
@@ -145,6 +148,7 @@ export function resolveTouch(a: {
       if (edge) return { place, target: edge.at, yaw: edge.yaw, act: "sit", pose, claim: free, keepYaw: true, approach: edge.approach };
       const spot = pose === "lie" ? place.lie : pose === "stand_on" ? place.stand_on : undefined;
       const yaw = pose === "lie" && place.lie ? place.lie.yaw : place.yaw;
+      if (pose === "sit" && place.seat) return { place, target: place.seat.at, yaw, act: "sit", pose, claim: free, approach: place.at };
       return { place, target: spot?.at ?? place.at, yaw, act: pose === "sit" ? "sit" : "idle", pose, claim: free };
     }
     const taken = `${a.actor.who}: pose "${pose}" of "${place.name}" is taken, stands beside it`;
@@ -169,6 +173,7 @@ export function resolveTouch(a: {
       return { skip: "already_there" };
     }
     a.claims[place.name] = a.actor.who;
+    if (act === "sit" && place.seat) return { place, target: place.seat.at, yaw: faceYaw(place.at), act, approach: place.at };
     return { place, target: place.at, yaw: faceYaw(place.at), act };
   }
   return beside(place, a.actor.at);

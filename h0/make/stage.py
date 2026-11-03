@@ -195,10 +195,11 @@ def build_places(world_run):
         off = d / 2 - 0.1 if kind == "sit" else d / 2 + 0.45
         room = m.get("room") or sc.get("room")
         level = (rooms.get(room) or {}).get("level")
-        at = nav.snap(level, cx + fx * off, cz + fz * off)
+        spot = [cx + fx * off, cz + fz * off]
+        at = nav.snap(level, spot[0], spot[1])
         poses = _poses(_last_word(pid), s["h"])
         items.append({"poses": poses, "id": m["id"], "base": _last_word(pid), "room": room, "kind": kind, "yaw": yaw,
-                      "center": [cx, cz], "at": at, "level": level, "mesh": m,
+                      "center": [cx, cz], "at": at, "spot": spot, "level": level, "mesh": m,
                       "size": {"w": s["w"], "d": s["d"], "h": s["h"]},
                       "obstacle": _obstacle(cx, cz, w, d, yaw)})
     _name_places(items)
@@ -226,6 +227,10 @@ def build_places(world_run):
             pl["tiers"] = [{"y": round(s["y"] - ly0, 4), "rect": s["rect"]} for s in tiers]
         if "stand_on" in it["poses"]:
             pl["stand_on"] = {"at": [cx, cz]}
+        if "sit" in it["poses"]:
+            # the seat itself, never snapped: `at` is the nav cell one walks to (a chair in the table's block of the nav
+            # had its sit point snapped 0.65 m off the seat, Squidward Nov 3); the engine steps from `at` onto it
+            pl["seat"] = {"at": [round(v, 4) for v in it["spot"]]}
         if "lie" in it["poses"]:
             w, d = it["size"]["w"], it["size"]["d"]
             # long side; the headboard is the back, opposite the front (yaw: 0 = +Z)

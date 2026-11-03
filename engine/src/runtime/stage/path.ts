@@ -40,19 +40,29 @@ export function findPath(layer: NavLayer, bits: Uint8Array, from: V2, to: V2, op
   const q: number[] = [sj * w + si];
   prev[sj * w + si] = -1;
   const steps = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-  // the start may stand on a blocked cell (an actor leaving a chair): it is always left
+  // the start may stand on a blocked cell (an actor leaving a chair): it is always left. A seat deep in the table's
+  // block (Squidward, Nov 3: SpongeBob stayed seated while Squidward walked out) has only blocked cells around it:
+  // from a blocked cell the walk goes on over blocked ones, at most ESCAPE cells, until it reaches the floor
+  const ESCAPE = Math.ceil(1.0 / CELL);
+  const esc = new Int16Array(w * h);
+  const inGrid = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < w && j < h;
+  let onFloor = false; // the nearest floor is found: no more crossing the block, never through a wall behind it
   for (let head = 0; head < q.length && prev[goal] === -2; head++) {
     const n = q[head];
     const i = n % w;
     const j = (n - i) / w;
+    const stuck = !walk(i, j);
     for (const [di, dj] of steps) {
       const a = i + di;
       const b = j + dj;
-      if (!walk(a, b)) continue;
-      if (di !== 0 && dj !== 0 && (!walk(i + di, j) || !walk(i, j + dj))) continue;
+      const free = walk(a, b);
+      if (!free && !(stuck && !onFloor && inGrid(a, b) && esc[n] < ESCAPE)) continue;
+      if (!stuck && di !== 0 && dj !== 0 && (!walk(i + di, j) || !walk(i, j + dj))) continue;
       const m = b * w + a;
       if (prev[m] !== -2) continue;
       prev[m] = n;
+      if (!free) esc[m] = esc[n] + 1;
+      else onFloor = true;
       q.push(m);
     }
   }
