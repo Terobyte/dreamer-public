@@ -75,9 +75,9 @@ function mulberry32(a: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const ROOM: DRoom = { outline: [[-3.6, 0.6], [0.4, 0.6], [0.4, 4.2], [-3.6, 4.2]], ceiling: 2.6, open: false, floorY: 0 };
+const ROOM: DRoom = { outline: [[-3.6, 0.6], [0.4, 0.6], [0.4, 4.2], [-3.6, 4.2]], ceiling: 2.7, open: false, floorY: 0 };
 const CREW: DActor[] = [
-  { name: "Mama", pos: [-1.65, 2.28], yaw: 315, faceYaw: 12, height: 1.6, level: null, room: "R", walking: false, head: [-1.6, 1.05, 2.3] },
+  { name: "Mama", pos: [-1.65, 2.28], yaw: 315, faceYaw: 12, height: 1.7, level: null, room: "R", walking: false, head: [-1.6, 1.05, 2.3] },
   { name: "Mirai", pos: [-1.21, 2.63], yaw: 180, height: 1.2, level: null, room: "R", walking: false, lying: true, head: [-1.2, 0.45, 2.65] },
 ];
 function run(style: string, seed: number) {
@@ -100,9 +100,17 @@ describe("K2 fixture properties", () => {
   for (const style of IDS) for (const seed of [7, 8, 9]) {
     it(`${style} seed ${seed}: outputs stay in the style ranges`, () => {
       const st = STYLES[style];
-      const { outs } = run(style, seed);
-      expect(outs.length).toBeGreaterThanOrEqual(style === "ozu" ? 4 : 12 - (style === "spielberg" || style === "kubrick" || style === "miyazaki" ? 12 : 0));
+      const { outs, cuts } = run(style, seed);
+      // K2 debt (Nov 3): at least 12 plans for every style on 30 lines, ASL inside the style's range as far as
+      // 5 s lines allow (a cut lands on a line), the camera at the style's height (no wall or ceiling in the way here)
+      expect(outs.length).toBeGreaterThanOrEqual(12);
+      const gaps = cuts.slice(1).map((c, i) => c - cuts[i]);
+      const asl = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+      expect(asl).toBeGreaterThanOrEqual(Math.min(st.asl[0], 5) - 1e-9);
+      expect(asl).toBeLessThanOrEqual(Math.ceil(st.asl[1] / 5) * 5 + 1e-9);  // a hold is 5 or 10 s here
       for (const o of outs) {
+        expect(o.cam[1]).toBeGreaterThanOrEqual(ROOM.floorY + st.height[0] - 0.05);
+        expect(o.cam[1]).toBeLessThanOrEqual(ROOM.floorY + Math.max(st.height[1], 1.7) + 1e-3);
         expect(o.cam[1]).toBeLessThanOrEqual(ROOM.ceiling - 0.1 + 1e-3);
         if (o.fov !== undefined) {
           expect(o.fov).toBeGreaterThanOrEqual(st.fov[0] - 1e-6);
