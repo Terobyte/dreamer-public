@@ -95,7 +95,7 @@ describe("geometry debt", () => {
       for (const ends of [
         [onCircle(0), onCircle(2 * d)],
         [onCircle(-2 * d), onCircle(0)],
-      ]) {
+      ] as Array<[[number, number], [number, number]]>) {
         const mid = [(ends[0][0] + ends[1][0]) / 2, 1.5, (ends[0][1] + ends[1][1]) / 2];
         const ms = faces(circleWall(sweep, { ends, center: [mid[0], mid[2]] }));
         expect(onSurface(ms, mid, 0.15)).toBe(false);
@@ -110,7 +110,7 @@ describe("geometry debt", () => {
     it(`L96 opening past half the circle goes the center's way round, sweep ${tag}2π`, () => {
       // ends at 87° and 273°: the span the long way round (via 180°) is more
       // than half, so length alone would wrap it through the seam at 0°
-      const ends = [onCircle(87), onCircle(273)];
+      const ends = [onCircle(87), onCircle(273)] as [[number, number], [number, number]];
       const chordZ = R * Math.cos((87 * Math.PI) / 180);
       const atChord = (y: number): number[] => [0, y, chordZ];
       const viaFar = faces(circleWall(sweep, { ends, center: onCircle(180) }));
@@ -166,7 +166,7 @@ describe("geometry debt", () => {
   });
 
   it("L98 an exact half circle goes the center's way round", () => {
-    const ends = [onCircle(90), onCircle(270)];
+    const ends = [onCircle(90), onCircle(270)] as [[number, number], [number, number]];
     const far = onCircle(180);
     const viaFar = faces(circleWall(2 * Math.PI, { ends, center: far }));
     expect(onSurface(viaFar, [far[0], 1.5, far[1]], 0.15)).toBe(false);
