@@ -6,11 +6,12 @@
  * both `to` fields (stage `Place.to`: who walks out through one comes in by the other).
  *
  * A part with an `outdoor` (sky dome and ground disc, drawn around the origin) stays at the origin; the others are laid
- * past it. The spawn is the first part's. Pure: asset caches and relative ref images are the caller's (bin `stitch`).
+ * past the camera's sight from it (CAMERA_FAR). The spawn is the first part's. Pure: asset caches and relative ref images are the caller's (bin `stitch`).
  */
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { CAMERA_FAR } from "./runtime/cams.js";
 
 export const STITCH_GAP = 30;
 
@@ -163,7 +164,10 @@ export function stitchScenes(parts: StitchPart[], links: StitchLink[], o: { gap?
 
   // then the places: the anchor (the outdoor part, else the first) where it was, the others past it in a row
   const first = renamed.find((r) => r.part === anchor)!;
-  let cursor = (extent(first.s)?.maxX ?? 0) + gap;
+  // a street sees far: the places off it lie past the camera's sight (CAMERA_FAR), or their outside shells stand on
+  // its horizon (Squidward v11: the pineapple's rooms 30 m off, a green box behind the corals); rooms see no further
+  // than their walls, so among them the gap will do
+  let cursor = (extent(first.s)?.maxX ?? 0) + (first.s.outdoor ? CAMERA_FAR + gap : gap);
   for (const { part, s } of renamed) {
     const e = extent(s);
     if (part !== anchor && e) {

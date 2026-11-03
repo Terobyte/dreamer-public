@@ -17,8 +17,11 @@ export function lookDir(yaw: number, pitch: number): Vector3 {
   return new Vector3(Math.sin(a) * Math.cos(b), Math.sin(b), Math.cos(a) * Math.cos(b));
 }
 
+/** how far a camera sees: past it nothing is drawn (dreamer stitch lays places built apart beyond it from a street) */
+export const CAMERA_FAR = 500;
+
 function walkCamera(aspect: number): PerspectiveCamera {
-  return new PerspectiveCamera(70, aspect, 0.05, 500);
+  return new PerspectiveCamera(70, aspect, 0.05, CAMERA_FAR);
 }
 
 export function pickCamera(geo: any, params: URLSearchParams, aspect: number): CamSetup {
@@ -28,7 +31,7 @@ export function pickCamera(geo: any, params: URLSearchParams, aspect: number): C
     if (!c) {
       return { camera: walkCamera(aspect), mode: "fixed", hide: new Set(), error: `unknown camera "${camId}"` };
     }
-    const camera = new PerspectiveCamera(Number(c.fov ?? 60), aspect, 0.05, 500);
+    const camera = new PerspectiveCamera(Number(c.fov ?? 60), aspect, 0.05, CAMERA_FAR);
     camera.position.set(c.pos[0], c.pos[1], c.pos[2]);
     const look = c.look ?? [c.pos[0], c.pos[1], c.pos[2] - 1];
     camera.lookAt(look[0], look[1], look[2]);

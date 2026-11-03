@@ -4,6 +4,7 @@
 import { describe, it, expect } from "vitest";
 import { demoFlat } from "./helpers/scene.js";
 import { stitchScenes, STITCH_GAP } from "../src/stitch.js";
+import { CAMERA_FAR } from "../src/runtime/cams.js";
 import { runCheck } from "../src/check.js";
 
 const xs = (s: any, room: string): number[] => s.rooms.find((r: any) => r.id === room).shape.map((v: any) => v[0]);
@@ -53,6 +54,15 @@ describe("stitchScenes", () => {
     const stLiving = r.scene.rooms.find((q: any) => q.id === r.ids.st!.rooms["living"]);
     expect(stLiving.shape).toEqual(street.rooms.find((q: any) => q.id === "living").shape);
     expect(r.scene.spawn.room).toBe("hall");  // the spawn is still the first part's
+  });
+
+  it("with a street, the other places lie past the camera's sight from it (Squidward v11: the pineapple's rooms, 30 m off, stood as a green box on the street's horizon)", () => {
+    const street: any = demoFlat();
+    street.outdoor = { sky: "t_wall", ground: { material: "parquet", radius: 60, fade: 20 } };
+    const r = stitchScenes([{ name: "a", scene: demoFlat() }, { name: "st", scene: street }], []);
+    const stMax = Math.max(...street.rooms.flatMap((q: any) => q.shape.map((v: any) => v[0])));
+    const aMin = Math.min(...["living", "hall"].flatMap((q) => xs(r.scene, q)));
+    expect(aMin - stMax).toBeGreaterThan(CAMERA_FAR);
   });
 
   it("an unknown door in a link is an error, not a silent no-op", () => {
