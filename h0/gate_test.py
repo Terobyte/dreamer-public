@@ -7,6 +7,7 @@ Squidward speaks Fish Audio Drama 3 markup ([direction], [sigh], <whisper>…</w
 voices the whole dialogue with library voices.
 usage: python gate_test.py [runs] [--tts]
 """
+import http.client
 import json
 import os
 import re
@@ -80,12 +81,14 @@ def chat(system, messages, max_tokens=300):
                     line = raw.decode().strip()
                     if not line.startswith("data:") or line == "data: [DONE]":
                         continue
+                    if not line[5:].strip():
+                        continue  # B61: an empty keep-alive `data:` frame
                     for ch in json.loads(line[5:]).get("choices", []):
                         piece = (ch.get("delta") or {}).get("content")
                         if piece:
                             first = first or time.time() - t0
                             text += piece
-        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+        except (urllib.error.HTTPError, OSError, http.client.HTTPException) as e:  # B61: also a stream cut mid-read
             # 429/5xx and network errors are transient: retry; any other 4xx raises at once
             transient = not isinstance(e, urllib.error.HTTPError) or e.code == 429 or e.code >= 500
             if not transient or attempt == 2:

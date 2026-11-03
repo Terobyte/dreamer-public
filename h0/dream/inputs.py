@@ -10,6 +10,7 @@ ARTICLES = {"a", "an", "the"}
 _DOUBLE = re.compile(r"\[\[[^\[\]]*\]\]")
 _SINGLE = re.compile(r"\[[^\[\]]*\]")
 _ANGLE = re.compile(r"<[^<>]*>")
+_SINGLE_ACTOR = re.compile(r"(?<!\[)\[[^\[\]]*\](?!\])")  # not the inside of a [[...]]
 _ENGINE = re.compile(r"\[(?:WORLD|STATE|EVENT|ENGINE|HUMAN_SAYS)\b[^\[\]]*\]")
 
 
@@ -32,8 +33,7 @@ def sanitize(text, speaker):
         allowed = lambda s: s[2:-2].split(":")[0].strip().upper() in ACTOR_TAGS
         text = _cut(_DOUBLE, text, removed, keep=allowed)
         text = _cut(_ENGINE, text, removed)
-        text = _cut(_SINGLE, text, removed,
-                    keep=lambda s: "=" not in s or s.startswith("[[") or s.endswith("]]"))
+        text = _cut(_SINGLE_ACTOR, text, removed, keep=lambda s: "=" not in s)
     text = " ".join(text.split())
     events = [{"type": "input_rejected", "speaker": speaker, "removed": removed}] if removed else []
     return text, events

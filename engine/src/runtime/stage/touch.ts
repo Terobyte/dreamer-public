@@ -85,8 +85,12 @@ export function createToucher(c: ToucherCtx) {
       const n = route.path.length;
       return n >= 2 ? yawTo(route.path[n - 2]!, route.path[n - 1]!) : r.yaw;
     };
-    const fin = r.keepYaw ? r.yaw : finishYaw === "along" ? along() : finishYaw;
-    a.go(route.path, fin !== undefined ? fin : r.yaw, r.act, route.ys, r.act === "sit" ? r.place.top : undefined);
+    // B53: a place without a yaw ends facing along the walk (or as the actor stands), never NaN
+    const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+    const asked = r.keepYaw ? r.yaw : finishYaw === "along" ? along() : finishYaw;
+    const fallback = finite(r.yaw) ? r.yaw : route.path.length >= 2 ? along() : a.yaw();
+    const fin = finite(asked) ? asked : finite(fallback) ? fallback : a.yaw();
+    a.go(route.path, fin, r.act, route.ys, r.act === "sit" ? r.place.top : undefined);
     return "walk";
   };
 
@@ -97,5 +101,8 @@ export function createToucher(c: ToucherCtx) {
     return out;
   };
 
-  return { touch, tick, levelOf };
+  /** drop a touch that waits on a ramp: a newer order for the actor replaces it (B66) */
+  const cancel = (who: string): void => void pending.delete(who);
+
+  return { touch, tick, levelOf, cancel };
 }

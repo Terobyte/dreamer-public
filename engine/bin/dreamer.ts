@@ -103,6 +103,11 @@ async function main(): Promise<number> {
   if (args[0] === "clipfacts" && args[1]) {
     // G4: <cast dir>/clipfacts.json: contact_y / face_dir / head_y / lying of every clip of every actor
     // (static import: this tsx's vendored ESM parser fails on a dynamic import() in this file)
+    // B72: a missing cast is a usage error (exit 2), like every other command, not a stack trace
+    if (!existsSync(join(args[1], "cast.json"))) {
+      console.error(`clipfacts: no cast.json in ${args[1]}`);
+      return 2;
+    }
     for (const w of await writeClipfacts(args[1])) console.warn(w);
     console.log(`clipfacts: ${join(args[1], "clipfacts.json")}`);
     return 0;
@@ -162,7 +167,9 @@ async function main(): Promise<number> {
       const buildPath = join(builtFlag, "build.json");
       if (existsSync(buildPath)) {
         const buildJson = JSON.parse(readFileSync(buildPath, "utf-8"));
-        tris = buildJson.tris;
+        // B71: build.json is read from disk -- a tris block of another shape is no tris count
+        const t = buildJson.tris;
+        if (t && typeof t === "object" && t.by_prop && typeof t.by_prop === "object") tris = t;
         const props = buildJson.props as Record<string, { fact: PropFact | null }> | undefined;
         if (props) {
           facts = Object.fromEntries(Object.entries(props).map(([id, p]) => [id, p?.fact ?? null]));

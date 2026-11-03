@@ -68,9 +68,14 @@ def add_tones(score, director, cache_dir=None):
     warnings = []
     tones = None
     if path and os.path.isfile(path):
-        with open(path, encoding="utf-8") as f:
-            tones = json.load(f)
-    else:
+        try:
+            with open(path, encoding="utf-8") as f:
+                tones = json.load(f)
+            if not isinstance(tones, dict):
+                raise ValueError("cache is not an object")
+        except (OSError, ValueError):  # a torn file from an interrupted run: ask again
+            tones = None
+    if tones is None:
         try:
             tones = _parse(director(prompt))
         except Exception as e:

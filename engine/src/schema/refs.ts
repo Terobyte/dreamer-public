@@ -289,6 +289,24 @@ export function checkRefs(raw: any): Issue[] {
     if (p.around && typeof p.around.center === "string" && !propById.has(p.around.center)) {
       ref(`/props/${i}/around/center`, "prop", p.around.center, new Set(propIds));
     }
+    if (p.around && typeof p.around.center === "string" && propById.has(p.around.center)) {
+      // self-reference or a cycle of centres: one record, on the first member in scene order
+      const chain: string[] = [p.id];
+      let cur: string | undefined = p.around.center;
+      while (typeof cur === "string" && propById.has(cur)) {
+        if (cur === p.id) {
+          if (chain.every((id) => propById.get(id)! >= i)) {
+            const path = `/props/${i}/around/center`;
+            out.push({ code: "REF_UNKNOWN", stage: "schema", path, msg: msg("REF_UNKNOWN", { path, cycle: [...chain, p.id].join(" → ") }) });
+          }
+          break;
+        }
+        if (chain.includes(cur)) break;
+        chain.push(cur);
+        const nxt = (raw.props as any[])[propById.get(cur)!]?.around?.center;
+        cur = typeof nxt === "string" ? nxt : undefined;
+      }
+    }
   });
 
   (raw.decals ?? []).forEach((d: any, i: number) => {

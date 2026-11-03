@@ -126,12 +126,15 @@ class Engine:
 
     def _check_uncached(self, scene: dict, work: str | os.PathLike, built: str | os.PathLike | None) -> dict:
         here = self._room(work)
-        scene_path = self._write_scene(here, scene)
-        report_path = here / "report.json"
-        args = ["check", str(scene_path), "--report", str(report_path)]
-        if built is not None:
-            args += ["--built", str(built)]
-        return self._report_of(self._run(args), report_path)
+        try:
+            scene_path = self._write_scene(here, scene)
+            report_path = here / "report.json"
+            args = ["check", str(scene_path), "--report", str(report_path)]
+            if built is not None:
+                args += ["--built", str(built)]
+            return self._report_of(self._run(args), report_path)
+        finally:
+            shutil.rmtree(here, ignore_errors=True)
 
     def _once(self, key: tuple, run: Callable) -> dict:
         """Run once per key: cache hit returns at once, concurrent calls share."""
@@ -167,13 +170,17 @@ class Engine:
     def _check_full_uncached(self, scene: dict, work: str | os.PathLike) -> dict:
         report = self.check(scene, work)
         if report["code"] == 0:
-            dist = self._room(work) / "dist"
-            self.build(scene, dist, "none", None)
-            # `check --built` wants a picture per camera (SHOT_MISSING is an error since engine block E):
-            # shoot first, or, when this engine does not shoot, the missing pictures are not the scene's fault
-            if self._want_shots:
-                shots_retry(self, dist)
-            report = self.check(scene, work, built=dist)
+            here = self._room(work)
+            dist = here / "dist"
+            try:
+                self.build(scene, dist, "none", None)
+                # `check --built` wants a picture per camera (SHOT_MISSING is an error since engine block E):
+                # shoot first, or, when this engine does not shoot, the missing pictures are not the scene's fault
+                if self._want_shots:
+                    shots_retry(self, dist)
+                report = self.check(scene, work, built=dist)
+            finally:
+                shutil.rmtree(here, ignore_errors=True)
             if not self._want_shots:
                 errors = [e for e in report["errors"] if e.get("code") != "SHOT_MISSING"]
                 report = {**report, "errors": errors, "code": report["code"] if errors else 0}

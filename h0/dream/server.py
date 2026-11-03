@@ -284,7 +284,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
     def _ab_order(self, pair):
         """A and B for a pair: the two runs, shuffled by the server's salt."""
         runs = sorted(pair["runs"])
-        if random.Random(self.viewer.ab_salt + pair["id"]).random() < 0.5:
+        if random.Random(self.viewer.ab_salt + str(pair["id"])).random() < 0.5:
             runs.reverse()
         return runs
 

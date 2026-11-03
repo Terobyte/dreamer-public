@@ -557,7 +557,7 @@ const n: V3 = [d[1], 0, -d[0]];
             self._start_narration(self._narrate.pop(0))
             return
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b39.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b39.py; `_dialogue_turn` пускает закадр при любой очередной реплике (next_line или prepared_npc), не только при next_line
 
 ## B40 · MAJOR · h0/dream/fsm.py:354  (охотник g1)
 
@@ -576,7 +576,7 @@ const n: V3 = [d[1], 0, -d[0]];
             self.nudge_pending = True
             self.nudge_delivered = ticket["nudged_before"]
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b40.py (тяжесть снижена до MAJOR: теряется метка force в due(), «зависания стройки» нет)
+- **status:** fixed (opus) — h0/dream/test_bughunt_b40.py; `rearm_consult` возвращает `force_pending` для сброшенной force-консультации
 
 ## B41 · MAJOR · h0/dream/fsm.py:424  (охотник g1)
 
@@ -591,7 +591,7 @@ const n: V3 = [d[1], 0, -d[0]];
                                decision.get("next_scene"), decision.get("hero_next"))
         return ev + [self._consult(now, ticket, "build")]
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b41.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b41.py; отказ `start_build` (no_build) даёт вердикт `invalid`, pending_wakeup сохраняется
 
 ## B42 · MAJOR · h0/dream/fsm.py:412  (охотник g1)
 
@@ -610,7 +610,7 @@ const n: V3 = [d[1], 0, -d[0]];
                 return ev + self._bad(now, ticket, ["bridge"], "null_bridge")
             return ev + [self._consult(now, ticket, "ok")]
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b42.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b42.py; abort в idle без bridge — вердикт `invalid`
 
 ## B43 · MAJOR · h0/dream/sim.py:1077  (охотник g1)
 
@@ -634,7 +634,7 @@ const n: V3 = [d[1], 0, -d[0]];
         # self._event_hits = {}
         # self._actor_streak = 0
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b43.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b43.py; общий `Sim._new_scene_turns()` для `_apply_transition` и `_book_scene_end`: streak, spoke_last, silent/addressed/event_hits
 
 ## B44 · CRIT · h0/dream/sim.py:1067  (охотник g1)
 
@@ -656,7 +656,7 @@ const n: V3 = [d[1], 0, -d[0]];
         self._notes_shown = {}
         # self.prepared_npc, self._prepared_meta, self._prepared_taken not cleared
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b44.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b44.py; тот же `_new_scene_turns()` сбрасывает prepared_npc старого состава (событие line_discarded reason=scene)
 
 ## B45 · CRIT · h0/dream/llm.py:366  (охотник g2)
 
@@ -674,7 +674,7 @@ const n: V3 = [d[1], 0, -d[0]];
                                 "error": "cap $%.2f: empty reply, paid retry skipped" % _cap[0]})
             break
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b45.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b45.py; ретрай оценивается по самой дорогой модели из роли и ответивших попыток. Тест охотника был неверен (1.17M токенов при max_tokens=50, ни одна оценка по лимиту его не пропустит), переписан на честные числа
 
 ## B46 · MAJOR · h0/dream/dub.py:45  (охотник g2)
 
@@ -696,7 +696,7 @@ const n: V3 = [d[1], 0, -d[0]];
         if res["ok"]:
             r["audio"] = os.path.relpath(res["audio"], run)
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b46.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b46.py; `dub` пропускает только полностью озвученный лог, иначе переозвучивает с `.novoice` (повтор заново генерирует и картинки)
 
 ## B47 · MAJOR · h0/llm_http.py:94  (охотник g2)
 
@@ -722,7 +722,7 @@ const n: V3 = [d[1], 0, -d[0]];
     except (ValueError, UnicodeDecodeError) as exc:
         raise TransportError("bad json: %s" % type(exc).__name__, None, False) from None
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b47.py (доказан 1 из 3 вариантов нагрузки (choices:[str]))
+- **status:** fixed (sonnet) — h0/test_bughunt_b47.py; `_once` ловит AttributeError/TypeError парсера как TransportError("bad json"); все 3 варианта нагрузки покрыты
 
 ## B48 · MAJOR · h0/dream/dialogue.py:976  (охотник g2)
 
@@ -751,7 +751,7 @@ const n: V3 = [d[1], 0, -d[0]];
         if not text:
             return None
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b48.py
+- **status:** rejected (opus) — тот же контракт «один ретрай», что у `actor_line` (там повтор на второй попытке принимается явно, `attempt == 0`; комментарий 1.2c): после ретрая реплика идёт, иначе тишина. Менять — решение продукта; тест удалён
 
 ## B49 · CRIT · h0/pipe2/floor.py:94  (охотник g3)
 
@@ -768,7 +768,7 @@ const n: V3 = [d[1], 0, -d[0]];
     if not isinstance(bulge, (int, float)) or not math.isfinite(bulge):
         return None
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b49.py
+- **status:** fixed (sonnet) — h0/pipe2/test_bughunt_b49.py; `_edge_center`: не-словарь в вершине — None (дефект ребра)
 
 ## B50 · CRIT · h0/pipe2/floor.py:513  (охотник g3)
 
@@ -789,7 +789,7 @@ const n: V3 = [d[1], 0, -d[0]];
         self._write_report(result)
         return result
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b50.py
+- **status:** fixed (sonnet) — h0/pipe2/test_bughunt_b50.py; ошибка закрытия warmth переводит этаж в `failed`
 
 ## B51 · MAJOR · h0/make/story.py:114  (охотник g3)
 
@@ -810,7 +810,7 @@ const n: V3 = [d[1], 0, -d[0]];
         os.replace(link, final)
         shutil.rmtree(legacy, ignore_errors=True)
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b51.py
+- **status:** fixed (sonnet+opus) — h0/make/test_bughunt_b51.py; кэш постановки пишется в ctx.out и публикуется со story, прошлые stage_*.json копируются (как tone-*); fake-прогон кэш не пишет. Тест переведён на живой путь с подменённым директором
 
 ## B52 · MAJOR · h0/make/stage.py:258  (охотник g3)
 
@@ -828,7 +828,7 @@ const n: V3 = [d[1], 0, -d[0]];
                        "poses": ["door"]})
 ```
 Поиск багов в указанной зоне по заданной линзе завершён, все 4 дефекта подтверждены воспроизводимыми кейсами. Готов ответить на вопросы или перейти к подготовке тестов/исправлений, когда будет снят read-only режим.
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b52.py
+- **status:** fixed (sonnet) — h0/make/test_bughunt_b52.py; имя двери — первое свободное `<room> door`, `<room> door 2`…
 
 ## B53 · CRIT · engine/src/runtime/stage/touch.ts:83  (охотник g4)
 
@@ -849,7 +849,7 @@ const n: V3 = [d[1], 0, -d[0]];
         const dy = wrap(finish.yaw - cur);
         cur += Math.max(-360 * dt, Math.min(360 * dt, dy));
 ```
-- **status:** red — engine/test/bughunt2/b53.test.ts (низкая достижимость: make/stage.py:211 всегда пишет yaw; нужен ручной places.json)
+- **status:** fixed (opus) — engine/test/bughunt2/b53.test.ts; toucher падает на «along»/текущий yaw, `actor.go` не принимает нечисловой yaw (инвариант)
 
 ## B54 · MAJOR · engine/src/runtime/cams.ts:71  (охотник g4)
 
@@ -902,7 +902,7 @@ const n: V3 = [d[1], 0, -d[0]];
         return;
       }
 ```
-- **status:** red — engine/test/bughunt2/b56.test.ts
+- **status:** fixed (opus) — engine/test/bughunt2/b56.test.ts; явный `stay` у выходящего актёра отменяет выход и останавливает его
 
 ## B57 · CRIT · engine/src/runtime/stage/index.ts:175  (охотник g4)
 
@@ -938,7 +938,7 @@ for pass in green red; do
 done
 exit $rc
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b58.py
+- **status:** fixed (sonnet) — tools/test_bughunt_b58.py; отсутствующий `.rc` в gate.sh — красный «suite did not finish»
 
 ## B59 · MAJOR · tools/ptest.py:104  (охотник g5)
 
@@ -974,7 +974,7 @@ exit $rc
             self.send_json({"line": spoken, "opened": OPEN in line, "tts": f"/tts/{tid}",
                             "ttft": round((ttft or 0) * 1000), "ms": round((time.time() - t0) * 1000)})
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b60.py (откат history проверит второй тест после фикса)
+- **status:** fixed (sonnet) — h0/live/test_bughunt_b60.py; /turn: сбой chat() — 502 и откат history
 
 ## B61 · MAJOR · h0/gate_test.py:83  (охотник g5)
 
@@ -994,7 +994,7 @@ exit $rc
                             text += piece
         except (urllib.error.HTTPError, urllib.error.URLError) as e:
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b61.py (доказана только половина: пустой data:-кадр; обрыв стрима не проверен)
+- **status:** fixed (sonnet) — h0/test_bughunt_b61.py; `gate_test.chat` пропускает пустой data:-кадр, обрыв потока (OSError/HTTPException) повторяется
 
 ## B62 · MAJOR · h0/live/rt.py:234  (охотник g5)
 
@@ -1012,7 +1012,7 @@ exit $rc
             await self.s.send(type="partial", text=join(done + [text]))
         return text, round((time.time() - t) * 1000), len(pcm) / 32000
 ```
-- **status:** red — research/bughunt-2026-11-02/redtests2/test_b62.py
+- **status:** fixed (sonnet) — h0/live/test_bughunt_b62.py; partial собирается в порядке `self.chunks`; тесту добавлены офлайн-заглушки gate_test/load_test
 
 # Заход 3 — широкий (8 охотников agy gemini-3.8-flash-high; k3 build/ ответил NONE)
 
@@ -1032,7 +1032,7 @@ exit $rc
       }
 ```
 
-- **status:** red — engine/test/bughunt3/b63.test.ts
+- **status:** fixed (opus) — engine/test/bughunt3/b63.test.ts; любой приказ движения идёт через локальный `touch`, который отменяет выход. Тест охотника был неверен: stage+narrator подряд — один бит, и мизансцена бита по дизайну бьёт ремарку; ремарка перенесена в следующий бит
 
 ## B64 · MAJOR · engine/src/runtime/stage/index.ts:472  (охотник k1)
 
@@ -1049,7 +1049,7 @@ exit $rc
           } else if (!via) warnings.push(`stage: enter "${target.name}" is not a door and room "${target.room ?? "?"}" has none -> walks from where she is`);
 ```
 
-- **status:** red — engine/test/bughunt3/b64.test.ts
+- **status:** fixed (opus) — engine/test/bughunt3/b64.test.ts; дверь комнаты без yaw — вход по yaw 0 с предупреждением (как B04)
 
 ## B65 · MAJOR · engine/src/runtime/stage/shotplan.ts:229  (охотник k1)
 
@@ -1070,7 +1070,7 @@ exit $rc
   };
 ```
 
-- **status:** red — engine/test/bughunt3/b65.test.ts
+- **status:** fixed (sonnet+opus) — engine/test/bughunt3/b65.test.ts; без `from.fov` зум идёт от fov камеры до плана (`shotFrame(..., baseFov)`), без него — конечный fov
 
 ## B66 · MAJOR · engine/src/runtime/stage/touch.ts:91  (охотник k1)
 
@@ -1087,7 +1087,7 @@ exit $rc
   };
 ```
 
-- **status:** red — engine/test/bughunt3/b66.test.ts
+- **status:** fixed (opus) — engine/test/bughunt3/b66.test.ts; `cancelExit` снимает и отложенный на рампе touch (`toucher.cancel`)
 
 ## B67 · MAJOR · engine/src/runtime/stage/shotplan.ts:161  (охотник k1)
 
@@ -1103,7 +1103,7 @@ exit $rc
     if (t.k === "end") return endAt === null ? null : endAt + t.off;
 ```
 
-- **status:** red — engine/test/bughunt3/b67.test.ts
+- **status:** fixed (sonnet) — engine/test/bughunt3/b67.test.ts; `prev` отсчитывается от последнего неотброшенного кадра
 
 ## B68 · MAJOR · engine/src/runtime/stage/pose.ts:19  (охотник k2)
 
@@ -1122,7 +1122,7 @@ const sideOf = (n: string): string => {
 };
 ```
 
-- **status:** red — engine/test/bughunt3/b68.test.ts
+- **status:** fixed (sonnet) — engine/test/bughunt3/b68.test.ts; сторона берётся только рядом со словом конечности (lowerleg_r, thigh.L, L_Knee, LeftLeg)
 
 ## B69 · MAJOR · engine/src/runtime/stage/actors.ts:255  (охотник k2)
 
@@ -1149,7 +1149,7 @@ const sideOf = (n: string): string => {
 
 - **status:** rejected — actors.ts teleport уже сбрасывает `path = []; finish = null` (строки 256–258)
 
-## B70 · MAJOR · engine/src/runtime/stage/clipfacts.ts:180  (охотник k2) (в работе)
+## B70 · MAJOR · engine/src/runtime/stage/clipfacts.ts:180  (охотник k2)
 
 - **claim:** `writeClipfacts` перед расчётом фактов запускает `createAnimator` с активацией позы покоя (`idle`), из-за чего верхние кости рук выходят из Т-позы, и последующий вызов `prepareClip` внутри `clipFacts` считывает в `bind` согнутые руки вместо bind pose, ломая отрезание калибровочной Т-позы клипов.
 - **trigger:** Вызов `writeClipfacts(castDir)` для персонажа с анимацией покоя `idle`, в которой руки опущены вдоль тела, и клипами, начинающимися с калибровочной Т-позы (0..0.5 с).
@@ -1166,7 +1166,7 @@ const sideOf = (n: string): string => {
       const f = clipFacts(holder, clip, heightM);
 ```
 
-- **status:** red — engine/test/bughunt3/b70.test.ts
+- **status:** fixed (opus) — engine/test/bughunt3/b70.test.ts; bind-поза рук запоминается на кости при первом `prepareClip` (`userData.bindQuat`, массив — переживает clone)
 
 ## B71 · CRIT · engine/src/budget.ts:34  (охотник k4)
 
@@ -1182,7 +1182,7 @@ const sideOf = (n: string): string => {
     const limit = TRI_LIMITS[propClass(p.size)];
 ```
 
-- **status:** rejected — `by_prop` обязателен в типе `TriCount` (engine/src/budget.ts:19) и всегда создаётся build/write.ts:145; тест удалён
+- **status:** rejected — внутри движка `by_prop` обязателен (budget.ts:19, build/write.ts:145); граница усилена (opus): `check --built` берёт `tris` из build.json с диска только с объектом `by_prop` (bin/dreamer.ts)
 
 ## B72 · MAJOR · engine/bin/dreamer.ts:106  (охотник k4)
 
@@ -1199,7 +1199,7 @@ const sideOf = (n: string): string => {
     console.log(`clipfacts: ${join(args[1], "clipfacts.json")}`);
 ```
 
-- **status:** rejected — не доказан тестом (нужен отдельный процесс); ручная проверка: `node --import tsx bin/dreamer.ts clipfacts /tmp/dreamer-b72-missing-cast`
+- **status:** fixed (opus) — engine/test/bughunt3/b72.test.ts; `clipfacts` без cast.json — сообщение и код 2. Баг был реален, отклонение «нет теста» снято: тест через spawnSync, как b06
 
 ## B73 · MAJOR · engine/src/runtime/main.ts:175  (охотник k4)
 
@@ -1221,7 +1221,7 @@ const sideOf = (n: string): string => {
           objects.set(mesh.name, root);
 ```
 
-- **status:** rejected — не доказан тестом (нужен браузер); ручная проверка: `window.__dreamer.three.scene.getObjectByName("ID")?.userData.kind`
+- **status:** rejected — потребителей `userData.kind` у GLB-пропа нет (cutMeshes ищет только wall/band/cap/reveal/ceiling); инвариант всё же сохранён одной строкой в main.ts (opus)
 
 ## B74 · MAJOR · engine/src/schema/refs.ts:289  (охотник k4)
 
@@ -1236,9 +1236,9 @@ const sideOf = (n: string): string => {
     }
 ```
 
-- **status:** red — engine/test/bughunt3/b74.test.ts
+- **status:** fixed (sonnet) — engine/test/bughunt3/b74.test.ts; цикл/самоссылка `around.center` — REF_UNKNOWN; промежуточный assert теста поправлен (после ошибки схемы `ctx.props` нет)
 
-## B75 · CRIT · h0/make/story.py:67  (охотник k5) («в работе»)
+## B75 · CRIT · h0/make/story.py:67  (охотник k5)
 
 - **claim:** Вызов `ctx.spend(ledger.spent)` при каждом обращении к `director` квадратично накручивает учёт расходов стадии `story`, суммируя уже учтённые траты и преждевременно исчерпывая лимит бюджета `max_dollars`.
 - **trigger:** Запуск `run_make(..., fake=False)`, где для сцены вызывается как режиссура расстановки (`_book.score_scene`), так и генерация тонов реплик (`_tone.add_tones`, добавленная в коммите `3248a3c`).
@@ -1251,7 +1251,7 @@ const sideOf = (n: string): string => {
         return json.dumps(ans.scene, ensure_ascii=False) if ans.valid and isinstance(ans.scene, dict) else ""
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b75.py
+- **status:** fixed (sonnet) — h0/make/test_bughunt_b75.py; `ctx.spend` получает прирост `ledger.spent`
 
 ## B76 · MAJOR · h0/make/stage.py:117  (охотник k5)
 
@@ -1270,7 +1270,7 @@ const sideOf = (n: string): string => {
         return max(c, key=lambda s: s["area"])
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b76.py
+- **status:** fixed (sonnet) — h0/make/test_bughunt_b76.py; при позе `stand_on` берётся самая высокая поверхность
 
 ## B77 · MAJOR · h0/make/play.py:115  (охотник k5)
 
@@ -1286,7 +1286,7 @@ const sideOf = (n: string): string => {
         plan = sim._load_book_plan(b["dir"], [b["scene"]], score)
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b77.py
+- **status:** fixed (sonnet) — h0/make/test_bughunt_b77.py; en без story/score.json — FileNotFoundError, как ru
 
 ## B78 · MAJOR · h0/make/film.py:112  (охотник k5)
 
@@ -1302,7 +1302,7 @@ const sideOf = (n: string): string => {
             raise RuntimeError(f"record.mjs exit {r.returncode}: the scene did not reach its end in {max_s}s")
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b78.py (покрыта достижимая часть: ожидание 600 с проверено подменой часов)
+- **status:** fixed (opus) — h0/make/test_bughunt_b78.py; record.mjs идёт через Popen, make.play опрашивается раз в секунду, его смерть останавливает запись с его кодом. Тест охотника был противоречив (ждал старое сообщение о таймауте и запрещал poll живого play), переписан
 
 ## B79 · CRIT · h0/pipe2/floor.py:316  (охотник k6)
 
@@ -1323,7 +1323,7 @@ const sideOf = (n: string): string => {
         kept.append(prop)
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b79.py
+- **status:** fixed (sonnet) — h0/pipe2/test_bughunt_b79.py; снятие смонтированного повторяется до неподвижной точки (транзитивно)
 
 ## B80 · MAJOR · h0/pipe2/floor.py:286  (охотник k6)
 
@@ -1340,7 +1340,7 @@ const sideOf = (n: string): string => {
             ref["what"] = short + " with everything standing on it and inside it"
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b80.py
+- **status:** fixed (sonnet) — h0/pipe2/test_bughunt_b80.py; тип мебели — после снятия префикса комнаты первое слово из CONTAINERS (предел эвристики: `table_lamp` считается столом)
 
 ## B81 · MAJOR · h0/pipe2/surface_rule.py:35  (охотник k6)
 
@@ -1372,9 +1372,9 @@ const sideOf = (n: string): string => {
         report_path = here / "report.json"
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b82.py
+- **status:** fixed (sonnet) — h0/pipe2/test_bughunt_b82.py; временные папки check/check_full удаляются в finally
 
-## B83 · MAJOR · h0/dream/sim.py:1163  (охотник k7) (в работе)
+## B83 · MAJOR · h0/dream/sim.py:1163  (охотник k7)
 
 - **claim:** Метод `Sim._book_human_say` при произнесении реплики живым игроком в книжном режиме не применяет сценические директивы `stage` текущего бита и не передаёт метаданные партитуры в `_start_line`.
 - **trigger:** Симуляция в режиме книги с `hero_owner == "human"`. Текущий бит партитуры книги для героя содержит мизансцену `stage` (например, `[{"who": "Hero", "action": "goto", "place": "door"}]`) и метаданные (`gesture`, `remarks`). Игрок произносит реплику через `sim.human_say("текст")` в окне ожидания `BOOK_PROMPT_WAIT`.
@@ -1390,7 +1390,7 @@ const sideOf = (n: string): string => {
                                         "source": "human", "text": clean, "beat": beat_i})]
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b83.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b83.py; `_book_human_say` эмитит stage бита (общий `_book_beat_stage`) и передаёт BOOK_BEAT_META в `_start_line`
 
 ## B84 · MAJOR · h0/dream/director.py:245  (охотник k7)
 
@@ -1406,7 +1406,7 @@ const sideOf = (n: string): string => {
             return {"messages": []}
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b84.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b84.py; сбой живого директора — None, FSM даёт `invalid`, события возвращаются в очередь, триггер перевзводится
 
 ## B85 · MAJOR · h0/dream/director.py:258  (охотник k7)
 
@@ -1423,7 +1423,7 @@ const sideOf = (n: string): string => {
                 os.remove(os.path.join(d, files.pop(0)))
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b85.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b85.py; ротация берёт только `NNN.txt`
 
 ## B86 · MAJOR · h0/dream/fsm.py:291  (охотник k7)
 
@@ -1441,7 +1441,7 @@ const sideOf = (n: string): string => {
             return self._transition(now, "touch")
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b86.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b86.py; `touch` у проснувшегося автомата — простой input, без перехода
 
 ## B87 · MAJOR · h0/dream/sim.py:1122  (охотник k7) (в работе)
 
@@ -1462,7 +1462,7 @@ const sideOf = (n: string): string => {
 
 - **status:** rejected — переход без `next_scene` запускается только при непустом `_free_book`, откуда сцена берётся (h0/dream/sim.py:1074-1077, 1380, 1387); тест удалён
 
-## B88 · MAJOR · h0/dream/voice_tone.py:72  (охотник k8) (в работе)
+## B88 · MAJOR · h0/dream/voice_tone.py:72  (охотник k8)
 
 - **claim:** Функция `add_tones` не перехватывает ошибки парсинга кэша, аварийно завершая работу с необработанным `JSONDecodeError`, если файл кэша поврежден или пуст (0 байт).
 - **trigger:** Вызов `voice_tone.add_tones(score, director, cache_dir)` при наличии в `cache_dir` пустого (0 байт) или оборванного файла `tone-<sha256>.json` от прерванного ранее прогона.
@@ -1476,7 +1476,7 @@ const sideOf = (n: string): string => {
     else:
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b88.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b88.py; битый/пустой кэш тона — промах, директор спрашивается снова
 
 ## B89 · MAJOR · h0/dream/author.py:206  (охотник k8)
 
@@ -1494,7 +1494,7 @@ const sideOf = (n: string): string => {
         return out, ("ok" if len(out) == len(people) else "partial")
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b89.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b89.py; пустой подбор голосов идёт на вторую попытку
 
 ## B90 · MAJOR · h0/dream/author.py:68  (охотник k8)
 
@@ -1529,7 +1529,7 @@ def candidates(person, search):
             found = search(str(term))
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b91.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b91.py; строковый `search` — один запрос
 
 ## B92 · MAJOR · h0/dream/inputs.py:35  (охотник k8)
 
@@ -1546,7 +1546,7 @@ def candidates(person, search):
                     keep=lambda s: "=" not in s or s.startswith("[[") or s.endswith("]]"))
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b92.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b92.py; для актёра одиночные скобки внутри `[[...]]` не режутся
 
 ## B93 · CRIT · h0/dream/llm.py:348  (охотник k8)
 
@@ -1560,7 +1560,7 @@ def candidates(person, search):
             int(usage.get("completion_tokens", _tokens(text))))
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b93.py
+- **status:** fixed (opus) — h0/dream/test_bughunt_b93.py; null в usage — оценка, как у отсутствующего ключа
 
 ## B94 · MAJOR · h0/dream/server.py:288  (охотник k8)
 
@@ -1578,7 +1578,7 @@ def candidates(person, search):
         return runs
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b94.py
+- **status:** fixed (sonnet) — h0/dream/test_bughunt_b94.py; id пары приводится к str
 
 ## B95 · MAJOR · h0/live/server.py:84  (охотник k9)
 
@@ -1599,7 +1599,7 @@ def candidates(person, search):
             self.stream_tts(text)
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b95.py
+- **status:** fixed (sonnet) — h0/live/test_bughunt_b95.py; сбой Fish до первых байт — 502; там же отрицательный Content-Length в `Handler.body` (тот же дефект, что B98)
 
 ## B96 · MAJOR · h0/live/rt.py:59  (охотник k9)
 
@@ -1619,7 +1619,7 @@ def candidates(person, search):
                         yield piece
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b96.py
+- **status:** fixed (sonnet) — h0/live/test_bughunt_b96.py; `r.raise_for_status()`, ошибка в done.metrics; фейку теста добавлен статус
 
 ## B97 · MAJOR · h0/live/rt.py:171  (охотник k9)
 
@@ -1657,5 +1657,5 @@ def candidates(person, search):
             req = json.loads(self.rfile.read(n))
 ```
 
-- **status:** red — research/bughunt-2026-11-02/redtests3/test_b98.py
+- **status:** fixed (sonnet) — h0/squid_live/test_bughunt_b98.py; отрицательный Content-Length — 400
 

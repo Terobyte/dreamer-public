@@ -91,7 +91,10 @@ def _edge_center(room: dict, edge, pos: dict):
     length = math.hypot(bx - ax, bz - az)
     if length <= 0:
         return (ax, az)
-    bulge = shape[edge][2].get("bulge", 0) if len(shape[edge]) > 2 else 0
+    third = shape[edge][2] if len(shape[edge]) > 2 else None
+    if third is not None and not isinstance(third, dict):
+        return None  # a 3-coordinate vertex, not {"bulge": ..}: the engine reports it
+    bulge = third.get("bulge", 0) if third else 0
     if not isinstance(bulge, (int, float)) or not math.isfinite(bulge):
         return None
     if bulge:
@@ -283,9 +286,14 @@ def attach_refs(scene: dict, plan: dict, scene_dir, warnings=None) -> dict:
             images[rid] = rel.as_posix() if rel is not None else None
         if images[rid] is None:
             continue
-        short = str(prop.get("id") or aid).rsplit("_", 1)[-1]
+        short = str(prop.get("id") or aid)
+        if short.startswith(rid + "_"):
+            short = short[len(rid) + 1:]
+        # `table_1`, `shelf_small`, `nightstand_left`: the furniture type is the first CONTAINERS word
+        kind = next((w for w in short.split("_") if w in CONTAINERS), None)
+        short = kind or short.replace("_", " ")
         ref = {"image": images[rid], "what": short}
-        if short in CONTAINERS:
+        if kind:
             ref["mode"] = "redraw"
             ref["what"] = short + " with everything standing on it and inside it"
         have = asset.get("ref")
@@ -307,17 +315,24 @@ def attach_refs(scene: dict, plan: dict, scene_dir, warnings=None) -> dict:
             ref = asset.get("ref") if isinstance(asset, dict) else None
             if isinstance(ref, dict) and ref.get("mode") == "redraw":
                 containers[prop["id"]] = True
-    kept = []
-    for prop in scene.get("props") or []:
-        mount = prop.get("mount") if isinstance(prop, dict) else None
-        host = None
-        if isinstance(mount, dict):
-            host = mount.get("top_of") or mount.get("tier_of")
-        if isinstance(host, str) and host in containers:
-            if warnings is not None:
-                warnings.append("CONTAINED %s in %s" % (prop.get("id"), host))
-            continue
-        kept.append(prop)
+    props = list(scene.get("props") or [])
+    while True:  # whatever stands on a removed prop goes too (no dangling mount hosts)
+        kept = []
+        for prop in props:
+            mount = prop.get("mount") if isinstance(prop, dict) else None
+            host = None
+            if isinstance(mount, dict):
+                host = mount.get("top_of") or mount.get("tier_of")
+            if isinstance(host, str) and host in containers:
+                if warnings is not None:
+                    warnings.append("CONTAINED %s in %s" % (prop.get("id"), host))
+                if isinstance(prop.get("id"), str):
+                    containers[prop["id"]] = True
+                continue
+            kept.append(prop)
+        if len(kept) == len(props):
+            break
+        props = kept
     if "props" in scene:
         scene["props"][:] = kept
     return scene
@@ -511,6 +526,8 @@ class Floor:
             self._close_warmth()
         except Exception as exc:
             result.final_errors.append({"kind": "warmth_close_failed", "error": str(exc)})
+            if result.status == "done":  # leaked billing GPUs are not a success (exit code 1)
+                result.status = "failed"
         for key, value in self._report_fields().items():
             setattr(result, key, value)
         self._write_report(result)

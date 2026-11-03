@@ -1,5 +1,2 @@
 # open bughunt repros (bugs.md, hunt 2026-10-31): red until their phase fixes them.
 # a bug phase deletes its line here once the file is green; nothing else touches this list.
-# bughunt 2026-11-02 round 2 (B39-B62): red repros, not fixed yet
-engine/test/bughunt2/b53.test.ts
-engine/test/bughunt2/b56.test.ts

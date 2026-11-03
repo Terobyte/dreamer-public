@@ -189,6 +189,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_error(403)
         try:
             n = int(self.headers.get("Content-Length", 0))
+            if n < 0:
+                raise ValueError("negative Content-Length")  # B98: read(-1) would block until EOF
             if n > MAX_BODY:
                 self.close_connection = True
                 return self.send_error(413)

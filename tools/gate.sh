@@ -43,7 +43,15 @@ for f in $(echo "$skip" | grep '^engine/'); do ex="$ex --exclude ${f#engine/}"; 
 rc=0
 for pass in green red; do
   for s in dream make py engine; do
-    [ -f "$logs/$s.rc" ] || continue
+    if [ ! -f "$logs/$s.rc" ]; then
+      [ $s = make ] && [ ! -d h0/make ] && continue  # make only runs when h0/make exists
+      # B58: the suite was killed before it wrote its status: that is a failure, not a skip
+      [ $pass = red ] || continue
+      rc=1
+      echo "== $s (no exit status: the suite did not finish)"
+      cat "$logs/$s" 2>/dev/null
+      continue
+    fi
     c=$(cat "$logs/$s.rc")
     if [ "$c" = 0 ]; then [ $pass = green ] || continue; else [ $pass = red ] || continue; rc=1; fi
     echo "== $s (exit $c)"

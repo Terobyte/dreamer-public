@@ -158,7 +158,11 @@ export function createShotClock(plan: Shotplan, warn: string[]) {
   };
   const timeOf = (t: ShotTime, k: number): number | null => {
     if (t.k === "num") return t0 === null ? null : t0 + t.x;
-    if (t.k === "prev") return k === 0 ? t0 : timeOf(plan.shots[k - 1].to, k - 1);
+    if (t.k === "prev") {
+      let j = k - 1;
+      while (j >= 0 && skipped.has(j)) j--; // the last shot that can play, not a skipped one
+      return j < 0 ? t0 : timeOf(plan.shots[j].to, j);
+    }
     if (t.k === "end") return endAt === null ? null : endAt + t.off;
     const b = t.end ? beatEnd(t.i) : (beatAt.get(t.i) ?? null);
     return b === null ? null : b + t.off;
@@ -207,7 +211,8 @@ export interface ShotFrame {
 }
 
 /** where the camera of an active plan is at `now`: eased from -> end, plus the shake; `bone` gives a bone's world point */
-export function shotFrame(a: ActiveShot, now: number, bone: (actor: string, bone: "head" | "hips") => V3 | null): ShotFrame {
+/** baseFov: the camera's fov before the plan took it -- where a zoom with no `from.fov` starts (B65) */
+export function shotFrame(a: ActiveShot, now: number, bone: (actor: string, bone: "head" | "hips") => V3 | null, baseFov: number | null = null): ShotFrame {
   const s = a.shot;
   const u = a.to === null ? 1 : Math.max(0, Math.min(1, (now - a.at) / (a.to - a.at)));
   const e = s.end ? easeOf(s.ease)(u) : 0;
@@ -226,7 +231,11 @@ export function shotFrame(a: ActiveShot, now: number, bone: (actor: string, bone
     name: s.name,
     pos: [p[0] + sh[0], p[1] + sh[1], p[2] + sh[2]],
     look: mix(lookAt(s.from.look), lookAt(end.look)),
-    fov: f0 === null ? null : f0 + ((f1 ?? f0) - f0) * e,
+    // B65: no start fov -> the zoom starts from the camera's own (baseFov); unknown -> the end fov once moving
+    fov: f0 !== null ? f0 + ((f1 ?? f0) - f0) * e
+      : f1 === null ? null
+      : baseFov !== null ? baseFov + (f1 - baseFov) * e
+      : e > 0 ? f1 : null,
     cut: s.cut,
   };
 }

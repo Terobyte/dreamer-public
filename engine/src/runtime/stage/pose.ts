@@ -16,8 +16,11 @@ const key = (n: string): string => n.toLowerCase().replace(/[^a-z]/g, "");
 const sideOf = (n: string): string => {
   if (n.includes("left")) return "L";
   if (n.includes("right")) return "R";
-  if (/^l/.test(n) || /l$/.test(n)) return "L";
-  if (/^r/.test(n) || /r$/.test(n)) return "R";
+  // a trailing side marker (`lowerleg_r` -> `lowerlegr`) wins; a leading l/r counts only before a limb word
+  // (`lknee`), never as the first letter of `lowerleg` / `leg`
+  const LIMB = "(?:leg|knee|thigh|calf|shin|upleg|upperleg|lowerleg)";
+  if (new RegExp(`${LIMB}l$`).test(n) || new RegExp(`^l${LIMB}`).test(n)) return "L";
+  if (new RegExp(`${LIMB}r$`).test(n) || new RegExp(`^r${LIMB}`).test(n)) return "R";
   return "mid";
 };
 const priOf = (n: string, pri: string[]): number => {

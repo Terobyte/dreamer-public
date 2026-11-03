@@ -56,6 +56,7 @@ async def spark(http, messages):
             "messages": [{"role": "system", "content": SQUIDWARD_LOAD}, *messages]}
     async with http.post("https://api.meta.ai/v1/chat/completions", json=body,
                          headers={"Authorization": f"Bearer {META_KEY}"}) as r:
+        r.raise_for_status()  # B96: a 401/429/500 body is not SSE, it must not look like an empty reply
         async for raw in r.content:
             line = raw.decode().strip()
             if line.startswith("data:") and line != "data: [DONE]":
@@ -231,8 +232,9 @@ class MetaTurns:
         t = time.time()
         text = await meta_asr(self.s.http, pcm)
         if text:  # show what is heard so far: finished chunks of this turn plus this one
-            done = [_text(c) for c in self.chunks if c.done()]
-            await self.s.send(type="partial", text=join(done + [text]))
+            me = asyncio.current_task()  # B62: speech order, whichever request returned first
+            parts = [text if c is me else _text(c) if c.done() else "" for c in self.chunks]
+            await self.s.send(type="partial", text=join(parts if me in self.chunks else parts + [text]))
         return text, round((time.time() - t) * 1000), len(pcm) / 32000
 
     async def watch(self):

@@ -228,8 +228,10 @@ class Director:
         return {"bridge": None, "messages": []}
 
     def _live_decision(self, prompt, schema=DIRECTOR_SCHEMA):
-        """Real director consult (spec 15 step 2/4): a malformed or failed reply
-        falls back to a no-op so a bad response never stalls the dream."""
+        """Real director consult (spec 15 step 2/4). A malformed or failed reply is
+        None: the FSM takes it as broken JSON (verdict "invalid"), so _finish gives
+        the consult's events back and re-arms its trigger instead of the dream
+        taking a silent no-op for an answer (B84)."""
         try:
             res = llm_call("director", "You are the dream director.",
                            [{"role": "user", "content": prompt + "\n"
@@ -244,7 +246,7 @@ class Director:
         except Exception as e:
             self.errors.append(e)
             self._publish([dict(report("director", "director_fail", e), t=self.clock.now())])
-            return {"messages": []}
+            return None
 
     def _write_prompt(self, text):
         if not self.outdir:
@@ -255,7 +257,8 @@ class Director:
         path = os.path.join(d, "%03d.txt" % self.n_consults)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text)
-        files = sorted((f for f in os.listdir(d) if f.endswith(".txt")),
+        # B85: only our own NNN.txt files rotate; a stray notes.txt is not ours to sort
+        files = sorted((f for f in os.listdir(d) if f.endswith(".txt") and f[:-4].isdigit()),
                        key=lambda f: int(f[:-4]))
         while len(files) > 50:
             try:
