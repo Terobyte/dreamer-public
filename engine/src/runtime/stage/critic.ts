@@ -37,6 +37,8 @@ export interface CriticIn {
   move?: string | null;
   /** К2: the director's cut counter */
   dcut?: number;
+  /** debug: what the director saw on its last step */
+  dir_saw?: unknown;
 }
 export interface CriticActor {
   who: string;
@@ -67,6 +69,8 @@ export interface CriticFact {
   move?: string | null;
   /** К2: the director's cut counter */
   dcut?: number;
+  /** debug: what the director saw on its last step */
+  dir_saw?: unknown;
 }
 
 const round = (v: number, k: number): number => Math.round(v * k) / k;
@@ -159,6 +163,7 @@ export function computeFact(i: CriticIn): CriticFact {
     ...(i.shot_clamped !== undefined ? { shot_clamped: i.shot_clamped } : {}),
     ...(i.move !== undefined ? { move: i.move } : {}),
     ...(i.dcut !== undefined ? { dcut: i.dcut } : {}),
+    ...(i.dir_saw !== undefined ? { dir_saw: i.dir_saw } : {}),
   };
 }
 

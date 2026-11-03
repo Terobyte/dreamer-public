@@ -685,6 +685,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let directorFov: number | null = null;
   let dirMove: { out: ReturnType<typeof director.step>; t0: number; durationS: number } | null = null;
   let dirCut = 0;
+  /** the director's last input crew and warnings, for the critic (k15: a pair shot lost a lying actor) */
+  let dirSaw: unknown = null;
+  let dirCutSaw: unknown = null;
   /** К2: the director's move through the same shotFrame as a Spark plan; false = no `end`, smoothCam path */
   const applyDirectorMove = (now: number): boolean => {
     const m = dirMove;
@@ -783,6 +786,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           shot: shotName,
           move: shotName ?? dirMove?.out.move ?? null,
           dcut: dirCut,
+          dir_saw: dirCutSaw,
           shot_clamped: shotClamped,
           cam: [cam.x, cam.y, cam.z] as [number, number, number],
           look: [look.x, look.y, look.z] as [number, number, number],
@@ -943,7 +947,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         clear: sight,
       });
       if (isLast) s = out;
+      dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };
       if (out.cut !== dirCut) {
+        dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null } };
+        dirCutSaw = dirSaw;
         dirCut = out.cut;
         dirMove = { out, t0: now, durationS: out.moveDurationS ?? 4 };
       } else if (dirMove && out.end) {

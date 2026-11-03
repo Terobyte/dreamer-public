@@ -85,7 +85,7 @@ export interface DirectorOut {
 /** who the director frames: actors of the focus room and level; an actor off every level (lying on a bed, sitting on
  *  a table: feet above the floor) belongs to the room it is in (k14_true: Mirai on the bed was dropped from the
  *  director's crew, so Mama's line framed Mama alone) */
-export function inScene(a: Pick<DActor, "room" | "level">, room: string, level: string | null): boolean {
+export function inScene(a: Pick<DActor, "room" | "level">, room: string | null, level: string | null): boolean {
   return a.room === room && (a.level === level || a.level === null || level === null);
 }
 
@@ -253,7 +253,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // narrator always pivots on the first actor by name, never on the stored focus (F1)
     const pivot = ev.kind === "narrator" ? (all.find((a) => a.name === ev.about) ?? all[0]) : (named ?? all.find((a) => a.name === focus) ?? all[0]);
     // the room of the speaker (narrator: of the first actor); other rooms/levels are not in the frame
-    const crew = all.filter((a) => a.room === pivot.room && a.level === pivot.level);
+    // a lying/seated actor off every level (feet above the floor) is still in the room (k17_dbg: Mirai on the bed)
+    const crew = all.filter((a) => a.room === pivot.room && (a.level === pivot.level || a.level === null || pivot.level === null));
     const speaker = crew.find((a) => a.name === pivot.name) ?? crew[0];
     const listener = ev.kind === "narrator" ? undefined : nearestOther(crew, speaker);
     // F6: narrator has no reaction listener, but a `two` still frames the speaker pair
@@ -462,7 +463,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const usePair = Boolean(listener) && !roomAtom && at !== "close" && (pairAtom || style.cut === "long");
         const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (at === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
         const names = "pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : [];
-        const who = roomAtom ? crew.filter((a) => !a.offstage && a.room === speaker.room && a.level === speaker.level) : crew.filter((a) => names.includes(a.name));
+        const who = roomAtom ? crew.filter((a) => !a.offstage) : crew.filter((a) => names.includes(a.name));
         return { subj, usePair, who };
       };
       const attempt = (at: string): typeof curMove => {

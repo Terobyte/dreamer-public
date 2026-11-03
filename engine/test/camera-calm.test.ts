@@ -90,6 +90,21 @@ describe("camera calm", () => {
     expect(o.cam[1]).toBeLessThanOrEqual(1.7);
   });
 
+  it("Mama on the floor level speaks to Mirai lying on the bed: both in frame (k17_dbg: crew dropped level-null Mirai, no listener, ots on Mama alone)", () => {
+    const A = (): DActor[] => [
+      { ...act("Mama", [-1.65, 2.28], 315), level: "L0", room: "bedroom", head: [-1.64, 1.02, 2.29] },
+      { ...act("Mirai", [-1.21, 2.63], 180), height: 0.95, level: null, room: "bedroom", lying: true, head: [-1.33, 0.68, 2.92] },
+    ];
+    for (const r of [0.1, 0.5, 0.9]) {
+      const d = createDirector(() => r, { style: "storybook" });
+      const first = d.step({ event: { kind: "narrator", durationS: 6, dt: 0, beat: 0, tags: { first: true } }, actors: A(), room: BED });
+      expect(inFrame(first, A()[1].head!)).toBe(true);
+      const o = d.step({ event: { kind: "line", speaker: "Mama", durationS: 4, dt: 6, beat: 3, tags: { look: true } }, actors: A(), room: BED });
+      expect(inFrame(o, A()[0].head!)).toBe(true);
+      expect(inFrame(o, A()[1].head!)).toBe(true);
+    }
+  });
+
   it("a child lying on the bed is in the scene of Mama standing in that room (k14_true 33 s: Mirai's feet off the floor -> level null -> the director never saw her)", () => {
     expect(inScene({ room: "bedroom", level: null }, "bedroom", "")).toBe(true);
     expect(inScene({ room: "bedroom", level: "" }, "bedroom", null)).toBe(true);
