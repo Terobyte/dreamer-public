@@ -773,11 +773,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
 /** what the probe must see of an actor: the face and the eye (`DActor.eye`, where the film critic asks) both; without
  *  them the head point stands in (Squidward v7 21–25 s: the face point past a chair's scroll, the top of the box behind it) */
 function probePoints(a: DActor, head: V3): V3[] {
-  const face = a.face ?? head;
-  // a standing figure of a man's height shows its chest too (Squidward v22 62–84 s: face over the easel's canvas, chest
-  // and arm behind it); a short box figure's face is its chest already, and someone lying has none upright
-  const chest: V3[] = !a.lying && a.height >= 1.3 ? [[a.pos[0], face[1] - a.height * 0.3, a.pos[1]]] : [];
-  return [face, ...(a.eye ? [a.eye] : []), ...chest];
+  return [a.face ?? head, ...(a.eye ? [a.eye] : [])];
 }
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
