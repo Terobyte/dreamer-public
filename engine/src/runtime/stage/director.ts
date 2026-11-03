@@ -1,5 +1,8 @@
 import { INSET, insideInset, legalCameraPoint, roomRect, snapInside, type CameraSide, type CameraLaw, type V3 } from "./camera.js";
 import type { V2 } from "./places.js";
+import { resolveMove, type MoveSubject } from "./moves.js";
+import { STYLES, pickMove, type Style } from "./styles.js";
+import type { Ease, ShotLook } from "./shotplan.js";
 
 /** Pure camera director (A3a): which plan, and when. Where exactly the camera stands is kept simple here (A3b refines it). */
 export const BANK = ["ots", "close", "two", "wide", "orbit", "dolly", "low", "follow"] as const;
@@ -34,6 +37,10 @@ export interface DEvent {
   /** narrator: the actor the text names (a close in a narration run frames them) */
   about?: string;
   dt: number;
+  /** К2: beat index, room key and move tags (absent = behaviour by `shot` and `kind`) */
+  beat?: number;
+  room?: string;
+  tags?: { first?: boolean; enter?: boolean; look?: boolean; last?: boolean };
 }
 export interface DRoom {
   outline: V2[];
@@ -60,6 +67,19 @@ export interface DirectorOut {
   look: V3;
   /** increments on every cut (new line, walk change, reaction); index.ts jumps when it changes */
   cut: number;
+  /** К2: the move of the plan (from `cam` to `end`); all optional so the legacy callers do not change */
+  lookRef?: ShotLook;
+  lookEndRef?: ShotLook;
+  end?: V3;
+  lookEnd?: V3;
+  fov?: number;
+  fovEnd?: number;
+  ease?: Ease;
+  shake?: number;
+  move?: string;
+  warnings?: string[];
+  /** seconds the move lasts (event duration, or `style.asl[0]`) */
+  moveDurationS?: number;
 }
 
 const DEG = Math.PI / 180;
@@ -78,6 +98,11 @@ const norm = (v: V2, fallback: V2 = [0, 1]): V2 => {
   return l < 1e-9 ? fallback : [v[0] / l, v[1] / l];
 };
 const faceOf = (yaw: number): V2 => [Math.sin(yaw * DEG), Math.cos(yaw * DEG)];
+/** К2: direction of the face (head bone when measured); lying actors look up, so they have no face direction. */
+export function faceDir(a: DActor): V2 | null {
+  if (a.lying) return null;
+  return faceOf(a.faceYaw ?? a.yaw);
+}
 const rotate = (v: V2, deg: number): V2 => [v[0] * Math.cos(deg * DEG) - v[1] * Math.sin(deg * DEG), v[0] * Math.sin(deg * DEG) + v[1] * Math.cos(deg * DEG)];
 const angleBetween = (a: V2, b: V2): number => Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])) / DEG;
 const signedAngle = (a: V2, b: V2): number => Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) / DEG;
@@ -153,8 +178,24 @@ export function fallbackFrame(mid: V2, center: V2, outline: V2[], inset: number,
 
 export type SnapFn = (outline: V2[], p: V2, r: ReturnType<typeof roomRect>, inset?: number) => V2;
 
-export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn } = {}) {
+/** schemes the director runs as one atom for one beat */
+const SCHEME_ATOM: Record<string, string> = { over_the_shoulder: "ots", reaction_cut: "close", establishing: "master", return_wide: "master", final_pull_out: "pull_out" };
+
+export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; style?: string } = {}) {
   const snap: SnapFn = opts.snap ?? snapInside;
+  // К2: the move layer is on when a style is named or an event carries tags; plain callers keep the legacy frames
+  const styleKnown = opts.style !== undefined && Object.hasOwn(STYLES, opts.style);
+  const style: Style = STYLES[styleKnown ? opts.style! : "storybook"];
+  const styleWarn = opts.style !== undefined && !styleKnown ? [`STYLE_UNKNOWN ${opts.style}`] : [];
+  let moveMode = opts.style !== undefined;
+  let moveCut = -1;
+  let curMove: Pick<DirectorOut, "cam" | "look" | "lookRef" | "lookEndRef" | "end" | "lookEnd" | "fov" | "fovEnd" | "ease" | "shake" | "move" | "warnings" | "moveDurationS"> | null = null;
+  let lastBeat: number | undefined;
+  let curPair = false;
+  let pairNames: string[] = [];
+  let lastSpeaker: string | undefined;
+  let lastRoomEv: string | undefined;
+  let faceBase: { name: string; dir: V2 } | null = null;
   let clock = 0;
   let count = 0;
   let plan: Plan | null = null;
@@ -187,9 +228,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       const lookY = Math.min(floorY + Math.min(1, Math.max(0.05, top)), height);
       const c = roomCenter(inp.room.outline);
       const legal = legalCameraPoint([c[0], eye, c[1]], { outline: inp.room.outline, rect: roomRect(inp.room.outline), height, floorY });
-      return { plan: plan ?? "wide", cam: legal, look: [legal[0], lookY, legal[2]], cut: cutSeq };
+      return { plan: plan ?? "wide", cam: legal, look: [legal[0], lookY, legal[2]], cut: cutSeq, ...(styleWarn.length ? { warnings: styleWarn } : {}) };
     }
-    const named = ev.kind === "line" ? all.find((a) => a.name === ev.speaker) : undefined;
+    const named = ev.kind === "line" || ev.kind === ("walk" as string) ? all.find((a) => a.name === ev.speaker) : undefined;
     // narrator always pivots on the first actor by name, never on the stored focus (F1)
     const pivot = ev.kind === "narrator" ? (all.find((a) => a.name === ev.about) ?? all[0]) : (named ?? all.find((a) => a.name === focus) ?? all[0]);
     // the room of the speaker (narrator: of the first actor); other rooms/levels are not in the frame
@@ -237,8 +278,41 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       subjectIsListener = asListener;
       cutSeq++;
     };
+    if (ev.tags) moveMode = true;
+    const alternates = (who?: string): boolean => who !== undefined && who !== lastSpeaker && pairNames.includes(who);
+    // К2: a new room is a cut with the room state dropped; a new beat cuts a plan
+    let forceCut = false;
+    const cutAtStart = cutSeq;
+    if (ev.room !== undefined) {
+      if (lastRoomEv !== undefined && ev.room !== lastRoomEv) {
+        forceCut = true;
+        st.side = null;
+        st.axis = null;
+        wideLock = null;
+        curMove = null;
+      }
+      lastRoomEv = ev.room;
+    }
+    if (ev.beat !== undefined) {
+      if (lastBeat !== undefined && ev.beat !== lastBeat && !(style.cut === "long" && curPair && curMove?.move && ev.kind === "line" && alternates(ev.speaker))) forceCut = true;
+      lastBeat = ev.beat;
+    }
+    // a face that turned more than 30° since the plan began (or past 90° to the camera) ends the plan
+    if (moveMode && ev.kind === "tick" && curMove && faceBase) {
+      const a = crew.find((x) => x.name === faceBase!.name);
+      const fd = a ? faceDir(a) : null;
+      if (a && fd) {
+        const toCam: V2 = [curMove.cam[0] - a.pos[0], curMove.cam[2] - a.pos[1]];
+        if (angleBetween(fd, faceBase.dir) > 30 || angleBetween(fd, toCam) > 90) forceCut = true;
+      }
+    }
 
-    if (ev.kind === "line" || ev.kind === "narrator") {
+    // cut: "long" — alternating lines inside one running move do not cut it until asl.max has passed
+    const holdPlan = moveMode && style.cut === "long" && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
+    if (holdPlan) {
+      count++;
+      focus = speaker.name;
+    } else if (ev.kind === "line" || ev.kind === "narrator") {
       count++;
       pending = [];
       explicitPlan = Boolean(ev.shot && (BANK as readonly string[]).includes(ev.shot));
@@ -259,6 +333,14 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       }
     } else {
       if (plan === null) cut("wide");
+      if (ev.tags?.last) {
+        explicitPlan = false;
+        lastPlan = "wide";
+        cut("wide");
+      } else if ((forceCut || ev.tags?.enter) && plan !== null && sig === walkSig) {
+        explicitPlan = false;
+        cut(plan);
+      }
       if (sig !== walkSig) {
         explicitPlan = false;
         const p: Plan = walkers.length === 1 ? "follow" : "wide";
@@ -272,8 +354,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
       }
     }
     walkSig = sig;
+    if (ev.kind === "line") lastSpeaker = ev.speaker;
     const key = `${speaker.level ?? ""}|${speaker.room ?? ""}`;
-    if (roomKey !== null && key !== roomKey && ev.kind !== "line" && ev.kind !== "narrator") cutSeq++;
+    if (roomKey !== null && key !== roomKey && ev.kind !== "line" && ev.kind !== "narrator" && cutSeq === cutAtStart) cutSeq++;
     roomKey = key;
 
     const out0 = frame(plan ?? "wide", subjectIsListener && listener ? listener : speaker, subjectIsListener && listener ? speaker : frameOther, crew, walkers, inp, clock - planStart, clock, cutSeq, st, snap, speaker, closeLineAxis, explicitPlan, closeLineOrigin);
@@ -294,7 +377,67 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn }
     wideLock = out.plan === "wide" ? { cut: out.cut, cam: out.cam } : null;
     // F12: a coerced plan (low -> close, ots -> close, two -> wide) is what the viewer saw: repeats compare to it
     if (ev.kind === "line" || ev.kind === "narrator") lastPlan = out.plan as Plan;
-    return out;
+    if (!moveMode || explicitPlan) return styleWarn.length ? { ...out, warnings: styleWarn } : out;
+    // a static plan past 2*asl.max drifts (0.1 m), except in styles without motion
+    const driftNow = cutSeq === moveCut && curMove !== null && !curMove.end && style.move > 0 && clock - planStart > 2 * style.asl[1] && curMove.move !== "drift";
+    if (cutSeq !== moveCut || driftNow) {
+      moveCut = cutSeq;
+      curMove = null;
+      faceBase = null;
+      const tags = ev.tags ?? {};
+      const pk = driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, rng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
+      const atom = SCHEME_ATOM[pk.id] ?? pk.id;
+      // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
+      const pairAtom = atom === "ots" || atom === "two" || atom === "close_reaction";
+      const roomAtom = atom === "wide" || atom === "master";
+      const usePair = Boolean(listener) && !roomAtom && atom !== "close" && (pairAtom || style.cut === "long");
+      const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (atom === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
+      curPair = usePair;
+      pairNames = usePair ? [speaker.name, listener!.name] : [];
+      try {
+        const r = resolveMove(atom, subj, {
+          actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
+          durationS: ev.durationS ?? style.asl[0], rng, speaker: speaker.name, clear: inp.clear,
+          // a walker's straight route: where it ends, from its heading and what is left of the walk
+          walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
+          side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
+        });
+        const pt = (l: ShotLook): V3 => {
+          if (Array.isArray(l)) return l as V3;
+          const a = crew.find((x) => x.name === (l as any).actor);
+          const h: V3 = a?.head ?? [a?.pos[0] ?? 0, (a?.height ?? 1.5) * 0.93, a?.pos[1] ?? 0];
+          const o = (l as any).o as V3;
+          return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
+        };
+        const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
+        // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
+        const hiY = Math.max(floorY + 0.3, height - 0.3);
+        const lo = Math.min(floorY + style.height[0], hiY);
+        const hi = Math.max(lo, Math.min(floorY + style.height[1], hiY));
+        const cy = (v: V3): V3 => [v[0], Math.min(hi, Math.max(lo, v[1])), v[2]];
+        const cf = (f: number): number => Math.min(style.fov[1], Math.max(style.fov[0], f));
+        r.from.pos = cy(r.from.pos);
+        r.from.fov = cf(r.from.fov);
+        if (r.end) {
+          r.end.pos = cy(r.end.pos);
+          r.end.fov = cf(r.end.fov);
+        }
+        curMove = {
+          cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
+          ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
+          fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: pk.id,
+          warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
+        };
+        {
+          const a = crew.find((x) => x.name === speaker.name);
+          const fd = a ? faceDir(a) : null;
+          if (a && fd) faceBase = { name: a.name, dir: fd };
+        }
+      } catch {
+        curMove = null;
+      }
+    }
+    return curMove ? { ...out, ...curMove } : out;
   };
 
   return { step };
@@ -376,7 +519,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   // reaction reframes the same speaker, so deriving it from the reaction subject would flip the side)
   const pair = other ? [subj, other].sort(byName) : [subj];
   const m = mid(pair);
-  const axis: V2 = pair.length > 1 ? (closeAxis ?? (dist(pair[0].pos, pair[1].pos) < 0.3 ? faceOf(gaze.yaw) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]]))) : faceOf(subj.yaw);
+  const axis: V2 = pair.length > 1 ? (closeAxis ?? (dist(pair[0].pos, pair[1].pos) < 0.3 ? (faceDir(gaze) ?? [0, 1]) : norm([pair[1].pos[0] - pair[0].pos[0], pair[1].pos[1] - pair[0].pos[1]]))) : (faceDir(subj) ?? [0, 1]);
   const origin: V2 = pair.length > 1 && closeOrigin ? closeOrigin : m;
   const n: V2 = [-axis[1], axis[0]];
   // persistent 180° side: reselected only when the axis turned by more than 90°
@@ -442,7 +585,8 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
 
   /** Rule 1: close/ots/low choose the point on the required side with the smallest angle to the face. */
   const bestFacePoint = (s: DActor, y: number, dists: number[], shoulderOffset = false): V3 => {
-    const f = faceOf(s.yaw);
+    // a lying actor has no face direction: the 180° side (or +z) stands in, never the body yaw
+    const f: V2 = faceDir(s) ?? (other ? [n[0] * side, n[1] * side] : [0, 1]);
     const search = (withShoulder: boolean) => {
       let bestUnder60: { p: V3; ang: number } | null = null;
       let bestOver60: { p: V3; ang: number } | null = null;
@@ -637,7 +781,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       // the worst face of the pair, measured where the walls really put the camera (Koshakan: Mama on the bed edge
       // faces Mirai along the axis; the square-on wide hit the wall and slid behind her, 130–150° off her face)
       const faces = pair.filter((a) => !a.lying);
-      const worstFace = (cam: V3): number => Math.max(0, ...faces.map((a) => angleBetween(faceOf(a.faceYaw ?? a.yaw), [cam[0] - a.pos[0], cam[2] - a.pos[1]])));
+      const worstFace = (cam: V3): number => Math.max(0, ...faces.map((a) => angleBetween(faceDir(a) ?? faceOf(a.yaw), [cam[0] - a.pos[0], cam[2] - a.pos[1]])));
       // 2 m, or less in a small room (a 3.6 m bedroom has no 2 m point in front of a seated Mama)
       const minWide = Math.min(2, 0.5 * Math.min(rect.maxx - rect.minx, rect.maxz - rect.minz));
       /** square to the side; when that misses the faces, swing inside the half-plane (never closer than 2 m) */
@@ -682,7 +826,7 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
     case "dolly": {
       const k = Math.min(1, t / 8);
       const d = 4.5 + (2.2 - 4.5) * k;
-      const dir = other ? sideDir : faceOf(subj.yaw);
+      const dir = other ? sideDir : (faceDir(subj) ?? faceOf(subj.yaw));
       const dy = eyeCam(subj);
       return { plan: p, cut, cam: toSide(place(subj.pos[0] + dir[0] * d, subj.pos[1] + dir[1] * d, dy), dy, d), look: head(subj) };
     }

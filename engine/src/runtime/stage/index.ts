@@ -13,7 +13,7 @@ import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { legalCameraPoint, roomRect, type V3 } from "./camera.js";
-import { createShotClock, cutMeshes, parseShotplan, shotFrame, type ShotClock } from "./shotplan.js";
+import { createShotClock, cutMeshes, parseShotplan, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -32,6 +32,8 @@ export interface StageCtx {
   stage?: Record<string, unknown>;
   /** Г8: the shot plan, ready (tests; else `stage.shotplan` is fetched from the run folder) */
   plan?: unknown;
+  /** К2: director style id (?camera_style=); absent = the legacy frames */
+  cameraStyle?: string;
 }
 
 export interface Stage {
@@ -181,7 +183,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y(), sp.top);
     actors.set(who, a);
   }
-  const director = createDirector(rng);
+  const director = createDirector(rng, { style: c.cameraStyle });
+  let sceneFirst = true;
+  /** К2: tags of the next queued line/narrator */
+  const tagsOf = (look: boolean): DEvent["tags"] | undefined => {
+    const t: NonNullable<DEvent["tags"]> = {};
+    if (sceneFirst) t.first = true;
+    if (look) t.look = true;
+    sceneFirst = false;
+    return Object.keys(t).length ? t : undefined;
+  };
   // the director sees the furniture: a frame whose sightline the world blocks is moved (actors never block)
   const sight = createSight(c.scene, () => [...actors.values()].map((a) => a.group));
   const offstageActors = new Set<string>();
@@ -489,6 +500,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         cancelExit(who);
         const tgtPos = getTargetPos(lookTarget);
         const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
+        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
         touch(who, pl.name, pose, lookYaw);
         return;
       }
@@ -504,6 +516,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         }
         cancelExit(who);
         offstageActors.delete(who);
+        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
         const isDoor = (p: Place): boolean => p.kind === "door" || !!p.poses?.includes("door");
         if (!isDoor(target)) {
           // the director named where she goes, not the door: come in through the room's door, then walk there;
@@ -578,7 +591,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who) stageLook.delete(who);
       const lookName = typeof e.look === "string" ? e.look : inherited;
       gazeBeat = { speaker: who ?? null, at: lookName, place: lookName ? (places.find((p) => p.name === lookName) ?? null) : null, until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
-      pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0 });
+      pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, tags: tagsOf(!!lookName && lookName !== who && actors.has(lookName)) });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
@@ -596,7 +609,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     narrator(e) {
       beatIn(e);
       gazeBeat = { speaker: null, at: null, place: namedIn(String(e.text ?? "")) ? null : placeIn(String(e.text ?? "")), until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
-      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0 });
+      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, tags: tagsOf(false) });
       subs.narrator({ text: e.text, audio: e.audio });
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
@@ -612,9 +625,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       }
     },
     book_end() {
+      // К2: the last tag asks the director for the final pull-out unless a Spark plan has the camera
+      if (!shots?.active(nowT)) pendingQueue.push({ kind: "tick", dt: 0, tags: { last: true } });
+      else warnings.push("LAST_UNDER_PLAN");
       shots?.end(nowT);
     },
     scene_end() {
+      // К2: the last tag asks the director for the final pull-out unless a Spark plan has the camera
+      if (!shots?.active(nowT)) pendingQueue.push({ kind: "tick", dt: 0, tags: { last: true } });
+      else warnings.push("LAST_UNDER_PLAN");
+      sceneFirst = true;
       shots?.end(nowT);
     },
     touch(e) {
@@ -663,6 +683,35 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let shotClamped = false;
   let cutHidden: any[] = [];
   let directorFov: number | null = null;
+  let dirMove: { out: ReturnType<typeof director.step>; t0: number; durationS: number } | null = null;
+  let dirCut = 0;
+  /** К2: the director's move through the same shotFrame as a Spark plan; false = no `end`, smoothCam path */
+  const applyDirectorMove = (now: number): boolean => {
+    const m = dirMove;
+    if (!m || !m.out.end) return false;
+    const o = m.out;
+    const act: ActiveShot = {
+      shot: { name: o.move ?? o.plan, at: { k: "num", x: 0 }, to: { k: "num", x: m.durationS }, from: { pos: o.cam, look: o.lookRef ?? o.look, fov: o.fov }, end: { pos: o.end!, look: o.lookEndRef ?? o.lookEnd ?? o.look, fov: o.fovEnd }, cut: false, shake: o.shake ?? 0, ease: o.ease ?? "io" },
+      index: 0, at: m.t0, to: m.t0 + m.durationS,
+    };
+    const fr = shotFrame(act, now, boneOf, directorFov ?? c.camera.fov);
+    const f = roomAt([fr.pos[0], fr.pos[2]]) ?? (camRoom ? (c.geo.floors ?? []).find((q: any) => q.room === camRoom) : null) ?? (c.geo.floors ?? [])[0];
+    let p: V3 = fr.pos;
+    if (f?.outline?.length) {
+      const floorY = layerOf(f.level ?? null).layer.y ?? 0;
+      p = legalCameraPoint(p, { outline: f.outline, rect: roomRect(f.outline), height: isOpen(f.room) ? floorY + 20 : ceilingOf(f.room), floorY });
+    }
+    if (now < m.t0 + m.durationS && fr.fov !== null && fr.fov !== c.camera.fov) {
+      if (directorFov === null) directorFov = c.camera.fov;
+      c.camera.fov = fr.fov;
+      c.camera.updateProjectionMatrix();
+    }
+    c.camera.position.set(p[0], p[1], p[2]);
+    look.set(fr.look[0], fr.look[1], fr.look[2]);
+    c.camera.lookAt(look.x, look.y, look.z);
+    c.camera.updateMatrixWorld();
+    return true;
+  };
   const boneOf = (who: string, bone: "head" | "hips"): V3 | null => {
     const a = actors.get(who);
     if (!a) return null;
@@ -732,6 +781,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         return {
           plan: lastPlan,
           shot: shotName,
+          move: shotName ?? dirMove?.out.move ?? null,
+          dcut: dirCut,
           shot_clamped: shotClamped,
           cam: [cam.x, cam.y, cam.z] as [number, number, number],
           look: [look.x, look.y, look.z] as [number, number, number],
@@ -880,22 +931,42 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         continue;
       }
       // the speaker leads (a narrator line: the first actor by name), so the director's room is the one under `focus`
-      if (ev.kind !== "line") ev.speaker = undefined;
+      if (ev.kind !== "line" && ev.kind !== ("walk" as string)) ev.speaker = undefined;
+      ev.room = f.room;
       const out = director.step({
         event: ev,
         actors: here,
         room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY },
         rng,
-        fov: c.camera.fov,
+        fov: directorFov ?? c.camera.fov,
         aspect: c.camera.aspect,
         clear: sight,
       });
       if (isLast) s = out;
+      if (out.cut !== dirCut) {
+        dirCut = out.cut;
+        dirMove = { out, t0: now, durationS: out.moveDurationS ?? 4 };
+      } else if (dirMove && out.end) {
+        // a drift added to a long static plan starts now; any other refresh keeps the clock
+        dirMove = !dirMove.out.end ? { out, t0: now, durationS: out.moveDurationS ?? 4 } : { ...dirMove, out };
+      }
     }
     if (!s) return;
     if (onShot) {
       // the plan has the camera; leaving it jumps to the director's frame (prevCut reset -> k = 1)
       prevCut = null;
+      lastPlan = s.plan;
+      critic?.tick(dt, now);
+      return;
+    }
+    const moveDone = !dirMove?.out.end || now >= dirMove.t0 + dirMove.durationS;
+    if (moveDone && directorFov !== null && !onShot && (s.fov === undefined || !!dirMove?.out.end)) {
+      c.camera.fov = directorFov;
+      c.camera.updateProjectionMatrix();
+      directorFov = null;
+    }
+    if (applyDirectorMove(now)) {
+      prevCut = s.cut;
       lastPlan = s.plan;
       critic?.tick(dt, now);
       return;
@@ -906,6 +977,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     // F5: the blended position is kept inside the camera room (an L room's notch is outside between two inside frames)
     const sm = smoothCam([pos.x, pos.y, pos.z], s.cam, k, camOutline);
     pos.set(sm[0], sm[1], sm[2]);
+    // К2: a static move still carries its lens and its shake
+    if (s.fov !== undefined && s.fov !== c.camera.fov) {
+      if (directorFov === null) directorFov = c.camera.fov;
+      c.camera.fov = s.fov;
+      c.camera.updateProjectionMatrix();
+    }
+    if (s.shake) pos.set(pos.x + s.shake * Math.sin(now * 37), pos.y + s.shake * Math.sin(now * 29 + 1), pos.z);
     look.set(look.x + (s.look[0] - look.x) * k, look.y + (s.look[1] - look.y) * k, look.z + (s.look[2] - look.z) * k);
     c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();

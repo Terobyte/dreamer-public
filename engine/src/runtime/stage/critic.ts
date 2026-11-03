@@ -33,6 +33,10 @@ export interface CriticIn {
   shot?: string | null;
   /** Г8: the plan's point was moved more than 0.3 m by the camera law */
   shot_clamped?: boolean;
+  /** К2: name of the move of the director's plan (or the Г8 `shot`) */
+  move?: string | null;
+  /** К2: the director's cut counter */
+  dcut?: number;
 }
 export interface CriticActor {
   who: string;
@@ -59,6 +63,10 @@ export interface CriticFact {
   shot?: string | null;
   /** Г8: the plan's point was moved more than 0.3 m by the camera law */
   shot_clamped?: boolean;
+  /** К2: name of the move of the director's plan (or the Г8 `shot`) */
+  move?: string | null;
+  /** К2: the director's cut counter */
+  dcut?: number;
 }
 
 const round = (v: number, k: number): number => Math.round(v * k) / k;
@@ -149,6 +157,8 @@ export function computeFact(i: CriticIn): CriticFact {
     t: round(i.t, 100), plan: i.plan, cam: i.cam, look: i.look, speaker: i.speaker, actors, overlap,
     ...(i.shot !== undefined ? { shot: i.shot } : {}),
     ...(i.shot_clamped !== undefined ? { shot_clamped: i.shot_clamped } : {}),
+    ...(i.move !== undefined ? { move: i.move } : {}),
+    ...(i.dcut !== undefined ? { dcut: i.dcut } : {}),
   };
 }
 

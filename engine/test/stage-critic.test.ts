@@ -152,4 +152,9 @@ describe("critic: per-frame fact", () => {
     // bodies [0,1.7] and [1.0,2.7] intersect even with feet 1 m apart
     expect(computeFact(stairs).overlap).toBe(true);
   });
+  it("K2: computeFact carries move and dcut into the fact", () => {
+    const f: any = computeFact({ ...base(0), move: "push_in", dcut: 3 } as any);
+    expect(f.move).toBe("push_in");
+    expect(f.dcut).toBe(3);
+  });
 });

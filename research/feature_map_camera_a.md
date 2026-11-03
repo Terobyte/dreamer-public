@@ -23,3 +23,14 @@
 Строка 442 в §5 (`feature_map.md`), заменить целиком на:
 
 | `legalCameraPoint` | `stage/camera.ts:130` — единая функция: зажимает точку камеры в контур, сторону 180° и высоту; при отсутствии законной точки возвращает `law.fallback` без проверки (`camera.ts:139–159`) |
+
+## К2 (частично: styles.ts)
+
+| §2 модуль | что делает |
+|---|---|
+| `engine/src/runtime/stage/styles.ts` | `STYLES` (8 стилей данными), `validateStyles`, `pickMove(style, tags, rng, opts)` — единственный выбор приёма; `isMoving`, `staticOf` |
+
+| §3 нужно X | используй Y |
+|---|---|
+| выбрать приём по стилю и тегам | `styles.ts:pickMove` |
+| направление лица актёра (`faceYaw ?? yaw`, `lying` — нет) | `stage/director.ts:faceDir` |
