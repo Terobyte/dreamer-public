@@ -132,3 +132,23 @@ describe("sight: vegetation never blocks (noblock)", () => {
     expect(createSight(bed, () => [])([0, 0.8, 3], [0, 0.8, -1])).toBe(false);
   });
 });
+
+/** Squidward, Nov 3 (v23 17.8–21.3 s, 40 s): SpongeBob stood right behind a chair back; the camera behind the chair
+ *  saw the back of the chair and the side of his box. The probe left the last 25 cm before the face uncounted (so a
+ *  pillow under a lying head does not block) and the chair back stood inside them. Near the target only what lies
+ *  under it is let go; a thing standing between the lens and the face blocks at any distance. */
+describe("sight: a chair back right in front of the face", () => {
+  const face: [number, number, number] = [0, 0.75, 0];
+  it("a panel 15 cm in front of the face, the camera behind it: blocked", () => {
+    const w = new Group();
+    w.add(box(0.6, 1.4, 0.04, 0, 0.7, 0.15));
+    const clear = createSight(w, () => []);
+    expect(clear([0, 1.1, 3], face)).toBe(false);
+  });
+  it("a pillow under a lying head still does not block", () => {
+    const w = new Group();
+    w.add(box(0.6, 0.15, 0.4, 0, 0.6, 0));
+    const clear = createSight(w, () => []);
+    expect(clear([0, 1.6, 2.5], [0, 0.72, 0])).toBe(true);
+  });
+});

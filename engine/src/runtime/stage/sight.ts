@@ -76,7 +76,7 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
   const cache = new Map<string, boolean>();
   const rc = new Raycaster();
   const ray = new Ray();
-  const from = new Vector3(), to = new Vector3(), dir = new Vector3(), hit = new Vector3();
+  const from = new Vector3(), to = new Vector3(), dir = new Vector3(), hit = new Vector3(), n = new Vector3();
   const toward = (a: V3, b: V3, d: number): V3 => {
     const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
     return [a[0] + ((b[0] - a[0]) * d) / l, a[1] + ((b[1] - a[1]) * d) / l, a[2] + ((b[2] - a[2]) * d) / l];
@@ -101,7 +101,9 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
   };
   onWorldChange(world, () => { items = null; props = null; cache.clear(); });
 
-  /** a mesh face between `a` and `b` (faces seen from `a`'s side only: three culls back faces); `trim` m before `b` do not count */
+  /** a mesh face between `a` and `b` (faces seen from `a`'s side only: three culls back faces). In the last `trim` m
+   *  before `b` only a surface facing up (a pillow or a seat under the head) is let go: a chair back standing right in
+   *  front of the face blocks (Squidward, Nov 3: SpongeBob behind the chair back, the probe said clear) */
   const blocked = (a: V3, b: V3, trim = 0.25): boolean => {
     from.set(a[0], a[1], a[2]);
     to.set(b[0], b[1], b[2]);
@@ -109,19 +111,22 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
     const len = dir.length();
     if (len < 0.3) return false;
     dir.divideScalar(len);
-    const far = len - trim;  // the target's own surroundings (a pillow under a head) do not block
+    const far = len - 0.02;
     ray.set(from, dir);
     rc.set(from, dir);
     rc.near = 0.05;
     rc.far = far;
     for (const it of items!) {
       if (!ray.intersectBox(it.box, hit) || hit.distanceTo(from) > far) continue;
-      if (rc.intersectObject(it.o, false).length) return true;
+      for (const x of rc.intersectObject(it.o, false)) {
+        if (x.distance > len - trim && x.face && n.copy(x.face.normal).transformDirection(it.o.matrixWorld).y > 0.7) continue;
+        return true;
+      }
     }
     return false;
   };
 
-  const f = new Vector3(), r = new Vector3(), u = new Vector3(), up = new Vector3(0, 1, 0), n = new Vector3();
+  const f = new Vector3(), r = new Vector3(), u = new Vector3(), up = new Vector3(0, 1, 0);
   /** the camera stands inside a prop's box, or something is within `reach` m of the lens across the frame (a fan of rays over the frame: ±38° wide, ±22° high); a floor or a
    *  table top seen from above does not count (Squidward, Nov 3: the close stood 30 cm from the canvas) */
   const crowded = (cam: V3, look: V3, reach = 0.7): boolean => {
