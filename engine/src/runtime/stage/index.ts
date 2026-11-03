@@ -3,6 +3,8 @@ import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
 import { aliasesOf, clipForBeat } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
+import { MOVES, SCHEMES, RECORDS, type MoveSubject } from "./moves.js";
+import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
@@ -32,8 +34,63 @@ export interface StageCtx {
   stage?: Record<string, unknown>;
   /** Г8: the shot plan, ready (tests; else `stage.shotplan` is fetched from the run folder) */
   plan?: unknown;
-  /** К2: director style id (?camera_style=); absent = the legacy frames */
+  /** К2: director style id (?camera_style=); absent = storybook */
   cameraStyle?: string;
+  /** К3м: Spark's move choice, ready (tests; else `stage.moves` is fetched from the run folder) */
+  moves?: unknown;
+}
+
+/** К3м: one beat of moves.json: a forced move, or hold */
+export interface MovesBeat {
+  forced?: { move: string; subject: MoveSubject };
+  hold?: boolean;
+}
+export interface ParsedMoves {
+  style?: string;
+  beats: Record<number, MovesBeat>;
+  warnings: string[];
+}
+const isName = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+/** moves.json -> beats; a bad shape drops the whole file, a bad item only itself */
+export function parseMoves(raw: unknown): ParsedMoves {
+  const j = raw as any;
+  if (!j || typeof j !== "object" || j.version !== 1 || !j.beats || typeof j.beats !== "object" || Array.isArray(j.beats)) {
+    return { beats: {}, warnings: ["stage: moves has a bad shape (version 1 and beats object expected) -> director"] };
+  }
+  const out: ParsedMoves = { beats: {}, warnings: [] };
+  if (typeof j.style === "string") out.style = j.style;
+  for (const [k, v] of Object.entries<any>(j.beats)) {
+    const i = /^\d+$/.test(k) ? Number(k) : NaN;
+    if (!Number.isInteger(i) || !v || typeof v !== "object") continue;
+    if (v.hold === true && v.move === undefined) {
+      out.beats[i] = { hold: true };
+      continue;
+    }
+    const id = v.move;
+    const known = typeof id === "string" && !BRIDGE_ONLY.has(id) && (Object.hasOwn(MOVES, id) || Object.hasOwn(SCHEMES, id) || Object.hasOwn(RECORDS, id));
+    if (!known) {
+      out.warnings.push(`MOVE_UNKNOWN B${i}`);
+      continue;
+    }
+    const sj = v.subject;
+    let subject: MoveSubject | null = null;
+    if (sj && typeof sj === "object") {
+      if (isName(sj.actor)) subject = { actor: sj.actor };
+      else if (Array.isArray(sj.pair) && sj.pair.length === 2 && sj.pair.every(isName)) subject = { pair: [sj.pair[0], sj.pair[1]] };
+      else if (sj.room === true && (id === "wide" || id === "master" || id === "establishing")) subject = { room: true };
+    }
+    if (!subject) {
+      out.warnings.push(`SUBJECT_INVALID B${i}`);
+      continue;
+    }
+    out.beats[i] = { forced: { move: id, subject } };
+  }
+  return out;
+}
+/** К3м: moves.style (if known) -> ?camera_style= -> storybook */
+export function pickStyle(movesStyle: string | undefined, cameraStyle: string | undefined): string {
+  if (movesStyle !== undefined && Object.hasOwn(STYLES, movesStyle)) return movesStyle;
+  return cameraStyle ?? "storybook";
 }
 
 export interface Stage {
@@ -148,6 +205,23 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           })
       : (planWarn = "stage: no shotplan -> director", null);
 
+  const NOT_READ = Symbol("moves not read");
+  // К3м: Spark's move choice (optional), read like the shotplan; none or unreadable -> the director's own draw
+  let movesWarn: string | null = null;
+  const movesJson: unknown = c.moves !== undefined
+    ? c.moves
+    : typeof stage.moves === "string"
+      ? await fetch(new URL(stage.moves, runBase))
+          .then((r) => (r.ok ? r.json().then((j: unknown) => ({ j })) : null))
+          .catch(() => null)
+          .then((got) => {
+            // a JSON null is read fine and fails the shape check in parseMoves; only a failed read is "not readable"
+            if (got === null) movesWarn = `stage: moves "${stage.moves}" not readable -> director`;
+            return got === null ? NOT_READ : got.j;
+          })
+      : (movesWarn = "stage: no moves -> director", NOT_READ);
+  const parsedMoves: ParsedMoves = movesJson === NOT_READ ? { beats: {}, warnings: [] } : parseMoves(movesJson);
+
   const layerOf = (level: string | null) => c.layers.find((l) => l.layer.level === level) ?? c.layers[0];
   const roomAt = (p: V2, level?: string | null): any | null => floorAt(c.geo.floors ?? [], p, level);
   const ceilingOf = (room: string): number => {
@@ -183,8 +257,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y(), sp.top);
     actors.set(who, a);
   }
-  const director = createDirector(rng, { style: c.cameraStyle });
+  const director = createDirector(rng, { style: pickStyle(parsedMoves.style, c.cameraStyle) });
   let sceneFirst = true;
+  /** К3м: a stage event's beat index and its moves.json entry, for the walk it starts (a goto alone in its beat keeps Spark's choice) */
+  const beatOf = (e: StageEvent): Pick<DEvent, "beat" | "forced" | "hold"> =>
+    typeof e.beat === "number" && Number.isInteger(e.beat) ? { beat: e.beat, ...movesOf(e.beat) } : {};
+  /** К3м: the forced move / hold of this beat's events */
+  const movesOf = (beat: unknown): Pick<DEvent, "forced" | "hold"> => {
+    const b = typeof beat === "number" ? parsedMoves.beats[beat] : undefined;
+    return b ? { ...(b.forced ? { forced: b.forced } : {}), ...(b.hold ? { hold: true } : {}) } : {};
+  };
   /** К2: tags of the next queued line/narrator */
   const tagsOf = (look: boolean): DEvent["tags"] | undefined => {
     const t: NonNullable<DEvent["tags"]> = {};
@@ -285,6 +367,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
 
   const warnings: string[] = [];
   if (planWarn) warnings.push(planWarn);
+  if (movesWarn) warnings.push(movesWarn);
+  warnings.push(...parsedMoves.warnings);
   const planParsed = planJson !== null && planJson !== undefined ? parseShotplan(planJson, warnings) : null;
   const shots: ShotClock | null = planParsed ? createShotClock(planParsed, warnings) : null;
   /** a beat event (`beat` = index in score.beats) reached a handler: its start is the last update's now */
@@ -500,7 +584,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         cancelExit(who);
         const tgtPos = getTargetPos(lookTarget);
         const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
-        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
+        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, ...beatOf(e), tags: { ...tagsOf(false), enter: true } });
         touch(who, pl.name, pose, lookYaw);
         return;
       }
@@ -516,7 +600,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         }
         cancelExit(who);
         offstageActors.delete(who);
-        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { ...tagsOf(false), enter: true } });
+        pendingQueue.push({ kind: "walk", speaker: who, dt: 0, ...beatOf(e), tags: { ...tagsOf(false), enter: true } });
         const isDoor = (p: Place): boolean => p.kind === "door" || !!p.poses?.includes("door");
         if (!isDoor(target)) {
           // the director named where she goes, not the door: come in through the room's door, then walk there;
@@ -591,7 +675,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who) stageLook.delete(who);
       const lookName = typeof e.look === "string" ? e.look : inherited;
       gazeBeat = { speaker: who ?? null, at: lookName, place: lookName ? (places.find((p) => p.name === lookName) ?? null) : null, until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
-      pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, tags: tagsOf(!!lookName && lookName !== who && actors.has(lookName)) });
+      pendingQueue.push({ kind: "line", speaker: who ?? undefined, durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, ...movesOf(e.beat), tags: tagsOf(!!lookName && lookName !== who && actors.has(lookName)) });
       subs.line({ who: e.who, text: e.text, audio: e.audio });
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
@@ -609,7 +693,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     narrator(e) {
       beatIn(e);
       gazeBeat = { speaker: null, at: null, place: namedIn(String(e.text ?? "")) ? null : placeIn(String(e.text ?? "")), until: nowT + Math.max(1, Number(e.dur ?? SPEAK_SECONDS)) + GAZE_SILENCE };
-      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, tags: tagsOf(false) });
+      pendingQueue.push({ kind: "narrator", durationS: Number(e.dur ?? SPEAK_SECONDS), shot: typeof e.shot === "string" ? e.shot : undefined, about: namedIn(String(e.text ?? "")), dt: 0, beat: typeof e.beat === "number" ? e.beat : undefined, ...movesOf(e.beat), tags: tagsOf(false) });
       subs.narrator({ text: e.text, audio: e.audio });
       if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: null, text: String(e.text ?? "") } }));  // host hook (clip crutch)

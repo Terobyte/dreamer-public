@@ -8,6 +8,8 @@
 |---|---|---|---|
 | `stage/moves.ts` | приёмы камеры: атом (`MOVES`) → законные `from`/`end` по голове, лицу, стенам, стороне 180°; схемы (`SCHEMES`) по списку битов; записи (`RECORDS`) без исполнения | `MOVES`, `SCHEMES`, `RECORDS`, `resolveMove`, `planScheme`, `ndcOf`, `isMoved` | `stage-moves.test.ts` |
 | `stage/styles.ts` | стили режиссёра (К2): веса приёмов, ритм, высота, fov, тряска — строка данных для `pickMove` | `STYLES`, `pickMove` | `stage-styles.test.ts` (К2) |
+| `bin/moves.ts` | CLI `--catalog`: каталог приёмов, схем, записей, стилей и весов для Spark (чтение из таблиц рантайма, без копий) | `node --import tsx bin/moves.ts --catalog` | `stage-moves-catalog.test.ts` |
+| `stage/index.ts` (К3м) | чтение `moves.json` и стиль | `parseMoves`, `pickStyle`, `StageCtx.moves` | `stage-director-forced.test.ts`, `stage-k2-fixes.test.ts` |
 
 ## §3 нужно X — используй Y
 
@@ -34,3 +36,13 @@
 |---|---|
 | выбрать приём по стилю и тегам | `styles.ts:pickMove` |
 | направление лица актёра (`faceYaw ?? yaw`, `lying` — нет) | `stage/director.ts:faceDir` |
+
+## К3м v2: выбор Spark в рантайме
+
+| нужно | используй |
+|---|---|
+| каталог приёмов и весов для Spark | `engine/bin/moves.ts --catalog` (из `MOVES`/`SCHEMES`/`RECORDS`/`STYLES`) |
+| разобрать `shotplan/moves.json` | `parseMoves(raw)` в `stage/index.ts` (`{style, beats, warnings}`) |
+| стиль режиссёра | `pickStyle(moves.style, cameraStyle)`: moves → `?camera_style=` → `storybook` |
+| принудить приём на бит | `DEvent.forced {move, subject}` (схема → атом, запись → `MOVE_RECORD_ONLY`, нет законной точки → `FORCED_FALLBACK B<i> <id>`) |
+| не резать план на смене бита | `DEvent.hold`; смена комнаты режет всегда, `HOLD_IGNORED B<i>` |

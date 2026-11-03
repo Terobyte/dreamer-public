@@ -41,6 +41,10 @@ export interface DEvent {
   beat?: number;
   room?: string;
   tags?: { first?: boolean; enter?: boolean; look?: boolean; last?: boolean };
+  /** К3м: Spark's choice for this beat (moves.json): the director does not draw a move nor apply tags */
+  forced?: { move: string; subject: MoveSubject };
+  /** К3м: moves.json `hold` for this beat: a beat change does not cut the running plan */
+  hold?: boolean;
 }
 export interface DRoom {
   outline: V2[];
@@ -189,6 +193,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   const styleWarn = opts.style !== undefined && !styleKnown ? [`STYLE_UNKNOWN ${opts.style}`] : [];
   let moveMode = opts.style !== undefined;
   let moveCut = -1;
+  let carryWarn: string[] = [];
   let curMove: Pick<DirectorOut, "cam" | "look" | "lookRef" | "lookEndRef" | "end" | "lookEnd" | "fov" | "fovEnd" | "ease" | "shake" | "move" | "warnings" | "moveDurationS"> | null = null;
   let lastBeat: number | undefined;
   let curPair = false;
@@ -278,14 +283,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       subjectIsListener = asListener;
       cutSeq++;
     };
-    if (ev.tags) moveMode = true;
+    if (ev.tags || ev.forced) moveMode = true;
     const alternates = (who?: string): boolean => who !== undefined && who !== lastSpeaker && pairNames.includes(who);
     // К2: a new room is a cut with the room state dropped; a new beat cuts a plan
     let forceCut = false;
+    let roomChanged = false;
+    let holdBeat = false;
     const cutAtStart = cutSeq;
     if (ev.room !== undefined) {
       if (lastRoomEv !== undefined && ev.room !== lastRoomEv) {
         forceCut = true;
+        roomChanged = true;
         st.side = null;
         st.axis = null;
         wideLock = null;
@@ -294,7 +302,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       lastRoomEv = ev.room;
     }
     if (ev.beat !== undefined) {
-      if (lastBeat !== undefined && ev.beat !== lastBeat && !(style.cut === "long" && curPair && curMove?.move && ev.kind === "line" && alternates(ev.speaker))) forceCut = true;
+      const changed = lastBeat !== undefined && ev.beat !== lastBeat;
+      if (ev.hold && roomChanged) carryWarn.push(`HOLD_IGNORED B${ev.beat}`);
+      else if (changed && ev.hold && plan !== null) holdBeat = true;
+      if (changed && !holdBeat && !(style.cut === "long" && curPair && curMove?.move && ev.kind === "line" && alternates(ev.speaker))) forceCut = true;
       lastBeat = ev.beat;
     }
     // a face that turned more than 30° since the plan began (or past 90° to the camera) ends the plan
@@ -308,7 +319,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     }
 
     // cut: "long" — alternating lines inside one running move do not cut it until asl.max has passed
-    const holdPlan = moveMode && style.cut === "long" && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
+    const holdPlan = holdBeat || moveMode && style.cut === "long" && !ev.forced && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
     if (holdPlan) {
       count++;
       focus = speaker.name;
@@ -385,57 +396,120 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       curMove = null;
       faceBase = null;
       const tags = ev.tags ?? {};
-      const pk = driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, rng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
-      const atom = SCHEME_ATOM[pk.id] ?? pk.id;
-      // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
-      const pairAtom = atom === "ots" || atom === "two" || atom === "close_reaction";
-      const roomAtom = atom === "wide" || atom === "master";
-      const usePair = Boolean(listener) && !roomAtom && atom !== "close" && (pairAtom || style.cut === "long");
-      const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (atom === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
-      curPair = usePair;
-      pairNames = usePair ? [speaker.name, listener!.name] : [];
-      try {
-        const r = resolveMove(atom, subj, {
-          actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
-          durationS: ev.durationS ?? style.asl[0], rng, speaker: speaker.name, clear: inp.clear,
-          // a walker's straight route: where it ends, from its heading and what is left of the walk
-          walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
-          side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
-        });
-        const pt = (l: ShotLook): V3 => {
-          if (Array.isArray(l)) return l as V3;
-          const a = crew.find((x) => x.name === (l as any).actor);
-          const h: V3 = a?.head ?? [a?.pos[0] ?? 0, (a?.height ?? 1.5) * 0.93, a?.pos[1] ?? 0];
-          const o = (l as any).o as V3;
-          return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
-        };
-        const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
-        // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
-        const hiY = Math.max(floorY + 0.3, height - 0.3);
-        const lo = Math.min(floorY + style.height[0], hiY);
-        const hi = Math.max(lo, Math.min(floorY + style.height[1], hiY));
-        const cy = (v: V3): V3 => [v[0], Math.min(hi, Math.max(lo, v[1])), v[2]];
-        const cf = (f: number): number => Math.min(style.fov[1], Math.max(style.fov[0], f));
-        r.from.pos = cy(r.from.pos);
-        r.from.fov = cf(r.from.fov);
-        if (r.end) {
-          r.end.pos = cy(r.end.pos);
-          r.end.fov = cf(r.end.fov);
+      const carried = carryWarn;
+      carryWarn = [];
+      // К3м2 r4/r6: each cut takes exactly one draw from the shared rng and runs on its own stream from it, so a
+      // forced cut (no pickMove) moves the shared stream as much as the director's own pick and other beats keep their moves
+      // the first value of the cut stream is the shared draw itself (a constant test rng still picks as in К2)
+      const v0 = rng();
+      let cs = Math.floor(v0 * 4294967296) >>> 0;
+      let first = true;
+      const cutRng = (): number => {
+        if (first) {
+          first = false;
+          return v0;
         }
-        curMove = {
-          cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
-          ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
-          fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: pk.id,
-          warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
-        };
-        {
-          const a = crew.find((x) => x.name === speaker.name);
-          const fd = a ? faceDir(a) : null;
-          if (a && fd) faceBase = { name: a.name, dir: fd };
+        return (cs = (Math.imul(cs, 1664525) + 1013904223) >>> 0) / 4294967296;
+      };
+      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
+      /** one try at a move: false = nothing legal (forced: the caller falls back to its own pick) */
+      const build = (pk: { id: string; warnings: string[] }, forced: MoveSubject | null, extra: string[], mrng: () => number = cutRng): boolean => {
+        const atom = SCHEME_ATOM[pk.id] ?? pk.id;
+        // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
+        const pairAtom = atom === "ots" || atom === "two" || atom === "close_reaction";
+        const roomAtom = atom === "wide" || atom === "master";
+        let who = speaker.name;
+        let subj: MoveSubject;
+        let usePair: boolean;
+        if (forced) {
+          subj = forced;
+          if (pairAtom && "actor" in forced) {
+            const other = nearestOther(crew, crew.find((x) => x.name === forced.actor)!);
+            if (other) {
+              subj = { pair: [forced.actor, other.name] };
+              who = other.name;
+            }
+          }
+          usePair = "pair" in subj;
+        } else {
+          usePair = Boolean(listener) && !roomAtom && atom !== "close" && (pairAtom || style.cut === "long");
+          subj = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (atom === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
         }
-      } catch {
-        curMove = null;
-      }
+        try {
+          const r = resolveMove(atom, subj, {
+            actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
+            durationS: ev.durationS ?? style.asl[0], rng: mrng, speaker: who, clear: inp.clear,
+            // a walker's straight route: where it ends, from its heading and what is left of the walk
+            walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
+            side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
+          });
+          if (forced && r.warnings.includes("MOVE_NO_LEGAL_POINT")) return false;
+          // К2 p.9: a plan labelled frontal must face the face (<= 10 deg), else it is not a frontal plan
+          if (atom === "frontal") {
+            const fa = crew.find((x) => x.name === ("actor" in subj ? subj.actor : "pair" in subj ? subj.pair[0] : speaker.name));
+            if (fa) {
+              const d = Math.abs((((Math.atan2(r.from.pos[0] - fa.pos[0], r.from.pos[2] - fa.pos[1]) / DEG - (fa.faceYaw ?? fa.yaw)) % 360) + 540) % 360 - 180);
+              if (d > 10 + 1e-6) {
+                frontalRejected = true;
+                return false;
+              }
+            }
+          }
+          curPair = usePair;
+          pairNames = usePair && "pair" in subj ? [...subj.pair] : [];
+          const pt = (l: ShotLook): V3 => {
+            if (Array.isArray(l)) return l as V3;
+            const a = crew.find((x) => x.name === (l as any).actor);
+            const h: V3 = a?.head ?? [a?.pos[0] ?? 0, (a?.height ?? 1.5) * 0.93, a?.pos[1] ?? 0];
+            const o = (l as any).o as V3;
+            return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
+          };
+          const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
+          // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
+          const hiY = Math.max(floorY + 0.3, height - 0.3);
+          const lo = Math.min(floorY + style.height[0], hiY);
+          const hi = Math.max(lo, Math.min(floorY + style.height[1], hiY));
+          const cy = (v: V3): V3 => [v[0], Math.min(hi, Math.max(lo, v[1])), v[2]];
+          const cf = (f: number): number => Math.min(style.fov[1], Math.max(style.fov[0], f));
+          r.from.pos = cy(r.from.pos);
+          r.from.fov = cf(r.from.fov);
+          if (r.end) {
+            r.end.pos = cy(r.end.pos);
+            r.end.fov = cf(r.end.fov);
+          }
+          curMove = {
+            cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
+            ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
+            fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: forced ? atom : pk.id,
+            warnings: [...styleWarn, ...carried, ...extra, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
+          };
+          {
+            const a = crew.find((x) => x.name === speaker.name);
+            const fd = a ? faceDir(a) : null;
+            if (a && fd) faceBase = { name: a.name, dir: fd };
+          }
+          return true;
+        } catch {
+          curMove = null;
+          return false;
+        }
+      };
+      let frontalRejected = false;
+      const f = driftNow ? undefined : ev.forced;
+      let done = false;
+      if (f) {
+        // forced: pickMove is not called and tags are not applied; only the named move is resolved
+        const names = "actor" in f.subject ? [f.subject.actor] : "pair" in f.subject ? f.subject.pair : [];
+        if (names.every((n) => crew.some((x) => x.name === n))) {
+          done = build({ id: f.move, warnings: [] }, f.subject, []);
+        }
+        if (!done) {
+          curMove = null;
+          const fw = `FORCED_FALLBACK B${ev.beat} ${f.move}`;
+          if (!build(ownPick(), null, [fw]) && frontalRejected) build({ id: "medium", warnings: [] }, null, [fw, "FRONTAL_REJECTED"]);
+          else if (curMove === null) build({ id: "medium", warnings: [] }, null, [fw]);
+        }
+      } else if (!build(ownPick(), null, []) && frontalRejected) build({ id: "medium", warnings: [] }, null, ["FRONTAL_REJECTED"]);
     }
     return curMove ? { ...out, ...curMove } : out;
   };
