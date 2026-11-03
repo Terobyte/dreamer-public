@@ -133,6 +133,8 @@ const DOOR_SHUT_S = 2;
 /** actor capsule radius, m; exit walks this far (+ margin) past the door plane */
 const CAPSULE_R = 0.3;
 const EXIT_PAST_M = CAPSULE_R + 0.1;
+/** room past the two capsules a `to` door's way out must have before the next one comes out of it */
+const OUT_CLEAR_M = 1.0;
 
 /** a speech beat for gaze: who speaks, who/which place the speaker's `look` bit names, until when (4 s of silence after -> nobody looks at anything) */
 export interface GazeBeat {
@@ -469,6 +471,23 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const route = toucher.stepIn(door.at, doorYaw, lvl);
     if (!route) warnings.push(`stage: enter "${door.name}": nothing walkable inside the door -> stays in the doorway`);
     const path = route ?? [];
+    // one already standing where the step in ends (came in by this door just before): this one ends beside her,
+    // walking there straight from the doorway
+    if (path.length) {
+      const e0 = path[path.length - 1]!;
+      const taken = (q: V2): boolean => [...actors.values()].some((o) => o.who !== who && !offstageActors.has(o.who) && Math.hypot(o.pos()[0] - q[0], o.pos()[1] - q[1]) < o.radius() + a.radius() + 0.1);
+      if (taken(e0)) {
+        const r = (doorYaw * Math.PI) / 180;
+        const side: V2 = [Math.cos(r), -Math.sin(r)];
+        const L = layerOf(lvl);
+        for (const k of [1, -1, 2, -2]) {
+          const q: V2 = [e0[0] + side[0] * k * 1.0, e0[1] + side[1] * k * 1.0];
+          if (taken(q) || (L && !navBit(L.layer, L.bits, q[0], q[1]))) continue;
+          path.splice(0, path.length, q);  // straight there from the doorway, not past her spot
+          break;
+        }
+      }
+    }
     const end = path.length ? path[path.length - 1]! : step.doorPos;
     a.go(path, look ? yawTo(end, look) : step.yaw, "idle", y);
   };
@@ -518,10 +537,28 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     }
     else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
   };
-  /** the end of an exit: offstage, or out at the door's `to` */
+  /** who waits behind a `to` door for the one before to clear its way out (v25 138 s: two came out inside each other) */
+  const waitingOut = new Map<string, string>();
+  const outBusy = (who: string, name: string): boolean => {
+    const to = places.find((p) => p.name === name || p.id === name);
+    const me = actors.get(who);
+    if (!to || !me) return false;
+    // in the doorway, or still walking out of it; one who stopped a step inside is passed (spread sets them apart)
+    return [...actors.values()].some((o) => {
+      if (o.who === who || offstageActors.has(o.who)) return false;
+      const d = Math.hypot(o.pos()[0] - to.at[0], o.pos()[1] - to.at[1]);
+      return d < o.radius() + me.radius() + 0.25 || (o.moving() && d < OUT_CLEAR_M + o.radius() + me.radius());
+    });
+  };
+  /** the end of an exit: offstage, or out at the door's `to` (after whoever still stands in its way out) */
   const leave = (who: string): void => {
     const to = doorTo.get(who);
     doorTo.delete(who);
+    if (to && outBusy(who, to)) {
+      offstageActors.add(who);
+      waitingOut.set(who, to);
+      return;
+    }
     if (to) comeOutAt(who, to);
     else offstageActors.add(who);
   };
@@ -1248,6 +1285,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       a.update(dt, now, pace.get(a.who) ?? 1);
     }
     spread(dt);
+    for (const [who, to] of [...waitingOut]) {
+      if (outBusy(who, to)) continue;
+      waitingOut.delete(who);
+      comeOutAt(who, to);
+    }
     settleBeds(now);
     settleAfterClips();
     settleArrivals();
