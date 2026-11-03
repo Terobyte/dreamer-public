@@ -109,7 +109,7 @@
 | `assets/tris.ts` | треугольники GLB | `glbTriangles(buf)` | — | `glb.test.ts` |
 | `assets/cut.ts` | срез GLB под лимит треугольников (meshopt simplify), `build` режет копию в dist, кэш нетронут | `cutGlb(buf, tris)` | `CUT_EMPTY`, `CUT_OVER` | `asset-cut.test.ts` |
 | `assets/alpha.ts` | белый фон -> альфа (наклейки/объекты) | `cutWhite(png)` | — | `foliage-cutout.test.ts` |
-| `assets/sky.ts` | шов панорамы неба | `seamSky`, `inpaintSky(png, edit)`, `SEAM_PROMPT` | — | `assets-live` ? |
+| `assets/sky.ts` | шов панорамы неба | `seamSky`, `inpaintSky(png, edit)`, `SEAM_PROMPT`, `dropSeamLines(img, cx, half)` (тонкий тёмный мазок модели в полосе шва стирается: чёрный столб в небе луга) | — | `assets-live` ? |
 | `assets/providers/muse-image.ts` | Muse Image `meta-models/muse-image-1` на `api.meta-models.ai`; ключ ТОЛЬКО из env `META_MODEL_API_KEY` | `MuseImageProvider(opts)`, `RetryableError` | — | `assets-live` (с мок-fetch) |
 | `assets/providers/sam3d.ts` | SAM3D по HTTP `/v1/3d/generations` (model `meta-models/sam-3d-objects`) | `Sam3dProvider.mesh(png,name)` | — | `assets-live` |
 | `assets/providers/fake.ts` | оффлайн-провайдеры для тестов | `FakeImageProvider`, `FakeObjectProvider`, `fakePng(w,h,rgb,whiteCorners)`, `fakeGlb()`, `fakeDenseGlb(tris)`, `FakeDenseObjectProvider` | — | почти все assets-тесты, `koshakan-accept.test.ts` |
@@ -126,7 +126,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `runtime/walk.ts` | игрок: `EYE 1.6`, `SPEED 1.4`, капсула по nav, мышь | `makeWalker`, `controls`, `mouseLook` | `bugs-walk`, `walk-look` |
 | `runtime/doors.ts` | дверь вращается вокруг петли, блокирует клетки nav, «касание» лучом | `makeDoor`, `touchTarget`, `setCells`, `sweepOf`, `TURN_S 0.6`, `TOUCH_M 1.2` | `door-runtime`, `door-blockers` |
 | `runtime/cams.ts` | выбор камеры страницы (walk / cam / top) | `pickCamera`, `yawDir`, `lookDir` | `cams.test.ts` |
-| `runtime/outdoor.ts` | небо-купол + круглая земля с затуханием | `addOutdoor`, `skyTexture` (купол: повтор по u, без мипов — без чёрного шва) | `browser/outdoor.test.ts` |
+| `runtime/outdoor.ts` | небо-купол + круглая земля с затуханием | `addOutdoor`, `skyTexture` (купол: повтор по u, без мипов) | `browser/outdoor.test.ts` |
 | `runtime/bridge.ts` | sim <-> engine: SSE `/events` sim -> `StageHandlers {line,narrator,touch,mode,story,start,stage}`; алиасы `snapshot->mode`, `schedule/event->story`; обратно `simPost` | `createBridge`, `connectSim`, `simPost` | `stage-bridge.test.ts` |
 
 ### 2.5 engine/ runtime/stage (книжная сцена: актёры, камера, жизнь)

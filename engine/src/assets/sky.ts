@@ -70,6 +70,45 @@ function resize(src: PNG, w: number, h: number): PNG {
 }
 
 /**
+ * Thin dark strokes across the seam (column `cx`, ±`half`, wrapping) are wiped: per row, a run of at most `maxW`
+ * pixels darker than half the window's median brightness becomes a blend of its two neighbours. A wide dark shape
+ * (a tree, a hill) is wider than `maxW` or sets the median, so it stays. Koshakan meadow, Nov 3: the edit model
+ * painted a 4 px black stroke into the gray band and the dome showed it as a pole from the zenith to the horizon.
+ */
+export function dropSeamLines(img: PNG, cx: number, half: number, maxW = 6): void {
+  const { width: w, height: h } = img;
+  const xs: number[] = [];
+  for (let o = -half; o <= half; o++) xs.push((((cx + o) % w) + w) % w);
+  const lum = (y: number, x: number): number => {
+    const d = (y * w + x) * 4;
+    return 0.299 * img.data[d]! + 0.587 * img.data[d + 1]! + 0.114 * img.data[d + 2]!;
+  };
+  for (let y = 0; y < h; y++) {
+    const l = xs.map((x) => lum(y, x));
+    const med = [...l].sort((a, b) => a - b)[l.length >> 1]!;
+    const dark = l.map((v) => v < med * 0.5);
+    for (let i = 0; i < xs.length; ) {
+      if (!dark[i]) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < xs.length && dark[j]) j++;
+      if (j - i <= maxW && i > 0 && j < xs.length) {
+        const a = (y * w + xs[i - 1]!) * 4;
+        const b = (y * w + xs[j]!) * 4;
+        for (let k = i; k < j; k++) {
+          const t = (k - i + 1) / (j - i + 1);
+          const d = (y * w + xs[k]!) * 4;
+          for (let c = 0; c < 4; c++) img.data[d + c] = Math.round(img.data[a + c]! * (1 - t) + img.data[b + c]! * t);
+        }
+      }
+      i = j;
+    }
+  }
+}
+
+/**
  * The seam step of `h0/h13_seam.py`, without a model: shift the panorama by
  * half its width so the old left/right seam lands in the middle, then
  * cross-fade a band across it. The new left and right edges were neighbouring
@@ -137,5 +176,7 @@ export async function inpaintSky(png: Buffer, edit: EditFn, id = "sky"): Promise
       for (let c = 0; c < 3; c++) rolled.data[d + c] = Math.round(rolled.data[d + c] * (1 - alpha) + painted.data[e + c] * alpha);
     }
   }
-  return { ok: true, png: PNG.sync.write(roll(rolled, -w / 2)) };
+  const back = roll(rolled, -w / 2);
+  dropSeamLines(back, 0, Math.round(gap / 2 + feather));
+  return { ok: true, png: PNG.sync.write(back) };
 }
