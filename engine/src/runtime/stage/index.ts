@@ -45,7 +45,7 @@ export interface Stage {
   update(dt: number, now: number): void;
   warnings(): string[];
   api: {
-    actors(): Array<{ who: string; pos: V2; yaw: number; act: string }>;
+    actors(): Array<{ who: string; pos: V2; yaw: number; act: string; offstage?: boolean }>;
     camera(): { pos: [number, number, number]; room: string | null; height: number | null };
     subs(): string[];
     /** the world point `who` looks at right now, or null */
