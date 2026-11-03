@@ -152,9 +152,11 @@ def _check_input(step, ctx):
 # ---- step bodies (fake = fixtures; live wiring is the owner's) -----------------------------
 
 def _read_live(ctx):
+    # age is a number even when the book never says it: null stopped Jane Eyre's read twice (Mrs. Reed, Eliza)
     system = ("Turn the book text into JSON: pov, narrator_voice, cast{name:{sex,age,look}}, "
               "places{id:{desc,exits[]}}, chapters[{n,file,title,scenes[{id,paras:[from,to],place,cast[]}]}]. "
-              "Answer JSON only.")
+              "sex is \"man\" or \"woman\"; age is the apparent age in years as a number, your best guess when "
+              "the book does not say, never null. Answer JSON only.")
     return json.loads(spark_call(system, ctx.text))
 
 
