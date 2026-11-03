@@ -22,7 +22,7 @@
 
 **Порядок:** одна фаза К3 (Python-часть).
 
-**Игроки:** `--player-schedule claude:claude-sonnet-5-5×1,opencode:baseten/meta-models/muse-spark-open-1026×4,claude:claude-sonnet-5-5×1`, `--player claude:claude-sonnet-5-5`, 6 раундов. Пункт «Игроки» в «Общих правилах» ниже относится к полосе A, не к этой. Muse contributor (`muse:muse-spark-1.3-contributor`) идёт только в полосе A; платную `muse:muse-spark-1.3` не брать никогда. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
+**Игроки:** `--player-schedule claude:claude-sonnet-5-5×1,opencode:baseten/meta-models/muse-spark-open-1026×5`, `--player opencode:baseten/meta-models/muse-spark-open-1026`, 6 раундов. Пункт «Игроки» в «Общих правилах» ниже относится к полосе A, не к этой. Muse contributor (`muse:muse-spark-1.3-contributor`; платную `muse:muse-spark-1.3` не брать никогда) идёт **только в полосе A**; в полосах B и C — Muse Spark Open (Baseten), его параллельно можно. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
 
 ### Контракт моста (общий для полос A и B; менять только в обеих полосах сразу, через хозяина)
 

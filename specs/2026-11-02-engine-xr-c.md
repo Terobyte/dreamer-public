@@ -37,7 +37,7 @@
 
 После X1 кадры совпадают попиксельно (допуск — как в тестах `shots`).
 
-**Игроки:** `--player-schedule claude:claude-sonnet-5-5×2,agy:gemini-3.8-flash-high×2,claude:claude-opus-5-5×2`, `--player claude:claude-sonnet-5-5`, 6 раундов. Фазы X2–X4 живут в `app/`, и перед правкой там нужен skill `iwsdk-dev` (правило `app/AGENTS.md`), поэтому первый и последние раунды за Claude. Muse contributor идёт только в полосе A; платную `muse:muse-spark-1.3` не брать никогда. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
+**Игроки:** `--player-schedule claude:claude-sonnet-5-5×1,opencode:baseten/meta-models/muse-spark-open-1026×5`, `--player opencode:baseten/meta-models/muse-spark-open-1026`, 6 раундов. Перед правкой `app/` нужен skill `iwsdk-dev` (правило `app/AGENTS.md`); игрок без skills читает `app/.claude/skills/iwsdk-dev/SKILL.md` и `app/AGENTS.md` сам. Muse contributor (`muse:muse-spark-1.3-contributor`; платную `muse:muse-spark-1.3` не брать никогда) идёт **только в полосе A**; в полосах B и C — Muse Spark Open (Baseten), его параллельно можно. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
 
 ### Судья, фьюз, долг
 

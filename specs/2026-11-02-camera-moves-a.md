@@ -27,7 +27,7 @@
 
 **Порядок:** К1 → К2 → К3м. К3м — часть К3 на стороне движка (мост и чтение стиля рантаймом). Python-часть К3 идёт в полосе B.
 
-**Игроки:** `--player-schedule claude:claude-sonnet-5-5×1,muse:muse-spark-1.3-contributor×4,claude:claude-opus-5-5×1`, `--player muse:muse-spark-1.3-contributor`, 6 раундов. Muse contributor (`muse:muse-spark-1.3-contributor`; платную `muse:muse-spark-1.3` не брать никогда) идёт **только в этой полосе**. Полосы B и C без Muse contributor. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
+**Игроки:** `--player-schedule claude:claude-sonnet-5-5×1,muse:muse-spark-1.3-contributor×5`, `--player muse:muse-spark-1.3-contributor`, 6 раундов. Muse contributor (`muse:muse-spark-1.3-contributor`; платную `muse:muse-spark-1.3` не брать никогда) идёт **только в полосе A**; в полосах B и C — Muse Spark Open (Baseten), его параллельно можно. Судья codex gpt-6-luna, эскалация claude:sonnet, тестера нет.
 
 ### Контракт моста (общий для полос A и B; менять только в обеих полосах сразу, через хозяина)
 
