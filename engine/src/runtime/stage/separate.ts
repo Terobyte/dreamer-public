@@ -74,9 +74,11 @@ const SINGLE_FILE_GAP = 0.25;
  * Walkers go single file (Squidward v22 video 2:27–2:39: two walkers on one route, through one door, inside each other
  * all the way; `separate` lets walkers be). For each pair of walkers closer than their capsules plus the gap, the one
  * that has the other ahead of it waits (pace 0) this frame; on one spot, or each ahead of the other, the later name
- * waits. A standing actor is never waited for. Pure: pace per actor, 1 = walk on.
+ * waits. One going through a door (`first`) never waits for one who is not (v30 189.8–191.3 s: by name Squidward
+ * stood in the pineapple's doorway and SpongeBob walked into him). A standing actor is never waited for. Pure: pace
+ * per actor, 1 = walk on.
  */
-export function yieldPace(list: ReadonlyArray<{ who: string; pos: readonly [number, number]; yaw: number; radius: number; moving: boolean }>): Map<string, number> {
+export function yieldPace(list: ReadonlyArray<{ who: string; pos: readonly [number, number]; yaw: number; radius: number; moving: boolean; first?: boolean }>): Map<string, number> {
   const pace = new Map<string, number>(list.map((a) => [a.who, 1]));
   const dir = (yaw: number): [number, number] => [Math.sin((yaw * Math.PI) / 180), Math.cos((yaw * Math.PI) / 180)];
   for (let i = 0; i < list.length; i++)
@@ -91,7 +93,7 @@ export function yieldPace(list: ReadonlyArray<{ who: string; pos: readonly [numb
       const db = dir(b.yaw);
       const bAhead = dx * da[0] + dz * da[1] > 1e-3;
       const aAhead = -dx * db[0] - dz * db[1] > 1e-3;
-      const waits = bAhead && !aAhead ? a : aAhead && !bAhead ? b : a.who > b.who ? a : b;
+      const waits = !!a.first !== !!b.first ? (a.first ? b : a) : bAhead && !aAhead ? a : aAhead && !bAhead ? b : a.who > b.who ? a : b;
       pace.set(waits.who, 0);
     }
   return pace;

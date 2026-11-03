@@ -31,4 +31,10 @@ describe("yieldPace", () => {
     const p = yieldPace([w("SpongeBob", [0, 1], 180), w("Squidward", [0, 0.6], 0)]);
     expect([p.get("SpongeBob"), p.get("Squidward")].sort()).toEqual([0, 1]);
   });
+  it("one going through a door does not stop for one coming up behind (v30 189.8–191.3 s: Squidward stood in the pineapple's door, SpongeBob walked into him)", () => {
+    // each ahead of the other at the door: by name Squidward would wait; he is in the doorway, SpongeBob waits
+    const p = yieldPace([{ ...w("Squidward", [5.82, -7.78], 315), first: true }, w("SpongeBob", [5.6, -7.6], 135)]);
+    expect(p.get("Squidward")).toBe(1);
+    expect(p.get("SpongeBob")).toBe(0);
+  });
 });

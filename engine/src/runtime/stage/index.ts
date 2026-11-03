@@ -1276,7 +1276,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const onStage = [...actors.values()].filter((a) => !offstageActors.has(a.who));
     const pace = new Map<string, number>();
     for (const lvl of new Set(onStage.map((a) => toucher.levelOf(a.who)))) {
-      const list = onStage.filter((a) => toucher.levelOf(a.who) === lvl).map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), radius: a.radius(), moving: a.moving() }));
+      const list = onStage.filter((a) => toucher.levelOf(a.who) === lvl).map((a) => ({ who: a.who, pos: a.pos(), yaw: a.yaw(), radius: a.radius(), moving: a.moving(), first: exitDoor.has(a.who) || enteringBy.has(a.who) }));
       for (const [who, v] of yieldPace(list)) pace.set(who, v);
     }
     for (const a of actors.values()) {
