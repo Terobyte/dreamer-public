@@ -1,103 +1,12 @@
-import {
-  Box3,
-  BufferAttribute,
-  CanvasTexture,
-  Color,
-  DoubleSide,
-  Float32BufferAttribute,
-  Group,
-  NeutralToneMapping,
-  Mesh,
-  MeshStandardMaterial,
-  RepeatWrapping,
-  Scene,
-  BufferGeometry,
-  SRGBColorSpace,
-  Texture,
-  TextureLoader,
-  Vector3,
-  WebGLRenderer,
-} from "three";
-import { loadGlb, loadMaps } from "./assets.js";
+import { Color, Mesh, MeshStandardMaterial, Scene, Vector3, WebGLRenderer } from "three";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { addOutdoor } from "./outdoor.js";
-import { addSceneLights } from "../build/lights.js";
 import { lookDir, pickCamera } from "./cams.js";
-import { EYE, controls, makeWalker, type Walker } from "./walk.js";
-import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
+import { controls } from "./walk.js";
+import { pivotOffset, touchTarget, type Door } from "./doors.js";
 import { connectSim, createBridge, simPost, type StageHandlers } from "./bridge.js";
-import { scatterObjects, toSources, type ScatterSource } from "./scatter.js";
 import { startStage, type Stage } from "./stage/index.js";
-
-import type { MaterialDef } from "./assets.js";
-import { markNoblock } from "./stage/sight.js";
-
-/** base64 → bytes without `Buffer`: the nav bitmap is read in the page. */
-function unbase64(s: string): Uint8Array {
-  const bin = atob(s);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** Placeholder decal: flat colour with the asset id written on it. */
-function labelTexture(id: string, color: string): CanvasTexture {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const g = c.getContext("2d")!;
-  g.fillStyle = color;
-  g.fillRect(0, 0, 256, 256);
-  g.fillStyle = "#000000";
-  g.font = "28px sans-serif";
-  g.textAlign = "center";
-  g.fillText(id, 128, 136);
-  const tex = new CanvasTexture(c);
-  tex.colorSpace = SRGBColorSpace;
-  return tex;
-}
-
-function materialOf(id: string, def: MaterialDef, loadedMap?: Texture): MeshStandardMaterial {
-  const m = new MeshStandardMaterial({
-    color: new Color(def.color || "#808080"),
-    metalness: 0,
-    roughness: 0.9,
-    side: DoubleSide,
-  });
-  if (def.map && loadedMap) {
-    loadedMap.colorSpace = SRGBColorSpace;
-    m.map = loadedMap;
-    m.color.set(0xffffff); // avoid double-tinting: the map already carries the real pixels
-    if (def.transparent) m.transparent = true;
-    if (def.repeat_m) {
-      loadedMap.wrapS = loadedMap.wrapT = RepeatWrapping;
-      // UVs are in metres, so a texture that should tile every `repeat_m`
-      // metres needs its repeat set to the reciprocal
-      loadedMap.repeat.set(1 / def.repeat_m, 1 / def.repeat_m);
-    }
-  } else if (def.transparent) {
-    m.transparent = true;
-    m.color.set(0xffffff); // avoid double-tinting: the map already carries def.color
-    m.map = labelTexture(id, def.color || "#808080");
-  } else if (def.repeat_m) {
-    // no cached tile texture yet: still a coloured placeholder
-    m.userData.repeat_m = def.repeat_m;
-  }
-  return m;
-}
-
-function meshOf(src: any, material: MeshStandardMaterial): Mesh {
-  const g = new BufferGeometry();
-  g.setAttribute("position", new Float32BufferAttribute(src.positions, 3));
-  g.setAttribute("normal", new Float32BufferAttribute(src.normals, 3));
-  g.setAttribute("uv", new Float32BufferAttribute(src.uvs, 2));
-  g.setIndex(new BufferAttribute(new Uint32Array(src.indices), 1));
-  const mesh = new Mesh(g, material);
-  mesh.userData.kind = src.kind;
-  mesh.name = String(src.id);
-  return mesh;
-}
+import { TONE, buildWorld } from "./world.js";
 
 function say(text: string): void {
   const d = document.createElement("div");
@@ -130,140 +39,23 @@ async function start(): Promise<void> {
       .catch(() => ({})),
   ]);
 
-  // highlights roll off instead of clipping: Koshakan's cream walls and sky read as white blotches without it.
-  // Neutral keeps hues and mid tones (unlike ACES); a world can opt out with style.tone = "none"
-  if (geo.style?.tone !== "none") {
-    (renderer as any).toneMapping = NeutralToneMapping;
-    (renderer as any).toneMappingExposure = Number(geo.style?.exposure ?? 0.9);
-  }
-  const scene = new Scene();
-  scene.background = new Color(geo.style?.exterior || "#808080");
-
-  // every material whose cached asset made it into dist/assets gets its real
-  // pixels loaded before any mesh using it is built, so __ready never fires
-  // on a page still showing coloured placeholders
-  const loadedMaps = await loadMaps((geo.materials ?? {}) as Record<string, MaterialDef>);
-
-  const mats = new Map<string, MeshStandardMaterial>();
-  const material = (id: string): MeshStandardMaterial => {
-    let m = mats.get(id);
-    if (!m) {
-      m = materialOf(id, (geo.materials ?? {})[id] ?? { color: "#808080" }, loadedMaps.get(id));
-      mats.set(id, m);
-    }
-    return m;
-  };
-
-  const sunShadows = ((geo.lights ?? []) as any[]).some((l) => l.kind === "sun" && l.castShadow === true);
   const setup = pickCamera(geo, params, window.innerWidth / Math.max(window.innerHeight, 1));
-  const objects = new Map<string, Mesh | Group>();
+  const world = await buildWorld({ geo, nav, built }, { base: "", hide: setup.hide });
+  const { walker, doors, objects, layers: all } = world;
+  // highlights roll off instead of clipping; a world can opt out with style.tone = "none"
+  if (world.style.tone) {
+    (renderer as any).toneMapping = TONE;
+    (renderer as any).toneMappingExposure = world.style.exposure;
+  }
+  if (world.shadows) renderer.shadowMap.enabled = true;
+  const scene = new Scene();
+  scene.background = world.background ?? new Color(world.style.exterior);
+  scene.add(world.root);
   const meshTotal = (geo.meshes as any[]).length;
-  const glbSwaps: Promise<void>[] = [];
-  for (const src of geo.meshes as any[]) {
-    const mesh = meshOf(src, material(String(src.material)));
-    mesh.visible = !setup.hide.has(String(src.kind));
-    objects.set(mesh.name, mesh);
-    markNoblock(mesh, mesh.name);
-    scene.add(mesh);
-    // the box is the OBB placeholder; once its real GLB is loaded it swaps
-    // in for the box, same name and visibility, so every other lookup by
-    // mesh name keeps working untouched
-    if (typeof src.glb === "string") {
-      mesh.geometry.computeBoundingBox();
-      glbSwaps.push(
-        loadGlb(src, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max }).then((root) => {
-          root.name = mesh.name;
-          root.visible = mesh.visible;
-          root.userData.kind = mesh.userData.kind; // B73: the swapped model keeps the placeholder's kind
-          // the sun traverse below runs before the GLB lands: flag the real
-          // meshes on swap, or they never cast/receive shadows (F4)
-          if (sunShadows) root.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-          markNoblock(root, mesh.name);
-          scene.remove(mesh);
-          scene.add(root);
-          objects.set(mesh.name, root);
-        }).catch((e) => {
-          // B36: a GLB that fails keeps its box, so __ready still fires
-          console.warn(`runtime: "${mesh.name}" GLB failed (${String(e)}), using a box`);
-        }),
-      );
-    }
-  }
-
-  // a scene with a street gets its sky dome, ground disc and sun before the
-  // first frame, so __ready never fires on a bare `exterior` background
-  if (geo.outdoor) await addOutdoor(scene, geo.outdoor, material(String(geo.outdoor.ground.material)));
-  // ambient, hemi, point and sun lights: one function the node tests read too
-  addSceneLights(scene, geo);
-  // a sun with `castShadow` needs the shadow map on, or its shadows never draw
-  if (sunShadows) {
-    renderer.shadowMap.enabled = true;
-    scene.traverse((o: any) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
-  }
-
-  // `scatter`: one InstancedMesh per asset, read from the built page data
-  // (`geo.scatter`, fallback `built.scatter`); without this the build writes
-  // the rosette but the page never shows it (F1)
-  const scatterEntries = ((geo as any).scatter ?? (built as any).scatter ?? []) as any[];
-  if (scatterEntries.length > 0) {
-    // an entry with a GLB instances the model's geometry, not the olive
-    // placeholder box: load each asset's GLB before building the meshes
-    const scatterSources = new Map<string, ScatterSource[]>();
-    await Promise.all(
-      [...new Set(scatterEntries.map((e: any) => String(e.asset)))].map(async (asset) => {
-        const glb = scatterEntries.find((e: any) => String(e.asset) === asset)?.glb;
-        if (typeof glb !== "string" || !glb) return;
-        try {
-          const gltf = await new GLTFLoader().loadAsync(glb);
-          gltf.scene.updateMatrixWorld(true);
-          const found: any[] = [];
-          gltf.scene.traverse((o: any) => {
-            if (o.isMesh) found.push(o);
-          });
-          const parts: ScatterSource[] = toSources(found);
-          if (parts.length > 0) scatterSources.set(asset, parts);
-        } catch (e) {
-          console.warn(`runtime: scatter "${asset}" GLB failed (${String(e)}), using a box`);
-        }
-      }),
-    );
-    const scatterGroup = scatterObjects(scatterEntries, scatterSources);
-    if (sunShadows) scatterGroup.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    scene.add(scatterGroup);
-  }
-
-  // layers[0] is the spawn level (`buildLayers`); the rest are reachable by a
-  // flight, so the walker needs all of them and the ramps that join them
-  const all = (nav.layers ?? []).map((l: any) => ({ layer: l, bits: unbase64(String(l?.bits ?? "")) }));
-  // no layers (a scene without walkable rooms): an empty one at the spawn, so the walker stands still
-  if (all.length === 0) all.push({ layer: { level: "", y: geo.spawn.y ?? 0, origin: [0, 0], w: 0, h: 0 }, bits: new Uint8Array(0) });
-  const walker: Walker = makeWalker(all[0].layer, all[0].bits, geo.floors ?? [], geo.spawn.at, {
-    layers: all.slice(1),
-    ramps: nav.ramps ?? [],
-  });
 
   const camera = setup.camera;
   const keys = controls(renderer.domElement, Number(geo.spawn.yaw ?? 0));
 
-  // doors: the leaf mesh turns about the hinge; the door's nav cells follow
-  // its state in the same bitmap the walker reads
-  const doors = new Map<string, Door>();
-  const bitsOfLevel = (level: string): Uint8Array | undefined => all.find((a: any) => a.layer.level === level)?.bits;
-  for (const def of (built.doors ?? []) as DoorDef[]) {
-    const cells = (nav.doors ?? {})[def.id] as { level: string; cells: number[] } | undefined;
-    doors.set(
-      def.id,
-      makeDoor(def, (blocked) => {
-        const bits = cells ? bitsOfLevel(cells.level) : undefined;
-        if (bits && cells) setCells(bits, cells.cells, !blocked);
-      }),
-    );
-  }
   const turnLeaf = (door: Door): void => {
     const th = door.meshTurn();
     const [ox, oz] = pivotOffset(door.def.hinge_at, th);
@@ -432,7 +224,6 @@ async function start(): Promise<void> {
   (window as any).__dreamer = api;
 
   await api.ready;
-  await Promise.all(glbSwaps);
   (window as any).__ready = true;
   requestAnimationFrame(frame);
 }
