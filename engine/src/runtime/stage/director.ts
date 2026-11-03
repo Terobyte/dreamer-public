@@ -782,22 +782,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // a still camera on the path of a walking speaker is put off it (Squidward v24 134–136 s: follow_side came out
     // still, 0.4 m off their way to the door; they walked through the lens): the camera moves aside, 1.2 m off the
     // line he walks, at its cut only
-    if (curMove && !curMove.end && moveStart === clock) {
-      const w = walkers.find((x) => x.name === speaker.name);
-      if (w) {
-        const f = faceOf(w.yaw);
-        const L = Math.max(0.5, w.walkLeft ?? 2);
-        const c: V2 = [curMove.cam[0], curMove.cam[2]];
-        const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
-        const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
-        const off = Math.hypot(c[0] - near[0], c[1] - near[1]);
-        if (off < PATH_CLEAR_M) {
-          const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
-          const outline = inp.room.outline;
-          const q = snap(outline, [near[0] + n[0] * PATH_CLEAR_M, near[1] + n[1] * PATH_CLEAR_M], roomRect(outline), 0.25);
-          curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
-        }
-      }
+    // (v35 141.9–144 s: and off the path of everyone else walking, Squidward trudging after SpongeBob past the lens)
+    if (curMove && !curMove.end && moveStart === clock && walkers.length) {
+      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline);
+      if (q[0] !== curMove.cam[0] || q[1] !== curMove.cam[2]) curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
     }
     if (!curMove) return out;
     // a still frame turns after a walking speaker, the director's fallback's or a move that came out still (v24 141–145 s)
@@ -887,6 +875,29 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
   // 3) the lowest clear height over the same spot: less steep, if not 30°
   for (let y = y0 + 0.15; y < cy - 1e-9; y += 0.15) if (sees([cx, y, cz])) return { ...out, cam: [cx, y, cz] };
   return out;
+}
+
+/** A still camera point put at least PATH_CLEAR_M off the line every walker has left to walk (straight ahead,
+ *  `walkLeft`): pushed out from the nearest point of a path it stands on, a few passes for paths that cross. */
+export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[]): V2 {
+  let c = c0;
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = false;
+    for (const w of walkers) {
+      const f = faceOf(w.yaw);
+      const L = Math.max(0.5, w.walkLeft ?? 2);
+      const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
+      const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
+      const off = Math.hypot(c[0] - near[0], c[1] - near[1]);
+      if (off >= PATH_CLEAR_M - 1e-9) continue;
+      const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
+      const p: V2 = [near[0] + n[0] * PATH_CLEAR_M * 1.001, near[1] + n[1] * PATH_CLEAR_M * 1.001];
+      c = outline.length >= 3 ? snap(outline, p, roomRect(outline), 0.25) : p;
+      moved = true;
+    }
+    if (!moved) break;
+  }
+  return c;
 }
 
 /** capTilt for a director that holds its frames: a still frame (the same cut, the camera where the director left it)
