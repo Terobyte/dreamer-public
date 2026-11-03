@@ -109,7 +109,8 @@ def build_director_prompt(
             "is one). `idle` = one of that actor's clips that loops afterwards until the next change (a seated clip "
             "after sitting down on the grass, a lap clip while held). Leave clip out on beats where nobody does "
             "anything new. beat_id is the `id` of a beat in `beats`. "
-            "Return JSON: {start: [{who, place, pose, offstage?: bool}], "
+            "A start `idle` is what that actor is already doing when the film opens (painting at an easel). "
+            "Return JSON: {start: [{who, place, pose, offstage?: bool, idle?}], "
             "stage: [{beat_id, who, action, place?, pose?, look?, clip?, idle?}]}"
         )
     if clips is not None:
@@ -173,6 +174,11 @@ def validate_and_merge_staging(
             entry = {"who": who, "place": place, "pose": pose}
             if offstage:
                 entry["offstage"] = True
+            idle = st.get("idle")
+            if idle and clips is not None and idle in (clips.get(who) or []):
+                entry["idle"] = idle
+            elif idle:
+                warnings.append(f"start: idle '{idle}' is not a clip of '{who}' -> dropped")
             final_start.append(entry)
 
     # 2. Stage beats

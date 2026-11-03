@@ -83,7 +83,8 @@ export function startSpot(place: Place, pose?: string, from?: V2, places?: Place
     const s = bedSitSpot(place, from ?? place.at, places ?? [place], 0);
     if (s) return { at: s.at, yaw: s.yaw, y: 0 };
   }
-  return { at: place.at, yaw: place.yaw, y: 0 };
+  // a stand place faces its thing (`look`), as a walk there does (resolveTouch): Squidward started back to his easel
+  return { at: place.at, yaw: place.kind !== "sit" && place.look ? yawTo(place.at, place.look) : place.yaw, y: 0 };
 }
 
 export type Claims = Record<string, string>;

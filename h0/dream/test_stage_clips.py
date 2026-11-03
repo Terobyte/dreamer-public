@@ -64,3 +64,18 @@ class ScoreSceneClips(unittest.TestCase):
         self.assertEqual(asked[0]["beats"][0]["id"], 0)
         self.assertEqual(asked[0]["clips"], CLIPS)
         self.assertEqual(sc["beats"][0]["stage"][0]["clip"], "run_joy")
+
+    def test_start_keeps_a_known_idle(self):
+        # Squidward, Nov 3: "Squidward stood at his easel and painted" opened the film, the start had no clip, he stood
+        w = []
+        start = validate_and_merge_staging(
+            {"start": [{"who": "Mirai", "place": "m022", "pose": "stand_at", "idle": "stand_idle"},
+                       {"who": "Mama", "place": "m022", "pose": "stand_at", "idle": "run_joy"}], "stage": []},
+            [], ["Mirai", "Mama"], PLACES, None, {}, w, clips=CLIPS)[0]
+        self.assertEqual(start[0]["idle"], "stand_idle")
+        self.assertNotIn("idle", start[1])
+        self.assertTrue(any("run_joy" in x for x in w))
+
+    def test_prompt_offers_idle_at_start(self):
+        p = json.loads(build_director_prompt(["p"], ["Mirai", "Mama"], PLACES, beats=BEATS, clips=CLIPS))
+        self.assertIn("start: [{who, place, pose, offstage?: bool, idle?}]", p["instruction"])

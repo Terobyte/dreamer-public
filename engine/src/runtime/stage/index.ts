@@ -1,7 +1,8 @@
 import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
-import { aliasesOf, clipForBeat, fitStaged, idleAfterClip, idleForPose, stagedClips } from "./anim.js";
+import type { HeldSpec } from "./held.js";
+import { aliasesOf, clipForBeat, fitStaged, idleAfterClip, idleForPose, stagedClips, startStaged } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
@@ -125,7 +126,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     places = placesJson.places ?? placesJson;
   }
   const castUrl = stage.cast ? new URL(stage.cast, runBase) : new URL("cast/cast.json", locHref);
-  const cast: Record<string, { glb?: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[] }> =
+  const cast: Record<string, { glb?: string; height_m?: number; clips?: Record<string, string>; idle?: string; verbs?: Record<string, string[]>; aliases?: string[]; held?: Record<string, HeldSpec> }> =
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
   // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
@@ -177,7 +178,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const url = new URL(cast[who].glb, castUrl).href;
     const clipUrls: Record<string, string> = {};
     for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
-    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null);
+    const held: Record<string, HeldSpec> = {};
+    for (const [k, h] of Object.entries(cast[who].held ?? {})) if (h && typeof h.glb === "string") held[k] = { ...h, glb: new URL(h.glb, castUrl).href };
+    const a = await createActor(who, url, Number(cast[who].height_m ?? 1.7), at, layerOf(sp?.level ?? null).layer.y + (spot?.y ?? 0), spot?.yaw ?? sp?.yaw ?? 0, clipUrls, cast[who].idle, clipfacts?.[who] ?? null, held);
     if (sp && sp.name === startName) claims[sp.name] = who;
     // start_pose sit seats the actor at load, the same rule as a start event with pose sit (else it stands by the seat)
     if (spot && stage.start_pose?.[who] === "sit") a.teleport(at, a.yaw(), "sit", a.y(), sp.top);
@@ -556,6 +559,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           fitIdle(who, it.pose);
         }
         cancelExit(who);
+        // what the actor is already doing when the film opens (Squidward painting): after the pose's own idle fit
+        const opens = startStaged(it, Object.keys(cast[who]?.clips ?? {}));
+        if (opens.idle) actOut(who, opens);
         if (it.offstage) {
           offstageActors.add(who);
         } else {

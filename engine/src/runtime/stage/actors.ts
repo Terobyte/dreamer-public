@@ -4,6 +4,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadGlb } from "../assets.js";
 import { createAnimator, type Animator } from "./anim.js";
 import { contactAt } from "./clipfacts.js";
+import { attachHeld, type HeldSpec } from "./held.js";
 import type { V2 } from "./places.js";
 import { legHeights, sitDrop, sitLegs } from "./pose.js";
 
@@ -136,7 +137,8 @@ async function loadClips(who: string, urls: Record<string, string>): Promise<Rec
 /** Cast member `who` from a GLB, scaled to `height_m`; a plain box stands in if the GLB does not load.
  *  `facts` = clipfacts.json of this actor (Г4): its `contact_y` per clip lowers/raises the holder so the skin lies on the support. */
 export async function createActor(who: string, glbUrl: string, heightM: number, at: V2, y: number, yaw = 0, clipUrls: Record<string, string> = {}, idle?: string,
-  facts?: Record<string, { contact_y?: number; contact_curve?: number[] } | undefined> | null): Promise<Actor> {
+  facts?: Record<string, { contact_y?: number; contact_curve?: number[] } | undefined> | null,
+  held: Record<string, HeldSpec> = {}): Promise<Actor> {
   const group = new Group();
   group.name = `actor:${who}`;
   let body: Group;
@@ -160,6 +162,20 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     body.add(m);
   }
   const { holder } = prepareActorBody(body, heightM);
+  // the objects the cast holds per clip (a brush while painting): hung on their bones at their size in metres
+  const heldObjs: Record<string, Omit<HeldSpec, "glb"> & { obj: Object3D }> = {};
+  if (animator && Object.keys(held).length) {
+    const loader = new GLTFLoader();
+    await Promise.all(Object.entries(held).map(async ([clip, h]) => {
+      try {
+        heldObjs[clip] = { ...h, obj: (await loader.loadAsync(h.glb)).scene };
+      } catch (e) {
+        console.warn(`stage: actor "${who}" held "${clip}" failed (${String(e)}), skipped`);
+      }
+    }));
+  }
+  const heldCtl = Object.keys(heldObjs).length ? attachHeld(body, heldObjs) : null;
+  for (const w of heldCtl?.warnings ?? []) console.warn(`stage: actor "${who}": ${w}`);
   // L154: hip height and shin of the standing body, once (feet on 0 here, before the contact_y shift)
   const legs = legHeights(holder, 0);
   group.add(holder);
@@ -355,6 +371,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         else if (!m && wasMoving) animator.idle();
         wasMoving = m;
         animator.update(dt, { talking: clock < talkUntil, look: gaze ?? undefined });
+        heldCtl?.show(animator.current());
         shift(now);
       }
       // F8: lay the procedural nod on the head/chest bones after the mixer+life

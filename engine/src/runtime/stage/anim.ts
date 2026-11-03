@@ -535,6 +535,13 @@ export function stagedClips(e: { clip?: unknown; idle?: unknown }, clips: string
   return out;
 }
 
+/** The idle a start entry opens with (Squidward painting at his easel when the film begins): one of the actor's own
+ *  clips, never a once-clip (a start is a still picture, not an action) */
+export function startStaged(e: { idle?: unknown }, clips: string[]): { idle?: string } {
+  const { idle } = stagedClips({ idle: e.idle }, clips);
+  return idle ? { idle } : {};
+}
+
 /** A staged clip against the actor's staged pose, by the rule `clipForBeat` keeps for a picked one: standing plays
  *  anything; lying plays only a lying clip and keeps only a lying idle; seated (a bed edge, a stool) plays no clip
  *  (no seated clip facts yet: the procedural nod instead), a standing idle stays (the seated legs are procedural) */
