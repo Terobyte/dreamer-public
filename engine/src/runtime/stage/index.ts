@@ -3,7 +3,7 @@ import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
 import { aliasesOf, clipForBeat } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
-import { createDirector, createPendingQueue, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
+import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
 import { floorAt, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
@@ -925,7 +925,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       camHeight = ceilingOf(f.room);
       const floorY = layerOf(lvl ?? (f as any).level ?? null).layer.y ?? 0;
       // only the actors of the speaker's room and level are in the frame
-      const here = dActors(list).filter((d) => d.room === f.room && d.level === lvl);
+      const here = dActors(list).filter((d) => inScene(d, f.room, lvl));
       if (!here.length) {
         if (!queued.length) return;
         continue;

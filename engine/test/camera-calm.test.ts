@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from "three";
 import { STYLES } from "../src/runtime/stage/styles.js";
 import { createSight } from "../src/runtime/stage/sight.js";
-import { createDirector, type DActor, type DRoom } from "../src/runtime/stage/director.js";
+import { createDirector, inScene, type DActor, type DRoom } from "../src/runtime/stage/director.js";
 import { ndcOf } from "../src/runtime/stage/moves.js";
 import type { V3 } from "../src/runtime/stage/camera.js";
 
@@ -88,6 +88,13 @@ describe("camera calm", () => {
     const flat = Math.hypot(o.look[0] - o.cam[0], o.look[2] - o.cam[2]);
     expect((Math.atan2(o.cam[1] - o.look[1], flat) * 180) / Math.PI).toBeLessThanOrEqual(20);
     expect(o.cam[1]).toBeLessThanOrEqual(1.7);
+  });
+
+  it("a child lying on the bed is in the scene of Mama standing in that room (k14_true 33 s: Mirai's feet off the floor -> level null -> the director never saw her)", () => {
+    expect(inScene({ room: "bedroom", level: null }, "bedroom", "")).toBe(true);
+    expect(inScene({ room: "bedroom", level: "" }, "bedroom", null)).toBe(true);
+    expect(inScene({ room: "hall", level: null }, "bedroom", "")).toBe(false);
+    expect(inScene({ room: "bedroom", level: "1" }, "bedroom", "")).toBe(false);
   });
 
   it("storybook is calm: no shake, mostly still plans, camera at a grown-up's eye", () => {

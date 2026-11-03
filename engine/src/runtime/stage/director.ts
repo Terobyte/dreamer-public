@@ -82,6 +82,13 @@ export interface DirectorOut {
   moveDurationS?: number;
 }
 
+/** who the director frames: actors of the focus room and level; an actor off every level (lying on a bed, sitting on
+ *  a table: feet above the floor) belongs to the room it is in (k14_true: Mirai on the bed was dropped from the
+ *  director's crew, so Mama's line framed Mama alone) */
+export function inScene(a: Pick<DActor, "room" | "level">, room: string, level: string | null): boolean {
+  return a.room === room && (a.level === level || a.level === null || level === null);
+}
+
 const DEG = Math.PI / 180;
 const OPEN_CEILING = 3.5;
 const REACT_AT = 0.45;
