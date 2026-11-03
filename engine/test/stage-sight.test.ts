@@ -31,6 +31,64 @@ describe("sight: raycast probe for the director", () => {
   });
 });
 
+/** Squidward, Nov 3 ("32 секунда ужасно, камера откуда-то из мольберта"): the close of his face stood 30 cm from the
+ *  canvas, which filled a third of the frame. The rays to the head and the chest passed beside it, so the probe said
+ *  clear. A thing within arm's reach of the lens anywhere in the frame is a bad frame too. */
+describe("sight: nothing right in front of the lens", () => {
+  const cam: [number, number, number] = [0, 1.2, 2], look: [number, number, number] = [0, 1.5, 0];
+  it("a canvas 40 cm ahead at the side of the frame blocks, though the head and chest rays miss it", () => {
+    const w = new Group();
+    w.add(box(0.6, 0.8, 0.03, -0.45, 1.2, 1.6));
+    expect(createSight(w, () => [])(cam, look)).toBe(false);
+  });
+  it("the same canvas 2 m to the side does not", () => {
+    const w = new Group();
+    w.add(box(0.6, 0.8, 0.03, -2.4, 1.2, 1.6));
+    expect(createSight(w, () => [])(cam, look)).toBe(true);
+  });
+  it("the floor under a low camera looking down does not", () => {
+    const w = new Group();
+    const ground = new Mesh(new PlaneGeometry(50, 50), new MeshBasicMaterial());
+    ground.rotation.x = -Math.PI / 2;
+    w.add(ground);
+    expect(createSight(w, () => [])([0, 0.5, 1.0], [0, 0.45, 0])).toBe(true);
+    expect(createSight(w, () => [])([0, 1.4, 1.0], [0, 0.6, 0])).toBe(true);
+  });
+});
+
+/** Squidward, Nov 3: the stage asks the probe from its first frame, the props' GLBs swap in after (main.ts awaits
+ *  glbSwaps last); the probe kept the meshes of its first call and never saw the easel. A model added to the world
+ *  later counts, a placeholder taken out does not. */
+describe("sight: the world as it is now, not as it was at the first frame", () => {
+  it("a GLB that lands after the first probe blocks; the placeholder it replaced does not", () => {
+    const w = new Group();
+    const placeholder = box(0.2, 0.2, 0.2, 5, 0.1, 5);
+    w.add(placeholder);
+    const clear = createSight(w, () => []);
+    expect(clear([0, 0.8, 3], [0, 0.8, -1])).toBe(true);
+    w.remove(placeholder);
+    w.add(box(1.4, 1.0, 0.1, 0, 0.5, 1));
+    expect(clear([0, 0.8, 3], [0, 0.8, -1])).toBe(false);
+  });
+});
+
+describe("sight: a camera inside a prop's box", () => {
+  it("between the easel's legs, every ray free, is still a bad spot (Squidward 25 s)", () => {
+    const w = new Group();
+    const easel = new Group();
+    easel.userData.kind = "prop";
+    easel.add(box(0.05, 1.7, 0.05, -0.6, 0.85, 0), box(0.05, 1.7, 0.05, 0.6, 0.85, 0), box(0.05, 1.7, 0.05, 0, 0.85, 1.1));
+    w.add(easel);
+    // standing between the legs, looking out past the back leg's side
+    expect(createSight(w, () => [])([0, 1.2, 0.5], [-3, 1.2, 3])).toBe(false);
+  });
+  it("the room's shell around the camera is not a prop", () => {
+    const w = new Group();
+    w.add(box(6, 2.6, 0.1, 0, 1.3, -3), box(6, 2.6, 0.1, 0, 1.3, 3));
+    expect(createSight(w, () => [])([0, 1.2, 0.5], [2, 1.2, 0.5])).toBe(true);
+  });
+});
+
 describe("sight: vegetation never blocks (noblock)", () => {
   const field = (flag: boolean): Group => {
     const w = new Group();

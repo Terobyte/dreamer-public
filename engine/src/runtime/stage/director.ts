@@ -453,6 +453,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
        *  her line was the back of her head) */
       const sf = ev.kind === "line" ? faceDir(speaker) : null;
       const faces = (cam: V3): boolean => !sf || angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) <= WIDE_FACE_OK;
+      /** the probe sees every subject's head from `cam` (no probe: always) */
+      const seesAll = (who: DActor[], cam: V3): boolean => !inp.clear || who.every((a) => inp.clear!(cam, headOf(a)));
       const pt = (l: ShotLook): V3 => {
         if (Array.isArray(l)) return l as V3;
         const a = crew.find((x) => x.name === (l as any).actor);
@@ -495,6 +497,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           };
           if (!inView(who, mv.cam, mv.look, mv.fov) || (mv.end && mv.lookEnd && !inView(who, mv.end, mv.lookEnd, mv.fovEnd ?? mv.fov))) return null;
           if (!faces(mv.cam) || (mv.end && !faces(mv.end))) return null;
+          // an occluded move (moves.ts found no clear one) or a start the probe rejects is not kept: the next try or
+          // the base frame takes over (Squidward, Nov 3: the close stood in the easel's canvas)
+          if (r.warnings.includes("MOVE_OCCLUDED") || !seesAll(who, mv.cam)) return null;
           curPair = usePair;
           pairNames = usePair ? [speaker.name, listener!.name] : [];
           return mv;
@@ -542,8 +547,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const fit = (o: DirectorOut): DirectorOut => ({ ...o, cam: cy(o.cam), fov: cf(o.fov ?? (style.fov[0] + style.fov[1]) / 2) });
         const [b0, wide] = [out, frame("wide", speaker, frameOther, crew, walkers, inp, 0, clock, cutSeq, st, snap, speaker)].map(fit);
         const sees = (o: DirectorOut): boolean => inView(who, o.cam, o.look, o.fov ?? 50);
-        const base = [b0, wide].find((o) => sees(o) && faces(o.cam)) ?? faceTwo() ?? (sees(b0) ? b0 : wide);
-        curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+        // every candidate asks the probe; none clear -> the wide turned off the furniture (unblock)
+        const ok = (o: DirectorOut): boolean => sees(o) && seesAll(who, o.cam);
+        const good = [b0, wide].find((o) => ok(o) && faces(o.cam)) ?? faceTwo();
+        // a pair no clear frame holds (Squidward 25 s: SpongeBob at the door 4.4 m off, chairs between): the speaker's
+        // close, before a base frame that shows the chairs
+        const close = !good && ev.kind === "line" && atom !== "close" ? attempt("close") : null;
+        if (close) curMove = { ...close, warnings: [...(close.warnings ?? []), `MOVE_OUT_OF_FRAME ${pk.id}`] };
+        else {
+          const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, cameraLaw);
+          curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+        }
       }
     }
     return curMove ? { ...out, ...curMove, cut: heldCut } : out;
