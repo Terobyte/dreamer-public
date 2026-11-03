@@ -54,8 +54,9 @@ describe("camera debt: legalCameraPoint", () => {
         } else {
           // When <= 60° is achievable together with side, result must be <= 60°
           expect(a).toBeLessThanOrEqual(60.001);
-          // Tight tolerance comparing against the best achievable angle on the side
-          expect(a).toBeLessThanOrEqual(best + 0.1);
+          // Tight tolerance comparing against the best achievable angle on the side; an ots steps aside of the near
+          // head on that line (v30 146–150 s, ots-shoulder-aside.test.ts) and gives up to 20° of it
+          expect(a).toBeLessThanOrEqual(best + (shot === "ots" ? 20 : 0.1));
           expect(a).toBeGreaterThanOrEqual(best - 1e-3);
         }
       }

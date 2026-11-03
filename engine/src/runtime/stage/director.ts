@@ -821,6 +821,8 @@ function probePoints(a: DActor, head: V3): V3[] {
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
+/** how far over the shoulder the near head keeps off the line to the subject's head, m */
+const OTS_CLEAR_M = 0.45;
 /** how fast the base orbit's camera drifts along its circle, m/s */
 const ORBIT_DRIFT_MS = 0.4;
 /** a cut on a walk's start comes this long after the last cut at the soonest (a cut on the action, not asl.min) */
@@ -1078,6 +1080,30 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
     });
   };
 
+  /** Over the shoulder the near head sits to a side of the frame, not on the line to the subject (v30 video
+   *  146–150 s: the back of Squidward's head 0.7 m from the lens filled the frame and hid SpongeBob). The camera steps
+   *  sideways, the way that stays in the room and on the 180° side, until the near head is OTS_CLEAR_M off the line. */
+  const shoulderAside = (cam: V3, subjHead: V3, nearHead: V3, y: number): V3 => {
+    const ab: V2 = [subjHead[0] - cam[0], subjHead[2] - cam[2]];
+    const L = Math.hypot(ab[0], ab[1]);
+    if (L < 1e-6) return cam;
+    const u: V2 = [ab[0] / L, ab[1] / L];
+    const q: V2 = [nearHead[0] - cam[0], nearHead[2] - cam[2]];
+    const t = (q[0] * u[0] + q[1] * u[1]) / L;
+    if (t <= 0 || t >= 1) return cam;
+    const lat = q[0] * -u[1] + q[1] * u[0];
+    if (Math.abs(lat) >= OTS_CLEAR_M) return cam;
+    for (const sgn of lat === 0 ? [1, -1] : [-Math.sign(lat), Math.sign(lat)]) {
+      const need = sgn === -Math.sign(lat) || lat === 0 ? OTS_CLEAR_M - Math.abs(lat) : OTS_CLEAR_M + Math.abs(lat);
+      const step = (need + 0.05) / (1 - t);
+      const pt: V2 = [cam[0] - u[1] * step * sgn, cam[2] + u[0] * step * sgn];
+      if (room.outline.length >= 3 && !insideInset(room.outline, pt)) continue;
+      if (other && !onSide(pt)) continue;
+      return place(pt[0], pt[1], y);
+    }
+    return cam;
+  };
+
   /** Side wins over everything but orbit (F2): a non-orbit frame is never returned from the opposite side.
    * A point pushed across the axis by the room clamp is mirrored back; if that is still off-side, the side
    * direction from the pair midpoint is tried; the midpoint-to-center fallback is on-side by construction. */
@@ -1260,7 +1286,8 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
     case "ots": {
       const d0 = other ? dist(other.pos, subj.pos) + 1 : 2.5;
       const y = (other ?? subj).height * 0.9;
-      return { plan: p, cut, cam: bestFacePoint(subj, y, [d0, 2, 1.4, 1, 0.6], true), look: head(subj) };
+      const cam = bestFacePoint(subj, y, [d0, 2, 1.4, 1, 0.6], true);
+      return { plan: p, cut, cam: other ? shoulderAside(cam, head(subj), head(other), y) : cam, look: head(subj) };
     }
     case "two": {
       const d = Math.max(3, span * 1.2 + 2.5);
