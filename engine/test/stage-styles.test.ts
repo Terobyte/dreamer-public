@@ -18,7 +18,7 @@ describe("STYLES", () => {
     expect(STYLES.malick.fov).toEqual([55, 75]);
     expect(STYLES.fincher.asl).toEqual([2, 4]);
     expect(STYLES.kubrick.symmetry).toBe(0.9);
-    expect(Object.keys(STYLES.storybook.weights)).toEqual(["push_in", "pull_out", "drift", "child_eye", "close", "medium", "wide"]);
+    expect(Object.keys(STYLES.storybook.weights)).toEqual(["medium", "wide", "close", "push_in", "pull_out"]);
   });
   it("every weight id is in MOVES or SCHEMES, none in both", () => {
     for (const s of Object.values(STYLES)) for (const [id, w] of Object.entries(s.weights)) {
@@ -47,11 +47,11 @@ describe("pickMove", () => {
     expect(p(sb, { enter: true, look: true }).id).toBe("follow_side");
   });
   it("rng 0 = first of pool, 0.999 = last of pool", () => {
-    // storybook, moving pool: push_in pull_out drift; static pool: child_eye close medium wide
+    // storybook, moving pool: push_in pull_out; static pool: medium wide close
     expect(pickMove(STYLES.storybook, {}, seq(0, 0)).id).toBe("push_in");
-    expect(pickMove(STYLES.storybook, {}, seq(0, 0.999)).id).toBe("drift");
-    expect(pickMove(STYLES.storybook, {}, seq(0.999, 0)).id).toBe("child_eye");
-    expect(pickMove(STYLES.storybook, {}, seq(0.999, 0.999)).id).toBe("wide");
+    expect(pickMove(STYLES.storybook, {}, seq(0, 0.999)).id).toBe("pull_out");
+    expect(pickMove(STYLES.storybook, {}, seq(0.999, 0)).id).toBe("medium");
+    expect(pickMove(STYLES.storybook, {}, seq(0.999, 0.999)).id).toBe("close");
   });
   it("ozu never moving; zero weights never picked; all-zero gives wide", () => {
     let r = 1;

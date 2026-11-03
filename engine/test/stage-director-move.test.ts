@@ -40,12 +40,13 @@ describe("director styles", () => {
   it("style.height and style.fov bound the first establishing move", () => {
     const d = createDirector(() => 0.1, { style: "storybook" });
     const o = d.step({ event: { kind: "line", speaker: "a", dt: 0, tags: { first: true } }, actors: A, room: ROOM });
-    expect(o.cam[1]).toBeLessThanOrEqual(1.1 + 1e-3);
-    expect(o.cam[1]).toBeGreaterThanOrEqual(0.6 - 1e-3);
+    const [lo, hi] = STYLES.storybook.height;
+    expect(o.cam[1]).toBeLessThanOrEqual(hi + 1e-3);
+    expect(o.cam[1]).toBeGreaterThanOrEqual(lo - 1e-3);
     expect(o.fov!).toBeGreaterThanOrEqual(38 - 1e-6);
     expect(o.fov!).toBeLessThanOrEqual(50 + 1e-6);
     if (o.end) {
-      expect(o.end[1]).toBeLessThanOrEqual(1.1 + 1e-3);
+      expect(o.end[1]).toBeLessThanOrEqual(STYLES.storybook.height[1] + 1e-3);
       expect(o.fovEnd!).toBeLessThanOrEqual(50 + 1e-6);
     }
   });

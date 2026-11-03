@@ -189,6 +189,13 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   const styleWarn = opts.style !== undefined && !styleKnown ? [`STYLE_UNKNOWN ${opts.style}`] : [];
   let moveMode = opts.style !== undefined;
   let moveCut = -1;
+  /** the cut number the runtime sees while a move is held, the clock and room when the move started */
+  let heldCut = -1;
+  let moveStart = 0;
+  let moveRoom: string | null = null;
+  /** accent styles: the last base frame on screen and when its cut began */
+  let shown: { out: DirectorOut; at: number } | null = null;
+  let shownRoom: string | null = null;
   let curMove: Pick<DirectorOut, "cam" | "look" | "lookRef" | "lookEndRef" | "end" | "lookEnd" | "fov" | "fovEnd" | "ease" | "shake" | "move" | "warnings" | "moveDurationS"> | null = null;
   let lastBeat: number | undefined;
   let curPair = false;
@@ -380,7 +387,34 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     if (!moveMode || explicitPlan) return styleWarn.length ? { ...out, warnings: styleWarn } : out;
     // a static plan past 2*asl.max drifts (0.1 m), except in styles without motion
     const driftNow = cutSeq === moveCut && curMove !== null && !curMove.end && style.move > 0 && clock - planStart > 2 * style.asl[1] && curMove.move !== "drift";
+    // a base cut sooner than asl.min after the move began is swallowed (k12_storybook: every narrator sentence and
+    // reaction cut re-picked a move, 3 cuts in 1.5 s); a scene start/end, an entrance and a new room still cut
+    const t = ev.tags ?? {};
+    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line";
+    if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) moveCut = cutSeq;
+    // "shoot rarely, shoot true" (accent styles): a beat that is not a scene start/end, an entrance, a look or a
+    // spoken line gets the base planner's frame, the readable legacy wide of restage12
+    const mustCutBase = !!(t.first || t.last || t.enter) || key !== shownRoom;
+    const accentBeat = !!(t.first || t.last || t.enter || t.look) || ev.kind === "line";
+    if (style.accent && (curMove === null || cutSeq !== moveCut) && !accentBeat) {
+      moveCut = cutSeq;
+      curMove = null;
+      // the base cuts no sooner than asl.min either: a too-early cut keeps the frame on screen
+      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0]) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
+      if (!shown || out.cut !== shown.out.cut) {
+        shown = { out, at: clock };
+        shownRoom = key;
+      }
+      else shown.out = out;
+      return styleWarn.length ? { ...out, warnings: styleWarn } : out;
+    }
     if (cutSeq !== moveCut || driftNow) {
+      if (cutSeq !== moveCut) {
+        shown = null;
+        heldCut = cutSeq;
+        moveStart = clock;
+        moveRoom = key;
+      }
       moveCut = cutSeq;
       curMove = null;
       faceBase = null;
@@ -437,7 +471,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         curMove = null;
       }
     }
-    return curMove ? { ...out, ...curMove } : out;
+    return curMove ? { ...out, ...curMove, cut: heldCut } : out;
   };
 
   return { step };

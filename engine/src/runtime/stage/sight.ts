@@ -39,16 +39,21 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
   const rc = new Raycaster();
   const ray = new Ray();
   const from = new Vector3(), to = new Vector3(), dir = new Vector3(), hit = new Vector3();
+  const toward = (a: V3, b: V3, d: number): V3 => {
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
+    return [a[0] + ((b[0] - a[0]) * d) / l, a[1] + ((b[1] - a[1]) * d) / l, a[2] + ((b[2] - a[2]) * d) / l];
+  };
   const key = (p: V3): string => p.map((v) => Math.round(v * 10)).join(",");
 
-  const blocked = (a: V3, b: V3): boolean => {
+  /** a mesh face between `a` and `b` (faces seen from `a`'s side only: three culls back faces); `trim` m before `b` do not count */
+  const blocked = (a: V3, b: V3, trim = 0.25): boolean => {
     from.set(a[0], a[1], a[2]);
     to.set(b[0], b[1], b[2]);
     dir.subVectors(to, from);
     const len = dir.length();
     if (len < 0.3) return false;
     dir.divideScalar(len);
-    const far = len - 0.25;  // the target's own surroundings (a pillow under a head) do not block
+    const far = len - trim;  // the target's own surroundings (a pillow under a head) do not block
     ray.set(from, dir);
     rc.set(from, dir);
     rc.near = 0.05;
@@ -65,8 +70,9 @@ export function createSight(world: Object3D, skip: () => Object3D[]): (cam: V3, 
     const k = `${key(cam)}|${key(look)}`;
     const c = cache.get(k);
     if (c !== undefined) return c;
-    // the head and the chest: one of them hidden is a bad frame
-    const ok = !blocked(cam, look) && !blocked(cam, [look[0], look[1] - 0.35, look[2]]);
+    // the head and the chest: one of them hidden is a bad frame. A camera inside a mesh (k12: inside the bed) sees
+    // only back faces, which the forward ray skips: the reverse ray from 0.25 m off the target hits the outside face
+    const ok = !blocked(cam, look) && !blocked(cam, [look[0], look[1] - 0.35, look[2]]) && !blocked(toward(look, cam, 0.25), cam, 0);
     if (cache.size > 4000) cache.clear();
     cache.set(k, ok);
     return ok;

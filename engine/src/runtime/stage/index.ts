@@ -13,7 +13,7 @@ import { createSubs } from "./subs.js";
 import { createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { legalCameraPoint, roomRect, type V3 } from "./camera.js";
-import { createShotClock, cutMeshes, parseShotplan, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
+import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -983,7 +983,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       c.camera.fov = s.fov;
       c.camera.updateProjectionMatrix();
     }
-    if (s.shake) pos.set(pos.x + s.shake * Math.sin(now * 37), pos.y + s.shake * Math.sin(now * 29 + 1), pos.z);
+    // the same slow hand-held sway as a moving plan (1.1-1.7 Hz); the old sin(37t) was a 6 Hz tremble (k12_storybook)
+    if (s.shake) {
+      const w = shakeOf(s.shake, now - (dirMove?.t0 ?? 0));
+      pos.set(pos.x + w[0], pos.y + w[1], pos.z + w[2]);
+    }
     look.set(look.x + (s.look[0] - look.x) * k, look.y + (s.look[1] - look.y) * k, look.z + (s.look[2] - look.z) * k);
     c.camera.lookAt(look.x, look.y, look.z);
     c.camera.updateMatrixWorld();

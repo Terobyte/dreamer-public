@@ -19,6 +19,8 @@ export interface Style {
   cut: "hard" | "long";
   /** preference for frontal plans, 0..1 */
   symmetry: number;
+  /** moves only as accents (scene start/end, entrance, look, a spoken line); other beats keep the base frames */
+  accent?: boolean;
 }
 export interface MoveTags {
   first?: boolean;
@@ -34,7 +36,9 @@ export interface Pick {
 const st = (move: number, asl: [number, number], height: [number, number], fov: [number, number], shake: [number, number], cut: "hard" | "long", symmetry: number, weights: Record<string, number>): Style => ({ weights, asl, height, fov, shake, move, cut, symmetry });
 
 const TABLE: Record<string, Style> = {
-  storybook: st(0.7, [4, 6], [0.6, 1.1], [38, 50], [0.002, 0.005], "hard", 0.2, { push_in: 3, pull_out: 2, drift: 2, child_eye: 1, close: 2, medium: 1, wide: 1 }),
+  // calm since Nov 3 (k12_storybook film read "effect for effect", trembling): mostly still plans, no shake, adult eye
+  // height (0.6 m child_eye shot the Koshakan bedroom from inside the bed and missed Mirai lying on it)
+  storybook: { ...st(0.35, [5, 8], [1.1, 1.5], [38, 50], [0, 0], "hard", 0.2, { medium: 3, wide: 2, close: 2, push_in: 1, pull_out: 1 }), accent: true },
   spielberg: st(0.8, [5, 9], [0.5, 1.5], [35, 55], [0.001, 0.004], "long", 0.2, { slow_push: 3, oner: 0, low: 2, crane_up: 1, over_the_shoulder: 2, reaction_cut: 2, wide: 1, close: 1 }),
   ozu: st(0, [6, 8], [0.5, 0.9], [40, 50], [0, 0], "long", 0.6, { tatami: 4, frontal: 3, medium: 2, wide: 1 }),
   anderson: st(0.3, [4, 6], [1.2, 1.5], [40, 55], [0, 0], "hard", 0.9, { frontal: 4, master: 2, truck: 2, whip_pan: 1, medium: 1 }),
