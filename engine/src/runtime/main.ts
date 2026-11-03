@@ -109,6 +109,12 @@ function say(text: string): void {
 }
 
 async function start(): Promise<void> {
+  // L45: what the page could not load (a GLB left as a grey box) reaches the film, not only the console
+  const runtimeWarnings: string[] = [];
+  const runtimeWarn = (m: string): void => {
+    console.warn(m);
+    runtimeWarnings.push(m);
+  };
   const params = new URLSearchParams(location.search);
   let renderer: WebGLRenderer;
   try {
@@ -185,7 +191,7 @@ async function start(): Promise<void> {
           objects.set(mesh.name, root);
         }).catch((e) => {
           // B36: a GLB that fails keeps its box, so __ready still fires
-          console.warn(`runtime: "${mesh.name}" GLB failed (${String(e)}), using a box`);
+          runtimeWarn(`runtime: "${mesh.name}" GLB failed (${String(e)}), using a box`);
         }),
       );
     }
@@ -229,7 +235,7 @@ async function start(): Promise<void> {
           const parts: ScatterSource[] = toSources(found);
           if (parts.length > 0) scatterSources.set(asset, parts);
         } catch (e) {
-          console.warn(`runtime: scatter "${asset}" GLB failed (${String(e)}), using a box`);
+          runtimeWarn(`runtime: scatter "${asset}" GLB failed (${String(e)}), using a box`);
         }
       }),
     );
@@ -408,7 +414,7 @@ async function start(): Promise<void> {
     look: (yaw: number): void => keys.setYaw(yaw),
     stage: stage ? stage.api : null,
     /** what the stage could not do as asked (no shotplan, unknown place, pose fallback...): record.mjs writes it out */
-    stageWarnings: (): string[] => (stage ? stage.warnings() : []),
+    stageWarnings: (): string[] => [...runtimeWarnings, ...(stage ? stage.warnings() : [])],
     /** host access to the live three.js objects (same three instance as the engine) */
     three: { THREE, scene, camera, renderer, loadGltf: (url: string) => new GLTFLoader().loadAsync(url) },
     onFrame: (cb: (dt: number, now: number) => void): void => { frameHooks.push(cb); },
