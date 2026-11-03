@@ -1,0 +1,31 @@
+{
+  "dist": "world/run/dist",
+  "places": "stage/places.json",
+  "cast": "cast/cast.json",
+  "mode": "book",
+  "book": {
+    "dir": "dream/books/koshakan",
+    "scene": "bedroom",
+    "score": "story/score.ru.json"
+  },
+  "seed": null,
+  "narrator_voice": "gentle",
+  "lang": "ru",
+  "objects": [
+    "bed",
+    "nightstand",
+    "shelf"
+  ],
+  "voices": {
+    "child": "cce373922922480cbcb2892010adc30a",
+    "gentle": "c35aeeb5f9c145199fbffdbc2ef8ed95",
+    "woman": "9603781991bc48a098c581227351e96e"
+  },
+  "start": {
+    "Mirai": "bed",
+    "Mama": "nightstand"
+  },
+  "start_pose": {
+    "Mirai": "lie"
+  }
+}

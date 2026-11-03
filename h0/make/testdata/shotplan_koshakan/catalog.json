@@ -1,0 +1,129 @@
+{
+ "styles": [
+  "storybook",
+  "spielberg",
+  "ozu",
+  "anderson",
+  "malick",
+  "fincher",
+  "kubrick",
+  "miyazaki"
+ ],
+ "moves": {
+  "wide": "whole subject and surroundings, camera far",
+  "medium": "subject from the waist up, neutral distance",
+  "close": "face fills the frame, intimate",
+  "push_in": "camera glides toward the subject over the shot",
+  "pull_out": "camera glides away from the subject over the shot",
+  "slow_push": "very slow push toward a face at an emotional moment (0.3-0.6 m)",
+  "truck": "camera slides sideways past the subject",
+  "arc": "camera circles the subject by 15-40 degrees",
+  "pedestal_up": "camera rises straight up",
+  "pedestal_down": "camera sinks straight down",
+  "crane_up": "camera rises and backs away, scene finale",
+  "crane_down": "camera descends and moves in, scene entrance",
+  "follow_side": "camera walks beside a walking actor",
+  "follow_behind": "camera follows a walking actor from behind",
+  "lead": "camera backs away in front of a walking actor",
+  "drift": "tiny 5-15 cm drift, a living still shot",
+  "handheld": "handheld camera with visible shake",
+  "steadicam": "smooth floating camera, almost no shake",
+  "zoom_in": "lens narrows, camera stands still",
+  "zoom_out": "lens widens, camera stands still",
+  "dolly_zoom": "Vertigo effect: camera and lens move opposite, subject size constant",
+  "pan_to": "camera turns from one actor to another without moving",
+  "tilt_up": "camera turns up along the figure",
+  "whip_pan": "fast pan used as a cut",
+  "low": "camera below eye level looking up",
+  "high": "camera above looking down",
+  "child_eye": "camera at child height, 0.7-0.9 m",
+  "tatami": "Ozu tatami shot: camera 0.6-0.8 m, no movement",
+  "top_down": "almost vertical view from above",
+  "profile": "side view of the face, azimuth 80-100 degrees",
+  "three_quarter": "three-quarter view of the face, azimuth 30-50 degrees",
+  "frontal": "straight-on frontal view, Anderson symmetry",
+  "master": "master shot: the whole room",
+  "detail": "close detail of a hand or an object",
+  "ots": "over-the-shoulder shot at the speaker",
+  "two": "two-shot with both actors in frame",
+  "close_reaction": "close shot of the listener reacting"
+ },
+ "schemes": {
+  "over_the_shoulder": "shot / reverse shot, over the shoulder in turn",
+  "reaction_cut": "close shot of the listener's reaction",
+  "establishing": "wide establishing shot at the scene start",
+  "oner": "one long take that chains moves without a cut",
+  "rhythm_cut": "shorter shots on emotion",
+  "return_wide": "return to the wide shot at the end of a line",
+  "open_from_light": "open on a window or light, then on the hero",
+  "final_pull_out": "last shot of the scene pulls out"
+ },
+ "records": {
+  "dutch": "tilted horizon (record only, not executed)",
+  "rack_focus": "focus pull (record only, not executed)",
+  "insert": "insert of an object (record only, not executed)",
+  "pov": "point of view of an actor (record only, not executed)",
+  "cross_cut": "cross-cutting between two places (record only, not executed)"
+ },
+ "weights": {
+  "storybook": {
+   "push_in": 3,
+   "pull_out": 2,
+   "drift": 2,
+   "child_eye": 1,
+   "close": 2,
+   "medium": 1,
+   "wide": 1
+  },
+  "spielberg": {
+   "slow_push": 3,
+   "low": 2,
+   "crane_up": 1,
+   "over_the_shoulder": 2,
+   "reaction_cut": 2,
+   "wide": 1,
+   "close": 1
+  },
+  "ozu": {
+   "tatami": 4,
+   "frontal": 3,
+   "medium": 2,
+   "wide": 1
+  },
+  "anderson": {
+   "frontal": 4,
+   "master": 2,
+   "truck": 2,
+   "whip_pan": 1,
+   "medium": 1
+  },
+  "malick": {
+   "handheld": 3,
+   "drift": 2,
+   "arc": 2,
+   "low": 1,
+   "detail": 2,
+   "wide": 1
+  },
+  "fincher": {
+   "steadicam": 2,
+   "push_in": 3,
+   "close": 2,
+   "over_the_shoulder": 2,
+   "medium": 1
+  },
+  "kubrick": {
+   "frontal": 3,
+   "slow_push": 3,
+   "master": 2,
+   "wide": 1
+  },
+  "miyazaki": {
+   "drift": 2,
+   "pull_out": 2,
+   "wide": 3,
+   "detail": 1,
+   "medium": 1
+  }
+ }
+}
