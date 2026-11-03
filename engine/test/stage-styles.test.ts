@@ -109,8 +109,8 @@ describe("K2 fixture properties", () => {
       expect(asl).toBeGreaterThanOrEqual(Math.min(st.asl[0], 5) - 1e-9);
       expect(asl).toBeLessThanOrEqual(Math.ceil(st.asl[1] / 5) * 5 + 1e-9);  // a hold is 5 or 10 s here
       for (const o of outs) {
-        expect(o.cam[1]).toBeGreaterThanOrEqual(ROOM.floorY + st.height[0] - 0.05);
-        expect(o.cam[1]).toBeLessThanOrEqual(ROOM.floorY + Math.max(st.height[1], 1.7) + 1e-3);
+        expect(o.cam[1]).toBeGreaterThanOrEqual((ROOM.floorY ?? 0) + st.height[0] - 0.05);
+        expect(o.cam[1]).toBeLessThanOrEqual((ROOM.floorY ?? 0) + Math.max(st.height[1], 1.7) + 1e-3);
         expect(o.cam[1]).toBeLessThanOrEqual(ROOM.ceiling - 0.1 + 1e-3);
         if (o.fov !== undefined) {
           expect(o.fov).toBeGreaterThanOrEqual(st.fov[0] - 1e-6);

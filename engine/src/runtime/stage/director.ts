@@ -484,10 +484,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           });
           const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
           r.from.pos = cy(r.from.pos);
-          r.from.fov = cf(r.from.fov);
+          // a move without its own fov takes the middle of the style's range (cf(undefined) was NaN)
+          const fovMid = (style.fov[0] + style.fov[1]) / 2;
+          r.from.fov = cf(r.from.fov ?? fovMid);
           if (r.end) {
             r.end.pos = cy(r.end.pos);
-            r.end.fov = cf(r.end.fov);
+            r.end.fov = cf(r.end.fov ?? r.from.fov);
           }
           const mv = {
             cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
@@ -711,7 +713,8 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
     // a lying actor has no face direction: the 180° side (or +z) stands in, never the body yaw
     const f: V2 = faceDir(s) ?? (other ? [n[0] * side, n[1] * side] : [0, 1]);
     const search = (withShoulder: boolean) => {
-      let bestUnder60: { p: V3; ang: number } | null = null;
+      // assigned inside `consider`: typed by a cast, or the checks below narrow it to `null` forever
+      let bestUnder60 = null as { p: V3; ang: number } | null;
       let bestOver60: { p: V3; ang: number } | null = null;
 
       const consider = (pt: V2, ang: number) => {

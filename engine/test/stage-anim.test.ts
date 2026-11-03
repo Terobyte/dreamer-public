@@ -245,7 +245,7 @@ describe("animator: interpolation survives cut+freeze (F2)", () => {
     const r = qtrack("upperarm_r", [0, 1, 2], [5, 60, 90]);
     const pos = new VectorKeyframeTrack("hand.position", [0, 1, 2], [0, 0, 0, 10, 1, 0, 20, 2, 0]);
     pos.setInterpolation(InterpolateDiscrete);
-    const factory = pos.createInterpolant;
+    const factory = (pos as any).createInterpolant;
     (pos as any).createInterpolant = factory;
     const rootPos = new VectorKeyframeTrack("pelvis.position", [0, 1, 2], [1, 0, 1, 5, 1, 5, 9, 2, 9]);
     rootPos.setInterpolation(InterpolateDiscrete);

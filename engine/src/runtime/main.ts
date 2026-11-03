@@ -430,7 +430,7 @@ async function start(): Promise<void> {
         hasMap: !!m?.map,
         visible: o.visible,
         mapColorSpace: m?.map?.colorSpace ?? null,
-        mapWidth: m?.map?.image?.width ?? null,
+        mapWidth: (m?.map?.image as { width?: number } | undefined)?.width ?? null,
       };
     },
   };

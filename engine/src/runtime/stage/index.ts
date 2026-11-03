@@ -175,7 +175,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const sp = places.find((p) => p.name === startName) ?? fallback;
     const spot = sp && sp.name === startName ? startSpot(sp, stage.start_pose?.[who], sp.at, places) : null;
     const at: V2 = spot ? spot.at : sp ? sp.at : [c.geo.spawn.at[0], c.geo.spawn.at[1]];
-    const url = new URL(cast[who].glb, castUrl).href;
+    const url = new URL(String(cast[who].glb), castUrl).href;
     const clipUrls: Record<string, string> = {};
     for (const [k, v] of Object.entries(cast[who].clips ?? {})) clipUrls[k] = new URL(v, castUrl).href;
     const held: Record<string, HeldSpec> = {};
@@ -974,7 +974,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const cam = c.camera.position;
         const on = [...actors.values()].filter((a) => !offstageActors.has(a.who));
         // F12: lines can overlap in dur — the latest line's speaker wins while still speaking, not the first timer
-        const late = gazeBeat?.speaker && nowT < (gazeBeat?.until ?? 0) ? on.find((a) => a.who === gazeBeat.speaker) : undefined;
+        const gb = gazeBeat;
+        const late = gb?.speaker && nowT < (gb.until ?? 0) ? on.find((a) => a.who === gb.speaker) : undefined;
         const sp = (late?.speaking() ? late : undefined) ?? on.find((a) => a.speaking());
         return {
           plan: lastPlan,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# tero gate for meta: h0/dream, h0/make, h0/pipe2 + h0 root + tools + servers, engine vitest. Files in tools/gate_skip.txt are left out.
+# tero gate for meta: h0/dream, h0/make, h0/pipe2 + h0 root + tools + servers, engine vitest + tsc. Files in tools/gate_skip.txt are left out.
 # The python suites run side by side, engine vitest after them; dream and make run their test classes in parallel (tools/ptest.py).
 cd "$(dirname "$0")/.." || exit 2
 skip=$(grep -v '^#' tools/gate_skip.txt | grep -v '^$')
@@ -38,11 +38,13 @@ wait
 ex=""
 for f in $(echo "$skip" | grep '^engine/'); do ex="$ex --exclude ${f#engine/}"; done
 (cd engine && npx vitest run --maxWorkers=5 $ex; echo $? >"$logs/engine.rc") >"$logs/engine" 2>&1
+# L81: engine types (needs @types/three, a dev dependency since Nov 3)
+(cd engine && npx tsc --noEmit -p .; echo $? >"$logs/tsc.rc") >"$logs/tsc" 2>&1
 
 # green suites first, red last: the gate's tail is what the player sees
 rc=0
 for pass in green red; do
-  for s in dream make py engine; do
+  for s in dream make py engine tsc; do
     if [ ! -f "$logs/$s.rc" ]; then
       [ $s = make ] && [ ! -d h0/make ] && continue  # make only runs when h0/make exists
       # B58: the suite was killed before it wrote its status: that is a failure, not a skip

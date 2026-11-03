@@ -8,6 +8,8 @@ export interface TouchActor {
   y(): number;
   /** `seat` = the place's `top` when `act` is "sit" (L154: the pelvis lands on it) */
   go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number[], seat?: number): void;
+  /** facing now, degrees: a goto with nothing to face keeps it */
+  yaw(): number;
 }
 
 export interface ToucherCtx {

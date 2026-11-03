@@ -19,7 +19,7 @@ const DEF: DoorDef = {
 describe("blockers F12/F13", () => {
   it("F12 leaf decal UVs stay in 0..1 on both wide sides", () => {
     const ctx = runCheck(demoFlat()).ctx as any;
-    const leaf = doorMeshes(ctx).find((m: any) => m.id === "front:leaf");
+    const leaf = doorMeshes(ctx).find((m: any) => m.id === "front:leaf")!;
     expect(leaf).toBeDefined();
     const vs = leaf.uvs.filter((_: number, i: number) => i % 2 === 1);
     expect(Math.max(...vs)).toBeLessThanOrEqual(1 + 1e-9);
