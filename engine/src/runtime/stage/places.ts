@@ -273,6 +273,13 @@ export function nearActor(from: V2, target: V2, gap: number): V2 {
   return [target[0] + (dx / d) * gap, target[1] + (dz / d) * gap];
 }
 
+/** a hug: where the mover stands so the two capsules touch, chest to chest; null when they already do not overlap
+ *  (Koshakan meadow, Nov 3: Mirai hugged Mama from 0.12 m, the lap spot, her body inside Mama's knees) */
+export function hugSpot(mover: V2, anchor: V2, rMover: number, rAnchor: number): V2 | null {
+  const d = rMover + rAnchor;
+  return Math.hypot(mover[0] - anchor[0], mover[1] - anchor[1]) < d - 1e-3 ? nearActor(mover, anchor, d) : null;
+}
+
 /** how far short of another actor a walker stops (nearActor's `gap`): into a lap close in (0.12 m), otherwise the two
  *  capsules touch plus 5 cm (bathroom, Nov 3: a fixed 0.5 m put Mama inside Mirai's capsule, 74 overlap frames) */
 export function approachGap(clips: Array<string | undefined>, rWalker: number, rOther: number): number {

@@ -6,7 +6,7 @@ import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { approachGap, BED_TUCK_M, bedLift, floorAt, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { approachGap, BED_TUCK_M, bedLift, floorAt, hugSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -457,6 +457,29 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   /** actors that walked up to another one (a hug, a lap): the pair is never pushed apart until one of them moves on */
   const together = new Set<string>();
   let nearSeq = 0;
+  /** a staged hug clip (kneeling mother + standing child, made chest to chest): the nearest actor is the partner. A
+   *  partner sitting in the lap keeps the lap hold (the hug's arms would close over her head); otherwise the smaller
+   *  body steps back until the two touch, both face each other, and the pair is not pushed apart (meadow, Nov 3) */
+  const hugInPlace = (who: string, sc: { clip?: string; idle?: string }): { clip?: string; idle?: string } => {
+    if (!sc.clip || !/hug/i.test(sc.clip)) return sc;
+    const a = actors.get(who)!;
+    let other: (typeof a) | undefined;
+    let best = Infinity;
+    for (const b of actors.values()) {
+      if (b === a || offstageActors.has(b.who)) continue;
+      const d = Math.hypot(b.pos()[0] - a.pos()[0], b.pos()[1] - a.pos()[1]);
+      if (d < best && d < a.radius() + b.radius() + 0.6) (best = d), (other = b);
+    }
+    if (!other) return sc;
+    if (/lap/i.test(other.idleName?.() ?? "")) return { idle: sc.idle };
+    const [mover, anchor] = a.radius() <= other.radius() ? [a, other] : [other, a];
+    const at = hugSpot(mover.pos(), anchor.pos(), mover.radius(), anchor.radius());
+    if (at) mover.teleport(at, yawTo(at, anchor.pos()), mover.act(), mover.y());
+    anchor.go([], yawTo(anchor.pos(), mover.pos()), anchor.act());
+    together.add(a.who);
+    together.add(other.who);
+    return sc;
+  };
   const settleArrivals = (): void => {
     for (const [who, sc] of [...onArrive]) {
       const a = actors.get(who);
@@ -590,7 +613,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           cancelExit(who);
           a.go([], a.yaw(), a.act());
         }
-        actOut(who, sc);
+        actOut(who, hugInPlace(who, sc));
         return;
       }
       // one of a pair moves on: the pair is over (both may be pushed apart again)
