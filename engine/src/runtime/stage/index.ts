@@ -269,8 +269,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const lvl = toucherLevel(a.who);
       const f = roomOfActor(a, lvl);
       const h = smoothHead(a);
+      const lying = poseOf.get(a.who) === "lie" && !a.moving();
+      // the face: between the head bone and the eye (a box figure's head bone sits mid-body); lying, the head is it
+      const face: V3 | undefined = h && !lying ? [h.p[0], (h.p[1] + a.eye()[1]) / 2, h.p[2]] : undefined;
       return {
         head: h?.p,
+        face,
         faceYaw: h?.yaw,
         name: a.who,
         pos: a.pos(),
@@ -280,7 +284,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         room: f?.room ?? null,
         walking: a.moving(),
         walkLeft: a.walkLeft?.(),
-        lying: poseOf.get(a.who) === "lie" && !a.moving(),
+        lying,
         offstage: offstageActors.has(a.who),
       };
     });
