@@ -17,12 +17,14 @@ import type { Issue, NavJson, Report } from "../src/types.js";
 import { mark } from "../src/report/timing.js";
 import type { PropFact } from "../src/props/fact.js";
 import { writeClipfacts } from "../src/runtime/stage/clipfacts.js";
+import { stitchFiles } from "../src/stitch.js";
 
 const USAGE =
   "usage: dreamer check <scene> [--report <path>] [--built <dist>]\n" +
   "       dreamer build <scene> --out <dir> [--assets none|cache|live] [--cache <dir>] [--max-dollars <n>] [--apply-fixes]\n" +
   "       dreamer shots <dist> [--size 1280x720] [--ready-timeout <s>]\n" +
-  "       dreamer clipfacts <cast dir>";
+  "       dreamer clipfacts <cast dir>\n" +
+  "       dreamer stitch --out <dir> --part <name>=<scene.json> ... [--link <name>:<door>=<name>:<door> ...]";
 
 /**
  * `undefined` = flag absent, `null` = flag present but its value is missing
@@ -98,6 +100,21 @@ async function main(): Promise<number> {
     // re-bundle runtime.js into a built dist: an old world plays with the current engine (film, fixes)
     await bundleRuntime(join(args[1], "runtime.js"));
     console.log(`runtime: ${join(args[1], "runtime.js")}`);
+    return 0;
+  }
+  if (args[0] === "stitch") {
+    // one world out of places built apart: the parts laid side by side, door pairs linked (src/stitch.ts)
+    const out = flag(args, "--out");
+    const all = (name: string): string[] => args.flatMap((a, i) => (a === name && args[i + 1] ? [args[i + 1]!] : []));
+    const parts = all("--part").map((p) => { const i = p.indexOf("="); return { name: p.slice(0, i), path: p.slice(i + 1) }; });
+    const links = all("--link").map((l) => { const i = l.indexOf("="); return { from: l.slice(0, i), to: l.slice(i + 1) }; });
+    if (!out || !parts.length || parts.some((p) => !p.name || !p.path)) {
+      console.error(USAGE);
+      return 2;
+    }
+    const ids = stitchFiles(parts, links, out);
+    console.log(JSON.stringify(ids, null, 1));
+    console.log(`stitch: ${join(out, "scene.json")}`);
     return 0;
   }
   if (args[0] === "clipfacts" && args[1]) {

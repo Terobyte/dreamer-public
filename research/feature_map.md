@@ -81,6 +81,7 @@
 | `routes/{astar,waypoints,stage}.ts` | `routes[]` сцены: A* между точками, waypoint по имени/позиции, кто блокирует | `findRoute`, `findRouteLevels`, `gridOf`, `walkable`, `nearestWalkable(Any)`, `waypoint`, `blockerBetween`, `routesStage` | NavJson | `routes.test.ts`, `stage-route*.test.ts` |
 | `geom/{vec,poly,obb,arc}.ts` | V2-математика, полигоны, OBB-пересечения, дуги | `add/sub/scale/len/dist/norm/mid/degFromVec`, `segInt`, `obbIntersects`, `obbPolyIntersects`, `arcFromBulge`, `discretizeArc`, `azToPoint/pointToAz` | — | через place/rooms тесты |
 | `report/{report,codes,messages,topsvg,timing}.ts` | отчёт, словарь кодов (stage+level), тексты ошибок, top.svg плана | `makeReport`, `CODES`, `msg`, `suggestField`, `futureHint`, `topSvg`, `mark` | check.json, top.svg | `msg.test.ts`, `topsvg.test.ts` |
+| `stitch.ts` | один мир из мест, собранных порознь (книга, сим «комнаты по памяти», улица с домами): части кладутся в ряд по x с `STITCH_GAP 30` м, у поздней части совпавшие id переименовываются `<part>_<id>` вместе со ссылками, уровни одной высоты общие; часть с `outdoor` стоит в начале координат; spawn первой части; связи дверей `a:door → b:door` ставят `to` обеим. CLI `dreamer stitch --out d --part name=scene.json --link a:x=b:y` (кэши частей сливаются, относительные `ref.image` → абсолютные) | `stitchScenes(parts, links)`, `stitchFiles(parts, links, out)` | scene.json + cache | `stitch.test.ts` |
 
 ### 2.2 engine/ build (геометрия в dist)
 
@@ -338,6 +339,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | проверить cast.json/GLB/клипы | `make/cast.py check_cast` |
 | процедурное дыхание/взгляд/кивки | `stage/life.ts createLife`, `after(dt,{weight,talking,look?})`; включается в `createAnimator(..., {life:true})`; кто на кого смотрит — `stage/index.ts resolveGaze`, высота цели на месте — `placeGazePoint`; текущая мировая точка взгляда актёра — `stage/index.ts api.gaze(who)` (только чтение для тестов/отладки, null если актёра нет) |
 | выбрать план камеры/склейку | `stage/director.ts createDirector().step(...)` |
+| склеить мир из нескольких мест и связать двери | `E/src/stitch.ts stitchScenes` / `dreamer stitch` (пример: `anymove/runs/squidward/world_street/make_scene.ts`) |
 | зажать камеру в комнату | `stage/camera.ts clampCamera / snapInside / roomRect` |
 | поставить точку камеры (контур + сторона 180° + высота) | `stage/camera.ts legalCameraPoint` |
 | камера не внутри актёра (наезд, крупный план пары на коленях) | `stage/camera.ts clearOfBodies`; на улице общий план «комнаты» = актёры (`moves.ts openSubject`) |
@@ -445,7 +447,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | instancing / `InstancedMesh` | НЕТ (grep пуст). `around`-копии пропа — отдельные меши `<id>.<k>` | — |
 | определение `front_yaw` у GLB | НЕТ. Только авторский `assets.<id>.front_deg` и `normalizeGlb` | — |
 | свет по комнатам | ЧАСТИЧНО. `lights[]` глобальный список (`point` с `pos`, `hemi`), глобальный `style.ambient`; бюджет «не более 2 point на комнату» проверяет `budget.ts budgetIssues`; комнатных групп/ambient на комнату нет | L19 (экспозиция) |
-| пространства имён сцен (namespaces) | НЕТ в движке. В pipe2 соглашение: id комнаты-автора с префиксом `<room>_` (`RoomPipeline.prefix`), владельцы в `merge._record_contributor`; одна сцена = один мир | L23 |
+| пространства имён сцен (namespaces) | ЧАСТИЧНО: `stitch.ts` переименовывает совпавшие id частей (`<part>_<id>`). В pipe2 соглашение: id комнаты-автора с префиксом `<room>_` (`RoomPipeline.prefix`), владельцы в `merge._record_contributor`; одна сцена = один мир | L23 |
 | генерация персонажей в make | НЕТ. `cast` — путь A: хост кладёт `cast.json`+GLB в `run/cast.src` | `make/cast.py` |
 | авто-риг, mocap-idle | НЕТ (L29, L31) | `life.ts` процедурно |
 | структурный бит `stage/gesture/shot` в движке | СДЕЛАНО: `start` и `stage` читаются движком через bridge (`stage/index.ts`) | H10 |
