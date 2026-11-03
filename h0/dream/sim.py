@@ -1853,6 +1853,9 @@ class Sim:
         for e in evs:
             self._emit(e)
         if obj is not None:
+            # the engine's stage walks the hero to what was clicked (its `touch` handler had no sender:
+            # a hero's line carries `touch` itself, a click did not reach the engine at all)
+            self._emit({"type": "touch", "who": self.hero, "object": obj, "source": "click"})
             return self._touch(obj, "click")
         ev = {"type": "input", "source": "click", "value": clean}
         self._emit(ev)
