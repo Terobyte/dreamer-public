@@ -117,6 +117,17 @@ const SPEAK_SECONDS = 3;
 const HEAD_REACH_DEG = 55, HEAD_REST_DEG = 45, SEAT_TURN_DEG = 60;
 /** time constant of the head point the camera frames (DActor.head) */
 const HEAD_SMOOTH_S = 1;
+/** a head that moved farther than this between two looks went through a door (a teleport), it is not smoothed */
+const HEAD_JUMP_M = 1.5;
+/** one step of the director's head smoothing: `dt` s after `prev`, the head bone at `hp`. A jump past HEAD_JUMP_M
+ *  snaps (Squidward v15 145.8 s: through the pineapple's door the smoothed head slid 585 m, "at" x 401 for seconds). */
+export function smoothHeadStep(prev: { p: V3; yaw: number; t: number } | undefined, hp: { pos: V3; faceYaw: number }, dt: number): { p: V3; yaw: number } {
+  if (!prev || Math.hypot(hp.pos[0] - prev.p[0], hp.pos[1] - prev.p[1], hp.pos[2] - prev.p[2]) > HEAD_JUMP_M) return { p: hp.pos, yaw: hp.faceYaw };
+  const k = 1 - Math.exp(-Math.max(0, dt) / HEAD_SMOOTH_S);
+  const p: V3 = [prev.p[0] + (hp.pos[0] - prev.p[0]) * k, prev.p[1] + (hp.pos[1] - prev.p[1]) * k, prev.p[2] + (hp.pos[2] - prev.p[2]) * k];
+  const dy = ((((hp.faceYaw - prev.yaw) % 360) + 540) % 360) - 180;
+  return { p, yaw: (((prev.yaw + dy * k) % 360) + 360) % 360 };
+}
 /** a door an actor passed shuts this long after the last one is through */
 const DOOR_SHUT_S = 2;
 /** actor capsule radius, m; exit walks this far (+ margin) past the door plane */
@@ -348,10 +359,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const hp = headPose(a.group);
     if (!hp) return undefined;
     const prev = headSmooth.get(a.who);
-    const k = prev ? 1 - Math.exp(-Math.max(0, headT - prev.t) / HEAD_SMOOTH_S) : 1;
-    const p: V3 = prev ? [prev.p[0] + (hp.pos[0] - prev.p[0]) * k, prev.p[1] + (hp.pos[1] - prev.p[1]) * k, prev.p[2] + (hp.pos[2] - prev.p[2]) * k] : hp.pos;
-    const dy = prev ? ((((hp.faceYaw - prev.yaw) % 360) + 540) % 360) - 180 : 0;
-    const yaw = prev ? (((prev.yaw + dy * k) % 360) + 360) % 360 : hp.faceYaw;
+    const { p, yaw } = smoothHeadStep(prev, hp, prev ? headT - prev.t : 0);
     headSmooth.set(a.who, { p, yaw, t: headT });
     return { p, yaw };
   };
