@@ -11,6 +11,7 @@ import copy
 import functools
 import http.server
 import json
+import os
 import random
 import sys
 import threading
@@ -25,9 +26,22 @@ def _dream():
         sys.path.insert(0, str(DREAM))
 
 
+def dist_of(run_dir):
+    """The world page dir, relative to the run: stage.json's `dist` (written by the stage step),
+    `world/run/dist` when the file or the field is missing."""
+    try:
+        d = json.loads((Path(run_dir) / "stage" / "stage.json").read_text()).get("dist")
+    except (OSError, ValueError):
+        d = None
+    return str(d) if isinstance(d, str) and d and not os.path.isabs(d) and ".." not in Path(d).parts \
+        else "world/run/dist"
+
+
 def static_url(run_dir, static_port, sim_port):
-    return (f"http://127.0.0.1:{static_port}/world/run/dist/index.html"
-            f"?sim=http://127.0.0.1:{sim_port}&stage=../../../stage/stage.json")
+    dist = dist_of(run_dir)
+    stage = os.path.relpath("stage/stage.json", dist).replace(os.sep, "/")
+    return (f"http://127.0.0.1:{static_port}/{dist}/index.html"
+            f"?sim=http://127.0.0.1:{sim_port}&stage={stage}")
 
 
 def serve_static(run_dir, port=0):

@@ -121,7 +121,8 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
     rec = run_dir / "film"
     shutil.rmtree(rec, ignore_errors=True)
     rec.mkdir(parents=True)
-    dist = run_dir / "world" / "run" / "dist"
+    from .play import dist_of
+    dist = run_dir / dist_of(run_dir)
     subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "runtime", str(dist)], cwd=ENGINE, check=True)
     sim_port, static_port = _free_port(), _free_port()
     play = subprocess.Popen([sys.executable, "-u", "-m", "make.play", str(run_dir), "--port", str(sim_port),

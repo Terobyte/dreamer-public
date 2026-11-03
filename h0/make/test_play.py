@@ -32,7 +32,7 @@ def _run_dir(brief):
         score = book.score_scene(JANE, brief["book"]["scene"])
         (d / "story" / "score.json").write_text(json.dumps(score))
     (d / "stage").mkdir()
-    stage.write_stage(d, d / "stage", brief=brief, freestyle=False)
+    stage.write_stage(d, d / "stage", brief=brief)
     return d
 
 

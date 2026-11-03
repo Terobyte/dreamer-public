@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from make import core, story
+from make import core, play, story
 
 DATA = Path(__file__).resolve().parent / "testdata"
 JANE = str(Path(__file__).resolve().parents[1] / "dream" / "books" / "jane-eyre")
@@ -93,12 +93,11 @@ class RunSimPublished(NoNet):
             real = run / ".pub" / "stage-1"
             real.mkdir(parents=True)
             sj = {"freestyle": False, "mode": "book",
-                  "book": {"dir": "x", "scene": "tea", "score": "story/score.json"}}
+                  "book": {"dir": JANE, "scene": "tea", "score": "story/score.json"}}
             (real / "stage.json").write_text(json.dumps(sj))
             os.symlink(os.path.relpath(real, run), run / "stage")
             got = {}
-            story.run_sim(run / "stage" / "stage.json",
-                          run=lambda **kw: got.update(kw) or None)
+            play.play(run, run=lambda **kw: got.update(kw) or None)
             self.assertEqual(got.get("score"), score)
             self.assertEqual(got.get("scenes"), ["tea"])
 

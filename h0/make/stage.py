@@ -362,12 +362,11 @@ def pick_start(places, actors, room=None):
     return {who: names[i % len(names)] for i, who in enumerate(actors)}
 
 
-def write_stage(run_dir, out, brief=None, freestyle=False, lang="en"):
+def write_stage(run_dir, out, brief=None, lang="en"):
     """Writes out/places.json and out/stage.json; -> the stage.json dict.
 
     stage.json holds exactly the spec schema (dist, places, cast, mode, book,
-    seed, objects, voices, narrator_voice, start). `freestyle` is accepted for
-    backward compat with older callers but is NOT serialized: it is a play-time
+    seed, objects, voices, narrator_voice, start). Freestyle is a play-time
     flag (`make.play --freestyle`), not part of the place."""
     run_dir, out = Path(run_dir), Path(out)
     brief = brief or {}
