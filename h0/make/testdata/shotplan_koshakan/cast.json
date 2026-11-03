@@ -1,0 +1,324 @@
+{
+ "Mirai": {
+  "glb": "mirai.glb",
+  "voice": "child",
+  "sex": "female",
+  "look": "A small lamb girl standing upright: caramel-russet curly wool on head and ears, cream-ivory body, a pink ribbon bow on the right side of her head, a pink tutu skirt, cloven hooves, bright round eyes.",
+  "height_m": 1.0,
+  "clips": {
+   "sleep_curled": "clips/mirai/sleep_curled.glb",
+   "wake_up": "clips/mirai/wake_up.glb",
+   "brush_teeth": "clips/mirai/brush_teeth.glb",
+   "sit_idle": "clips/mirai/sit_idle.glb",
+   "catch_water": "clips/mirai/catch_water.glb",
+   "drippy": "clips/mirai/drippy.glb",
+   "run_joy": "clips/mirai/run_joy.glb",
+   "leap_puff": "clips/mirai/leap_puff.glb",
+   "giggle_back": "clips/mirai/giggle_back.glb",
+   "lap_cloud": "clips/mirai/lap_cloud.glb",
+   "stand_idle": "clips/mirai/stand_idle.glb",
+   "walk": "clips/mirai/walk.glb",
+   "hug_cling": "clips/mirai/hug_cling.glb"
+  },
+  "idle": "sleep_curled",
+  "verbs": {
+   "sleep_curled": [
+    "sleeps",
+    "asleep",
+    "curled up",
+    "snoozing",
+    "dreaming",
+    "slumber",
+    "спала",
+    "спит",
+    "дремала",
+    "свернувшись",
+    "сопела"
+   ],
+   "wake_up": [
+    "wakes",
+    "wake up",
+    "opens her eyes",
+    "stirs",
+    "rubs her eyes",
+    "stretches",
+    "sits up",
+    "просыпалась",
+    "проснулась",
+    "потянулась",
+    "протёрла",
+    "села",
+    "открыла"
+   ],
+   "brush_teeth": [
+    "brushes (her) teeth",
+    "toothbrush",
+    "scrubs",
+    "washes (face)",
+    "чистила",
+    "почистила"
+   ],
+   "sit_idle": [
+    "sits",
+    "sat",
+    "waits (seated)",
+    "swings her feet",
+    "сидела",
+    "сидит"
+   ],
+   "catch_water": [
+    "catches (the) water",
+    "cups her hooves",
+    "tickles",
+    "It tickles",
+    "under the tap",
+    "giggles",
+    "щекотно",
+    "ловила"
+   ],
+   "drippy": [
+    "drop",
+    "droplet",
+    "splash",
+    "flicks water",
+    "drippy",
+    "wet cheek",
+    "Now I'm all drippy",
+    "капелька",
+    "капля"
+   ],
+   "run_joy": [
+    "runs",
+    "running",
+    "races",
+    "dashes",
+    "hurries (joyfully)",
+    "Run",
+    "Koshakanym",
+    "бежала",
+    "побежала",
+    "бежит",
+    "помчалась"
+   ],
+   "leap_puff": [
+    "jumps",
+    "leaps",
+    "springs",
+    "bounces into (the dandelions)",
+    "puff puff puff",
+    "making snow",
+    "прыгнула",
+    "прыгала",
+    "подпрыгнула"
+   ],
+   "giggle_back": [
+    "lies on her back",
+    "laughs",
+    "giggles",
+    "tummy wobbles",
+    "rolls in the grass",
+    "kicks her feet",
+    "смеялась",
+    "хихикала",
+    "засмеялась"
+   ],
+   "lap_cloud": [
+    "sits in (Mama's) lap",
+    "watches the cloud",
+    "points at the sky",
+    "dandelion seed floats",
+    "wonders",
+    "gazes up",
+    "облако",
+    "смотрела"
+   ],
+   "stand_idle": [
+    "stands",
+    "waits",
+    "listens",
+    "looks around"
+   ],
+   "walk": [
+    "walks",
+    "goes",
+    "steps",
+    "toddles",
+    "follows",
+    "шла",
+    "пошла",
+    "идёт",
+    "пошагала"
+   ],
+   "hug_cling": [
+    "hugs",
+    "hugged",
+    "embraces",
+    "holds",
+    "held",
+    "clings",
+    "обняла",
+    "обнимала",
+    "прижалась",
+    "обняли"
+   ]
+  },
+  "aliases": [
+   "Мирай",
+   "Мирайка"
+  ],
+  "start_pose": "lie"
+ },
+ "Mama": {
+  "glb": "mama.glb",
+  "voice": "woman",
+  "sex": "female",
+  "look": "An adult sheep mother standing upright: long soft-wavy dark-brown hair past her shoulders, gentle oval face, dark almond eyes, cream-ivory fleece, a dusty sage-green knee-length V-neck dress, cloven hooves.",
+  "height_m": 1.6,
+  "clips": {
+   "bend_whisper": "clips/mama/bend_whisper.glb",
+   "idle_warm": "clips/mama/idle_warm.glb",
+   "watch_over": "clips/mama/watch_over.glb",
+   "flick_drop": "clips/mama/flick_drop.glb",
+   "laugh": "clips/mama/laugh.glb",
+   "cheer_run": "clips/mama/cheer_run.glb",
+   "sit_down_grass": "clips/mama/sit_down_grass.glb",
+   "sit_idle": "clips/mama/sit_idle.glb",
+   "lap_hold": "clips/mama/lap_hold.glb",
+   "walk": "clips/mama/walk.glb",
+   "hug_hold": "clips/mama/hug_hold.glb"
+  },
+  "idle": "idle_warm",
+  "verbs": {
+   "bend_whisper": [
+    "bends",
+    "leaned down",
+    "whispered",
+    "whisper",
+    "wake up",
+    "ear",
+    "bent over",
+    "наклонилась",
+    "прошептала",
+    "шепнула",
+    "шептала",
+    "просыпайся"
+   ],
+   "idle_warm": [
+    "stood",
+    "stands",
+    "waited",
+    "smiled",
+    "watched",
+    "looked at",
+    "listening",
+    "стояла",
+    "улыбнулась",
+    "смотрела"
+   ],
+   "watch_over": [
+    "watches",
+    "watched",
+    "looked on",
+    "brushing",
+    "teeth",
+    "leaning",
+    "keeps an eye",
+    "следила"
+   ],
+   "flick_drop": [
+    "flicks",
+    "flicked",
+    "drop",
+    "splash",
+    "sprinkles",
+    "drippy",
+    "water drop",
+    "tap",
+    "брызнула"
+   ],
+   "laugh": [
+    "laughs",
+    "laughed",
+    "giggles",
+    "chuckles",
+    "laughing",
+    "tummy wobbles",
+    "смеялась",
+    "засмеялась",
+    "хихикала"
+   ],
+   "cheer_run": [
+    "runs after",
+    "cheers",
+    "Run",
+    "Koshakanym",
+    "run",
+    "chases",
+    "follows quickly",
+    "jogs",
+    "побежала",
+    "бежала"
+   ],
+   "sit_down_grass": [
+    "sits",
+    "sat down",
+    "sits beside",
+    "lowers herself",
+    "plops down",
+    "села",
+    "опустилась"
+   ],
+   "sit_idle": [
+    "sitting",
+    "sits quietly",
+    "beside her",
+    "strokes",
+    "pats",
+    "сидела",
+    "гладила"
+   ],
+   "lap_hold": [
+    "holds",
+    "cuddles",
+    "climbs into lap",
+    "nest",
+    "rocks",
+    "hugs",
+    "watch the cloud",
+    "looks up",
+    "sky",
+    "обняла",
+    "качала",
+    "прижала"
+   ],
+   "walk": [
+    "walks",
+    "comes",
+    "enters",
+    "goes to",
+    "steps",
+    "шла",
+    "пошла",
+    "вошла",
+    "подошла"
+   ],
+   "hug_hold": [
+    "hugs",
+    "hugged",
+    "embraces",
+    "holds",
+    "held",
+    "clings",
+    "обняла",
+    "обнимала"
+   ]
+  },
+  "aliases": [
+   "Мама",
+   "Мамы",
+   "Маме",
+   "Маму",
+   "Мамой"
+  ]
+ }
+}

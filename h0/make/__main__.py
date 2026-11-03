@@ -27,6 +27,7 @@ def main(argv=None):
     ap.add_argument("--scene", help="scene id in book.json")
     ap.add_argument("--lang", choices=["en", "ru"], default="en", help="ru: Spark translates the score")
     ap.add_argument("--world", help="a world dreamer already built (scene.json + dist/): linked, nothing generated")
+    ap.add_argument("--camera-style", help="camera style id for the shotplan stage (e.g. ozu)")
     a = ap.parse_args(argv)
     run = Path(a.run) if a.run else RUNS / time.strftime("%Y%m%d-%H%M%S")
     try:
@@ -35,7 +36,8 @@ def main(argv=None):
                             max_dollars=a.max_dollars, split=a.split,
                             effort=a.effort, pick=a.pick, mesh=a.mesh,
                             book=a.book, scene=a.scene, live=True, lang=a.lang,
-                            world=str(Path(a.world).resolve()) if a.world else None)
+                            world=str(Path(a.world).resolve()) if a.world else None,
+                            camera_style=a.camera_style)
     except (core.MissingInput, core.LockError) as e:
         print(e, file=sys.stderr)
         return 1

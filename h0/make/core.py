@@ -12,8 +12,8 @@ import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
-DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 10}
-OPTIONAL_PARAMS = {"book", "scene", "mesh", "lang", "world"}  # в хэше только если заданы
+DEFAULT_SPLIT = {"brief": 2, "refs": 3, "world": 70, "cast": 15, "story": 8, "shotplan": 2}
+OPTIONAL_PARAMS = {"book", "scene", "mesh", "lang", "world", "camera_style"}  # в хэше только если заданы
 KEEP_TMP = {"world"}  # упавший world остаётся для --resume
 STUB_SLEEP = 0.3
 
@@ -206,6 +206,13 @@ def _run_stage(ctx):
     return story.run_stage(ctx)
 
 
+def _run_shotplan(ctx):
+    if not (ctx.params.get("fake") or ctx.opts.get("live")):
+        return _fast_stub(ctx)  # offline default: no live Spark from tests
+    from . import shotplan
+    return shotplan.run_shotplan(ctx)
+
+
 def default_stages():
     S = Stage
     return {s.id: s for s in (
@@ -214,7 +221,8 @@ def default_stages():
         S("world", ("refs",), 2, _run_world, ("fake", "effort", "cap", "mesh", "world")),
         S("cast", ("refs",), 2, _run_cast, ("fake", "cap")),
         S("story", ("refs", "world", "cast"), 3, _run_story, ("fake", "cap", "lang")),  # staging needs the place bank
-        S("stage", ("world", "cast", "story"), 2, _run_stage, ("fake", "lang")),
+        S("stage", ("world", "cast", "story"), 3, _run_stage, ("fake", "lang")),
+        S("shotplan", ("stage",), 1, _run_shotplan, ("fake", "camera_style")),
     )}
 
 
@@ -424,7 +432,7 @@ def _publish(run_dir, sid, tmp):
 def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=None,
              fresh=False, fake=False, max_dollars=None, split=None,
              effort=None, pick="first", book=None, scene=None, live=False, mesh=None, lang="en",
-             world=None):
+             world=None, camera_style=None):
     """Возвращает {stage: ran|cached|failed|blocked}."""
     stages = stages or default_stages()
     run_dir = Path(run_dir)
@@ -442,7 +450,8 @@ def run_make(run_dir, prompt=None, *, stages=None, only=None, from_=None, until=
             "book": str(book) if book else None, "scene": scene,
             "live": bool(live), "mesh": mesh,
             "lang": lang if lang and lang != "en" else None,  # en = как раньше: ключа нет в хеше
-            "world": str(world) if world else None}  # a world dreamer already built: linked, not generated
+            "world": str(world) if world else None,  # a world dreamer already built: linked, not generated
+            "camera_style": camera_style or None}
 
     enabled = set(stages)
     forced = set()

@@ -45,7 +45,7 @@ class EndToEnd(unittest.TestCase):
     def test_1_all_stages_ok(self):
         self.assertEqual(main([PROMPT, "--fake", "--run", str(self.rdir)]), 0)
         man = json.loads((self.rdir / "make.json").read_text())["stages"]
-        for sid in ("brief", "refs", "world", "cast", "story", "stage"):
+        for sid in ("brief", "refs", "world", "cast", "story", "stage", "shotplan"):
             self.assertEqual(man[sid]["status"], "ok", sid)
         self.assertNotIn("check", man)
         cj = json.loads((self.rdir / "cast" / "cast.json").read_text())
@@ -58,7 +58,7 @@ class EndToEnd(unittest.TestCase):
     def test_2_stage_json_and_objects(self):
         sj = json.loads((self.rdir / "stage" / "stage.json").read_text())
         self.assertEqual(set(sj), {"dist", "places", "cast", "mode", "book", "seed",
-                                   "objects", "voices", "narrator_voice", "start"})
+                                   "objects", "voices", "narrator_voice", "start", "moves"})
         self.assertIsInstance(sj["dist"], str)
         self.assertIsInstance(sj["places"], str)
         self.assertIsInstance(sj["cast"], str)

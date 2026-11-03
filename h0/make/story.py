@@ -170,7 +170,7 @@ def run_stage(ctx):
     rd = ctx.run_dir
     brief_p = rd / "brief" / "brief.json"
     brief = json.loads(brief_p.read_text()) if brief_p.is_file() else {}
-    sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json",
+    sj = {"dist": "world/run/dist", "places": "stage/places.json", "cast": "cast/cast.json", "moves": "shotplan/moves.json",
           "mode": brief.get("mode"), "book": None, "seed": None,
           "narrator_voice": None}
     if brief.get("mode") == "book" and brief.get("book"):

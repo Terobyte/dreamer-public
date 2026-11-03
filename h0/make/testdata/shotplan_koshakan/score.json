@@ -1,0 +1,92 @@
+{
+  "book": "Koshakan",
+  "chapter": 1,
+  "scene": "bedroom",
+  "place": "Mirai's small bedroom in early morning, pale peach light before sunrise: a child's bed with a soft blanket, a window, a nightstand, a rug. A hand-painted children's picture book world: loose watercolour washes on cold-pressed paper, wobbly ink outlines, muted earthy palette (moss, warm brown, soft grey, pale dandelion yellow), soft edges, plenty of air.",
+  "cast": [
+    "Mirai",
+    "Mama"
+  ],
+  "beats": [
+    {
+      "kind": "narration",
+      "text": "Outside, the first birds were waking up. Inside, Mirai was still asleep, curled up small and warm.",
+      "para": 0,
+      "id": 0,
+      "stage": [
+        {
+          "who": "Mirai",
+          "action": "stay",
+          "place": "bed",
+          "pose": "lie"
+        }
+      ]
+    },
+    {
+      "kind": "narration",
+      "text": "Ever since the day Mirai was born, Mama had called her by one special word.",
+      "para": 1,
+      "id": 1,
+      "stage": [
+        {
+          "who": "Mama",
+          "action": "stay",
+          "place": "nightstand",
+          "pose": "stand_at",
+          "look": "Mirai"
+        }
+      ]
+    },
+    {
+      "kind": "narration",
+      "text": "Mama bent down and whispered, warm against her ear:",
+      "para": 2,
+      "id": 2,
+      "stage": [
+        {
+          "who": "Mama",
+          "action": "goto",
+          "place": "bed",
+          "pose": "sit",
+          "look": "Mirai"
+        }
+      ]
+    },
+    {
+      "kind": "line",
+      "who": "Mama",
+      "text": "Wake up, Koshakanym.",
+      "tag": "said Mama.",
+      "para": 3,
+      "id": 3,
+      "stage": [
+        {
+          "who": "Mirai",
+          "action": "stay",
+          "place": "bed",
+          "pose": "lie",
+          "look": "Mama"
+        }
+      ]
+    },
+    {
+      "kind": "narration",
+      "text": "It was Mama's word. Just for Mirai.",
+      "para": 4,
+      "id": 4
+    }
+  ],
+  "warnings": [],
+  "start": [
+    {
+      "who": "Mirai",
+      "place": "bed",
+      "pose": "lie"
+    },
+    {
+      "who": "Mama",
+      "place": "nightstand",
+      "pose": "stand_at"
+    }
+  ]
+}
