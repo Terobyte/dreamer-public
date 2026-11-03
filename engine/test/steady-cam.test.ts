@@ -35,4 +35,12 @@ describe("steadyCam", () => {
   it("a long way (a walker's pan or a reframe after a room change) is not dragged out: over 2 m it jumps", () => {
     expect(steadyCam(o(1, [0, 1, 0]), o(1, [3, 1, 0]), 0.5).cam).toEqual([3, 1, 0]);
   });
+
+  it("an eased point that would hide a head the new one sees jumps (v27 18.8–19.3 s: SpongeBob behind a chair while it glided)", () => {
+    const head: V3 = [2, 0.6, 3];
+    // a chair back between x 0.2..0.9 hides the head from there
+    const clear = (cam: V3, q: V3): boolean => !(cam[0] > 0.2 && cam[0] < 0.9) || q !== head;
+    const a = steadyCam(o(1, [0, 1, 0]), o(1, [1.4, 1, 0]), 0.5, { heads: [head], clear });
+    expect(a.cam).toEqual([1.4, 1, 0]);
+  });
 });
