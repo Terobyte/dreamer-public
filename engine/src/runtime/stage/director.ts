@@ -812,9 +812,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   };
 
   // the last word on every frame: no steep look down (capTilt), nobody in the room cut by its edge (cleanEdges)
+  const tilt = steadyTilt();
   return {
     step: (inp: DirectorInput): DirectorOut =>
-      (lastOut = cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear })),
+      (lastOut = cleanEdges(tilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear })),
   };
 }
 
@@ -886,6 +887,31 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
   // 3) the lowest clear height over the same spot: less steep, if not 30°
   for (let y = y0 + 0.15; y < cy - 1e-9; y += 0.15) if (sees([cx, y, cz])) return { ...out, cam: [cx, y, cz] };
   return out;
+}
+
+/** capTilt for a director that holds its frames: a still frame (the same cut, the camera where the director left it)
+ *  is placed by capTilt once and stays there; a look that gets steeper later (a walker coming up under the camera) is
+ *  lifted to 30°, the camera does not move (Squidward v34 141.5–144 s: re-placed every tick, a metre between ticks). */
+export function steadyTilt(): typeof capTilt {
+  let held: { cut: number; raw: V3; cam: V3 } | null = null;
+  return (out, floorY, clear, crew = [], outline = []) => {
+    if (out.end) {
+      held = null;
+      return out;
+    }
+    const same = held && held.cut === out.cut && Math.hypot(held.raw[0] - out.cam[0], held.raw[1] - out.cam[1], held.raw[2] - out.cam[2]) < 1e-6;
+    if (!same) {
+      const o = capTilt(out, floorY, clear, crew, outline);
+      held = { cut: out.cut, raw: out.cam, cam: o.cam };
+      return o;
+    }
+    const cam = held!.cam;
+    const L = out.look;
+    const flat = Math.hypot(L[0] - cam[0], L[2] - cam[2]);
+    const lowest = cam[1] - flat * Math.tan((MAX_TILT_DEG * Math.PI) / 180);
+    const look: V3 = L[1] < lowest ? [L[0], lowest, L[2]] : L;
+    return { ...out, cam, look };
+  };
 }
 
 const EDGE_IN = 0.9, EDGE_OUT = 1.3;
