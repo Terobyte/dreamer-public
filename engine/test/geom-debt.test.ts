@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { runCheck } from "../src/check.js";
+import type { Mesh } from "../src/build/geometry.js";
+import { intervalMeshes } from "../src/build/walls.js";
+import type { WallRoom } from "../src/build/walls.js";
+import type { Interval } from "../src/plan/merge.js";
+import type { OpeningGeo } from "../src/openings/resolve.js";
 
 // engine geometry debt (LESSONS L96–L110, specs/tero-engine-phase2-debt.md Д2–Д17)
 
@@ -10,7 +15,161 @@ function demo(): any {
   return JSON.parse(readFileSync(demoUrl, "utf-8"));
 }
 
+/** is `p` on (within `tol` of) some triangle of `ms` */
+function onSurface(ms: Mesh[], p: number[], tol: number): boolean {
+  const dot = (x: number[], y: number[]): number => x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+  for (const m of ms) {
+    for (let i = 0; i < m.indices.length; i += 3) {
+      const [a, b, c] = [0, 1, 2].map((k) => m.positions.slice(m.indices[i + k] * 3, m.indices[i + k] * 3 + 3));
+      const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+      const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+      const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      const l = Math.hypot(n[0], n[1], n[2]);
+      if (l < 1e-12) continue;
+      const nn = n.map((x) => x / l);
+      const d = (p[0] - a[0]) * nn[0] + (p[1] - a[1]) * nn[1] + (p[2] - a[2]) * nn[2];
+      if (Math.abs(d) > tol) continue;
+      const w = [0, 1, 2].map((k) => p[k] - nn[k] * d - a[k]);
+      const uu = dot(u, u);
+      const uv = dot(u, v);
+      const vv = dot(v, v);
+      const den = uu * vv - uv * uv;
+      if (Math.abs(den) < 1e-12) continue;
+      const s = (vv * dot(w, u) - uv * dot(w, v)) / den;
+      const t = (uu * dot(w, v) - uv * dot(w, u)) / den;
+      if (s >= -1e-6 && t >= -1e-6 && s + t <= 1 + 1e-6) return true;
+    }
+  }
+  return false;
+}
+
+const R = 4;
+const onCircle = (deg: number): [number, number] => [R * Math.sin((deg * Math.PI) / 180), R * Math.cos((deg * Math.PI) / 180)];
+
+/** a full round room wall starting at azimuth 0, swept either way, with one opening */
+function circleWall(sweep: number, o: Partial<OpeningGeo>): Mesh[] {
+  const iv = {
+    level: "L0",
+    from: onCircle(0),
+    to: onCircle(0),
+    arc: { c: [0, 0], r: R, sweep },
+    sides: [{ room: "r1", edge: 0, m: [0, 2 * Math.PI * R] }],
+    thickness: 0.2,
+  } as unknown as Interval;
+  const room: WallRoom = { id: "r1", height: 3, normalIn: [0, -1], wallMaterial: "wall", bands: [] };
+  const op = { id: "o", sill: 1, height: 1, ...o } as unknown as OpeningGeo;
+  return intervalMeshes(iv, { levelY: 0, openings: [op], caps: { k: 0 }, room: () => room }, () => 0);
+}
+
+const faces = (ms: Mesh[]): Mesh[] => ms.filter((m) => m.kind === "wall" || m.kind === "band");
+const centroid = (m: Mesh): number[] => {
+  const c = [0, 0, 0];
+  const n = m.positions.length / 3;
+  for (let i = 0; i < m.positions.length; i += 3) for (let k = 0; k < 3; k++) c[k] += m.positions[i + k] / n;
+  return c;
+};
+
 describe("geometry debt", () => {
+  for (const sweep of [2 * Math.PI, -2 * Math.PI]) {
+    const tag = sweep > 0 ? "+" : "-";
+
+    it(`L96 opening straddling the seam, sweep ${tag}2π`, () => {
+      const d = (Math.asin(0.5 / R) * 180) / Math.PI;
+      const ms = faces(circleWall(sweep, { ends: [onCircle(-d), onCircle(d)], center: onCircle(0) }));
+      const mid = [0, 1.5, R * Math.cos((d * Math.PI) / 180)];
+      expect(onSurface(ms, mid, 0.15)).toBe(false);
+      expect(onSurface(ms, [mid[0], 0.5, mid[2]], 0.15)).toBe(true);
+      // the far side of the circle is untouched
+      const far = onCircle(180);
+      expect(onSurface(ms, [far[0], 1.5, far[1]], 0.15)).toBe(true);
+    });
+
+    it(`L96 opening with one end exactly on the seam, sweep ${tag}2π`, () => {
+      const d = (Math.asin(0.5 / R) * 180) / Math.PI;
+      for (const ends of [
+        [onCircle(0), onCircle(2 * d)],
+        [onCircle(-2 * d), onCircle(0)],
+      ]) {
+        const mid = [(ends[0][0] + ends[1][0]) / 2, 1.5, (ends[0][1] + ends[1][1]) / 2];
+        const ms = faces(circleWall(sweep, { ends, center: [mid[0], mid[2]] }));
+        expect(onSurface(ms, mid, 0.15)).toBe(false);
+        expect(onSurface(ms, [mid[0], 0.5, mid[2]], 0.15)).toBe(true);
+        const far = onCircle(180);
+        expect(onSurface(ms, [far[0], 1.5, far[1]], 0.15)).toBe(true);
+        const other = ends[0][0] === 0 ? onCircle(-2 * d) : onCircle(2 * d);
+        expect(onSurface(ms, [other[0], 1.5, other[1]], 0.15)).toBe(true);
+      }
+    });
+
+    it(`L96 opening past half the circle goes the center's way round, sweep ${tag}2π`, () => {
+      // ends at 87° and 273°: the span the long way round (via 180°) is more
+      // than half, so length alone would wrap it through the seam at 0°
+      const ends = [onCircle(87), onCircle(273)];
+      const chordZ = R * Math.cos((87 * Math.PI) / 180);
+      const atChord = (y: number): number[] => [0, y, chordZ];
+      const viaFar = faces(circleWall(sweep, { ends, center: onCircle(180) }));
+      expect(onSurface(viaFar, atChord(1.5), 0.15)).toBe(false);
+      expect(onSurface(viaFar, atChord(0.5), 0.15)).toBe(true);
+      expect(onSurface(viaFar, [0, 1.5, R], 0.15)).toBe(true);
+      const far = onCircle(180);
+      expect(onSurface(viaFar, [far[0], 1.5, far[1]], 0.15)).toBe(false);
+      // same ends, center at the seam: the hole wraps through 0° instead
+      const viaSeam = faces(circleWall(sweep, { ends, center: onCircle(0) }));
+      expect(onSurface(viaSeam, atChord(1.5), 0.15)).toBe(false);
+      expect(onSurface(viaSeam, [0, 1.5, R], 0.15)).toBe(false);
+      expect(onSurface(viaSeam, [far[0], 1.5, far[1]], 0.15)).toBe(true);
+    });
+
+    it(`L97 seam reveals sit on the closing chord, sweep ${tag}2π`, () => {
+      const d = (Math.asin(0.5 / R) * 180) / Math.PI;
+      const center = onCircle(0);
+      const rv = circleWall(sweep, { ends: [onCircle(-d), onCircle(d)], center }).filter((m) => m.kind === "reveal");
+      const chordZ = R * Math.cos((d * Math.PI) / 180);
+      const sill = rv.filter((m) => m.normals[1] > 0.99);
+      const head = rv.filter((m) => m.normals[1] < -0.99);
+      const jambs = rv.filter((m) => Math.abs(m.normals[1]) < 1e-9);
+      expect([sill.length, head.length, jambs.length]).toEqual([1, 1, 2]);
+      for (const m of [...sill, ...head]) {
+        const c = centroid(m);
+        expect(c[0]).toBeCloseTo(0, 6);
+        expect(c[2]).toBeCloseTo(chordZ, 6);
+        // the reveal is as deep as the wall, across the chord
+        const zs = [];
+        for (let i = 2; i < m.positions.length; i += 3) zs.push(m.positions[i]);
+        expect(Math.max(...zs) - Math.min(...zs)).toBeCloseTo(0.2, 6);
+      }
+      for (const j of jambs) {
+        const c = centroid(j);
+        const toMid = [0 - c[0], chordZ - c[2]];
+        expect(j.normals[0] * toMid[0] + j.normals[2] * toMid[1]).toBeGreaterThan(0);
+        expect(Math.abs(j.normals[2])).toBeLessThan(1e-9);
+      }
+    });
+  }
+
+  it("L98 every resolved opening carries its own center", () => {
+    // the no-center branch of the wrap rule (a tie at exactly half a circle)
+    // is reachable only from synthetic OpeningGeo: resolve always sets it
+    const { report, ctx } = runCheck(demo());
+    expect(report.errors).toEqual([]);
+    const ops = (ctx.openings ?? []) as OpeningGeo[];
+    expect(ops.length).toBeGreaterThan(0);
+    for (const o of ops) {
+      expect(Number.isFinite(o.center[0]) && Number.isFinite(o.center[1])).toBe(true);
+    }
+  });
+
+  it("L98 an exact half circle goes the center's way round", () => {
+    const ends = [onCircle(90), onCircle(270)];
+    const far = onCircle(180);
+    const viaFar = faces(circleWall(2 * Math.PI, { ends, center: far }));
+    expect(onSurface(viaFar, [far[0], 1.5, far[1]], 0.15)).toBe(false);
+    expect(onSurface(viaFar, [0, 1.5, R], 0.15)).toBe(true);
+    const viaSeam = faces(circleWall(2 * Math.PI, { ends, center: onCircle(0) }));
+    expect(onSurface(viaSeam, [far[0], 1.5, far[1]], 0.15)).toBe(true);
+    expect(onSurface(viaSeam, [0, 1.5, R], 0.15)).toBe(false);
+  });
+
   // the demo flight runs from z 11.6 down to z 6 at x 0.95..1.85; the three
   // old lanes sat at x 0.951, 1.4 and 1.849
 
