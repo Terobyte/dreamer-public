@@ -39,7 +39,7 @@ def candidate(provider, **kw):
 def mediawiki(host, provider, query, n, fetch, always_false):
     from urllib.parse import urlencode
     q = urlencode({'action': 'query', 'generator': 'search', 'gsrnamespace': 6, 'gsrsearch': query,
-                   'gsrlimit': n, 'prop': 'imageinfo', 'iiprop': 'url|size|extmetadata', 'format': 'json'})
+                   'gsrlimit': n, 'prop': 'imageinfo', 'iiprop': 'url|size|extmetadata', 'iiurlwidth': 1280, 'format': 'json'})
     data = (fetch or http_fetch)(f'https://{host}/w/api.php?{q}' if provider == 'commons'
                                  else f'https://{host}/api.php?{q}')
     pages = (data.get('query') or {}).get('pages') or {}
@@ -49,7 +49,8 @@ def mediawiki(host, provider, query, n, fetch, always_false):
             md = ii.get('extmetadata') or {}
             val = lambda k: strip_html((md.get(k) or {}).get('value'))
             lic = val('LicenseShortName') or None
-            c = candidate(provider, url=ii.get('url'), page_url=ii.get('descriptionurl'),
+            # Wikimedia 429/400s bot downloads of originals; the API's own 1280px thumb is served
+            c = candidate(provider, url=ii.get('thumburl') or ii.get('url'), page_url=ii.get('descriptionurl'),
                           title=p.get('title'), width=ii.get('width'), height=ii.get('height'),
                           license=lic, license_url=val('LicenseUrl') or None,
                           author=val('Artist') or None,
