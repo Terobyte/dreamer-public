@@ -216,6 +216,13 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   let heldCut = -1;
   /** a held still frame that has not seen a head it holds for this long (s) is cut again (hiddenFor, recuts) */
   let hiddenFor = 0;
+  /** the frame last handed out, and how long a still one has left a standing head of its room off screen (Squidward
+   *  v19 155–159 s: SpongeBob walked 2.7 m to the table, the two-shot cut before it held both heads off its edges) */
+  let lastOut: DirectorOut | null = null;
+  let lostFor = 0;
+  let lostRecut = false;
+  /** one such cut per beat: a room too small for both would cut every 0.75 s */
+  let lostTried = false;
   let recuts = 0;
   let recut = false;
   let moveStart = 0;
@@ -348,6 +355,23 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         if (angleBetween(fd, faceBase.dir) > 30 || angleBetween(fd, toCam) > 90) forceCut = true;
       }
     }
+    lostRecut = false;
+    if (ev.kind !== "tick") lostTried = false;
+    if (ev.kind === "tick" && !lostTried && lastOut && !lastOut.end && plan !== null) {
+      const fy = inp.room.floorY ?? 0;
+      const lost = crew.some((a) => {
+        if (a.offstage || a.walking) return false;
+        const p = ndcOf(a.head ?? ([a.pos[0], fy + a.height * 0.93, a.pos[1]] as V3), lastOut!.cam, lastOut!.look, lastOut!.fov ?? 50, inp.aspect ?? 16 / 9);
+        return !(p.depth > 0.2 && Math.abs(p.x) <= 1.05 && Math.abs(p.y) <= 1.05);
+      });
+      lostFor = lost ? lostFor + (ev.dt ?? 0) : 0;
+      if (lostFor >= HIDDEN_RECUT_S && walkers.length === 0) {
+        lostFor = 0;
+        forceCut = true;
+        lostRecut = true;
+        lostTried = true;
+      }
+    } else lostFor = 0;
 
     // cut: "long" — alternating lines inside one running move do not cut it until asl.max has passed
     const holdPlan = holdBeat || moveMode && style.cut === "long" && !ev.forced && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
@@ -438,7 +462,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) moveCut = cutSeq;
     // "shoot rarely, shoot true" (accent styles): a beat that is not a scene start/end, an entrance, a look or a
     // spoken line gets the base planner's frame, the readable legacy wide of restage12
-    const mustCutBase = !!(t.first || t.last || t.enter) || key !== shownRoom;
+    const mustCutBase = !!(t.first || t.last || t.enter) || key !== shownRoom || lostRecut;
     const accentBeat = !!(t.first || t.last || t.enter || t.look) || ev.kind === "line";
     /** a frame holding a head the probe does not see (v22 21–24.6 s: the base two-shot, unblock found no clear point,
      *  held SpongeBob behind the chair backs 3.5 s): the base planner's frame is not kept, the move picker frames it */
@@ -726,7 +750,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   // the last word on every frame: no steep look down (capTilt), nobody in the room cut by its edge (cleanEdges)
   return {
     step: (inp: DirectorInput): DirectorOut =>
-      cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear }),
+      (lastOut = cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear })),
   };
 }
 
