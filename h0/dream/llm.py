@@ -59,7 +59,6 @@ FISH_DRAMA3_PROMO_PER_1M_BYTES = 10.0  # until 2026-11-12 17:00 UTC
 FISH_DRAMA3_LIST_PER_1M_BYTES = 50.0
 DRAMA3_PROMO_END = datetime.datetime(2026, 11, 12, 17, 0,
                                      tzinfo=datetime.timezone.utc)
-FISH_PER_1K_CHARS = FISH_PER_1M_BYTES / 1000.0  # per 1K UTF-8 bytes
 IMAGE_PER_PIC = 0.01
 PRICE_SOURCES = {
     SPARK_MODEL: "2026-10-27 https://dev.meta.ai/docs/pricing-rate-limits",
@@ -307,12 +306,6 @@ def _claude_cli(alias, system, messages, effort="minimal"):
     if done.returncode != 0:
         raise RuntimeError("claude -p failed: %s" % (done.stderr or done.stdout)[-300:])
     return done.stdout.strip()
-
-
-def _real_complete(model, effort, system, messages, max_tokens):
-    """Real Muse call (gate_test.py pattern, lazy key, stdlib only).
-    Spark Open goes to Baseten; if that fails, the call is made once on Spark 1.3 (Meta)."""
-    return RealTransport().complete(model, effort, system, messages, max_tokens)
 
 
 def _post(url, auth, model, effort, system, messages, max_tokens, temperature=None):

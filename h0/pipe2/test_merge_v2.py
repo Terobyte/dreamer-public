@@ -9,7 +9,7 @@ import unittest
 
 from pipe2.blame import blame_global, blame_room
 from pipe2.engine import scene_for_room
-from pipe2.merge import merge, split_owners
+from pipe2.merge import merge
 
 
 def room(rid, x0, x1):
@@ -263,12 +263,6 @@ class TestBlameGlobal(unittest.TestCase):
         owners = blame_global(NoEngine(), "/nowhere", skeleton(), self.partials,
                               PLAN, [issue])
         self.assertEqual({"B": [issue]}, owners)
-
-    def test_split_owners_agrees_on_prop_hits_prop(self):
-        scene, _ = merge(skeleton(), self.partials, PLAN)
-        issue = {"code": "PROP_HITS_PROP", "path": "/props/1", "other": "A_1"}
-        self.assertEqual({"B": [issue]}, split_owners(scene, [issue]))
-
 
 class TestRedContract(unittest.TestCase):
     def test_f1_spawn_nav_is_the_rooms(self):

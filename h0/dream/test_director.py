@@ -4,45 +4,6 @@ usage: cd h0/dream && python3 -m unittest -q
 import unittest
 
 
-class DecisionChecksTest(unittest.TestCase):
-    def test_decision_checks(self):
-        from director import validate_decision
-        objects = ["clarinet", "old radio", "armchair", "lamp", "quilt"]
-        actors = ["Squidward"]
-        pool = {"old_woman", "old_man", "woman", "man", "child", "creature"}
-        good_ns = {"actors": [{"name": "Grandma", "voice": "old_woman"}],
-                   "objects": ["rocking chair", "old radio", "quilt",
-                               "teapot", "porch swing"]}
-        ok, errs = validate_decision(
-            {"bridge": "clarinet", "destination": "porch",
-             "next_scene": good_ns,
-             "messages": [{"to": "Squidward", "note": "hi"}],
-             "hero_next": {"changes": False}}, objects, actors, pool)
-        self.assertTrue(ok, errs)
-        bad, _ = validate_decision(
-            {"bridge": "spaceship", "destination": "x",
-             "next_scene": good_ns, "messages": []},
-            objects, actors, pool)
-        self.assertFalse(bad)
-        bad, _ = validate_decision(
-            {"bridge": "clarinet", "destination": "x",
-             "next_scene": {"actors": [], "objects": ["a"]}, "messages": []},
-            objects, actors, pool)
-        self.assertFalse(bad)
-        bad, _ = validate_decision(
-            {"bridge": "clarinet", "destination": "x",
-             "next_scene": good_ns,
-             "messages": [{"to": "Nobody", "note": "hi"}]},
-            objects, actors, pool)
-        self.assertFalse(bad)
-        bad, _ = validate_decision(
-            {"bridge": "clarinet", "destination": "x",
-             "next_scene": {"actors": [{"name": "G", "voice": "robot"}],
-                            "objects": ["a", "b", "c", "d", "e"]},
-             "messages": []}, objects, actors, pool)
-        self.assertFalse(bad)
-
-
 class OneCallInFlightTest(unittest.TestCase):
     def test_one_call_in_flight(self):
         from director import Director

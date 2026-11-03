@@ -23,7 +23,6 @@ except ImportError:
     from .llm import call as llm_call
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CRAFT_PATH = os.path.join(HERE, "craft", "scene_writing.md")
 
 
 def craft_file(craft=None):

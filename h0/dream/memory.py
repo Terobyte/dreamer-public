@@ -116,7 +116,6 @@ class Memory:
         self._sel_thread_epoch = None
         self._sel_done_epoch = None
         self._decisions_dropped = 0
-        self._events_archived = 0
         self._archive_seq = 0
         self._merge_groups = None
         self._merge_summaries = {}
@@ -172,7 +171,6 @@ class Memory:
             n_drop = len(self.events) - EVENT_KEEP // 2
             self.save_episode_raw(self._next_archive_id("events_archive"),
                                   "\n".join(self.events[:n_drop]))
-            self._events_archived += n_drop
             del self.events[:n_drop]
 
     @synchronized
