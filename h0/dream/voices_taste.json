@@ -226,5 +226,52 @@
    "cy_share": 0.07
   },
   "note": "e2e run 3, row 6 (d0_s1.wav): 'был нормальным по идее' -- lukewarm yes; the library won that run"
+ },
+ {
+  "book": "The Tenement Stair",
+  "name": "Wee Jamie",
+  "brief": {
+   "sex": "child",
+   "gender": "boy",
+   "age": 8,
+   "accent": "Scottish (Glaswegian broad Scots)",
+   "pitch": "high",
+   "pace": "fast",
+   "texture": [
+    "thin",
+    "bright",
+    "nasal",
+    "sharp"
+   ],
+   "search": [
+    "scottish",
+    "scottish boy",
+    "glasgow",
+    "boy",
+    "young boy",
+    "child",
+    "kid",
+    "little boy"
+   ],
+   "why": "High-pitched, fast-paced broad Glaswegian Scots boy voice fits the scrawny, cheeky 8-year-old tenement kid described in the book and his cheeky Scots dialogue."
+  },
+  "picked": "Male. An eight-year-old Scottish boy from the Glasgow tenements, broad Glaswegian Scots accent. High youthful voice, thin and bright with crisp nasal sharpness, fast lively patter, cheeky and forward, bubbly and inquisitive, scrawny kid sound, never shy to answer back.",
+  "passed_over": [
+   "Male. An eight-year-old Glasgow boy with a strong broad Glaswegian Scots accent. High clear thin voice, bright and slightly nasal timbre, rapid quick-fire delivery, playful and impish, cheeky grin in the voice, energetic and bold, small and scrappy but full of swagger.",
+   "Male. An eight-year-old Scottish boy with a broad Glaswegian Scots accent. High-pitched thin bright voice with a sharp nasal edge, very fast chattering pace, cheeky and chirpy, animated and cocky, light and scrawny sounding, quick-witted and mischievous street-kid energy."
+  ],
+  "facts": {
+   "sex": {
+    "female": 0.99,
+    "male": 0.01,
+    "child": 0.0
+   },
+   "age": 58,
+   "f0": 271,
+   "pace_wps": 3.3,
+   "cy_share": 0.11,
+   "gate": null
+  },
+  "note": "user: pick 1 is right"
  }
 ]
