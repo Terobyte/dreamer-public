@@ -101,6 +101,8 @@ export interface Walk {
   act: "sit" | "idle";
   /** pose actually granted (only when one was requested) */
   pose?: string;
+  /** where else to stand when `target` has no route (stand_at: the far side, then the place's own spot) */
+  alts?: V2[];
   /** claims key this walk booked, if any */
   claim?: string;
   /** the finish yaw is the spot's own (a bed edge): a look target turns the head, not the body */
@@ -190,8 +192,8 @@ function beside(place: Place, from: V2): Walk {
   const side = (s: number): V2 => [place.at[0] + s * SIDE_M * px, place.at[1] + s * SIDE_M * pz];
   const d = (p: V2): number => Math.hypot(p[0] - from[0], p[1] - from[1]);
   const [l, rr] = [side(1), side(-1)];
-  const target = d(l) <= d(rr) ? l : rr;
-  return { place, target, yaw: place.kind === "sit" ? place.yaw : faceYaw(target), act: "idle" };
+  const [target, far] = d(l) <= d(rr) ? [l, rr] : [rr, l];
+  return { place, target, yaw: place.kind === "sit" ? place.yaw : faceYaw(target), act: "idle", alts: [far, place.at] };
 }
 
 /**

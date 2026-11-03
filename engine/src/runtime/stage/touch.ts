@@ -67,13 +67,25 @@ export function createToucher(c: ToucherCtx) {
       const lvl = d.level ?? from;
       (openCells[lvl] ??= []).push(...d.cells);
     }
-    const route = findStageRoute(c.levels, c.ramps, a.pos(), from, r.approach ?? r.target, to, {
+    const routeTo = (goal: V2) => findStageRoute(c.levels, c.ramps, a.pos(), from, goal, to, {
       obstacles: c.places.map((p) => ({ level: p.level, rect: p.obstacle })),
       openCells,
     });
+    let route = routeTo(r.approach ?? r.target);
+    // the near side shut off (Squidward v17: the living table's near side was the armchair): the far side, the spot
+    if (!route && !r.approach) for (const alt of r.alts ?? []) {
+      route = routeTo(alt);
+      if (route) {
+        r.target = alt;
+        if (!r.keepYaw && r.place.look) r.yaw = yawTo(alt, r.place.look);
+        break;
+      }
+    }
     if (!route) {
       // unreachable: stay, never walk through a wall or a shut door, and drop the booking (F6)
       releaseClaim(c.claims, before);
+      // said, not swallowed (Squidward v17 155 s: a goto to the living table came to nothing in silence)
+      c.warnings?.push(`stage: ${who} cannot reach "${name}" (no route) -> stays`);
       return "unreachable";
     }
     for (const k of Object.keys(c.claims)) if (c.claims[k] === who && k !== (r.claim ?? r.place.name)) delete c.claims[k];
