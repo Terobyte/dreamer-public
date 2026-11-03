@@ -772,6 +772,21 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
     if (outline.length >= 3 && !insideInset(outline, [c[0], c[2]])) continue;
     if (sees(c)) return { ...out, cam: c };
   }
+  // 2b) round the look point at 30°, nearest side first, the same flat reach (v14 66–85 s: the easel and a chair back
+  // stood on the frame's own line, the two-shot stayed 45° over the heads for 19 s)
+  const reachD = Math.max(flat, (y0 - L[1]) / tan);
+  const yR = L[1] + reachD * tan;
+  if (yR >= floorY + MIN_CAM_Y - 1e-9) {
+    const a0 = Math.atan2(u[1], u[0]);
+    for (let k = 1; k <= 6; k++) {  // up to 90°: the far half would cross the line between them
+      for (const sgn of [1, -1]) {
+        const a = a0 + sgn * k * (Math.PI / 12);
+        const c: V3 = [L[0] + Math.cos(a) * reachD, yR, L[2] + Math.sin(a) * reachD];
+        if (outline.length >= 3 && !insideInset(outline, [c[0], c[2]])) continue;
+        if (sees(c)) return { ...out, cam: c };
+      }
+    }
+  }
   // 3) the lowest clear height over the same spot: less steep, if not 30°
   for (let y = y0 + 0.15; y < cy - 1e-9; y += 0.15) if (sees([cx, y, cz])) return { ...out, cam: [cx, y, cz] };
   return out;
