@@ -216,6 +216,29 @@ describe("startStage with moves (r2, r7)", () => {
       globalThis.fetch = real;
     }
   });
+  it("r2: after a json() error the beat still reaches the director, unforced", async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (u: any, ...r: any[]) => (String(u).includes("moves.json") ? { ok: true, json: () => Promise.reject(new SyntaxError("bad json")) } : real(u, ...r))) as any;
+    (globalThis as any).window = new EventTarget();
+    try {
+      const { stage } = await stageWith({ stage: { moves: "shotplan/moves.json" }, cameraStyle: "storybook" });
+      stage.update(1 / 60, 0);
+      stage.handlers.line!({ type: "line", who: "Mirai", text: "a", source: "book", beat: 0, dur: 2 });
+      stage.update(0.6, 0.6);
+      const before = ((globalThis as any).window.__critic as any[]).length;
+      const calls = pickSpy.calls;
+      stage.handlers.line!({ type: "line", who: "Mirai", text: "hi", source: "book", beat: 1, dur: 2 });
+      stage.update(0.6, 1.2);
+      const rows = ((globalThis as any).window.__critic as any[]).slice(before);
+      expect(rows.length).toBeGreaterThan(0);
+      // the director picked the move itself (its own pickMove ran), nothing was forced
+      expect(pickSpy.calls).toBeGreaterThan(calls);
+      expect(stage.warnings().some((w: string) => w.startsWith("FORCED_FALLBACK"))).toBe(false);
+    } finally {
+      globalThis.fetch = real;
+      delete (globalThis as any).window;
+    }
+  });
   it("r2: a moves file holding JSON null is read and fails the shape check, not 'not readable'", async () => {
     const real = globalThis.fetch;
     globalThis.fetch = (async (u: any, ...r: any[]) => (String(u).includes("moves.json") ? { ok: true, json: async () => null } : real(u, ...r))) as any;
