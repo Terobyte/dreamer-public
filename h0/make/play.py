@@ -89,8 +89,13 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
     from fake import FakeTransport
     from voice import Voice, load_pool  # no network at import; Fish is only called by Voice.say
     objects = list(sj.get("objects") or [])
+    pp = run_dir / "stage" / "places.json"
+    places = json.loads(pp.read_text()).get("places") if pp.is_file() else None
+    # the sim's door events name the place ("bedroom door"), the engine keys its doors by id
+    door_ids = {q["name"]: q["id"] for q in places or []
+                if isinstance(q, dict) and q.get("kind") == "door" and q.get("name") and q.get("id")}
     run = run or sim.run
-    media, kw = None, {}
+    media, kw = None, ({"door_ids": door_ids} if door_ids else {})
     if not fake:
         media = {"voice": Voice(pool={**load_pool(), **(sj.get("voices") or {})})}
     dlg = None

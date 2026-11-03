@@ -313,6 +313,9 @@ class Sim:
         # 1.3: "Just now" is a queue per recipient -- the hero's is _hero_world,
         # every actor has his own, and a queue nobody owns reaches nobody
         self._hero_world = []
+        # door place name ("bedroom door", what the director and the fsm say) -> the engine's door id
+        # ("door1", what the engine keys doors by): a door event carries both, or it never swings
+        self.door_ids = {}
         self._pending = {}
         self._schedule = []
         # book -> freestyle: the book scenes still ahead, and whether the book's
@@ -700,6 +703,10 @@ class Sim:
         self._image_threads = []
 
     def _emit(self, event):
+        if event.get("type") == "door" and "id" not in event:
+            did = self.door_ids.get(event.get("object") or self.fsm.bridge)
+            if did:
+                event["id"] = did
         self._diagnostic(event)
         self.memory.add_event(event)
         kind = event.get("type")
@@ -2022,8 +2029,9 @@ class Sim:
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
         label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
-        freestyle=False, plan=None, no_build=False, on_outdir=None):
-    """plan: a ready book plan (make/play.py), run() does not load the book itself;
+        freestyle=False, plan=None, no_build=False, on_outdir=None, door_ids=None):
+    """door_ids: door place name -> engine door id (make/play.py from stage/places.json);
+    plan: a ready book plan (make/play.py), run() does not load the book itself;
     no_build: the world is one, the director may not send the dream anywhere else.
     serve=port (0 = any) starts the comic viewer on the live run (spec 11);
     the dream then goes on until "stop", the budget or a wake_up.
@@ -2071,6 +2079,7 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
             port = viewer.start(serve)
             print("dream viewer: http://localhost:%d/?run=%s" % (port, viewer.run), flush=True)
             sim.viewer = viewer
+        sim.door_ids = dict(door_ids or {})
         if on_sim is not None:
             on_sim(sim)
         if freestyle and plan is not None:
