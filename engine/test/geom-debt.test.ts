@@ -4,6 +4,9 @@ import { runCheck } from "../src/check.js";
 import { buildGeometry } from "../src/build/geometry.js";
 import { footprintsOverlap } from "../src/build/slab.js";
 import { azToPoint } from "../src/geom/arc.js";
+import { makeWalker } from "../src/runtime/walk.js";
+import { CELL, floorAtRooms, type NavLayer, type NavRamp } from "../src/nav/floor.js";
+import { buildNav } from "../src/nav/grid.js";
 import type { Mesh } from "../src/build/geometry.js";
 import { intervalMeshes } from "../src/build/walls.js";
 import type { WallRoom } from "../src/build/walls.js";
@@ -310,5 +313,51 @@ describe("geometry debt", () => {
     // a millimetre deeper than the chord and it counts
     const deeper = [at(chord - 1e-3, -0.02), at(r + 1, -0.02), at(r + 1, 0.02), at(chord - 1e-3, 0.02)];
     expect(footprintsOverlap(outline, deeper)).toBe(true);
+  });
+
+  it("L108 on a mezzanine the walker's layer and floor agree: no level hop without a flight", () => {
+    // intended: levels join only through flights (nav flood, routes); where
+    // the step window would let the floor drop to the other level, the layer
+    // (closest y) says the cell is not walkable and the capsule stays put
+    const n = Math.round(4 / CELL);
+    /** a 4×4 m layer walkable for x > x0 */
+    const grid = (level: string, y: number, x0: number): { layer: NavLayer; bits: Uint8Array } => {
+      const bits = new Uint8Array(Math.ceil((n * n) / 8));
+      for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) if ((i + 0.5) * CELL > x0) bits[(j * n + i) >> 3] |= 1 << ((j * n + i) & 7);
+      return { layer: { level, y, origin: [0, 0], w: n, h: n }, bits };
+    };
+    const l0 = grid("L0", 0, 0);
+    const l1 = grid("L1", 0.4, 2);
+    const floors = [
+      { y: 0, outline: [[0, 0], [4, 0], [4, 4], [0, 4]] as [number, number][] },
+      { y: 0.4, outline: [[2, 0], [4, 0], [4, 4], [2, 4]] as [number, number][] },
+    ];
+    // up on the mezzanine, walking off its edge: the floor 0.4 below is in
+    // the step window, the L1 layer is not walkable there
+    const up = makeWalker(l1.layer, l1.bits, floors, [2.5, 2], { layers: [l0], ramps: [] });
+    expect(up.pos()[1]).toBeCloseTo(0.4 + 1.6, 9);
+    for (let k = 0; k < 20; k++) up.tryMove(-0.05, 0);
+    expect(up.pos()[0]).toBeGreaterThan(2);
+    expect(up.pos()[1]).toBeCloseTo(0.4 + 1.6, 9);
+    // down below, walking under it: the L0 floor carries on, no climb to 0.4
+    const down = makeWalker(l0.layer, l0.bits, floors, [1, 2], { layers: [l1], ramps: [] });
+    for (let k = 0; k < 40; k++) down.tryMove(0.05, 0);
+    expect(down.pos()[0]).toBeCloseTo(3, 6);
+    expect(down.pos()[1]).toBeCloseTo(1.6, 9);
+  });
+
+  it("L109 inside a flight's footprint only the flight is floor, even with headroom under it", () => {
+    // spec "Навигация": the level floors under a ramp are ignored. Under the
+    // demo flight's top end (z 6.3, tread ~3.4 m up) the hall floor is out of
+    // reach; for stacked storeys this is a limit, not a bug
+    const { report, ctx } = runCheck(demo());
+    expect(report.errors).toEqual([]);
+    const nav = buildNav(ctx);
+    const floors = buildGeometry(ctx).floors.map((f) => ({ y: f.y, outline: f.outline as [number, number][] }));
+    const ramps = nav.ramps as NavRamp[];
+    expect(floorAtRooms(floors, 1.4, 6.3, 0, ramps)).toBe(null);
+    expect(floorAtRooms(floors, 1.4, 6.3, 0, [])).toBe(0);
+    // beside the footprint the hall floor is there as usual
+    expect(floorAtRooms(floors, 0.5, 6.3, 0, ramps)).toBe(0);
   });
 });
