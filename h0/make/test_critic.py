@@ -138,5 +138,40 @@ class Strict(unittest.TestCase):
         self.assertEqual(critic.run(write(sparse, events=[{"ms": 0, "type": "line", "who": "ann", "dur": 8}]), strict=True), 4)  # the second line runs past the last fact
 
 
+class WrittenFactsJudged(unittest.TestCase):
+    """L172: shot_clamped, bed_saw and dcut were written by the runtime and never read."""
+
+    def test_hanging_head_over_the_bed_is_bad(self):
+        f = good()
+        f[3]["bed_saw"] = {"who": "ann", "head": [0, 1.2, 0], "under": 0.6, "base": 0.5, "foot": [0, 0], "shift": 0, "t": 1}
+        m = critic.analyse(f, EVENTS, 10)
+        self.assertAlmostEqual(m["bed_float_m"], 0.6)
+        self.assertEqual(critic.verdict(m), 3)
+        f[3]["bed_saw"]["head"][1] = 0.75
+        self.assertEqual(critic.verdict(critic.analyse(f, EVENTS, 10)), 0)
+
+    def test_clamped_plan_frames(self):
+        f = good()
+        for x in f:
+            x["shot"] = "s1"
+        for x in f[:3]:
+            x["shot_clamped"] = True
+        m = critic.analyse(f, EVENTS, 10)
+        self.assertEqual((m["clamped_frames"], m["plan_frames"]), (3, 20))
+        self.assertEqual(critic.verdict(m), 0)
+        for x in f[:10]:
+            x["shot_clamped"] = True
+        self.assertEqual(critic.verdict(critic.analyse(f, EVENTS, 10)), 3)
+
+    def test_director_mean_plan(self):
+        f = good()
+        for i, x in enumerate(f):
+            x["dcut"] = i // 5
+        m = critic.analyse(f, EVENTS, 10)
+        self.assertAlmostEqual(m["director_asl_s"], 9.5 / 4, places=2)
+        self.assertIn("director mean plan", critic.summary(m))
+        self.assertIsNone(critic.analyse(good(), EVENTS, 10)["director_asl_s"])
+
+
 if __name__ == "__main__":
     unittest.main()
