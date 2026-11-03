@@ -28,6 +28,7 @@ def main(argv=None):
     ap.add_argument("--scene", help="scene id in book.json")
     ap.add_argument("--freestyle", action="store_true", help="book -> improvised scene (sim freestyle)")
     ap.add_argument("--lang", choices=["en", "ru"], default="en", help="ru: Spark translates the score")
+    ap.add_argument("--camera-style", help="camera style id for the shotplan stage (e.g. ozu)")
     a = ap.parse_args(argv)
     run = Path(a.run) if a.run else RUNS / time.strftime("%Y%m%d-%H%M%S")
     try:
@@ -35,7 +36,8 @@ def main(argv=None):
                             fresh=a.fresh, fake=a.fake, check=a.check,
                             max_dollars=a.max_dollars, split=a.split,
                             effort=a.effort, pick=a.pick, mesh=a.mesh,
-                            book=a.book, scene=a.scene, freestyle=a.freestyle, live=True, lang=a.lang)
+                            book=a.book, scene=a.scene, freestyle=a.freestyle, live=True, lang=a.lang,
+                            camera_style=a.camera_style)
     except (core.MissingInput, core.LockError) as e:
         print(e, file=sys.stderr)
         return 1

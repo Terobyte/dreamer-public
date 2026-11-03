@@ -59,9 +59,17 @@ def _dist(a, b):
 
 
 def shots(facts):
-    """Runs of facts of one plan with no camera cut between them."""
+    """Runs of facts of one plan with no camera cut between them. The runtime's `dcut` (or `shot`) id
+    decides when present; older critic.jsonl falls back to plan + camera jump."""
     out = []
+    key = next((k for k in ("dcut", "shot") if any(k in f for f in facts)), None)
     for f in facts:
+        if key:
+            if out and out[-1][-1].get(key) == f.get(key):
+                out[-1].append(f)
+            else:
+                out.append([f])
+            continue
         if out and out[-1][-1].get("plan") == f.get("plan") and _dist(out[-1][-1]["cam"], f["cam"]) <= JUMP_M:
             out[-1].append(f)
         else:

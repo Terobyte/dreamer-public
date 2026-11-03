@@ -54,7 +54,7 @@ class TestManifestHash(Base):
         self.make()
         m = self.manifest()
         self.assertEqual(m["prompt"], "p")
-        for sid in ("brief", "refs", "world", "cast", "story", "stage"):
+        for sid in ("brief", "refs", "world", "cast", "story", "stage", "shotplan"):
             self.assertEqual(m["stages"][sid]["status"], "ok", sid)
             self.assertEqual(len(m["stages"][sid]["input_hash"]), 64)
             self.assertTrue((self.run_dir / sid).is_dir())
@@ -81,19 +81,19 @@ class TestManifestHash(Base):
         self.calls.clear()
         (self.run_dir / "refs" / "marker.txt").write_text("edited")
         self.make()
-        self.assertEqual(sorted(self.calls), ["cast", "stage", "story", "world"])
+        self.assertEqual(sorted(self.calls), ["cast", "shotplan", "stage", "story", "world"])
 
     def test_version_bump(self):
         self.make()
         self.calls.clear()
         self.make(stages=self.stages(cast={"version": 99}))
-        self.assertEqual(sorted(self.calls), ["cast", "stage"])
+        self.assertEqual(sorted(self.calls), ["cast", "shotplan", "stage"])
 
     def test_fake_flag_in_params(self):
         self.make()
         self.calls.clear()
         self.make(fake=True)
-        self.assertEqual(len(self.calls), 6)
+        self.assertEqual(len(self.calls), 7)
 
 
 class TestFailure(Base):
@@ -145,7 +145,7 @@ class TestSelection(Base):
         self.make()
         self.calls.clear()
         self.make(from_="story")
-        self.assertEqual(sorted(self.calls), ["stage", "story"])
+        self.assertEqual(sorted(self.calls), ["shotplan", "stage", "story"])
 
     def test_only_missing_input(self):
         with self.assertRaises(core.MissingInput) as cm:

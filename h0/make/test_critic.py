@@ -138,5 +138,27 @@ class Strict(unittest.TestCase):
         self.assertEqual(critic.run(write(sparse, events=[{"ms": 0, "type": "line", "who": "ann", "dur": 8}]), strict=True), 4)  # the second line runs past the last fact
 
 
+class TestShotsDcut(unittest.TestCase):
+    """r11: the runtime writes `dcut` (or `shot`) per fact; without them the old heuristic stays."""
+
+    def test_r11_same_plan_different_dcut_is_two_shots(self):
+        f = [dict(fact(i * 0.5, plan="close"), dcut=0 if i < 3 else 1) for i in range(6)]
+        self.assertEqual([len(s) for s in critic.shots(f)], [3, 3])
+
+    def test_r11_camera_move_inside_dcut_does_not_cut(self):
+        f = [dict(fact(i * 0.5, plan="close", cam=(i * 5, 1.5, 4)), dcut=7) for i in range(4)]
+        self.assertEqual([len(s) for s in critic.shots(f)], [4])
+
+    def test_r11_shot_field_groups_when_no_dcut(self):
+        f = [dict(fact(i * 0.5, plan="close"), shot=i // 2) for i in range(4)]
+        self.assertEqual([len(s) for s in critic.shots(f)], [2, 2])
+
+    def test_r11_old_format_unchanged(self):
+        f = [fact(0, plan="close"), fact(0.5, plan="close", cam=(9, 1.5, 4)), fact(1, plan="two", cam=(9, 1.5, 4))]
+        self.assertEqual([len(s) for s in critic.shots(f)], [1, 1, 1])
+        g = [fact(0, plan="close"), fact(0.5, plan="close")]
+        self.assertEqual([len(s) for s in critic.shots(g)], [2])
+
+
 if __name__ == "__main__":
     unittest.main()

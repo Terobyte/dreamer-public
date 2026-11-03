@@ -27,8 +27,8 @@ critic_code = 0  # worst critic exit code of the last film() run
 END = ("book_end", "stop")
 
 
-def page_url(run_dir, static_port, sim_port):
-    return static_url(run_dir, static_port, sim_port) + "&film=1"
+def page_url(run_dir, static_port, sim_port, camera_style=None):
+    return static_url(run_dir, static_port, sim_port) + "&film=1" + (f"&camera_style={camera_style}" if camera_style else "")
 
 
 def mux_cmd(video, events, sim_outdir, dst):
@@ -111,7 +111,7 @@ def _record(cmd, play, poll_s=1.0):
             rec.wait()
 
 
-def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
+def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en", camera_style=None):
     """One run -> dst mp4 with sound. Raises when the page never reaches book_end/stop."""
     import json
     run_dir = Path(run_dir).resolve()
@@ -127,7 +127,7 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
     try:
         q = _lines(play)
         _next(q, lambda l: l.startswith("http://"), 60)
-        url = page_url(run_dir, static_port, sim_port)
+        url = page_url(run_dir, static_port, sim_port, camera_style)
         code = _record(["node", "bin/record.mjs", url, str(rec), str(max_s), size], play)
         if code != 0:
             raise RuntimeError(f"record.mjs exit {code}: the scene did not reach its end in {max_s}s")
@@ -154,7 +154,7 @@ def _video_duration(p):
         return None
 
 
-def film(runs, out, max_s=600, size="1280x720", lang="en", strict=False):
+def film(runs, out, max_s=600, size="1280x720", lang="en", strict=False, camera_style=None):
     """Returns the output path; the critic's worst exit code (0, or 3/4 under strict) lands in film.critic_code."""
     global critic_code
     critic_code = 0
@@ -162,7 +162,7 @@ def film(runs, out, max_s=600, size="1280x720", lang="en", strict=False):
     parts = []
     for i, run in enumerate(runs):
         print(f"film: scene {i + 1}/{len(runs)} {run}", flush=True)
-        parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size, lang))
+        parts.append(record_scene(run, out.with_name(f"{out.stem}.{i + 1:02d}.mp4"), max_s, size, lang, camera_style))
         jl = Path(run).resolve() / "film" / "critic.jsonl"
         if jl.exists():
             critic_code = max(critic_code, critic.run(jl, strict=strict, duration=_video_duration(parts[-1])))
@@ -186,9 +186,10 @@ def main(argv=None):
     ap.add_argument("--max", type=int, default=600, help="seconds per scene before giving up")
     ap.add_argument("--size", default="1280x720")
     ap.add_argument("--lang", choices=["en", "ru"], default="en")
+    ap.add_argument("--camera-style", help="camera style id passed to the page")
     ap.add_argument("--strict", action="store_true", help="exit 3 when the critic finds a bad film, 4 on CRITIC_GAPS")
     a = ap.parse_args(argv)
-    film(a.runs, a.out, a.max, a.size, lang=a.lang, strict=a.strict)
+    film(a.runs, a.out, a.max, a.size, lang=a.lang, strict=a.strict, camera_style=a.camera_style)
     return critic_code if a.strict else 0
 
 
