@@ -5,17 +5,24 @@
  * It does not import `three` itself (app/AGENTS.md): classes come from `@iwsdk/core`.
  */
 import {
+  BufferAttribute,
+  BufferGeometry,
   Color,
   Group,
   LocomotionEnvironment,
   LocomotionSystem,
   Mesh,
+  MeshBasicMaterial,
   Vector3,
   createSystem,
   type World,
 } from '@iwsdk/core';
 import { TONE, buildWorld } from '../../engine/src/runtime/world.js';
 import { navBit } from '../../engine/src/nav/floor.js';
+import { buildFence } from '../../engine/src/nav/fence.js';
+
+/** IWSDK capsule radius (F11); the engine nav is already eroded by its own 0.25 m */
+const FENCE_INSET_M = 0.5;
 
 export interface DreamerXrReport {
   oneThree: boolean;
@@ -27,6 +34,12 @@ export interface DreamerXrReport {
   /** [x, y, z] in metres */
   player: number[];
   offNav: number;
+  /** how many times the host placed the player (spawn only; the fence needs no push-back) */
+  setPlayerCalls: number;
+  /** X3 acceptance: each door's width, nav cells at the doorway, and whether IWSDK's 1.0 m / 2.0 m capsule passes */
+  passages: Array<{ id: string; width: number; height: number; cells: number; xrOk: boolean }>;
+  /** frames where the player moved against the previous frame's direction along Z (push-back / jitter) */
+  reversals: number;
   ready: boolean;
   error: string;
 }
@@ -40,6 +53,9 @@ const report: DreamerXrReport = {
   spawn: [],
   player: [],
   offNav: 0,
+  setPlayerCalls: 0,
+  passages: [],
+  reversals: 0,
   ready: false,
   error: '',
 };
@@ -97,12 +113,27 @@ async function host(world: World, base: string): Promise<void> {
   const rootEntity = world.createTransformEntity(ew.root);
   for (const o of ew.shell) world.createTransformEntity(o, { parent: rootEntity }).addComponent(LocomotionEnvironment);
   report.shell = ew.shell.length;
+  for (const d of (ew.built?.doors ?? []) as Array<{ id: string; width: number; height: number }>) {
+    const cells = ((ew.nav?.doors ?? {})[d.id]?.cells ?? []).length;
+    report.passages.push({ id: d.id, width: d.width, height: d.height, cells, xrOk: d.width >= 1.0 && d.height >= 2.0 && cells > 0 });
+  }
+  // the engine nav as geometry (X3): fence walls around everything the nav forbids, so the locomotor
+  // stops the player itself and nothing has to push back per frame. Invisible, the locomotor ignores `visible` (F12).
+  const fence = buildFence(ew.nav, FENCE_INSET_M);
+  if (fence.length > 0) {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(fence, 3));
+    const fm = new Mesh(g, new MeshBasicMaterial());
+    fm.visible = false;
+    world.createTransformEntity(fm, { parent: rootEntity }).addComponent(LocomotionEnvironment);
+  }
 
   const { x, floorY, z, yawDeg } = ew.spawn;
   // engine yaw 0 faces +Z, a three Object3D faces -Z, hence + PI (F5)
   world.player.rotation.y = (yawDeg * Math.PI) / 180 + Math.PI;
   const loco = world.getSystem(LocomotionSystem);
   loco?.setPlayerPosition(new Vector3(x, floorY, z));
+  report.setPlayerCalls++;
   report.spawn = [x, floorY, z, yawDeg];
   // F16: player is the real player position, not a spawn copy
   report.player = [world.player.position.x, world.player.position.y, world.player.position.z];
@@ -133,6 +164,8 @@ async function host(world: World, base: string): Promise<void> {
   }
   const NavGuard = class extends createSystem({}) {
     private fy = floorY;
+    private prevZ = NaN;
+    private prevDz = 0;
     update() {
       const p = world.player.position;
       const x = p.x;
@@ -183,6 +216,15 @@ async function host(world: World, base: string): Promise<void> {
         if (walkable) this.fy = best.layer.y;
       }
       if (!walkable) report.offNav++;
+      // every-frame jitter probe: the sign of the Z step flips against the last non-zero step
+      if (this.prevZ === this.prevZ) {
+        const dz = z - this.prevZ;
+        if (dz !== 0) {
+          if (this.prevDz * dz < 0) report.reversals++;
+          this.prevDz = dz;
+        }
+      }
+      this.prevZ = z;
       report.player[0] = x;
       report.player[1] = p.y;
       report.player[2] = z;

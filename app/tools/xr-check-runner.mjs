@@ -60,7 +60,11 @@ try {
     browserCode = enter.status ?? 1;
     browserSignal = enter.signal;
   } else {
+    // X3: hold the stick forward during the in-session pass; xr-check.mjs samples the walk for 8 s
+    process.env.XR_WALK = '1';
+    run(`iwsdk xr set-gamepad-state --input-json '{"device":"controller-left","axes":[{"index":0,"value":0},{"index":1,"value":-1}]}'`, { stdio: 'pipe', encoding: 'utf8' });
     const br = run('iwsdk browser run tools/xr-check.mjs', { stdio: 'pipe', encoding: 'utf8' });
+    run(`iwsdk xr set-gamepad-state --input-json '{"device":"controller-left","axes":[{"index":0,"value":0},{"index":1,"value":0}]}'`, { stdio: 'pipe', encoding: 'utf8' });
     if (br.stdout) process.stdout.write(br.stdout);
     if (br.stderr) process.stderr.write(br.stderr);
     browserSignal = br.signal;

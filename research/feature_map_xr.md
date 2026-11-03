@@ -18,3 +18,11 @@
 | небо, земля, солнце улицы | `addOutdoor(def, groundMaterial)` в `outdoor.ts` → `{ objects, background }`, в сцену не пишет |
 | выбрать мир `?world=` → `localStorage` → `VITE_DREAMER_WORLD` | `pickWorld()` в `app/src/engine-host.ts` |
 | проверить мир в IWSDK без железа | `app/tools/xr-check.mjs` под `iwsdk browser run` + `app/tools/xr-check-runner.mjs` (`npm run xr:check`) — `oneThree`, GLB, спавн, `sessionActive` |
+
+| Модуль | Что делает |
+|---|---|
+| `engine/src/nav/fence.ts` | `buildFence(nav, insetM)` → `Float32Array` треугольников (9 float): забор по границе проходимо/непроходимо каждого слоя `nav.json` со сдвигом на `insetM`; двери проходимы, рампы — только центральная полоса (`rampWalkable`) |
+
+| Нужно | Используй |
+|---|---|
+| отдать нав локомотору IWSDK как геометрию (без отката стражем) | `buildFence(nav, 0.5)` из `nav/fence.ts` → невидимый меш с `LocomotionEnvironment` (`engine-host.ts`) |
