@@ -5,7 +5,7 @@ import { buildGeometry } from "../src/build/geometry.js";
 import { footprintsOverlap } from "../src/build/slab.js";
 import { azToPoint } from "../src/geom/arc.js";
 import { makeWalker } from "../src/runtime/walk.js";
-import { CELL, floorAtRooms, type NavLayer, type NavRamp } from "../src/nav/floor.js";
+import { CELL, floorAtRooms, navBit, type NavLayer, type NavRamp } from "../src/nav/floor.js";
 import { buildNav } from "../src/nav/grid.js";
 import type { Mesh } from "../src/build/geometry.js";
 import { intervalMeshes } from "../src/build/walls.js";
@@ -359,5 +359,42 @@ describe("geometry debt", () => {
     expect(floorAtRooms(floors, 1.4, 6.3, 0, [])).toBe(0);
     // beside the footprint the hall floor is there as usual
     expect(floorAtRooms(floors, 0.5, 6.3, 0, ramps)).toBe(0);
+  });
+
+  it("L110 no walkable cell beside a flight is within the link radius of its foot or exit", () => {
+    // the link takes any cell within 0.3 m of the foot (exit) whatever side
+    // it comes from, but the side rail strips (solid in nav with or without
+    // a rail mesh) and the eroded cut leave only cells in front of the foot
+    // and past the exit there: a side approach cannot happen
+    for (const width of [0.9, 0.6, 0.5]) {
+      for (const rail of [true, false]) {
+        const raw = demo();
+        raw.stairs[0].width = width;
+        raw.stairs[0].rail = rail;
+        const { report, ctx } = runCheck(raw);
+        expect(report.errors).toEqual([]);
+        const nav = buildNav(ctx);
+        const r = (nav.ramps as NavRamp[])[0];
+        const foot = r.axis.from;
+        const exit: [number, number] = [foot[0], foot[1] - r.axis.len]; // dir 180: up is -z
+        const sOf = (z: number): number => foot[1] - z;
+        const checks: Array<[string, [number, number], (s: number) => boolean]> = [
+          ["L0", foot, (sv) => sv > 1e-9],
+          ["L1", exit, (sv) => sv < r.axis.len - 1e-9],
+        ];
+        for (const [level, at, wrongSide] of checks) {
+          const layer = (nav.layers as NavLayer[]).find((l) => l.level === level)!;
+          const bits = new Uint8Array(Buffer.from(String(layer.bits), "base64"));
+          for (let j = 0; j < layer.h; j++) {
+            for (let i = 0; i < layer.w; i++) {
+              const cx = layer.origin[0] + (i + 0.5) * CELL;
+              const cz = layer.origin[1] + (j + 0.5) * CELL;
+              if (Math.hypot(cx - at[0], cz - at[1]) > 0.3 || !navBit(layer, bits, cx, cz)) continue;
+              expect(wrongSide(sOf(cz)) && Math.abs(cx - foot[0]) > width / 2 - 0.25, `${level} ${width} ${rail} (${cx}, ${cz})`).toBe(false);
+            }
+          }
+        }
+      }
+    }
   });
 });
