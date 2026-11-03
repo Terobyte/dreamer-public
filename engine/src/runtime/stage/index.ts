@@ -1364,7 +1364,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const onstageSorted = sorted.filter((a) => !offstageActors.has(a.who));
       if (ev.kind === "line" && ev.speaker) focus = (!offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? onstageList.find((a) => a.speaking()) ?? onstageSorted[0] ?? sorted[0];
       else if (ev.kind === "narrator") focus = (ev.about && !offstageActors.has(ev.about) ? list.find((a) => a.who === ev.about) : undefined) ?? onstageSorted[0] ?? sorted[0];
-      else focus = onstageList.find((a) => a.speaking()) ?? (ev.speaker && !offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? (lastSpeaker && !offstageActors.has(lastSpeaker) ? list.find((a) => a.who === lastSpeaker) : undefined) ?? onstageSorted[0] ?? sorted[0];
+      else {
+        focus = onstageList.find((a) => a.speaking()) ?? (ev.speaker && !offstageActors.has(ev.speaker) ? list.find((a) => a.who === ev.speaker) : undefined) ?? (lastSpeaker && !offstageActors.has(lastSpeaker) ? list.find((a) => a.who === lastSpeaker) : undefined) ?? onstageSorted[0] ?? sorted[0];
+        // a tick stays in the camera's room while someone is there (v31 152.5 s: in with SpongeBob, back out to
+        // Squidward, the last speaker, still on the street, in again with him half a second later)
+        const roomOfFocus = (a: Actor): string | undefined => roomOfActor(a, toucher.levelOf(a.who))?.room;
+        if (ev.kind === "tick" && camRoom && focus && !focus.speaking() && roomOfFocus(focus) !== camRoom) focus = onstageSorted.find((a) => roomOfFocus(a) === camRoom) ?? focus;
+      }
       focus ??= onstageSorted[0] ?? sorted[0];
       if (!focus) {
         if (!queued.length) return;

@@ -117,6 +117,15 @@ describe("director plan rules", () => {
     const stay = m.step(tick(0.1), [A({ walking: true, room: "other", pos: [3, 4] }), B()]);
     expect(stay.cut).toBe(after.cut);
   });
+  // v31 152.5–153.5 s: SpongeBob in through the door (cut in), a tick went back out to Squidward, the last speaker,
+  // still on the street (cut out), and he came in half a second later (cut in): three cuts in a second
+  it("a tick stays in the room the camera is in while someone is there", () => {
+    const m = mk();
+    m.step(line("b"), [A({ room: "out" }), B({ room: "out" })]);
+    const inside = m.step({ kind: "walk", speaker: "a", dt: 0.5 }, [A({ room: "in", walking: true }), B({ room: "out", walking: true })]);
+    const t = m.step(tick(0.5), [A({ room: "in", walking: true, pos: [9, 10.3] }), B({ room: "out", walking: true })]);
+    expect(t.cut).toBe(inside.cut);
+  });
   it("low only when the speaker is taller than the listener", () => {
     const seen = (sh: number, lh: number) => {
       const m = mk(7);

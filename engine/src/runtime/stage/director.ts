@@ -281,7 +281,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     }
     const named = ev.kind === "line" || ev.kind === ("walk" as string) ? all.find((a) => a.name === ev.speaker) : undefined;
     // narrator always pivots on the first actor by name, never on the stored focus (F1)
-    const pivot = ev.kind === "narrator" ? (all.find((a) => a.name === ev.about) ?? all[0]) : (named ?? all.find((a) => a.name === focus) ?? all[0]);
+    // a tick stays in the room the camera is in while someone is there (v31 152.5 s: in with SpongeBob, out to
+    // Squidward on the street, in again with him half a second later)
+    const keyOf = (a: DActor): string => `${a.level ?? ""}|${a.room ?? ""}`;
+    const focused = all.find((a) => a.name === focus);
+    const stay = !named && ev.kind !== "narrator" && roomKey !== null && (!focused || keyOf(focused) !== roomKey) ? all.find((a) => keyOf(a) === roomKey) : undefined;
+    const pivot = ev.kind === "narrator" ? (all.find((a) => a.name === ev.about) ?? all[0]) : (named ?? stay ?? focused ?? all[0]);
     // the room of the speaker (narrator: of the first actor); other rooms/levels are not in the frame
     // a lying/seated actor off every level (feet above the floor) is still in the room (k17_dbg: Mirai on the bed)
     const crew = all.filter((a) => a.room === pivot.room && (a.level === pivot.level || a.level === null || pivot.level === null));
