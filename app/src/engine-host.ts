@@ -137,9 +137,9 @@ export async function hostEngineWorld(world: World, base: string): Promise<void>
   // hybrid: IWSDK's physics locomotor gets only the shell (floors stand the
   // player, walls stop it); furniture stays out of it, or the player steps up
   // onto the bed. Where you may stand among props is the engine nav's call.
-  world.createTransformEntity(engineGroup);
+  const rootEntity = world.createTransformEntity(engineGroup);
   const shell = engineGroup.children.filter((o) => ['floor', 'wall', 'cap'].includes(o.userData.kind));
-  for (const o of shell) world.createTransformEntity(o).addComponent(LocomotionEnvironment);
+  for (const o of shell) world.createTransformEntity(o, { parent: rootEntity }).addComponent(LocomotionEnvironment);
   report.shell = shell.length;
 
   // engine nav: the same walker the desktop page uses, here only as a judge

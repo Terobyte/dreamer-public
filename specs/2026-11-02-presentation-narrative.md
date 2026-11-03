@@ -131,10 +131,16 @@
 | 0:00–0:15 | Реальный я, диван, своя комната | Every day we hear it: AI is coming for our jobs. A month ago it came for mine. And honestly? I never wanted that job. I wanted to write songs. Make albums. |
 | 0:15 | **Щелчок** → комната и я в 3D, сижу | — (звук щелчка, тишина 1 сек) |
 | 0:16–0:35 | 3D я на диване | So what if AI isn't the end of us? What if it's the co-pilot of our freedom? This is Dreamer. You say what you want — and a world is built around you. A book. A place. Someone to talk to. |
-| 0:35–0:55 | Встаю → свайпы: спальня Кошакан → Торнфилд → улица Семея → … | Ask anyone on the street what they'd do if money didn't matter. Nobody says "my job". They say: grow flowers. Paint. Write songs. AI has no passion. We do. |
+| 0:35–0:55 | Встаю → свайпы, в каждом мире мой 3D-аватар живёт другую жизнь, ~3 сек на мир: сад, поливаю цветы → пиратский корабль, штурвал → сцена/студия, читаю рэп (держу кадр дольше) | Four out of five people don't care about their job. Ask them what they'd do if money didn't matter. Grow flowers. Sail away. Make music. AI has no passion. We do. |
 | 0:55–1:05 | Последний свайп → белая комната, свет, стол | So this is where I direct it all. |
 | 1:05–1:45 | «Book.» → книга в комнате, открывается, мир перестраивается в Кошакан; мама говорит свою строку | This is Koshakan — a real book by a real author. One word, and the story is around me. The characters move, speak, remember. A director keeps the scene alive — like The Truman Show, but you're the one who's free. |
 | 1:45–2:05 | «Talk.» → Рочестер (Jane Eyre), короткий спор | Or I just talk. Mr. Rochester has opinions. |
 | 2:05–2:30 | **Песня Meta** — склейка, каждое слово = кадр работы модели | Muse Spark directs. Muse Image paints. SAM 3D builds. SAM 3D Body moves. Muse Voice listens. Built on Meta, end to end. Give it a Meta video model — and it runs on Meta's servers tomorrow. |
 | 2:30–2:50 | Выход из сцены, в руках артефакт (книга/история/песня) | And when you leave, you don't leave empty-handed. You take the story with you. The scene. The song you finally wrote. |
 | 2:50–3:00 | Снова диван (3D), титр DREAMER | AI doesn't take our passion. It makes room for it. Dreamer. |
+
+### 2026-11-02 — Интервью: поиск
+- Готовых чужих уличных интервью «если бы деньги не важны» как клипа нет; брать чужие — риск (лица реальных людей + маркетинговая лицензия), как Сквид. Alan Watts «What if money was no object» — аудио под копирайтом, не брать.
+- Факт для голоса: Gallup State of the Global Workplace — в 2025 вовлечены только 20% работников мира (4 из 5 — нет).
+- Вариант строки на 0:35: "Four out of five people on Earth don't care about their job. Ask them what they'd do if money didn't matter…"
+- ~~Снять улицу~~ — я в Кембридже (MA), не в Семее. Вместо интервью: свайпы = мой 3D-аватар в альтернативных жизнях (цветы → пират → рэп). Рэп последним: рифма с хуком «write songs» и финалом «the song you finally wrote».
