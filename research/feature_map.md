@@ -127,7 +127,8 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `runtime/doors.ts` | дверь вращается вокруг петли, блокирует клетки nav, «касание» лучом | `makeDoor`, `touchTarget`, `setCells`, `sweepOf`, `TURN_S 0.6`, `TOUCH_M 1.2` | `door-runtime`, `door-blockers` |
 | `runtime/cams.ts` | выбор камеры страницы (walk / cam / top) | `pickCamera`, `yawDir`, `lookDir` | `cams.test.ts` |
 | `runtime/outdoor.ts` | небо-купол + круглая земля с затуханием | `addOutdoor` | `browser/outdoor.test.ts` |
-| `runtime/bridge.ts` | sim <-> engine: SSE `/events` sim -> `StageHandlers {line,narrator,touch,mode,story,start,stage}`; алиасы `snapshot->mode`, `schedule/event->story`; обратно `simPost` | `createBridge`, `connectSim`, `simPost` | `stage-bridge.test.ts` |
+| `runtime/bridge.ts` | sim <-> engine: SSE `/events` sim -> `StageHandlers {line,narrator,touch,mode,story,start,stage,book_end,idea,director_ack}`; алиасы `snapshot->mode`, `schedule/event->story`; обратно `simPost` | `createBridge`, `connectSim`, `simPost` | `stage-bridge.test.ts` |
+| `runtime/operator.ts` | D2: панель оператора (раскладка A) при `?operator=1`: строка промпта внизу, справа очередь идей с кнопкой удаления и лента `director_ack`; поле игрока по Tab (`source: headset`); текст → `POST /event {kind:draft}` → `{kind:idea}`; `GET /ideas` при подключении | `mountOperator`, `mountHeadsetField`, `createOperatorModel`, `submitCommand` | `operator-panel.test.ts` |
 
 ### 2.5 engine/ runtime/stage (книжная сцена: актёры, камера, жизнь)
 
@@ -205,6 +206,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | файл | что делает | ключевое | данные | тесты |
 |---|---|---|---|---|
 | `sim.py` (2353 стр.) | главный цикл: сцена, FSM стройки, режиссёр async, диалог, Fish, Muse Image, лог, книга, freestyle, safety, POV | `run(...)`, `Sim`, `use_scene`, `load_profile`, `_load_book_plan`, `seed_start`, `line_duration`, `verify_run`, `Logger`; события `line, narrator, touch, goal, schedule, story, book, book_end, mode, snapshot, cost, safety_pause, loop_cut, turn_skip, transition, stop...` | `h0/out/dream/<profile>/<run>/log.jsonl`, wav, png | `test_sim`, `test_bugs_sim_*`, `test_phase1_*` |
+| `ideas.py` | D2: очередь идей оператора/шлема: `pending→consulting→held/firing→done/failed/dropped`, `retry_at` 10 с, ≤5 `hold`, `now:true`, одна идея за консалт, `not_delivered` 3 с, гонки удаления; события `idea {op}` и `director_ack` в журнал (SSE). Sim: `post_idea`, `drop_idea`, `effect_ack`, `clean_draft` (роль `idea`, срок 8 с → `clean_failed`), `ideas_state`, `_idea_step` в тике; server: `POST /event kind draft|idea|idea_drop|effect_ack`, `GET /ideas` | `IdeaQueue` | в памяти, журнал `log.jsonl` | `test_ideas_queue`, `test_ideas_server` |
 | `director.py` | LLM-директор: 1 вызов в полёте, очередь событий, `validate_decision`, `seed_scene` | `Director.consult_async/drain_events/wait`, `validate_decision`, `seed_scene` | — | `test_director`, `test_bugs_director` |
 | `dialogue.py` | реплики героя/актёров, судья, рассказчик, память мыслей `Mind`, замок на строку (`lock_line`), петли (`loop_items`, `count_action_loops`), поиск объектов/имён в тексте | `Dialogue.hero_line/actor_line/judge/narrate/compact/new_scene`, `remarks`, `find_objects`, `names_in`, `repeats`, `uses_bit`, `prompt_version` | — | `test_dialogue`, `test_phase1_lock`, `test_bugs_dialogue` |
 | `memory.py` | 5 слоёв памяти директора, бюджеты токенов, факты | `Memory.add_line/add_event/record_decision/build_prompt/apply_facts/merge_from_raw`, `tokens` | — | `test_memory` |
@@ -338,6 +340,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | начальные повороты актёров | `director.ts initialYaws` |
 | субтитры | `stage/subs.ts createSubs` (подписи + озвучка), `audioUrl` |
 | связь sim <-> страница | `runtime/bridge.ts createBridge/connectSim/simPost`; SSE `/events` в `dream/server.py` |
+| команда оператора режиссёру (очередь идей) | `dream/ideas.py IdeaQueue` + `Sim.post_idea/clean_draft`; панель `runtime/operator.ts mountOperator` (`?operator=1`) |
 | запись фильма | `python3 -m make.film runs/<id> --out f.mp4` (`record.mjs` + ffmpeg) |
 | книга -> фильм целиком (7 шагов, кэш, потолок) | `make/book.py run_book` (шаги read, voices, world, cast, story, stage, film) |
 | сыграть сцену make-прогона | `python3 -m make.play runs/<id> [--fake]` |

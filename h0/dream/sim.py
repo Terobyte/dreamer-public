@@ -23,6 +23,7 @@ from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, names_in,
                       W_SILENT, W_SPOKE_LAST)
 from director import Director, seed_scene
 from fsm import BuildFSM
+from ideas import IdeaQueue
 from inputs import resolve_touch, sanitize
 from memory import Memory
 from safety import SOFT_NOTE
@@ -374,6 +375,18 @@ class Sim:
                                  outdir=outdir, clock=self.clock, fake=fake,
                                  paused_check=lambda: self.safety_paused,
                                  pause_lock=self._image_lock)
+        # D2: the operator's idea queue (wall clock: hold/retry/delivery are real seconds)
+        self.ideas = IdeaQueue(wall=time.monotonic, log=self._diagnostic,
+                               effect=self._idea_effect)
+        self.cleaner = None        # raw -> {clean, intent, addressee?, scene_id?, confidence}
+        self.idea_decider = None   # idea -> (fire|hold, short line); None = fake or director LLM
+        # scene_id -> {bridge, destination, aliases, ...}; D4 fills bridge/destination, so
+        # until then the shop alias resolves but (c) keeps the idea waiting
+        self.scene_registry = {"kozb7_yard_shop": {
+            "aliases": ["внутри магазина", "в магазин", "в магазине"]}}
+        self._clean_cache = {}     # clean text -> draft reply, so an unedited send is not cleaned twice
+        self._idea_thread = None
+        self._idea_result = None
         self.n_transitions = 0
         self._max_transitions = None  # set by run(); go_freestyle moves it
         self.stop_reason = None  # why the last run() loop ended (F7: main trusts this, not the wall clock)
@@ -1878,6 +1891,210 @@ class Sim:
             self.director.consult_async(self.clock.now(), events=[ev])
         return [ev]
 
+    # --- D2: operator ideas (POST /event kind draft|idea|idea_drop|effect_ack) ----
+    CLEAN_TIMEOUT_S = 8.0
+    IDEA_CONSULT_S = 20.0
+    _FILLERS = re.compile(r"\b(э+-?э*|эм+|ну|короче|типа)\b[,]?\s*", re.I)
+    _STEER_WORDS = ("поговори", "обсуди", "расскажи", "уведи", "говорите", "тема")
+    _SCENE_WORDS = ("магазин", "сцен", "внутри", "строить")
+
+    def _fake_clean(self, raw):
+        text = raw
+        low = text.lower()
+        for mark in ("я имел в виду", "то есть", "нет,"):
+            i = low.rfind(mark)
+            if i >= 0:
+                text = text[i + len(mark):]
+                low = text.lower()
+        text = self._FILLERS.sub("", text).strip(" ,.-")
+        low = text.lower()
+        if any(w in low for w in self._SCENE_WORDS):
+            intent = "scene"
+        elif any(w in low for w in self._STEER_WORDS):
+            intent = "steer"
+        else:
+            intent = "unknown"
+        return {"clean": text, "intent": intent,
+                "confidence": 0.9 if intent != "unknown" else 0.0}
+
+    def _llm_clean(self, raw):
+        import llm
+        scenes = {k: v.get("aliases", []) for k, v in self.scene_registry.items()}
+        system = ("Ты чистишь черновик команды режиссёру сна. Убери оговорки и самоисправления "
+                  "(«я имел в виду» = главное то, что после). Ответь только JSON: "
+                  '{"clean": "одна команда", "intent": "steer|scene|spawn|npc|unknown", '
+                  '"addressee": "имя или null", "scene_id": "id или null", "confidence": 0..1}. '
+                  "Актёры: %s. Сцены и алиасы: %s." % (", ".join(self.actors),
+                                                      json.dumps(scenes, ensure_ascii=False)))
+        res = llm.call("idea", system, [{"role": "user", "content": raw}], max_tokens=300)
+        m = re.search(r"\{.*\}", res.text or "", re.S)
+        return json.loads(m.group(0)) if m else {}
+
+    def _scene_for(self, out, raw):
+        """Decision 6: scene_id only from known scenes, by alias; 0 or 2+ matches -> unclear."""
+        low = (str(out.get("clean") or "") + " " + raw).lower()
+        hits = [k for k, v in self.scene_registry.items()
+                if any(str(a).lower() in low for a in v.get("aliases", []))]
+        return hits[0] if len(hits) == 1 else None  # the model's own scene_id is never trusted
+
+    def clean_draft(self, payload):
+        rev = payload.get("draft_revision")
+        raw = sanitize(str(payload.get("value") or ""), "human")[0]
+        if raw and self._safety_check(raw):
+            # decision 9: a visible dropped/safety idea, not a bare clean error
+            iid = str(payload.get("id") or "draft-%s-%d" % (rev, int(time.time() * 1000)))[:80]
+            self.ideas.add({"id": iid, "source": payload.get("source"), "value": raw,
+                            "intent": "unknown"}, unsafe=True)
+            return {"draft_revision": rev, "error": "safety", "reason": "safety"}
+        reply = self._clean_text(raw, rev)
+        if "clean" in reply:
+            if len(self._clean_cache) > 50:
+                self._clean_cache.clear()
+            self._clean_cache[reply["clean"]] = reply
+        return reply
+
+    def _clean_text(self, raw, rev=None):
+        cleaner = self.cleaner or (self._fake_clean if self.fake else self._llm_clean)
+        box = {}
+
+        def work():
+            try:
+                box["out"] = cleaner(raw)
+            except Exception as e:  # the panel shows the error, the text stays
+                box["error"] = str(e)[:200]
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        th.join(self.CLEAN_TIMEOUT_S)
+        out = box.get("out")
+        if th.is_alive() or not isinstance(out, dict) or not out.get("clean"):
+            self._diagnostic({"type": "idea", "op": "clean_failed", "draft_revision": rev,
+                              "error": box.get("error") or ("timeout" if th.is_alive() else "empty")})
+            return {"draft_revision": rev, "error": "clean_failed"}
+        clean = sanitize(str(out.get("clean")), "human")[0]
+        if not clean or self._safety_check(clean):
+            self._diagnostic({"type": "idea", "op": "clean_failed", "draft_revision": rev,
+                              "error": "safety"})
+            return {"draft_revision": rev, "error": "clean_failed"}
+        intent = out.get("intent") if out.get("intent") in ("steer", "scene", "spawn", "npc") else "unknown"
+        try:
+            conf = max(0.0, min(1.0, float(out.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            conf = 0.0
+        reply = {"draft_revision": rev, "clean": clean, "intent": intent, "confidence": conf}
+        if out.get("addressee"):
+            reply["addressee"] = sanitize(str(out["addressee"]), "human")[0][:80]
+            if reply["addressee"] and self._safety_check(reply["addressee"]):
+                return {"draft_revision": rev, "error": "clean_failed"}
+        if intent == "scene":
+            sid = self._scene_for(out, raw)
+            if sid is None:
+                reply.update(confidence=0.0, reason="scene")
+            else:
+                reply["scene_id"] = sid
+        return reply
+
+    def post_idea(self, payload):
+        value = sanitize(str(payload.get("value") or ""), "human")[0]
+        raw = sanitize(str(payload.get("raw") or value), "human")[0]
+        addr = sanitize(str(payload.get("addressee") or ""), "human")[0]
+        unsafe = any(t and self._safety_check(t) for t in (raw, value, addr))
+        p = {k: payload.get(k) for k in ("id", "source", "now") if payload.get(k) is not None}
+        p.update(value=value, raw=raw)
+        if unsafe or not value:
+            p["intent"] = "unknown"
+            return self.ideas.add(p, unsafe=unsafe)
+        # the meaning is the server's: the client may have edited the cleaned text after the
+        # draft, so use the cached draft answer for this exact text or clean it again
+        res = self._clean_cache.get(value) or self._clean_text(value)
+        if "clean" not in res:
+            return {"ok": False, "id": str(payload.get("id") or ""), "error": "clean_failed"}
+        p["value"] = res["clean"]  # the re-clean result, not the client's text
+        for k in ("intent", "confidence", "addressee", "scene_id"):
+            if res.get(k) is not None:
+                p[k] = res[k]
+        if res.get("reason") == "scene":
+            p["unclear_text"] = "не понял, какую сцену"
+        return self.ideas.add(p, unsafe=False)
+
+    def drop_idea(self, payload):
+        return self.ideas.drop(str(payload.get("id") or ""))
+
+    def effect_ack(self, payload):
+        return self.ideas.effect_ack(str(payload.get("id") or ""))
+
+    def ideas_state(self):
+        keep = ("id", "source", "raw", "clean", "status", "retry_at", "drop_requested", "intent",
+                "addressee", "scene_id", "created_t", "fired_t", "reason", "wait", "now")
+        return {"ideas": [{k: v for k, v in it.items() if k in keep} for it in self.ideas.list()]}
+
+    def _idea_effect(self, idea):
+        # the bridge event for scene/spawn is D4/D5; the engine answers with effect_ack
+        self._diagnostic({"type": "idea_effect", "id": idea["id"], "intent": idea["intent"],
+                          "scene_id": idea.get("scene_id")})
+
+    def _scene_ok(self, idea):
+        entry = self.scene_registry.get(idea.get("scene_id"))
+        return bool(entry and entry.get("bridge")) and self.fsm.state == "idle"
+
+    def _decide_idea(self, idea):
+        if self.idea_decider is not None:
+            return self.idea_decider(idea)
+        if self.fake:
+            return "fire", "понял: %s" % idea.get("clean", "")
+        import llm
+        system = ("Ты режиссёр сна. Оператор прислал идею. Уместно ли исполнить её прямо сейчас? "
+                  'Ответь только JSON {"decision": "fire|hold", "text": "одна короткая фраза оператору: '
+                  'что понял и когда сделаешь"}. Если не понял идею: hold и «не понял, повтори».')
+        ctx = "Место: %s. Актёры: %s. Идея (%s): %s" % (self.place, ", ".join(self.actors),
+                                                       idea.get("intent"), idea.get("clean"))
+        res = llm.call("director", system, [{"role": "user", "content": ctx}], max_tokens=200)
+        m = re.search(r"\{.*\}", res.text or "", re.S)
+        out = json.loads(m.group(0)) if m else {}
+        decision = "fire" if out.get("decision") == "fire" else "hold"
+        return decision, str(out.get("text") or "не понял, повтори")
+
+    def _safe_ack(self, text):
+        """The director's answer goes to the operator panel: same sanitize + safety as input."""
+        t = sanitize(str(text or ""), "human")[0]
+        return "не могу ответить на это" if not t or self._safety_check(t) else t
+
+    def _idea_step(self):
+        """Every tick: code conditions, one idea per consult, the answer applied here."""
+        self.ideas.tick()
+        if self.director.in_flight:
+            return  # a running director consult finishes first; the idea goes to the next one
+        if self._idea_thread is not None:
+            th, started, id_ = self._idea_thread
+            if self._idea_result is not None:
+                dec, text = self._idea_result
+                self._idea_thread = self._idea_result = None
+                self.ideas.resolve(id_, dec, self._safe_ack(text))
+            elif time.monotonic() - started > self.IDEA_CONSULT_S:
+                self._idea_thread = None  # a late answer finds no consult and is dropped
+                self.ideas.resolve(id_, "hold", "думаю дольше обычного, вернусь к идее")
+            return
+        idea = self.ideas.select(speaking=self.active_line is not None, scene_ok=self._scene_ok)
+        if idea is None:
+            return
+        if self.fake or self.idea_decider is not None:
+            try:
+                dec, text = self._decide_idea(idea)
+            except Exception:
+                dec, text = "hold", "не вышло, вернусь к идее"
+            self.ideas.resolve(idea["id"], dec, self._safe_ack(text))
+            return
+        token = object()
+
+        def work():
+            try:
+                res = self._decide_idea(idea)
+            except Exception:
+                res = ("hold", "не вышло, вернусь к идее")
+            if self._idea_thread is not None and self._idea_thread[0] is token:
+                self._idea_result = res
+        self._idea_thread = (token, time.monotonic(), idea["id"])
+        threading.Thread(target=work, daemon=True).start()
+
     def stop(self, by="human"):
         if not self.stopped:
             self.stopped = True
@@ -1915,6 +2132,8 @@ class Sim:
         # never arrive.
         if self.safety_paused:
             return []
+        # D2: the idea queue runs in both modes (make.play plays the test world as a book)
+        self._idea_step()
         if self.book is not None:
             self._maybe_start_scene_background()
             self._cycle_line()
@@ -1940,7 +2159,7 @@ class Sim:
         """Due events (nudge/force/abort) or an idle consult every min_interval: only idle
         picks a bridge (R6). Locked builds still hear from the director via the 4-line rhythm."""
         now = self.clock.now()
-        if self.safety_paused or self.director.in_flight:
+        if self.safety_paused or self.director.in_flight or self._idea_thread is not None:
             return last_consult
         if not self.fake and not self._budget_ok():
             return last_consult

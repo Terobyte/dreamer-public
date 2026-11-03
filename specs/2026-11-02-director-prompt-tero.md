@@ -177,12 +177,12 @@
 Сделать фазу D2 из таблицы «Фазы (для tero)» по разделам «Данные» и «Условия „уместно сейчас“» и решениям ассистента 0, 1, 2, 6, 7, 9, 10. В срезе ввод только текстом: панель оператора `engine/src/runtime/operator.ts` при `?operator=1` (строка промпта внизу, справа очередь с кнопкой удаления и лента ответов режиссёра) и однострочное поле игрока по Tab (`source: headset`).
 
 Приёмка:
-- [ ] `POST /event` ветки `draft` (чистка, роль `idea` в `ROLE_TABLE`, `draft_revision`, срок 8 с → `clean_failed`), `idea` (очередь, `{ok, id}` сразу, повтор `id` — no-op, консалт не запускается сам), `idea_drop`, `effect_ack`; `GET /ideas`; события `idea` и `director_ack` по SSE, `director_ack` в `STAGE_TYPES`
-- [ ] статусы и переходы очереди из «Условий»: `pending → consulting → held/firing → done/failed/dropped`, `retry_at` 10 с, не больше 5 `hold`, `now:true`, гонки удаления в `consulting` и после `done` (тесты на оба порядка), не больше одной `fire` за консалт, `not_delivered` за 3 с
-- [ ] `intent: unknown`/низкая `confidence` → не в очередь, ответ «не понял, повтори», лог `op:"reject", reason:"unclear"`; безопасность → `dropped, reason:"safety"`
-- [ ] журнал запуска пишет каждое событие очереди; оба виджета пишут разный `source`
-- [ ] сквозная проверка на странице `make.play`: ввод команды, строка в очереди, удаление, `director_ack`, мир виден; снимок окна 1280×720 (зеркало, строка, очередь с кнопкой удаления, лента ответов) — в `research/director_prompt/` только отчёт, сам кадр не коммитить
-- [ ] гейт зелёный
+- [x] `POST /event` ветки `draft` (чистка, роль `idea` в `ROLE_TABLE`, `draft_revision`, срок 8 с → `clean_failed`), `idea` (очередь, `{ok, id}` сразу, повтор `id` — no-op, консалт не запускается сам), `idea_drop`, `effect_ack`; `GET /ideas`; события `idea` и `director_ack` по SSE, `director_ack` в `STAGE_TYPES`
+- [x] статусы и переходы очереди из «Условий»: `pending → consulting → held/firing → done/failed/dropped`, `retry_at` 10 с, не больше 5 `hold`, `now:true`, гонки удаления в `consulting` и после `done` (тесты на оба порядка), не больше одной `fire` за консалт, `not_delivered` за 3 с
+- [x] `intent: unknown`/низкая `confidence` → не в очередь, ответ «не понял, повтори», лог `op:"reject", reason:"unclear"`; безопасность → `dropped, reason:"safety"`
+- [x] журнал запуска пишет каждое событие очереди; оба виджета пишут разный `source`
+- [x] сквозная проверка на странице `make.play`: ввод команды, строка в очереди, удаление, `director_ack`, мир виден; снимок окна 1280×720 (зеркало, строка, очередь с кнопкой удаления, лента ответов) — в `research/director_prompt/` только отчёт, сам кадр не коммитить
+- [x] гейт зелёный
 
 ## D3. поворот разговора `steer` и адресная `npc`
 

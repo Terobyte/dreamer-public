@@ -34,8 +34,12 @@ export interface StageHandlers {
   book_end?(e: StageEvent): void;
   /** the book went on to its next scene: sim `transition` with `cause: "book"` only */
   scene_end?(e: StageEvent): void;
+  /** D2: an operator idea's queue event (add/drop/consult/hold/fire/done/fail) */
+  idea?(e: StageEvent): void;
+  /** D2: the director's one short answer to the operator about an idea */
+  director_ack?(e: StageEvent): void;
 }
-const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage", "book_end"] as const;
+const STAGE_TYPES = ["line", "narrator", "touch", "mode", "story", "start", "stage", "book_end", "idea", "director_ack"] as const;
 /** the sim's own names for what the stage calls `mode` / `story` (snapshot carries the mode; schedule and story events the pieces) */
 const ALIAS: Record<string, (typeof STAGE_TYPES)[number]> = { snapshot: "mode", schedule: "story", event: "story" };
 
