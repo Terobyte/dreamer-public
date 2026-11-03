@@ -23,6 +23,7 @@ from dialogue import (ACTOR_STREAK_MAX, ADDRESS_HOLD, SILENT_CAP, names_in,
                       W_SILENT, W_SPOKE_LAST)
 from director import Director, seed_scene
 from fsm import BuildFSM
+from ideas import ACK_NOT_DELIVERED, IdeaQueue
 from inputs import resolve_touch, sanitize
 from memory import Memory
 from safety import SOFT_NOTE
@@ -240,7 +241,7 @@ class Sim:
     def __init__(self, profile="A", fake=True, speed=1.0, outdir=None, script=None,
                  delay=0.0, fsm_params=None, memory=None, media=None,
                  max_dollars=20.0, dialogue=None, first_events=(), book=None,
-                 hero_owner=None, no_build=False):
+                 hero_owner=None, no_build=False, build_mode="live", scene_world=None):
         self.profile = profile
         self.book = None  # K2: the score being played (see _book_step)
         self._book_hold_until = -1e9
@@ -351,7 +352,8 @@ class Sim:
         self._load_goals(emit=False)
         self.fsm = BuildFSM(self.scene["objects"], voices=VOICES, speed=speed,
                              now=self.clock.now(), params=fsm_params,
-                             actors=list(self.actors), hero=self.hero, no_build=no_build)
+                             actors=list(self.actors), hero=self.hero, no_build=no_build,
+                             build_mode=build_mode)
         self.script = script if script is not None else _scripted_decisions(profile, 8)
         self.outdir = outdir
         if outdir:
@@ -377,6 +379,39 @@ class Sim:
                                  outdir=outdir, clock=self.clock, fake=fake,
                                  paused_check=lambda: self.safety_paused,
                                  pause_lock=self._image_lock)
+        # D2: the operator's idea queue (wall clock: hold/retry/delivery are real seconds)
+        self.ideas = IdeaQueue(wall=time.monotonic, log=self._diagnostic,
+                               effect=self._idea_effect, on_fire=self._idea_fired)
+        # D3: a fired steer topic per addressee (None = any NPC of the scene), and the
+        # addressed npc cues each played once in the addressee's next line
+        self._steer = {}
+        self._npc_cues = {}
+        self._npc_inflight = {}  # cues at the prompter: fail if the actor leaves pre-line
+        self.cleaner = None        # raw -> {clean, intent, addressee?, scene_id?, confidence}
+        self.idea_decider = None   # idea -> (fire|hold, short line); None = fake or director LLM
+        # decision 6: the known scenes of the world being played (one dist each)
+        # F3/F10: no silent fallback to the yard: a registry dict (the active dist's
+        # metadata), a known world name, or None = no known scenes ("такого нет")
+        if isinstance(scene_world, dict):
+            self.scene_world, reg = "dist", scene_world
+        elif scene_world is None:
+            self.scene_world, reg = None, {}
+        elif scene_world in self.SCENE_WORLDS:
+            self.scene_world, reg = scene_world, self.SCENE_WORLDS[scene_world]
+        else:
+            raise ValueError("unknown scene_world %r (known: %s)"
+                             % (scene_world, ", ".join(self.SCENE_WORLDS)))
+        self.scene_registry = json.loads(json.dumps(reg))
+        self._stall_topic = None
+        self._stall_empty = 0
+        # D4: the cache build an idea started {id, bridge, destination, stall_bank, i}
+        self._cache_build = None
+        self._silent_since = None
+        self._hero_after_abort = None  # sim time until which a silence is the hero's to break
+        self._abandoned_workers = []  # F19: director threads of consults given up on (20 s)
+        self._clean_cache = {}     # clean text -> draft reply, so an unedited send is not cleaned twice
+        self._idea_thread = None
+        self._idea_result = None
         self.n_transitions = 0
         self._max_transitions = None  # set by run(); go_freestyle moves it
         self.stop_reason = None  # why the last run() loop ended (F7: main trusts this, not the wall clock)
@@ -637,7 +672,7 @@ class Sim:
 
     def close(self):
         """Finish owned workers before releasing temporary memory files."""
-        self.director.wait(timeout=None)
+        self._join_director()
         if self._gen_thread is not None:
             self._gen_thread.join()
         self._join_judge()
@@ -710,6 +745,14 @@ class Sim:
         self._diagnostic(event)
         self.memory.add_event(event)
         kind = event.get("type")
+        if getattr(self, "_cache_build", None) is not None and kind in ("door", "build"):
+            try:
+                return self._emit_world(event, kind)
+            finally:
+                self._on_build_event(event)
+        return self._emit_world(event, kind)
+
+    def _emit_world(self, event, kind):
         if kind == "message" and event.get("to"):
             self._notes.setdefault(event["to"], []).append(str(event.get("note") or ""))
         elif kind == "door":
@@ -1148,6 +1191,13 @@ class Sim:
                                          "hero_desc": self._hero_desc})
         else:
             self.scene = dict(self.scene, events=[], goals=[])
+            # D4 F1: a cache build has next_scene None (the room is already in the
+            # dist); the FSM still has to leave `transition`, so re-open the idle
+            # scene with the current objects/actors instead of staying stuck.
+            for e in self.fsm.new_scene(self.clock.now(), self.scene["objects"],
+                                        actors=self.actors):
+                if self.logger:
+                    self.logger.write_event(e)
         # a "Just now" left for someone who is not on this stage is dropped here:
         # the queue is keyed by its recipient, so it can never be handed to another
         self._pending = {k: v for k, v in self._pending.items() if k in self.actors}
@@ -1498,11 +1548,26 @@ class Sim:
             if self._human_backlog:
                 self.next_line = self._human_backlog.pop(0)
         elif self.prepared_npc is not None:
-            queued = dict(self._prepared_meta or {}, owner="npc", text=self.prepared_npc)
-            self.prepared_npc = None
-            self._prepared_meta = None
-            self._prepared_taken = None
-            audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
+            meta = dict(self._prepared_meta or {})
+            who = meta.get("who")
+            if (who is not None and who != getattr(self, "hero", None)
+                    and who not in self.actors):
+                # F3: prepared while present, gone before voicing -- no line
+                # from a missing actor; his cues fail explicitly
+                text, self.prepared_npc = self.prepared_npc, None
+                self._prepared_meta = None
+                self._prepared_audio_seconds = None
+                self._drop_prepared_taken()
+                self._recycle_npc_cues(who)
+                self._emit({"type": "line_discarded", "turn_owner": "npc",
+                            "text": text, "who": who, "reason": "addressee_gone"})
+                queued = None
+            else:
+                queued = dict(meta, owner="npc", text=self.prepared_npc)
+                self.prepared_npc = None
+                self._prepared_meta = None
+                self._prepared_taken = None
+                audio_seconds, self._prepared_audio_seconds = self._prepared_audio_seconds, None
         if queued is not None:
             self._start_line(queued, audio_seconds)
         else:
@@ -1554,6 +1619,16 @@ class Sim:
         self._event_hits.pop(who, None)
         self._actor_streak = self._actor_streak + 1 if role == "actor" else 0
         self._said_count[who] = self._said_count.get(who, 0) + 1
+        steers = getattr(self, "_steer", {})  # tests build a bare Sim without __init__
+        for key in (who, None):
+            s = steers.get(key)
+            if s is not None and (key == who or role == "actor"):
+                s["left"] -= 1
+                if s["left"] <= 0:
+                    steers.pop(key)
+        inflight = getattr(self, "_npc_inflight", None)  # 2в: his line played the cue
+        if inflight is not None:
+            inflight.pop(who, None)
         if role == "actor":
             # 0.3: the notes his prompt was built with are now played; a note that
             # landed while the line was being written stays for his next prompt
@@ -1575,6 +1650,70 @@ class Sim:
         prompt holds one note, not the whole history)."""
         notes = self._notes.get(who, [])
         return list(notes[self._notes_seen.get(who, 0):][-1:])
+
+    def _line_notes(self, who, consume=False):
+        """D3: the notes an actor's next line is built with -- the operator's addressed
+        npc cue first (decision 7), then the steer topic, then the director's note,
+        in the one notes slot actor_system shows. `consume`: the npc cue is played
+        by this line (once). TRIED is never touched: the topic is its own field."""
+        cues = [c["text"] for c in getattr(self, "_npc_cues", {}).get(who, [])]
+        self._expire_steer()
+        steer = self._steer.get(who) or self._steer.get(None)
+        parts = []
+        # D4 F11: the stall lives to `ready` beside the steer, which keeps its own K / TTL
+        topic = "; ".join(t for t in (steer["topic"] if steer is not None else None,
+                                      getattr(self, "_stall_topic", None)) if t)
+        if cues:
+            parts.append("do this in this very line: %s" % "; ".join(cues))
+            if topic:  # decision 7: the addressed cue outranks the common topic
+                parts.append("after that, not in this line, steer the talk to this: %s" % topic)
+        elif topic:
+            parts.append("steer the talk to this: %s" % topic)
+        notes = self._notes_for(who)
+        if consume:
+            taken = getattr(self, "_npc_cues", {}).pop(who, None)
+            if taken:
+                inflight = getattr(self, "_npc_inflight", None)
+                if inflight is None:
+                    self._npc_inflight = inflight = {}
+                inflight.setdefault(who, []).extend(taken)
+        if not parts:
+            return notes
+        return ["; ".join(parts + notes)]
+
+    def _expire_steer(self):
+        now = self.ideas.wall()
+        for key in [k for k, v in self._steer.items() if now >= v["until"]]:
+            self._steer.pop(key)
+
+    def _recycle_npc_cues(self, who):
+        """F3/F4: an npc cue is lost only with a played line of its addressee. A
+        failed generation or a discarded result gives the cue back for his next
+        line; a gone addressee fails the idea instead (2в: addressee_gone)."""
+        inflight = getattr(self, "_npc_inflight", None)
+        if not inflight:
+            return
+        cues = inflight.pop(who, None)
+        if not cues:
+            return
+        actors = getattr(self, "actors", None)
+        if actors is not None and who in actors:
+            self._npc_cues.setdefault(who, [])
+            self._npc_cues[who][:] = list(cues) + self._npc_cues[who]
+        elif getattr(self, "ideas", None) is not None:
+            for cue in cues:
+                self.ideas.fail(cue["id"], "addressee_gone")
+
+    def _idea_fired(self, idea):
+        """D3: a fired steer/npc goes into the dialogue (the queue already logged op:fire)."""
+        if idea["intent"] == "steer":
+            # decision 7: a new steer for the same NPC replaces the old one
+            self._steer[idea.get("addressee")] = {
+                "id": idea["id"], "topic": idea["clean"], "left": self.STEER_LINES,
+                "until": self.ideas.wall() + self.STEER_TTL_S}
+        elif idea["intent"] == "npc" and idea.get("addressee"):
+            self._npc_cues.setdefault(idea["addressee"], []).append(
+                {"id": idea["id"], "text": idea["clean"]})
 
     def _pick_speaker(self):
         """One free tick: silence grows for everyone, pressure is logged, and the
@@ -1700,20 +1839,34 @@ class Sim:
                     self._diagnostic({"type": "narrator", "text": line["text"],
                                       "cause": line["cause"]})
             elif line is not None and scene_no == self.n_transitions and epoch == self._turn_epoch:
-                ev = (self.npc_start(line) or [None])[0] or {}  # B19: a voicing line has no event yet
-                if ev.get("type") == "line_prepared":
-                    self._prepared_taken = taken
-                elif ev.get("type") == "line_discarded" and taken is not None:
+                actors = getattr(self, "actors", None)
+                if (who is not None and who != getattr(self, "hero", None)
+                        and actors is not None and who not in actors):
+                    # F3: the addressee left while his line was in flight -- no
+                    # line from a missing actor; his cues fail explicitly
+                    self._recycle_npc_cues(who)
                     self._return_taken(taken)
+                    self._emit({"type": "line_discarded", "turn_owner": "npc",
+                                "text": line["text"] if isinstance(line, dict) else line,
+                                "who": who, "reason": "addressee_gone"})
+                else:
+                    ev = (self.npc_start(line) or [None])[0] or {}  # B19: a voicing line has no event yet
+                    if ev.get("type") == "line_prepared":
+                        self._prepared_taken = taken
+                    elif ev.get("type") == "line_discarded" and taken is not None:
+                        self._return_taken(taken)
+                        self._recycle_npc_cues(who)  # F4: not played, try again next line
             elif line is not None and epoch != self._turn_epoch:
                 # 1.2a: the turn moved on while this line was in flight -- a human
                 # line took it, or an event this speaker never saw changed the world
                 self._emit({"type": "line_discarded", "turn_owner": "npc",
                             "text": line["text"] if isinstance(line, dict) else line,
                             "who": who, "reason": self._discard_reason})
+                self._recycle_npc_cues(who)  # F4: the turn moved on, the cue waits
                 self._discard_reason = "human"
             elif line is None:
                 self._diagnostic({"type": "turn_skip", "who": who})
+                self._recycle_npc_cues(who)  # F4: the generation failed, the cue waits
                 self._gen_not_before = self.clock.now() + self.clock.scale(TICK)
                 self._skip_once = who
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
@@ -1755,7 +1908,7 @@ class Sim:
             events = self._pending.pop(who, [])
             taken = (who, role, list(events))
             self._notes_shown[who] = len(self._notes.get(who, []))
-            args = (who, world, transcript, state, self._notes_for(who), events,
+            args = (who, world, transcript, state, self._line_notes(who, consume=True), events,
                     self._personas.get(who, ""))
             fn = self.dialogue.actor_line
         scene_no, epoch = self.n_transitions, self._turn_epoch
@@ -1888,6 +2041,420 @@ class Sim:
             self.director.consult_async(self.clock.now(), events=[ev])
         return [ev]
 
+    # --- D2: operator ideas (POST /event kind draft|idea|idea_drop|effect_ack) ----
+    CLEAN_TIMEOUT_S = 8.0
+    # D4 (decision 6): scene_id -> {bridge, destination, build_s, next_scene, aliases,
+    # stall_bank}. koshakan = the test world (bedroom -> bathroom door plays the shop);
+    # kozb7_yard waits for D0: its door and room ids are placeholders until the dist exists
+    SCENE_WORLDS = {
+        "koshakan": {"koshakan_shop": {
+            "bridge": "door", "destination": "bathroom", "build_s": 45, "next_scene": None,
+            "aliases": ["внутри магазина", "в магазин", "в магазине"],
+            "stall_bank": ["Погоди, дверь что-то заело. Расскажи пока, как ты сюда добрался?",
+                           "Слышишь? За дверью кто-то возится. Давай подождём, поболтаем.",
+                           "Пока не открыли, скажи: ты сам-то что хотел там купить?"]}},
+        "kozb7_yard": {"kozb7_yard_shop": {
+            "bridge": "shop_door", "destination": "shop", "build_s": 45, "next_scene": None,
+            "aliases": ["внутри магазина", "в магазин", "в магазине"],
+            "stall_bank": ["Магазин ещё закрыт, сейчас откроют. Как там у тебя дома?",
+                           "Глянь, продавщица уже гремит ключами. Подождём чуток.",
+                           "Пока ждём, расскажи, во что вы тут во дворе играли?"]}},
+    }
+    STALL_TOPIC = ("keep the hero busy talking right here until the door opens; "
+                   "small talk about this place, never about waiting")
+    STALL_SILENCE_S = 4.5  # D4: silence step; consult, consult, bank = 13.5 s < 15 s
+    CONSULT_GIVE_UP_S = 20.0
+    HERO_AFTER_ABORT_S = 20.0
+    HERO_LINE_LEAD_S = 2.0  # F18: the hero's line starts this long before the 20 s run out
+    HERO_AFTER_ABORT_TEXT = "Ладно, не открывается. Ну и пусть, давай тут."
+    STEER_LINES = 6     # D3: K lines of the addressee (any NPC without one)
+    STEER_TTL_S = 60.0  # wall seconds; a steer not used up by then expires
+    IDEA_CONSULT_S = 20.0
+    _FILLERS = re.compile(r"\b(э+-?э*|эм+|ну|короче|типа)\b[,]?\s*", re.I)
+    _STEER_WORDS = ("поговори", "обсуди", "расскажи", "уведи", "говорите", "тема")
+    _SCENE_WORDS = ("магазин", "сцен", "внутри", "строить")
+
+    def _fake_clean(self, raw):
+        text = raw
+        low = text.lower()
+        for mark in ("я имел в виду", "то есть", "нет,"):
+            i = low.rfind(mark)
+            if i >= 0:
+                text = text[i + len(mark):]
+                low = text.lower()
+        text = self._FILLERS.sub("", text).strip(" ,.-")
+        low = text.lower()
+        if any(w in low for w in self._SCENE_WORDS):
+            intent = "scene"
+        elif any(w in low for w in self._STEER_WORDS):
+            intent = "steer"
+        else:
+            intent = "unknown"
+        return {"clean": text, "intent": intent,
+                "confidence": 0.9 if intent != "unknown" else 0.0}
+
+    def _llm_clean(self, raw):
+        import llm
+        scenes = {k: v.get("aliases", []) for k, v in self.scene_registry.items()}
+        system = ("Ты чистишь черновик команды режиссёру сна. Убери оговорки и самоисправления "
+                  "(«я имел в виду» = главное то, что после). Ответь только JSON: "
+                  '{"clean": "одна команда", "intent": "steer|scene|spawn|npc|unknown", '
+                  '"addressee": "имя или null", "scene_id": "id или null", "confidence": 0..1}. '
+                  "Актёры: %s. Сцены и алиасы: %s." % (", ".join(self.actors),
+                                                      json.dumps(scenes, ensure_ascii=False)))
+        res = llm.call("idea", system, [{"role": "user", "content": raw}], max_tokens=300)
+        m = re.search(r"\{.*\}", res.text or "", re.S)
+        return json.loads(m.group(0)) if m else {}
+
+    def _scene_for(self, out, raw):
+        """Decision 6: scene_id only from known scenes, by alias; 0 or 2+ matches -> unclear."""
+        low = (str(out.get("clean") or "") + " " + raw).lower()
+        hits = [k for k, v in self.scene_registry.items()
+                if any(str(a).lower() in low for a in v.get("aliases", []))]
+        return hits[0] if len(hits) == 1 else None  # the model's own scene_id is never trusted
+
+    def clean_draft(self, payload):
+        rev = payload.get("draft_revision")
+        raw = sanitize(str(payload.get("value") or ""), "human")[0]
+        if raw and self._safety_check(raw):
+            # decision 9: a visible dropped/safety idea, not a bare clean error
+            iid = str(payload.get("id") or "draft-%s-%d" % (rev, int(time.time() * 1000)))[:80]
+            self.ideas.add({"id": iid, "source": payload.get("source"), "value": raw,
+                            "intent": "unknown"}, unsafe=True)
+            return {"draft_revision": rev, "error": "safety", "reason": "safety"}
+        reply = self._clean_text(raw, rev)
+        if "clean" in reply:
+            if len(self._clean_cache) > 50:
+                self._clean_cache.clear()
+            self._clean_cache[reply["clean"]] = reply
+        return reply
+
+    def _clean_text(self, raw, rev=None):
+        cleaner = self.cleaner or (self._fake_clean if self.fake else self._llm_clean)
+        box = {}
+
+        def work():
+            try:
+                box["out"] = cleaner(raw)
+            except Exception as e:  # the panel shows the error, the text stays
+                box["error"] = str(e)[:200]
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        th.join(self.CLEAN_TIMEOUT_S)
+        out = box.get("out")
+        if th.is_alive() or not isinstance(out, dict) or not out.get("clean"):
+            self._diagnostic({"type": "idea", "op": "clean_failed", "draft_revision": rev,
+                              "error": box.get("error") or ("timeout" if th.is_alive() else "empty")})
+            return {"draft_revision": rev, "error": "clean_failed"}
+        clean = sanitize(str(out.get("clean")), "human")[0]
+        if not clean or self._safety_check(clean):
+            self._diagnostic({"type": "idea", "op": "clean_failed", "draft_revision": rev,
+                              "error": "safety"})
+            return {"draft_revision": rev, "error": "clean_failed"}
+        intent = out.get("intent") if out.get("intent") in ("steer", "scene", "spawn", "npc") else "unknown"
+        try:
+            conf = max(0.0, min(1.0, float(out.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            conf = 0.0
+        reply = {"draft_revision": rev, "clean": clean, "intent": intent, "confidence": conf}
+        if out.get("addressee"):
+            reply["addressee"] = sanitize(str(out["addressee"]), "human")[0][:80]
+            if reply["addressee"] and self._safety_check(reply["addressee"]):
+                return {"draft_revision": rev, "error": "clean_failed"}
+        if intent == "scene":
+            sid = self._scene_for(out, raw)
+            if sid is None:
+                reply.update(confidence=0.0, reason="scene")
+            else:
+                reply["scene_id"] = sid
+        return reply
+
+    def post_idea(self, payload):
+        value = sanitize(str(payload.get("value") or ""), "human")[0]
+        raw = sanitize(str(payload.get("raw") or value), "human")[0]
+        addr = sanitize(str(payload.get("addressee") or ""), "human")[0]
+        unsafe = any(t and self._safety_check(t) for t in (raw, value, addr))
+        # D2 debt: a repeat of a known id gets its first answer, even after the clean cache was
+        # cleared or a re-clean would fail now (idempotency was only inside ideas.add)
+        prior = self.ideas.reply_of(payload.get("id"))
+        if prior is not None:
+            return prior
+        p = {k: payload.get(k) for k in ("id", "source", "now") if payload.get(k) is not None}
+        p.update(value=value, raw=raw)
+        if unsafe or not value:
+            p["intent"] = "unknown"
+            return self.ideas.add(p, unsafe=unsafe)
+        # the meaning is the server's: the client may have edited the cleaned text after the
+        # draft, so use the cached draft answer for this exact text or clean it again
+        res = self._clean_cache.get(value) or self._clean_text(value)
+        if "clean" not in res:
+            return {"ok": False, "id": str(payload.get("id") or ""), "error": "clean_failed"}
+        p["value"] = res["clean"]  # the re-clean result, not the client's text
+        for k in ("intent", "confidence", "addressee", "scene_id"):
+            if res.get(k) is not None:
+                p[k] = res[k]
+        if res.get("reason") == "scene":
+            p["unclear_text"] = "не понял, какую сцену"
+        return self.ideas.add(p, unsafe=False)
+
+    def drop_idea(self, payload):
+        return self.ideas.drop(str(payload.get("id") or ""))
+
+    def effect_ack(self, payload):
+        return self.ideas.effect_ack(str(payload.get("id") or ""))
+
+    def ideas_state(self):
+        keep = ("id", "source", "raw", "clean", "status", "retry_at", "drop_requested", "intent",
+                "addressee", "scene_id", "created_t", "fired_t", "reason", "wait", "now")
+        return {"ideas": [{k: v for k, v in it.items() if k in keep} for it in self.ideas.list()]}
+
+    def _idea_effect(self, idea):
+        # scene = D4 (cache build + placard); spawn is D5; the engine answers with effect_ack
+        self._diagnostic({"type": "idea_effect", "id": idea["id"], "intent": idea["intent"],
+                          "scene_id": idea.get("scene_id")})
+        if idea["intent"] == "scene":
+            self._start_scene_build(idea)
+
+    # --- D4: the next scene as a cache build on the FSM ---------------------
+    def _start_scene_build(self, idea):
+        entry = self.scene_registry.get(idea.get("scene_id")) or {}
+        if not entry.get("bridge") or not entry.get("destination"):
+            self._diagnostic({"type": "idea_effect", "id": idea["id"], "intent": "scene",
+                              "reason": "no_destination"})
+            self.ideas.fail(idea["id"], "build_refused", ACK_NOT_DELIVERED)
+            return
+        now = self.clock.now()
+        ns = entry.get("next_scene")
+        if not ns:
+            # F1/F8: the room is already in the dist; the scene context after the walk is
+            # the destination room, the cast comes along
+            ns = {"objects": [entry["destination"]], "events": [], "goals": []}
+        if ns.get("actors") is None:
+            # F15: a registry from the dist (make.play scene_registry) names the room's things;
+            # the cast walks in with the hero
+            ns = dict(ns, actors=list(self.scene.get("actors") or []))
+        ev = self.fsm.start_build(now, entry.get("bridge"), entry.get("destination"), ns)
+        if ev[0]["type"] == "invalid":
+            for e in ev:
+                self._emit(e)
+            self.ideas.fail(idea["id"], "build_refused", ACK_NOT_DELIVERED)
+            return
+        self._cache_build = {"id": idea["id"], "bridge": entry["bridge"],
+                             "destination": entry["destination"],
+                             "stall_bank": list(entry.get("stall_bank") or []), "i": 0}
+        for e in ev:
+            self._emit(e)
+        # decision 5: the placard hangs on the door from start_build; its id is what the
+        # engine confirms with effect_ack
+        self._emit({"type": "placard", "door": entry["bridge"], "text": "загрузка",
+                    "id": idea["id"]})
+        # 2а: the stall is a topic for any NPC with no K, living until ready (FSM TTL);
+        # F11: it is NOT written into _steer, so a sister-steer keeps its K / TTL
+        self._stall_topic = self.STALL_TOPIC
+        self._stall_empty = 0
+        self._diagnostic({"type": "stall", "id": idea["id"], "seconds": self.stall_seconds()})
+
+    def stall_seconds(self):
+        """How long the NPCs still keep the hero talking: what build_pct says is left."""
+        if self._cache_build is None:
+            return 0.0
+        return self.fsm.build_left(self.clock.now())
+
+    def _end_stall(self):
+        self._stall_topic = None
+
+    def send_goto(self, place):
+        """2а: the hero walks to the destination (the engine knows come/goto/enter)."""
+        self._emit({"type": "stage", "who": self.hero, "action": "goto", "place": place})
+
+    def abort_build(self, reason):
+        for e in self.fsm.abort(self.clock.now(), reason):
+            self._emit(e)
+
+    def _on_build_event(self, event):
+        """_emit hook for a cache build: door open -> placard off, goto, walk through;
+        abort -> placard off, door stays locked, the operator hears it did not work."""
+        cb = self._cache_build
+        if cb is None:
+            return
+        kind = event.get("type")
+        if kind == "door" and event.get("state") == "open":
+            self._cache_build = None
+            self._end_stall()
+            self._emit({"type": "placard", "door": cb["bridge"], "clear": True})
+            self.send_goto(cb["destination"])
+            ev = self.fsm.walk_through(self.clock.now())
+            for e in ev:
+                self._emit(e)
+            if any(e["type"] == "transition" for e in ev):
+                self._apply_transition()
+        elif kind == "build" and event.get("phase") == "abort":
+            self._cache_build = None
+            self._end_stall()
+            self._emit({"type": "placard", "door": cb["bridge"], "clear": True})
+            self._emit({"type": "door", "state": "locked", "object": cb["bridge"]})
+            self.ideas.ack(cb["id"], ACK_NOT_DELIVERED)
+            # F5: wall-clock wait, untouched by sim speed (Clock.now is real seconds)
+            self._hero_after_abort = self.clock.now() + self.HERO_AFTER_ABORT_S
+
+    ABANDONED_JOIN_S = 2.0
+
+    def _join_director(self):
+        """Wait for the director's worker: unbounded for a live consult (its cost row must land
+        before the journal closes), bounded for one the sim already gave up on (F19: a director
+        hung forever would hang the shutdown too); a late charge from it is logged, not awaited."""
+        t = getattr(self.director, "_thread", None)
+        if t is not None and t in self._abandoned_workers:
+            self.director.wait(timeout=self.ABANDONED_JOIN_S)
+            if t.is_alive():
+                self._emit({"type": "consult_unjoined", "reason": "abandoned"})
+        else:
+            self.director.wait(timeout=None)
+
+    def _stall_step(self, now):
+        """2а: wall-clock safety of a cache build, independent of the director: a consult
+        over 20 s is given up, a silence near 15 s gets a stall_bank line (after an
+        abort the hero breaks it). Book mode ticks the build here too."""
+        if self.book is not None and self.fsm.state == "building":
+            for e in self.fsm.tick(now):
+                self._emit(e)
+        building = self._cache_build is not None and self.fsm.state == "building"
+        after_abort = self._hero_after_abort is not None and now < self._hero_after_abort
+        if not (building or after_abort):
+            self._silent_since = None
+            return
+        if (building and self.director.in_flight and self.fsm.last_call is not None
+                and now - self.fsm.last_call > self.CONSULT_GIVE_UP_S):
+            for e in self.fsm.abandon_consult(now):
+                self._emit(e)
+            self._abandoned_workers.append(getattr(self.director, "_thread", None))
+            self.director.in_flight = False
+        if (after_abort and not building and self.active_line is not None
+                and self.active_line.get("role") != "hero" and self._line_started_at is not None
+                and self.next_line is None):
+            # F18: a long NPC line playing at the abort would outlast the hero's 20 s: it is cut
+            # short of the deadline and the hero's line goes first in the queue
+            cut_at = self._hero_after_abort - self.HERO_LINE_LEAD_S
+            if self._line_started_at + self._line_duration > cut_at:
+                self._line_duration = max(0.0, min(self._line_duration, cut_at - self._line_started_at))
+                self._hero_after_abort = None
+                self.next_line = {"owner": "npc", "who": self.hero, "role": "hero",
+                                  "text": self.HERO_AFTER_ABORT_TEXT, "stall": True}
+                return
+        if self.active_line is not None or self.next_line is not None:
+            self._silent_since = None
+            line = self.active_line if self.active_line is not None else self.next_line
+            if not (isinstance(line, dict) and line.get("stall")):
+                self._stall_empty = 0  # a real line resets the run of empty consults
+            return
+        if self._silent_since is None:
+            self._silent_since = now
+            return
+        if now - self._silent_since < self.STALL_SILENCE_S:
+            return
+        self._silent_since = None
+        if building and not self.director.in_flight and self._stall_empty < 2:
+            # F7/F12: the director gets the first say -- an out-of-turn consult; the bank
+            # is the fallback after two empty ones in a row or a consult that is stuck
+            self._stall_empty += 1
+            self.director.consult_async(now, events=[{"t": now, "type": "consult_due",
+                                                      "reason": "silence"}])
+            return
+        if building:
+            bank = self._cache_build["stall_bank"] or ["Подожди, сейчас откроют."]
+            text = bank[self._cache_build["i"] % len(bank)]
+            self._cache_build["i"] += 1
+            who = self.actors[self._cache_build["i"] % len(self.actors)] if self.actors else self.hero
+            role = "actor" if who != self.hero else "hero"
+        else:
+            self._hero_after_abort = None
+            who, role, text = self.hero, "hero", self.HERO_AFTER_ABORT_TEXT
+        self._start_line({"owner": "npc", "who": who, "role": role, "text": text,
+                          "stall": True})
+
+    def _scene_ok(self, idea):
+        entry = self.scene_registry.get(idea.get("scene_id"))
+        return bool(entry and entry.get("bridge") and entry.get("destination")) and self.fsm.state == "idle"
+
+    def _decide_idea(self, idea):
+        if self.idea_decider is not None:
+            return self.idea_decider(idea)
+        if self.fake:
+            return "fire", "понял: %s" % idea.get("clean", "")
+        import llm
+        system = ("Ты режиссёр сна. Оператор прислал идею. Уместно ли исполнить её прямо сейчас? "
+                  'Ответь только JSON {"decision": "fire|hold", "text": "одна короткая фраза оператору: '
+                  'что понял и когда сделаешь"}. Если не понял идею: hold и «не понял, повтори».')
+        ctx = "Место: %s. Актёры: %s. Идея (%s): %s" % (self.place, ", ".join(self.actors),
+                                                       idea.get("intent"), idea.get("clean"))
+        res = llm.call("director", system, [{"role": "user", "content": ctx}], max_tokens=200)
+        m = re.search(r"\{.*\}", res.text or "", re.S)
+        out = json.loads(m.group(0)) if m else {}
+        decision = "fire" if out.get("decision") == "fire" else "hold"
+        return decision, str(out.get("text") or "не понял, повтори")
+
+    def _safe_ack(self, text):
+        """The director's answer goes to the operator panel: same sanitize + safety as input."""
+        t = sanitize(str(text or ""), "human")[0]
+        return "не могу ответить на это" if not t or self._safety_check(t) else t
+
+    def _present(self, name):
+        return name in self.actors
+
+    def _line_busy(self):
+        """F7: a line is playing, being generated, or generated and unplayed -- its prompt
+        was built without a topic fired now, so a steer/npc fire waits for it."""
+        return (self.active_line is not None
+                or (self._gen_thread is not None and self._gen_thread.is_alive())
+                or self._gen_result is not None)
+
+    def _idea_step(self):
+        """Every tick: code conditions, one idea per consult, the answer applied here."""
+        self.ideas.tick()
+        self._expire_steer()
+        for store in (self._npc_cues, getattr(self, "_npc_inflight", {})):
+            for who in [w for w in store if w not in self.actors]:
+                for cue in store.pop(who):  # 2в: gone between fire and his line
+                    self.ideas.fail(cue["id"], "addressee_gone")
+        if self.director.in_flight:
+            return  # a running director consult finishes first; the idea goes to the next one
+        if self._idea_thread is not None:
+            th, started, id_ = self._idea_thread
+            if self._idea_result is not None:
+                dec, text = self._idea_result
+                if dec == "fire" and self._line_busy():
+                    # F7: a line began generating (or playing) while the director thought;
+                    # it was built without the topic, so the fire waits for it to be played
+                    return
+                self._idea_thread = self._idea_result = None
+                self.ideas.resolve(id_, dec, self._safe_ack(text), present=self._present)
+            elif time.monotonic() - started > self.IDEA_CONSULT_S:
+                self._idea_thread = None  # a late answer finds no consult and is dropped
+                self.ideas.resolve(id_, "hold", "думаю дольше обычного, вернусь к идее")
+            return
+        idea = self.ideas.select(speaking=self._line_busy(),
+                                 scene_ok=self._scene_ok, present=self._present)
+        if idea is None:
+            return
+        if self.fake or self.idea_decider is not None:
+            try:
+                dec, text = self._decide_idea(idea)
+            except Exception:
+                dec, text = "hold", "не вышло, вернусь к идее"
+            self.ideas.resolve(idea["id"], dec, self._safe_ack(text), present=self._present)
+            return
+        token = object()
+
+        def work():
+            try:
+                res = self._decide_idea(idea)
+            except Exception:
+                res = ("hold", "не вышло, вернусь к идее")
+            if self._idea_thread is not None and self._idea_thread[0] is token:
+                self._idea_result = res
+        self._idea_thread = (token, time.monotonic(), idea["id"])
+        threading.Thread(target=work, daemon=True).start()
+
     def stop(self, by="human"):
         if not self.stopped:
             self.stopped = True
@@ -1925,6 +2492,9 @@ class Sim:
         # never arrive.
         if self.safety_paused:
             return []
+        # D2: the idea queue runs in both modes (make.play plays the test world as a book)
+        self._idea_step()
+        self._stall_step(now)
         if self.book is not None:
             self._maybe_start_scene_background()
             self._cycle_line()
@@ -1950,7 +2520,7 @@ class Sim:
         """Due events (nudge/force/abort) or an idle consult every min_interval: only idle
         picks a bridge (R6). Locked builds still hear from the director via the 4-line rhythm."""
         now = self.clock.now()
-        if self.safety_paused or self.director.in_flight:
+        if self.safety_paused or self.director.in_flight or self._idea_thread is not None:
             return last_consult
         if not self.fake and not self._budget_ok():
             return last_consult
@@ -2010,7 +2580,7 @@ class Sim:
         # charge, with no timeout. On Ф1 a 23 s Wonder consult outlived the old 5 s
         # wait, charged after the row and verify_run killed the run ("actual spent
         # != journal cost"); the goal judge and a line in flight were never joined
-        self.director.wait(timeout=None)
+        self._join_director()
         self._drain_director()
         self._join_judge(timeout=None)
         if self._gen_thread is not None:
@@ -2032,7 +2602,8 @@ class Sim:
 def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_seconds=None,
         media=None, max_dollars=20.0, dialogue=None, serve=None, on_sim=None,
         label=None, first_events=(), book=None, scenes=None, score=None, hero_owner=None,
-        freestyle=False, plan=None, no_build=False, on_outdir=None, door_ids=None):
+        freestyle=False, plan=None, no_build=False, on_outdir=None, door_ids=None, build_mode="live",
+        fsm_params=None, scene_world=None):
     """door_ids: door place name -> engine door id (make/play.py from stage/places.json);
     plan: a ready book plan (make/play.py), run() does not load the book itself;
     no_build: the world is one, the director may not send the dream anywhere else.
@@ -2074,7 +2645,8 @@ def run(profile="A", fake=True, speed=1.0, max_transitions=2, seed=0, max_second
     with Sim(profile=profile, fake=fake, speed=speed, outdir=outdir, media=media,
              max_dollars=max_dollars, dialogue=dialogue,
              first_events=first_events, book=plan, hero_owner=hero_owner,
-             no_build=no_build, script=[] if plan is not None else None) as sim:
+             no_build=no_build, script=[] if plan is not None else None,
+             build_mode=build_mode, fsm_params=fsm_params, scene_world=scene_world) as sim:
         viewer = None
         if serve is not None:
             from server import Viewer

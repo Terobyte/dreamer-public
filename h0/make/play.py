@@ -83,6 +83,45 @@ def _seed_reply(objects):
     })
 
 
+def scene_registry(run_dir, world):
+    """D4 F14/F15: the scene registry of `world` checked against this run's dist: its door must be a
+    door of world/run/scene.json and its destination a room there, else the play refuses (a wrong
+    world would lock the wrong door or walk the hero nowhere). The next scene is the destination
+    room as the dist has it: its places (stage/places.json, else scene.json props), the cast comes along."""
+    run_dir = Path(run_dir)
+    _dream()
+    import sim
+    if world not in sim.Sim.SCENE_WORLDS:
+        raise ValueError("unknown scene world %r (known: %s)" % (world, ", ".join(sim.Sim.SCENE_WORLDS)))
+    sp = run_dir / "world" / "run" / "scene.json"
+    if not sp.is_file():
+        raise FileNotFoundError("%s: --director-prompt needs the dist's scene.json" % sp)
+    scene = json.loads(sp.read_text())
+    doors = {str(d.get("id")) for d in scene.get("doors") or [] if isinstance(d, dict)}
+    doors |= {str(o.get("id")) for o in scene.get("openings") or [] if isinstance(o, dict)}
+    rooms = {str(r.get("id")) for r in scene.get("rooms") or [] if isinstance(r, dict)}
+    pp = run_dir / "stage" / "places.json"
+    places = json.loads(pp.read_text()).get("places") if pp.is_file() else None
+    reg = copy.deepcopy(sim.Sim.SCENE_WORLDS[world])
+    for sid, e in reg.items():
+        if e["bridge"] not in doors:
+            raise ValueError("scene %s: door %r is not in this dist (doors: %s)"
+                             % (sid, e["bridge"], ", ".join(sorted(doors)) or "none"))
+        if e["destination"] not in rooms:
+            raise ValueError("scene %s: room %r is not in this dist (rooms: %s)"
+                             % (sid, e["destination"], ", ".join(sorted(rooms)) or "none"))
+        if not e.get("next_scene"):
+            dest = e["destination"]
+            if isinstance(places, list):
+                things = [q["name"] for q in places if isinstance(q, dict) and q.get("room") == dest and q.get("name")]
+            else:
+                things = [q.get("cat") or q.get("id") for q in scene.get("props") or []
+                          if isinstance(q, dict) and q.get("room") == dest]
+            e["next_scene"] = {"objects": [dest] + [t for t in dict.fromkeys(things) if t != dest],
+                               "actors": None, "events": [], "goals": []}
+    return reg
+
+
 def _wait_for_viewer(timeout):
     def on_sim(sim):
         v = getattr(sim, 'viewer', None)
@@ -92,7 +131,8 @@ def _wait_for_viewer(timeout):
 
 
 def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None,
-         wait_viewer=False, wait_timeout=120, lang=None):
+         wait_viewer=False, wait_timeout=120, lang=None, build_mode=None, fsm_params=None,
+         scene_world=None):
     """-> (outdir, log.jsonl path) as sim.run. `serve`: port (0 = any) for the sim's SSE server."""
     run_dir = Path(run_dir)
     sj = json.loads((run_dir / "stage" / "stage.json").read_text())
@@ -123,6 +163,12 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
         kw.update(speed=100.0, max_transitions=2, max_seconds=max_seconds or 1.6)  # 160 sim-seconds
     elif max_seconds:
         kw["max_seconds"] = max_seconds
+    if build_mode is not None:
+        # D4 (--director-prompt): the next scene is a room of this one dist, its "build"
+        # is BuildFSM's timer of cache_build_s (fsm_params["build"]), a pace of the show
+        if isinstance(scene_world, str):
+            scene_world = scene_registry(run_dir, scene_world)
+        kw.update(build_mode=build_mode, fsm_params=fsm_params, scene_world=scene_world)
     if wait_viewer and serve is not None and not fake:
         kw["on_sim"] = _wait_for_viewer(wait_timeout)
     if sj["mode"] == "book":
@@ -171,6 +217,12 @@ def main(argv=None, hold=_hold):
                     help="start the sim when a page connects (default on unless --fake)")
     ap.add_argument("--no-wait-viewer", dest="wait_viewer", action="store_false")
     ap.add_argument("--lang", choices=["en", "ru"], default=None, help="ru: play story/score.ru.json (default: stage.json lang)")
+    ap.add_argument("--director-prompt", dest="director_prompt", action="store_true",
+                    help="D4: operator ideas may start the next scene as a cache build")
+    ap.add_argument("--cache-build-s", dest="cache_build_s", type=float, default=45.0,
+                    help="seconds the cache 'build' takes (a pace of the show, default 45)")
+    ap.add_argument("--scene-world", dest="scene_world", default="koshakan",
+                    help="scene registry of the world: koshakan (test) or kozb7_yard")
     a = ap.parse_args(argv)
     wait = (not a.fake) if a.wait_viewer is None else (a.wait_viewer and not a.fake)
     srv = None
@@ -181,7 +233,9 @@ def main(argv=None, hold=_hold):
     try:
         out, log = play(a.run, fake=a.fake, freestyle=a.freestyle or None,
                         serve=None if a.fake else (sim_port or 8770), wait_viewer=wait,
-                        **({"lang": a.lang} if a.lang else {}))
+                        **({"lang": a.lang} if a.lang else {}),
+                        **({"build_mode": "cache", "fsm_params": {"build": a.cache_build_s},
+                            "scene_world": a.scene_world} if a.director_prompt else {}))
         print(log)
         if wait:
             hold()

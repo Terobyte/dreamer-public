@@ -27,6 +27,8 @@ import { lookDir, pickCamera } from "./cams.js";
 import { EYE, controls, makeWalker, type Walker } from "./walk.js";
 import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef } from "./doors.js";
 import { connectSim, createBridge, simPost, type StageHandlers } from "./bridge.js";
+import { mountHeadsetField, mountOperator } from "./operator.js";
+import { createPlacards, threePlacard } from "./placard.js";
 import { scatterObjects, toSources, type ScatterSource } from "./scatter.js";
 import { startStage, type Stage } from "./stage/index.js";
 import { cameraStyleOf } from "./stage/camera-default.js";
@@ -315,6 +317,21 @@ async function start(): Promise<void> {
     Object.assign(stageHandlers, stage.handlers);
     // place the directed camera before the first render: the first frame is already inside the room (F36)
     stage.update(0, performance.now() / 1000);
+  }
+  if (sim) {
+    // D4: the "загрузка" plaque on a door; a plaque with an idea id confirms its effect
+    const placards = createPlacards({
+      door: (id) => doors.get(id)?.def,
+      add: threePlacard(scene, document),
+      warn: (m) => console.warn(`bridge: ${m}`),
+    });
+    const post = simPost(sim);
+    stageHandlers.placard = (e) => {
+      if (placards.handle(e) && e.clear !== true && typeof e.id === "string") post("/event", { kind: "effect_ack", id: e.id });
+    };
+    // D2: operator panel (layout A) with `?operator=1`; the player's Tab field always
+    if (params.get("operator") === "1") Object.assign(stageHandlers, mountOperator(document, sim).handlers);
+    mountHeadsetField(document, sim);
   }
   if (sim) connectSim(sim, bridge, (m) => console.warn(`bridge: ${m}`));
   let touching: string | null = null;

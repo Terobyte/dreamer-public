@@ -190,9 +190,16 @@ def check_messages(d, actors):
 
 class BuildFSM:
     def __init__(self, objects, voices=(), speed=1.0, now=0.0, params=None, actors=(),
-                 hero=None, no_build=False):
+                 hero=None, no_build=False, build_mode="live"):
         self.no_build = no_build  # make/play.py: one world, the dream never leaves it
+        # D4: "cache" = the world is already built (one dist); the build is the FSM's own
+        # timer (p["build"] = cache_build_s), so no_build does not refuse it
+        self.build_mode = "cache" if build_mode == "cache" else "live"
         p = dict(DEFAULTS, **(params or {}))
+        if self.build_mode == "cache":
+            b = p.get("build")
+            if isinstance(b, bool) or not isinstance(b, (int, float)) or not 0 < b < float("inf"):
+                raise ValueError("cache_build_s must be a positive finite number, got %r" % (b,))
         self.p = {k: (tuple(x / speed for x in v) if isinstance(v, tuple) else v / speed)
                   for k, v in p.items()}
         self.voices = set(voices)
@@ -204,6 +211,7 @@ class BuildFSM:
         self.pending_wakeup = None
         self.in_flight = False
         self.last_call = None
+        self._abandoned = set()  # t_call of consults the sim gave up on (D4: 20 s)
         self.new_scene(now, objects)
 
     # --- scene and build -------------------------------------------------
@@ -226,7 +234,7 @@ class BuildFSM:
         self.consult_requested = False
 
     def start_build(self, now, bridge, destination, next_scene=None, hero_next=None):
-        if self.no_build:
+        if self.no_build and self.build_mode != "cache":
             return [self._e(now, "invalid", fields=["start_build"], reason="no_build")]
         self.state = "building"
         self.build_epoch += 1
@@ -235,8 +243,12 @@ class BuildFSM:
         self.hero_next = hero_next
         self.build_start = now
         self.nudge_pending = self.force_active = self.force_pending = False
-        return [self._e(now, "build", phase="start", bridge=bridge,
-                        destination=destination, epoch=self.build_epoch)]
+        ev = [self._e(now, "build", phase="start", bridge=bridge,
+                      destination=destination, epoch=self.build_epoch)]
+        if self.build_mode == "cache":
+            # D4: the door is locked from the start of the build, not from the first touch
+            ev.append(self._e(now, "door", state="locked", object=bridge))
+        return ev
 
     def abort(self, now, reason):
         if self.state not in ("building", "ready"):
@@ -259,6 +271,19 @@ class BuildFSM:
         self.build_epoch += 1
         return [self._e(now, "transition", via=via, bridge=self.bridge,
                         destination=self.destination)]
+
+    def walk_through(self, now):
+        """D4: the hero walks through the open door on his own (sim sends `goto`):
+        only from `ready`."""
+        if self.awake or self.state != "ready":
+            return [self._e(now, "invalid", fields=["walk_through"], reason="not_ready")]
+        return self._transition(now, "npc_walk")
+
+    def build_left(self, now):
+        """Seconds (sim clock) left in the build, from build_pct; 0 outside `building`."""
+        if self.state != "building":
+            return 0.0
+        return self.p["build"] * (100 - self.build_pct(now)) / 100.0
 
     # --- time ------------------------------------------------------------
     def tick(self, now):
@@ -365,8 +390,21 @@ class BuildFSM:
             # B40: the forced consult is owed again -- due() must keep saying "force"
             self.force_pending = True
 
+    def abandon_consult(self, now):
+        """D4: the sim gave up on a consult in flight; its late reply is stale."""
+        if not self.in_flight:
+            return []
+        self.in_flight = False
+        self._abandoned.add(self.last_call)
+        return [self._e(now, "consult_abandoned", t_call=self.last_call)]
+
     def finish_consult(self, now, ticket, decision):
         """Apply one director decision (dict, or anything else = broken JSON)."""
+        abandoned = getattr(self, "_abandoned", set())
+        if ticket.get("t_call") in abandoned:
+            abandoned.discard(ticket.get("t_call"))
+            return [self._e(now, "consult_stale", epoch=ticket["epoch"], state=ticket["state"],
+                            reason="abandoned"), self._consult(now, ticket, "stale")]
         self.in_flight = False
         ev = []
         if self.awake or ticket["epoch"] != self.build_epoch or ticket["state"] != self.state:

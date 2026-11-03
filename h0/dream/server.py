@@ -223,6 +223,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
             return self._send(200, self._ab_state())
         if path == "/api/panel":
             return self._panel(q)
+        if path == "/ideas":
+            # D2: the operator panel reloads the queue on (re)connect
+            sim = self.viewer.sim
+            if sim is None or not hasattr(sim, "ideas_state"):
+                return self._send(409, {"error": "no live dream"})
+            return self._send(200, sim.ideas_state())
         if path == "/events":
             return self._events(q)
         if path.startswith("/out/"):
@@ -492,6 +498,17 @@ class ViewerHandler(BaseHTTPRequestHandler):
             # 2.2: the only way out of a safety pause; the sim resumes on its next tick
             sim.submit("continue")
             return self._send(200, {"ok": True})
+        if path == "/event" and body.get("kind") in ("draft", "idea", "idea_drop", "effect_ack"):
+            # D2: operator/headset ideas answer at once and never take the
+            # consult-on-every-event path below; the queue feeds the director
+            kind = body["kind"]
+            if kind == "draft":
+                return self._send(200, sim.clean_draft(body))
+            if not isinstance(body.get("id"), str) or not body["id"]:
+                return self._send(400, {"error": "id (string) required"})
+            fn = {"idea": sim.post_idea, "idea_drop": sim.drop_idea,
+                  "effect_ack": sim.effect_ack}[kind]
+            return self._send(200, fn(body))
         if path == "/event":
             # the 3D engine's door_touch (phase G2): the hero touches a door,
             # which the sim reads as an input event naming the door

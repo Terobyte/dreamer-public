@@ -90,6 +90,8 @@ ROLE_TABLE = {
     "judge": (SPARK_OPEN_MODEL, "medium"),
     "director": (WONDER_MODEL, "low"),
     "shadow": (WONDER_MODEL, "low"),
+    # D2: the operator draft cleaner -- contributor only (SPARK_MODEL), never the paid one
+    "idea": (SPARK_MODEL, "minimal"),
 }
 
 # The hero (the player) runs a little hot so the dream can surprise; actors and
