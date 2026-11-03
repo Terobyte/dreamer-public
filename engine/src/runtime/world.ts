@@ -332,3 +332,22 @@ export async function buildWorld(
     loads,
   };
 }
+
+/**
+ * Sew a place into a world that is already running (the endless book, the sim's rooms picked from memory): `data` is
+ * the place's built dist, laid where `dreamer stitch` put it, so nothing is shifted here. Its subtree joins
+ * `world.root`, its meshes `objects`, its doors `doors`, and its nav the walker; the first place keeps working.
+ * A door id the world already has throws: stitch renames what collides, so a clash means an unstitched part.
+ */
+export async function attachPlace(world: EngineWorld, data: { geo: any; nav: any; built?: any }, opts: BuildWorldOpts): Promise<EngineWorld> {
+  const clash = ((data.built?.doors ?? []) as DoorDef[]).map((d) => d.id).filter((id) => world.doors.has(id));
+  if (clash.length > 0) throw new Error(`attachPlace: door ids already in the world: ${clash.join(", ")}`);
+  const part = await buildWorld(data, opts);
+  world.root.add(part.root);
+  for (const [k, o] of part.objects) world.objects.set(k, o);
+  for (const [k, d] of part.doors) world.doors.set(k, d);
+  world.walker.extend({ layers: part.layers, floors: data.geo.floors ?? [], ramps: data.nav.ramps ?? [] });
+  world.layers.push(...part.layers);
+  world.shell.push(...part.shell);
+  return part;
+}

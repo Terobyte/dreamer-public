@@ -1,4 +1,4 @@
-import { floorAtRooms, navBit, rampUnder, rampWalkable, type NavLayer, type NavRamp } from "../nav/floor.js";
+import { CELL, floorAtRooms, navBit, rampUnder, rampWalkable, type NavLayer, type NavRamp } from "../nav/floor.js";
 import type { V2 } from "../geom/vec.js";
 
 export const EYE = 1.6;
@@ -14,6 +14,8 @@ export interface Walker {
   /** Step by (dx, dz); a blocked cell slides along x and z on their own. */
   tryMove(dx: number, dz: number): [number, number, number];
   teleport(x: number, z: number): [number, number, number];
+  /** a place sewn in while the world runs: its nav layers, floors and flights join the walk (`attachPlace`) */
+  extend(more: { layers: MoreNav["layers"]; floors?: Floor[]; ramps?: NavRamp[] }): void;
 }
 
 /** The layers and flights a walk may use beyond the one it starts on. */
@@ -31,7 +33,8 @@ export function makeWalker(
   more?: MoreNav,
 ): Walker {
   const layers = [{ layer, bits }, ...(more?.layers ?? [])];
-  const ramps = more?.ramps ?? [];
+  const ramps = [...(more?.ramps ?? [])];
+  floors = [...floors];
   let x = start[0];
   let z = start[1];
   let fy = floorAtRooms(floors, x, z, layer.y, ramps) ?? layer.y;
@@ -46,9 +49,15 @@ export function makeWalker(
     // first footprint hit: stacked flights share a plan
     const on = rampUnder(ramps, nx, nz, fy);
     if (on.inside) return on.ramp !== null && rampWalkable(on.ramp, nx, nz);
+    // at the same height the layer that covers the point wins: a sewn-in place lies beside the first one, not on it
+    const covers = (L: (typeof layers)[number]): boolean => {
+      const i = Math.floor((nx - L.layer.origin[0]) / CELL + 1e-9), j = Math.floor((nz - L.layer.origin[1]) / CELL + 1e-9);
+      return i >= 0 && j >= 0 && i < L.layer.w && j < L.layer.h;
+    };
     let best = layers[0];
     for (const L of layers) {
-      if (Math.abs(L.layer.y - fy) < Math.abs(best.layer.y - fy)) best = L;
+      const d = Math.abs(L.layer.y - fy) - Math.abs(best.layer.y - fy);
+      if (d < 0 || (d === 0 && covers(L) && !covers(best))) best = L;
     }
     return navBit(best.layer, best.bits, nx, nz);
   };
@@ -82,6 +91,11 @@ export function makeWalker(
       z = nz;
       fy = y;
       return here();
+    },
+    extend(m): void {
+      layers.push(...m.layers);
+      floors.push(...(m.floors ?? []));
+      ramps.push(...(m.ramps ?? []));
     },
   };
 }

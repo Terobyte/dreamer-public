@@ -124,7 +124,8 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 |---|---|---|---|
 | `runtime/main.ts` | старт страницы: three-сцена из geometry.json, текстуры/GLB, свет (point + hemi), ходьба, двери, outdoor, stage; `__dreamer.stageWarnings()` = упавшие GLB + `Stage.warnings()` (для `record.mjs`) | `start()` | `browser/page.test.ts` |
 | `runtime/assets.ts` | загрузка текстур/GLB, подгонка GLB в бокс, вырезание тёмных текселей | `loadMaps`, `loadGlb`, `fitGlb`, `glbScale`, `cutDarkTexels` | `browser/assets.test.ts`, `walk-look` |
-| `runtime/walk.ts` | игрок: `EYE 1.6`, `SPEED 1.4`, капсула по nav, мышь | `makeWalker`, `controls`, `mouseLook` | `bugs-walk`, `walk-look` |
+| `runtime/walk.ts` | игрок: `EYE 1.6`, `SPEED 1.4`, капсула по nav, мышь; `walker.extend` берёт слои/полы пришитого места, на одной высоте выигрывает слой, что накрывает точку | `makeWalker`, `controls`, `mouseLook` | `bugs-walk`, `walk-look`, `attach-place` |
+| `runtime/world.ts` | мир из `dist` как поддерево three.js без рендерера (десктоп и IWSDK); `attachPlace` пришивает место, собранное порознь (`dreamer stitch`), в идущий мир без перезагрузки: меши, двери, nav; на странице `__dreamer.attach(base)` | `buildWorld`, `attachPlace`, `withBase`, `materialOf`, `meshOf` | `runtime-world`, `attach-place` |
 | `runtime/doors.ts` | дверь вращается вокруг петли, блокирует клетки nav, «касание» лучом | `makeDoor`, `touchTarget`, `setCells`, `sweepOf`, `TURN_S 0.6`, `TOUCH_M 1.2` | `door-runtime`, `door-blockers` |
 | `runtime/cams.ts` | выбор камеры страницы (walk / cam / top) | `pickCamera`, `lookDir` | `cams.test.ts` |
 | `runtime/outdoor.ts` | небо-купол + круглая земля с затуханием | `addOutdoor`, `skyTexture` (купол: повтор по u, без мипов) | `browser/outdoor.test.ts` |
@@ -340,6 +341,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | процедурное дыхание/взгляд/кивки | `stage/life.ts createLife`, `after(dt,{weight,talking,look?})`; включается в `createAnimator(..., {life:true})`; кто на кого смотрит — `stage/index.ts resolveGaze`, высота цели на месте — `placeGazePoint`; текущая мировая точка взгляда актёра — `stage/index.ts api.gaze(who)` (только чтение для тестов/отладки, null если актёра нет) |
 | выбрать план камеры/склейку | `stage/director.ts createDirector().step(...)` |
 | склеить мир из нескольких мест и связать двери | `E/src/stitch.ts stitchScenes` / `dreamer stitch` (пример: `anymove/runs/squidward/world_street/make_scene.ts`) |
+| пришить новое место в идущий мир (бесконечная книга, сим) | `E/src/runtime/world.ts attachPlace` / страница `__dreamer.attach(base)`; координаты места — от `stitchScenes` |
 | зажать камеру в комнату | `stage/camera.ts clampCamera / snapInside / roomRect` |
 | поставить точку камеры (контур + сторона 180° + высота) | `stage/camera.ts legalCameraPoint` |
 | камера не внутри актёра (наезд, крупный план пары на коленях) | `stage/camera.ts clearOfBodies`; на улице общий план «комнаты» = актёры (`moves.ts openSubject`) |

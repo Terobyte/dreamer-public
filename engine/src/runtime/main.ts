@@ -9,7 +9,7 @@ import { mountHeadsetField, mountOperator } from "./operator.js";
 import { createPlacards, threePlacard } from "./placard.js";
 import { startStage, type Stage } from "./stage/index.js";
 import { cameraStyleOf } from "./stage/camera-default.js";
-import { TONE, buildWorld } from "./world.js";
+import { TONE, attachPlace, buildWorld } from "./world.js";
 
 function say(text: string): void {
   const d = document.createElement("div");
@@ -228,6 +228,13 @@ async function start(): Promise<void> {
     /** host access to the live three.js objects (same three instance as the engine) */
     three: { THREE, scene, camera, renderer, loadGltf: (url: string) => new GLTFLoader().loadAsync(url) },
     onFrame: (cb: (dt: number, now: number) => void): void => { frameHooks.push(cb); },
+    /** sew a place built apart (its dist at `base`, laid by `dreamer stitch`) into the running world, no reload */
+    attach: async (base: string): Promise<{ doors: string[] }> => {
+      const get = (f: string): Promise<any> => fetch(`${base.replace(/\/$/, "")}/${f}`).then((r) => r.json());
+      const [g, n, b] = await Promise.all([get("geometry.json"), get("nav.json"), get("build.json").catch(() => ({}))]);
+      const part = await attachPlace(world, { geo: g, nav: n, built: b }, { base, hide: setup.hide, warn: runtimeWarn });
+      return { doors: [...part.doors.keys()] };
+    },
     meshCount: (): number => meshTotal,
     inspect: (
       id: string,
