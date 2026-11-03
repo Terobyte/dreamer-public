@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { runCheck } from "../src/check.js";
 import { buildGeometry } from "../src/build/geometry.js";
+import { footprintsOverlap } from "../src/build/slab.js";
+import { azToPoint } from "../src/geom/arc.js";
 import type { Mesh } from "../src/build/geometry.js";
 import { intervalMeshes } from "../src/build/walls.js";
 import type { WallRoom } from "../src/build/walls.js";
@@ -287,5 +289,26 @@ describe("geometry debt", () => {
     expect(bottomAt(0.3, 3.1)).toEqual([3.4]);
     // whatever the slab covers, its top is the loft floor
     for (const m of slabs) for (let i = 1; i < m.positions.length; i += 3) expect(m.positions[i]).toBeLessThanOrEqual(3.6 + 1e-9);
+  });
+
+  it("L107 a round room's footprint is its built outline, not the true circle", () => {
+    // intended: the lower room's ceiling, floor and wall axis are all built
+    // on the same 0.25 m tessellation (plan/rooms.ts, walls.ts axisPoly), so
+    // a sliver between a chord and the arc has no ceiling under it to meet
+    const r = 2;
+    const n = Math.max(8, Math.ceil((2 * Math.PI * r) / 0.25));
+    const outline = Array.from({ length: n }, (_, k) => azToPoint([0, 0], r, (k * 360) / n));
+    const half = 180 / n;
+    const chord = r * Math.cos((half * Math.PI) / 180);
+    // a thin room across the middle of the first chord, from 1 mm past it outwards
+    const ux = Math.sin((half * Math.PI) / 180);
+    const uz = Math.cos((half * Math.PI) / 180);
+    const at = (d: number, t: number): [number, number] => [ux * d + uz * t, uz * d - ux * t];
+    const sliver = [at(chord + 1e-3, -0.02), at(r + 1, -0.02), at(r + 1, 0.02), at(chord + 1e-3, 0.02)];
+    expect(Math.hypot(...at(chord + 2e-3, 0))).toBeLessThan(r); // inside the true circle
+    expect(footprintsOverlap(outline, sliver)).toBe(false);
+    // a millimetre deeper than the chord and it counts
+    const deeper = [at(chord - 1e-3, -0.02), at(r + 1, -0.02), at(r + 1, 0.02), at(chord - 1e-3, 0.02)];
+    expect(footprintsOverlap(outline, deeper)).toBe(true);
   });
 });
