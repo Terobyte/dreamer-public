@@ -142,6 +142,17 @@ def _lie_centre(m, surf):
     return _model_to_world(m, ox + (best[0] + 0.5) * 0.05, oz + (best[1] + 0.5) * 0.05)
 
 
+def _measured(build, pid, m, w, d):
+    """the model's measured footprint (build.json props fact, of the mesh as built), else the declared one: SpongeBob's
+    log sofa was declared 1.8 x 0.7 and built 1.97 x 3.28, the route went through the logs (Squidward v22 2:35).
+    A placeholder box is built to the declared size, so only a GLB takes the fact."""
+    if not m.get("glb"):
+        return w, d
+    f = ((build.get("props") or {}).get(m["id"]) or (build.get("props") or {}).get(pid) or {}).get("fact") or {}
+    fw, fd = f.get("w"), f.get("d")
+    return (fw, fd) if isinstance(fw, (int, float)) and isinstance(fd, (int, float)) and fw > 0 and fd > 0 else (w, d)
+
+
 def _obstacle(cx, cz, w, d, yaw):
     r = math.radians(yaw)
     ex = abs(w / 2 * math.cos(r)) + abs(d / 2 * math.sin(r))
@@ -201,7 +212,7 @@ def build_places(world_run):
         items.append({"poses": poses, "id": m["id"], "base": _last_word(pid), "room": room, "kind": kind, "yaw": yaw,
                       "center": [cx, cz], "at": at, "spot": spot, "level": level, "mesh": m,
                       "size": {"w": s["w"], "d": s["d"], "h": s["h"]},
-                      "obstacle": _obstacle(cx, cz, w, d, yaw)})
+                      "obstacle": _obstacle(cx, cz, *_measured(build, pid, m, w, d), yaw)})
     _name_places(items)
     places = []
     for it in items:

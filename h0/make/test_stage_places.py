@@ -71,6 +71,20 @@ class Places(unittest.TestCase):
         self.assertAlmostEqual(x1 - x0, 0.9, delta=0.01)
         self.assertAlmostEqual(z1 - z0, 2.0, delta=0.01)
 
+    def test_obstacle_takes_the_measured_model_size(self):
+        # Squidward v22 2:35: SpongeBob's log sofa was declared 1.8 x 0.7, its model measured 1.97 x 3.28
+        # (build.json props fact); the obstacle was the declared box, the route went through the logs
+        d = Path(tempfile.mkdtemp())
+        synth_world.write(d, glb=True)
+        bp = d / "dist" / "build.json"
+        b = json.loads(bp.read_text())
+        b["props"] = {"living_sofa": {"fact": {"w": 3.0, "d": 1.2, "h": 0.8}}}
+        bp.write_text(json.dumps(b))
+        sofa = _by_name(stage.build_places(d))["sofa"]  # turned 90 deg: 1.2 wide in x, 3.0 in z
+        x0, z0, x1, z1 = sofa["obstacle"]
+        self.assertAlmostEqual(x1 - x0, 1.2, delta=0.01)
+        self.assertAlmostEqual(z1 - z0, 3.0, delta=0.01)
+
     def test_copies_names_repeat_with_room_then_suffix(self):
         names = [p["name"] for p in _places()["places"]]
         self.assertIn("kitchen stool", names)
