@@ -378,6 +378,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | проп на верх или ярус полки | `mount: {top_of: id}` / `mount: {tier_of: id, tier: n}` (0 — нижний); посадку делает `remount` (`build/surfaces.ts`) |
 | места для партитуры (story/stage) | `stage.build_places(run_dir/"world"/"run")` — один вход `world/run`, словарь `{places, warnings}` |
 | факты клипа (куда смотрит лицо, где кожа касается опоры, лёжа ли) | `clipFacts(root, clip, heightM)` (`runtime/stage/clipfacts.ts`); готовые — `<cast>/clipfacts.json` |
+| куда смотрит лицо актёра без кости головы (тело + поворот лица клипа) | `clipFaceYaw(bodyYaw, facts)` (`runtime/stage/clipfacts.ts`); `dActors` даёт его режиссёру как `faceYaw` |
 | мировые точки кожи после скиннинга / нижняя точка кожи | `skinPoints(root)` / `lowestSkinY(root)` (`runtime/stage/clipfacts.ts`) |
 | на какой высоте тело лежит на опоре (не кончик уха) | `supportY(root)` (`runtime/stage/clipfacts.ts`) |
 | на какой высоте сиденье (таз), а не ступни сидячего клипа | `seatY(root, heightM)` (`runtime/stage/clipfacts.ts`); подъём в кровати — `bedLift(facts)` (`places.ts`) |

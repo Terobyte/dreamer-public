@@ -15,6 +15,7 @@ import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { bodyInTheWay, clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
 import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, type ActiveShot, type ShotClock } from "./shotplan.js";
+import { clipFaceYaw } from "./clipfacts.js";
 
 export interface StageCtx {
   scene: Scene;
@@ -135,7 +136,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
   // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
-  const clipfacts: Record<string, Record<string, { contact_y?: number; seat_y?: number; lying?: boolean; end_lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+  const clipfacts: Record<string, Record<string, { contact_y?: number; seat_y?: number; lying?: boolean; end_lying?: boolean; face_yaw?: number | null }>> | null = await fetch(new URL("clipfacts.json", castUrl))
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
     .catch(() => null);
@@ -275,7 +276,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       return {
         head: h?.p,
         face,
-        faceYaw: h?.yaw,
+        // L173: no head bone -> the clip's measured face turn (clipfacts.json), else the director uses yaw
+        faceYaw: h?.yaw ?? clipFaceYaw(a.yaw(), clipfacts?.[a.who]?.[a.idleName?.() ?? ""]),
         name: a.who,
         pos: a.pos(),
         yaw: a.yaw(),

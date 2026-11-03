@@ -257,3 +257,11 @@ export async function writeClipfacts(castDir: string): Promise<string[]> {
   fs.writeFileSync(path.join(castDir, "clipfacts.json"), JSON.stringify(out, null, 1));
   return warnings;
 }
+
+/** L173: where the face looks in the world for an actor without a measured head bone: body yaw plus the
+ *  clip's own `face_yaw` (0..360, actor axes). Undefined when the clip has no yaw (face up/down) or no facts. */
+export function clipFaceYaw(bodyYaw: number, facts: { face_yaw?: number | null } | null | undefined): number | undefined {
+  const fy = facts?.face_yaw;
+  if (typeof fy !== "number" || !Number.isFinite(fy)) return undefined;
+  return (((bodyYaw + fy) % 360) + 360) % 360;
+}
