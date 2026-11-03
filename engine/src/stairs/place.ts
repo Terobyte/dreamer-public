@@ -3,6 +3,8 @@ import type { V2 } from "../geom/vec.js";
 import { EPS } from "../geom/vec.js";
 import type { RoomGeo } from "../types.js";
 import { beamPolys } from "../props/place.js";
+import { Clipper, FillRule } from "clipper2-ts";
+import type { Path64 } from "clipper2-ts";
 
 /** headroom under which a flight needs the slab above it cut (spec "Лестницы") */
 export const HEADROOM = 2.0;
@@ -63,6 +65,40 @@ function crossings(poly: V2[], p0: V2, d: V2, sLo: number, sHi: number): number[
     if (s > sLo + EPS && s < sHi - EPS) out.push(s);
   }
   return out.sort((x, y) => x - y);
+}
+
+const toUm = (poly: V2[]): Path64 => poly.map(([x, z]) => ({ x: Math.round(x * 1e6), y: Math.round(z * 1e6) }));
+
+/**
+ * Flight-axis ranges [s0, s1] of the pieces `op` leaves of the flight strip
+ * `s ∈ [sLo, sHi]`, lateral ±`hw`, against `poly` (clipper, µm). Each piece is
+ * connected, so every s inside its range has some of the piece across it: a
+ * tooth or a beam narrower than the gap between sample lanes is still seen (Д9).
+ */
+function stripPieces(
+  op: "difference" | "intersect",
+  poly: V2[],
+  at: V2,
+  dir: V2,
+  hw: number,
+  sLo: number,
+  sHi: number,
+): Array<[number, number]> {
+  if (poly.length < 3 || sHi - sLo < EPS) return [];
+  const px: V2 = [-dir[1], dir[0]];
+  const pt = (s: number, l: number): V2 => [at[0] + dir[0] * s + px[0] * l, at[1] + dir[1] * s + px[1] * l];
+  const rect = [pt(sLo, -hw), pt(sHi, -hw), pt(sHi, hw), pt(sLo, hw)];
+  const out = op === "difference"
+    ? Clipper.difference([toUm(rect)], [toUm(poly)], FillRule.NonZero)
+    : Clipper.intersect([toUm(rect)], [toUm(poly)], FillRule.NonZero);
+  const ranges: Array<[number, number]> = [];
+  for (const path of out) {
+    // slivers below 1 mm² are rounding along a shared edge, not a tooth
+    if (Math.abs(Clipper.area(path)) < 1e6) continue;
+    const ss = path.map((q) => (q.x / 1e6 - at[0]) * dir[0] + (q.y / 1e6 - at[1]) * dir[1]);
+    ranges.push([Math.max(sLo, Math.min(...ss)), Math.min(sHi, Math.max(...ss))]);
+  }
+  return ranges;
 }
 
 export function placeStairs(ctx: Ctx): StairGeo[] {
@@ -164,9 +200,15 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
         const sq = Math.sqrt(disc);
         return [(-b - sq) / 2, (-b + sq) / 2].filter((s) => s > sLo + EPS && s < len - EPS);
       };
+      // a polygonal `to.room` is checked exactly: whatever of the tread strip
+      // lies outside its outline (a tooth between the lanes) is not under it.
+      // A circle is convex, so its lanes already say it all
+      const isCircle = !!(rawTo?.circle && Array.isArray(rawTo.circle.c) && typeof rawTo.circle.r === "number");
+      const outside = isCircle ? [] : stripPieces("difference", outline, at, dir, Math.max(0, hw - 1e-3), sLo, len);
       const breaks = [
         sLo,
         ...lanes.flatMap((p0) => [...circleCrossings(p0), ...crossings(outline, p0, dir, sLo, len)]),
+        ...outside.flat().filter((sv) => sv > sLo + EPS && sv < len - EPS),
         len,
       ].sort((x, y) => x - y);
       const cover: Array<{ a: number; b: number; under: boolean }> = [];
@@ -175,7 +217,8 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
         const b = breaks[k + 1];
         if (b - a < EPS) continue;
         const mid = (a + b) / 2;
-        cover.push({ a, b, under: lanes.every((p0) => insideTo([p0[0] + dir[0] * mid, p0[1] + dir[1] * mid])) });
+        const out = outside.some(([o0, o1]) => mid > o0 && mid < o1);
+        cover.push({ a, b, under: !out && lanes.every((p0) => insideTo([p0[0] + dir[0] * mid, p0[1] + dir[1] * mid])) });
       }
       // the exit (s = len) is under `to.room` (checked above), so walk back
       // from it and stop at the first gap: disjoint under-spans (e.g. a notch
@@ -228,9 +271,11 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
         at[0] + px0[0] * off,
         at[1] + px0[1] * off,
       ]);
+      const over = allBeams.map((bm) => stripPieces("intersect", bm.poly, at, dir, width / 2, 0, len));
       const bBreaks = [
         0,
         ...lanes.flatMap((p0) => allBeams.flatMap((bm) => crossings(bm.poly, p0, dir, 0, len))),
+        ...over.flat(2),
         ...crossings(outline, at, dir, 0, len),
         len,
       ];
@@ -247,8 +292,9 @@ export function placeStairs(ctx: Ctx): StairGeo[] {
           p0[1] + dir[1] * ((a + b) / 2),
         ]);
         let minClearHere: number | undefined;
-        for (const bm of allBeams) {
-          if (!mids.some((m) => inside(bm.poly, m))) continue;
+        const sm = (a + b) / 2;
+        for (const [bi, bm] of allBeams.entries()) {
+          if (!mids.some((m) => inside(bm.poly, m)) && !over[bi].some(([o0, o1]) => sm > o0 && sm < o1)) continue;
           const clearHere = bm.roomCeil - bm.h - nose(b);
           minClearHere = minClearHere === undefined ? clearHere : Math.min(minClearHere, clearHere);
         }

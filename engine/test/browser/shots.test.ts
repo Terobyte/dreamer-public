@@ -276,11 +276,11 @@ describe("dreamer shots", () => {
   });
 
   it("keeps a camera id that is already a legal filename", { timeout: 120000 }, async () => {
-    const named = patched([{ op: "replace", path: "/cameras/0/id", value: "front:view" }]);
+    const named = patched([{ op: "replace", path: "/cameras/0/id", value: "front.view" }]);
     const { dist } = build(named);
     const { status, served } = await shots(dist);
     expect(status).toBe(0);
-    expect(existsSync(join(dist, "shots", "front:view.png"))).toBe(true);
+    expect(existsSync(join(dist, "shots", "front.view.png"))).toBe(true);
     const sheet = readFileSync(join(dist, "sheet.html"), "utf-8");
     const hrefs = [...sheet.matchAll(/src="(shots\/[^"]+)"/g)].map((m) => m[1]!);
     for (const href of hrefs) {
