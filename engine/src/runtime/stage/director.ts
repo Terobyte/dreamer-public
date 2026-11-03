@@ -44,6 +44,10 @@ export interface DEvent {
   beat?: number;
   room?: string;
   tags?: { first?: boolean; enter?: boolean; look?: boolean; last?: boolean };
+  /** К3м: Spark's choice for this beat (moves.json): the director does not draw a move nor apply tags */
+  forced?: { move: string; subject: MoveSubject };
+  /** К3м: moves.json `hold` for this beat: a beat change does not cut the running plan */
+  hold?: boolean;
 }
 export interface DRoom {
   outline: V2[];
@@ -215,6 +219,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   /** accent styles: the last base frame on screen and when its cut began */
   let shown: { out: DirectorOut; at: number } | null = null;
   let shownRoom: string | null = null;
+  let carryWarn: string[] = [];
   let curMove: Pick<DirectorOut, "cam" | "look" | "lookRef" | "lookEndRef" | "end" | "lookEnd" | "fov" | "fovEnd" | "ease" | "shake" | "move" | "warnings" | "moveDurationS"> | null = null;
   let lastBeat: number | undefined;
   let curPair = false;
@@ -305,14 +310,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       subjectIsListener = asListener;
       cutSeq++;
     };
-    if (ev.tags) moveMode = true;
+    if (ev.tags || ev.forced) moveMode = true;
     const alternates = (who?: string): boolean => who !== undefined && who !== lastSpeaker && pairNames.includes(who);
     // К2: a new room is a cut with the room state dropped; a new beat cuts a plan
     let forceCut = false;
+    let roomChanged = false;
+    let holdBeat = false;
     const cutAtStart = cutSeq;
     if (ev.room !== undefined) {
       if (lastRoomEv !== undefined && ev.room !== lastRoomEv) {
         forceCut = true;
+        roomChanged = true;
         st.side = null;
         st.axis = null;
         wideLock = null;
@@ -321,7 +329,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       lastRoomEv = ev.room;
     }
     if (ev.beat !== undefined) {
-      if (lastBeat !== undefined && ev.beat !== lastBeat && !(style.cut === "long" && curPair && curMove?.move && ev.kind === "line" && alternates(ev.speaker))) forceCut = true;
+      const changed = lastBeat !== undefined && ev.beat !== lastBeat;
+      if (ev.hold && roomChanged) carryWarn.push(`HOLD_IGNORED B${ev.beat}`);
+      else if (changed && ev.hold && plan !== null) holdBeat = true;
+      if (changed && !holdBeat && !(style.cut === "long" && curPair && curMove?.move && ev.kind === "line" && alternates(ev.speaker))) forceCut = true;
       lastBeat = ev.beat;
     }
     // a face that turned more than 30° since the plan began (or past 90° to the camera) ends the plan
@@ -335,7 +346,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     }
 
     // cut: "long" — alternating lines inside one running move do not cut it until asl.max has passed
-    const holdPlan = moveMode && style.cut === "long" && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
+    const holdPlan = holdBeat || moveMode && style.cut === "long" && !ev.forced && curMove !== null && ev.kind === "line" && curPair && alternates(ev.speaker) && !forceCut && !ev.tags?.first && !ev.tags?.look && clock - planStart < style.asl[1];
     if (holdPlan) {
       count++;
       focus = speaker.name;
@@ -458,10 +469,25 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       curMove = null;
       faceBase = null;
       const tags = ev.tags ?? {};
-      const pk = driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, rng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
-      let atom = SCHEME_ATOM[pk.id] ?? pk.id;
-      // a lying listener has no shoulder: over it the ots framed Mama alone, huge (k12_calm 32–40 s) -> a two-shot
-      if (atom === "ots" && listener && (listener.lying || speaker.lying)) atom = "two";
+      const carried = carryWarn;
+      carryWarn = [];
+      // К3м2 r4/r6: each cut takes exactly one draw from the shared rng and runs on its own stream from it, so a
+      // forced cut (no pickMove) moves the shared stream as much as the director's own pick and other beats keep their moves
+      // the first value of the cut stream is the shared draw itself (a constant test rng still picks as in К2)
+      const v0 = rng();
+      let cs = Math.floor(v0 * 4294967296) >>> 0;
+      let first = true;
+      const cutRng = (): number => {
+        if (first) {
+          first = false;
+          return v0;
+        }
+        return (cs = (Math.imul(cs, 1664525) + 1013904223) >>> 0) / 4294967296;
+      };
+      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0 });
+      /** the move being tried (its id labels the frame) */
+      let pk: { id: string; warnings: string[] } = { id: "", warnings: [] };
+      let frontalRejected = false;
       // style wishes (height, fov); legalCameraPoint keeps the last word at runtime
       const hiY = Math.max(floorY + 0.3, height - 0.3);
       const lo = Math.min(floorY + style.height[0], hiY);
@@ -489,25 +515,52 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         return [h[0] + o[0], h[1] + o[1], h[2] + o[2]];
       };
       // pair atoms (ots/two/reaction) need the second actor; a "long" style keeps one pair plan across alternating lines
-      const subjOf = (at: string): { subj: MoveSubject; usePair: boolean; who: DActor[] } => {
+      const subjOf = (at: string, forced: MoveSubject | null = null): { subj: MoveSubject; usePair: boolean; who: DActor[]; whoName: string } => {
         const pairAtom = at === "ots" || at === "two" || at === "close_reaction";
         const roomAtom = at === "wide" || at === "master";
+        if (forced) {
+          // a forced pair atom on one actor takes the nearest other as the second (К3м2)
+          let subj: MoveSubject = forced;
+          let whoName = speaker.name;
+          if (pairAtom && "actor" in forced) {
+            const other = nearestOther(crew, crew.find((x) => x.name === forced.actor)!);
+            if (other) {
+              subj = { pair: [forced.actor, other.name] };
+              whoName = other.name;
+            }
+          }
+          const names = "pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : [];
+          const who = "room" in subj ? crew.filter((a) => !a.offstage) : crew.filter((a) => names.includes(a.name));
+          return { subj, usePair: "pair" in subj, who, whoName };
+        }
         const usePair = Boolean(listener) && !roomAtom && at !== "close" && (pairAtom || style.cut === "long");
         const subj: MoveSubject = roomAtom ? { room: true } : usePair ? { pair: [speaker.name, listener!.name] } : { actor: (at === "close" && pk.id === "reaction_cut" && listener ? listener : speaker).name };
         const names = "pair" in subj ? subj.pair : "actor" in subj ? [subj.actor] : [];
         const who = roomAtom ? crew.filter((a) => !a.offstage) : crew.filter((a) => names.includes(a.name));
-        return { subj, usePair, who };
+        return { subj, usePair, who, whoName: speaker.name };
       };
-      const attempt = (at: string): typeof curMove => {
-        const { subj, usePair, who } = subjOf(at);
+      const attempt = (at: string, forced: MoveSubject | null = null, extra: string[] = []): typeof curMove => {
+        const { subj, usePair, who, whoName } = subjOf(at, forced);
         try {
           const r = resolveMove(at, subj, {
             actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
-            durationS: ev.durationS ?? style.asl[0], rng, speaker: speaker.name, clear: inp.clear,
+            durationS: ev.durationS ?? style.asl[0], rng: cutRng, speaker: whoName, clear: inp.clear,
             // a walker's straight route: where it ends, from its heading and what is left of the walk
             walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
             side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
           });
+          if (forced && r.warnings.includes("MOVE_NO_LEGAL_POINT")) return null;
+          // К2 p.9: a plan labelled frontal must face the face (<= 10 deg), else it is not a frontal plan
+          if (at === "frontal") {
+            const fa = crew.find((x) => x.name === ("actor" in subj ? subj.actor : "pair" in subj ? subj.pair[0] : speaker.name));
+            if (fa) {
+              const d = Math.abs((((Math.atan2(r.from.pos[0] - fa.pos[0], r.from.pos[2] - fa.pos[1]) / DEG - (fa.faceYaw ?? fa.yaw)) % 360) + 540) % 360 - 180);
+              if (d > 10 + 1e-6) {
+                frontalRejected = true;
+                return null;
+              }
+            }
+          }
           const sh = Math.min(style.shake[1], Math.max(style.shake[0], r.shake));
           r.from.pos = cy(r.from.pos);
           // a move without its own fov takes the middle of the style's range (cf(undefined) was NaN)
@@ -520,8 +573,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           const mv = {
             cam: r.from.pos, look: pt(r.from.look), ...(Array.isArray(r.from.look) ? {} : { lookRef: r.from.look as ShotLook }),
             ...(r.end ? { end: r.end.pos, lookEnd: pt(r.end.look), ...(Array.isArray(r.end.look) ? {} : { lookEndRef: r.end.look as ShotLook }), fovEnd: r.end.fov } : {}),
-            fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: pk.id,
-            warnings: [...styleWarn, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
+            fov: r.from.fov, ease: r.ease, shake: style.move === 0 ? 0 : sh, move: forced ? at : pk.id,
+            warnings: [...styleWarn, ...carried, ...extra, ...pk.warnings, ...r.warnings], moveDurationS: ev.durationS ?? style.asl[0],
           };
           if (!inView(who, mv.cam, mv.look, mv.fov) || (mv.end && mv.lookEnd && !inView(who, mv.end, mv.lookEnd, mv.fovEnd ?? mv.fov))) return null;
           if (!faces(mv.cam) || (mv.end && !faces(mv.end))) return null;
@@ -564,7 +617,30 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       // base wide; both still, at the style's height (ozu stays low)
       curPair = false;
       pairNames = [];
-      curMove = attempt(atom) ?? (listener && atom !== "two" && atom !== "close" && !subjOf(atom).subj.hasOwnProperty("room") ? attempt("two") : null);
+      // Spark's move for the beat (К3м2): pickMove is not called and tags are not applied; a move it cannot place
+      // falls back to the director's own pick with FORCED_FALLBACK
+      const f = driftNow ? undefined : ev.forced;
+      const fw: string[] = [];
+      if (f) {
+        const names = "actor" in f.subject ? [f.subject.actor] : "pair" in f.subject ? f.subject.pair : [];
+        if (names.every((n) => crew.some((x) => x.name === n))) {
+          pk = { id: f.move, warnings: [] };
+          curMove = attempt(SCHEME_ATOM[f.move] ?? f.move, f.subject);
+        }
+        if (!curMove) fw.push(`FORCED_FALLBACK B${ev.beat} ${f.move}`);
+      }
+      let atom = "";
+      if (!curMove) {
+        pk = ownPick();
+        atom = SCHEME_ATOM[pk.id] ?? pk.id;
+        // a lying listener has no shoulder: over it the ots framed Mama alone, huge (k12_calm 32–40 s) -> a two-shot
+        if (atom === "ots" && listener && (listener.lying || speaker.lying)) atom = "two";
+        curMove = attempt(atom, null, fw) ?? (listener && atom !== "two" && atom !== "close" && !subjOf(atom).subj.hasOwnProperty("room") ? attempt("two", null, fw) : null);
+        if (!curMove && frontalRejected) {
+          pk = { id: "medium", warnings: [] };
+          curMove = attempt("medium", null, [...fw, "FRONTAL_REJECTED"]);
+        }
+      }
       if (curMove) {
         const a = crew.find((x) => x.name === speaker.name);
         const fd = a ? faceDir(a) : null;
@@ -580,11 +656,11 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const good = [b0, wide].find((o) => ok(o) && faces(o.cam)) ?? faceTwo();
         // a pair no clear frame holds (Squidward 25 s: SpongeBob at the door 4.4 m off, chairs between): the speaker's
         // close, before a base frame that shows the chairs
-        const close = !good && ev.kind === "line" && atom !== "close" ? attempt("close") : null;
+        const close = !good && ev.kind === "line" && atom !== "close" ? attempt("close", null, fw) : null;
         if (close) curMove = { ...close, warnings: [...(close.warnings ?? []), `MOVE_OUT_OF_FRAME ${pk.id}`] };
         else {
           const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, cameraLaw);
-          curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+          curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
         }
       }
     }
