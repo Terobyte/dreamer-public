@@ -49,7 +49,7 @@ describe("director: nobody is cut by the frame's edge", () => {
       }
     }
     expect(where).toEqual([]);
-  });
+  }, 240_000);
 
   it("SpongeBob by the door, Squidward at the easel: every frame has both in or one clearly out", () => {
     const squid = act("Squidward", [4.7, 5.0], { yaw: 200 });

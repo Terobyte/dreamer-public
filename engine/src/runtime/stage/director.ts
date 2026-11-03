@@ -203,6 +203,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   let moveCut = -1;
   /** the cut number the runtime sees while a move is held, the clock and room when the move started */
   let heldCut = -1;
+  /** a held still frame that has not seen a head it holds for this long (s) is cut again (hiddenFor, recuts) */
+  let hiddenFor = 0;
+  let recuts = 0;
+  let recut = false;
   let moveStart = 0;
   let moveRoom: string | null = null;
   /** accent styles: the last base frame on screen and when its cut began */
@@ -421,10 +425,29 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       else shown.out = out;
       return styleWarn.length ? { ...out, warnings: styleWarn } : out;
     }
+    // Squidward v19 20–24 s: the frame saw SpongeBob at the cut, then he turned and his head went behind a chair back;
+    // the frame held him hidden four seconds. A held still frame that loses a head it holds is cut again.
+    if (curMove && !curMove.end && inp.clear && cutSeq === moveCut && !driftNow) {
+      const f = curMove.fov ?? 50;
+      const lost = crew.some((a) => {
+        if (a.offstage) return false;
+        const h = a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
+        const p = ndcOf(h, curMove!.cam, curMove!.look, f, inp.aspect ?? 16 / 9);
+        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(curMove!.cam, h);
+      });
+      hiddenFor = lost ? hiddenFor + (ev.dt ?? 0) : 0;
+      if (hiddenFor >= HIDDEN_RECUT_S) {
+        hiddenFor = 0;
+        recut = true;
+        moveCut = NaN;
+      }
+    } else hiddenFor = 0;
     if (cutSeq !== moveCut || driftNow) {
       if (cutSeq !== moveCut) {
         shown = null;
-        heldCut = cutSeq;
+        // a re-cut of the same beat gets its own cut id (the runtime cuts on a new id)
+        heldCut = recut ? cutSeq + ++recuts / 1000 : cutSeq;
+        recut = false;
         moveStart = clock;
         moveRoom = key;
       }
@@ -571,6 +594,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
 }
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
+const HIDDEN_RECUT_S = 0.75;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
  *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
  *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
