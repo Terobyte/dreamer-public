@@ -268,6 +268,23 @@ def build_places(world_run):
         places.append({"name": n if k == 1 else f"{n} {k}", "id": d["id"], "kind": "door", "room": room, "level": lv,
                        "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
                        "poses": ["door"]})
+    # San Andreas doors (engine stage `Place.to`): portals are door spots on an open place (the street has no wall
+    # to cut a door in), an opening's or a portal's `to` names a door id or a portal id; it becomes a place name
+    for pt in scene.get("portals", []):
+        lv = (rooms.get(pt.get("room")) or {}).get("level")
+        places.append({"name": pt.get("name") or f"{pt['room']} {pt['id']}", "id": pt["id"], "kind": "door",
+                       "room": pt["room"], "level": lv, "at": [float(v) for v in pt["at"]],
+                       "yaw": pt.get("yaw", 0), "look": None, "obstacle": None, "poses": ["door"]})
+    links = {o["id"]: o["to"] for o in scene.get("openings", []) + scene.get("portals", []) if o.get("to")}
+    by_id = {p["id"]: p["name"] for p in places if p["kind"] == "door"}
+    for p in places:
+        if p["kind"] != "door" or p["id"] not in links:
+            continue
+        name = by_id.get(links[p["id"]])
+        if name is None:
+            warnings.append(f"door {p['id']}: leads to {links[p['id']]!r}, no such door or portal")
+        else:
+            p["to"] = name
     return {"places": places, "warnings": warnings}
 
 

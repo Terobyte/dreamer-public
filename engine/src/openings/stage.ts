@@ -210,6 +210,36 @@ export function openingsStage(ctx: Ctx): Issue[] {
     }
   }
 
+  // a door that leads elsewhere (`to`: an opening <-> a portal, San Andreas style) joins its rooms for reachability
+  // only (a street apart from the house: no wall between them, the swing above keeps the walls' own graph)
+  const portals: any[] = scene.portals ?? [];
+  const roomsOf = (id: string): string[] => {
+    const p = portals.find((q) => q?.id === id);
+    if (p) return [String(p.room)];
+    const g = geos.find((q) => q.id === id);
+    return g?.interval ? g.interval.sides.map((s) => s.room) : [];
+  };
+  const links: Array<[string[], string[]]> = [...((scene.openings ?? []) as any[]), ...portals]
+    .filter((o) => typeof o?.to === "string")
+    .map((o) => [roomsOf(String(o.id)), roomsOf(String(o.to))]);
+  if (links.length && typeof spawnRoom === "string") {
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const [a, b] of links)
+        for (const [x, y] of [[a, b], [b, a]] as const)
+          if (x.some((r) => dist.has(r)))
+            for (const r of y)
+              if (!dist.has(r)) {
+                dist.set(r, 1);
+                for (const q = [r]; q.length; ) {
+                  const cur = q.shift()!;
+                  for (const nb of graph.get(cur) ?? []) if (!dist.has(nb)) (dist.set(nb, 1), q.push(nb));
+                }
+                grew = true;
+              }
+    }
+  }
+
   // reachability, only with no other errors on this stage
   if (issues.length === 0 && typeof spawnRoom === "string") {
     const spawnLevel = roomById.get(spawnRoom)?.level;

@@ -269,9 +269,28 @@
             "properties": {
               "backdrop": { "type": "string" }
             }
-          }
+          },
+          "to": { "type": "string", "description": "where the door leads (a door id or a portal id): who walks out through it comes in there, San Andreas style" }
         },
         "allOf": [{ "not": { "required": ["at", "on"] } }]
+      }
+    },
+    "portals": {
+      "type": "array",
+      "default": [],
+      "description": "door spots on an open place (a street has no wall to cut a door in); `to` as an opening's",
+      "items": {
+        "type": "object",
+        "required": ["id", "room", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "room": { "type": "string" },
+          "at": { "$ref": "#/$defs/point2" },
+          "yaw": { "type": "number" },
+          "name": { "type": "string" },
+          "to": { "type": "string" }
+        }
       }
     },
     "props": {
