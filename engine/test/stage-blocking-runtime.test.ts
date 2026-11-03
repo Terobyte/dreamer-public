@@ -80,7 +80,9 @@ describe("stage blocking runtime actions", () => {
     expect(g.position.y).toBeCloseTo(0.75 - BED_TUCK_M, 2);
   });
 
-  it("goto/come faces along the final route segment without an explicit look", async () => {
+  // Squidward, Nov 3: "along" left SpongeBob at the easel facing the wall the last step pointed to. Without a
+  // look a goto ends facing the place's own facing (a seat's yaw, a stand place's thing); along only without one
+  it("goto/come without an explicit look faces the place's own yaw, not the final route segment", async () => {
     const stage = await runtime();
     stage.handlers.start!({ type: "start", who: "Mama", place: "chair" });
     await runUntilStopped(stage);
@@ -90,9 +92,9 @@ describe("stage blocking runtime actions", () => {
     expect(actor(stage).pos[0]).toBeCloseTo(5, 1);
     expect(actor(stage).pos[1]).toBeCloseTo(5, 1);
     const path = findPath(navLayer as any, navBits, from, places[0].at)!;
-    const expectedYaw = yawTo(path[path.length - 2]!, path[path.length - 1]!);
-    expect(expectedYaw).not.toBeCloseTo(places[0].yaw, 0);
-    expect(actor(stage).yaw).toBeCloseTo(expectedYaw, 0);
+    const routeYaw = yawTo(path[path.length - 2]!, path[path.length - 1]!);
+    expect(routeYaw).not.toBeCloseTo(places[0].yaw, 0);
+    expect(actor(stage).yaw).toBeCloseTo(places[0].yaw, 0);
   });
 
   it("goto faces an explicit look target instead of the route", async () => {

@@ -709,9 +709,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         if (doorYaw !== door.yaw) warnings.push(`stage: enter door "${door.name}" has no known side -> yaw 0`);
         const step = interRoomDoorStep(door.at, doorYaw, 1.0);
         a.teleport(step.doorPos, step.yaw, "idle", y);
+        // the step in ends on a cell one can walk on (a table a step inside the door would trap her there)
+        const route = toucher.stepIn(door.at, doorYaw, lvl);
+        if (!route) warnings.push(`stage: enter "${door.name}": nothing walkable inside the door -> stays in the doorway`);
+        const path = route ?? [];
+        const end = path.length ? path[path.length - 1]! : step.doorPos;
         const tgtPos = getTargetPos(lookTarget);
-        const faceYaw = tgtPos ? yawTo(step.insidePos, tgtPos) : step.yaw;
-        a.go([step.insidePos], faceYaw, "idle", y);
+        const faceYaw = tgtPos ? yawTo(end, tgtPos) : step.yaw;
+        a.go(path, faceYaw, "idle", y);
         return;
       }
       if (action === "exit") {
@@ -765,6 +770,15 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         window.dispatchEvent(new CustomEvent("stage_line", { detail: { who: e.who ?? null, text: String(e.text ?? "") } }));  // host hook (clip crutch)
       }
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
+      // the gaze turns the head 60 deg at most: a standing speaker who names whom he talks to turns his body to
+      // him (Squidward, Nov 3: SpongeBob said "It's beautiful, Squidward" with his back to him). Seated, lying or
+      // walking keeps the body; the head still turns.
+      const addressee = who && lookName && lookName !== who ? actors.get(lookName) : undefined;
+      const sp = who ? actors.get(who) : undefined;
+      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving() && !offstageActors.has(lookName!)) {
+        const y = yawTo(sp.pos(), addressee.pos());
+        if (Math.abs((((y - sp.yaw()) % 360) + 540) % 360 - 180) > 30) sp.turn(y);
+      }
       const pick0 = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
       const pick = pick0 && stagedClipWho.has(pick0.who) ? null : pick0;
       stagedClipWho.clear();

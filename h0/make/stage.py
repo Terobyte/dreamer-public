@@ -252,7 +252,8 @@ def build_places(world_run):
         if at is None:
             warnings.append(f"door {d['id']}: no walkable nav cell, no place")
             continue
-        yaw = math.degrees(math.atan2(c[0] - at[0], c[1] - at[1])) % 360
+        # into the room, away from the doorway: the engine enters along it and exits against it
+        yaw = math.degrees(math.atan2(at[0] - c[0], at[1] - c[1])) % 360
         # two doors on one room: ` 2`, ` 3` like _name_places
         n = f"{room} door"
         used = {q["name"] for q in places}  # props named `<room> door` count too

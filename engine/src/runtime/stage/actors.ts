@@ -59,6 +59,9 @@ export interface Actor {
    * A turn in place of a seated actor (`go([], yaw, "sit")`) keeps its seat. */
   go(path: V2[], yaw: number, act: "idle" | "sit", ys?: number | number[], seat?: number): void;
   teleport(at: V2, newYaw: number, newAct?: "idle" | "sit", newY?: number, seat?: number): void;
+  /** turn the body on the spot to `yaw` (a speaker to whom he talks): no walk clip, the clip playing goes on,
+   *  not `moving()`; a later go/teleport drops it */
+  turn(yaw: number): void;
   /** still walking or turning */
   moving(): boolean;
   /** metres of route still ahead (0 when standing or only turning) */
@@ -229,6 +232,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let gaze: [number, number, number] | null = null;
   let clock = 0;
   let wasMoving = false;
+  let pivot: number | null = null;
   const wrap = (a: number): number => ((a % 360) + 540) % 360 - 180;
 
   // F8: a rigged body nods with its head/chest bones; a box (no named bones) rocks as a whole
@@ -264,6 +268,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     drop: () => drop,
     go(p: V2[], fy: number, fa: "idle" | "sit", ys?: number | number[], st?: number) {
       path = [...p];
+      pivot = null;
       // B53: a finish yaw that is not a number would turn the actor to NaN and never finish
       if (!Number.isFinite(fy)) fy = cur;
       // a turn in place keeps the seat it sits on
@@ -285,7 +290,11 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       }
       path = [];
       finish = null;
+      pivot = null;
       apply(clock, false);
+    },
+    turn(fy) {
+      if (Number.isFinite(fy)) pivot = fy;
     },
     moving: () => path.length > 0 || finish !== null,
     walkLeft: () => {
@@ -363,6 +372,11 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
           sitOn(finish.seat);
           finish = null;
         }
+      }
+      if (pivot !== null && !path.length && !finish) {
+        const dy = wrap(pivot - cur);
+        cur += Math.max(-240 * dt, Math.min(240 * dt, dy));
+        if (Math.abs(dy) < 1) (cur = pivot), (pivot = null);
       }
       apply(now, moving);
       if (animator) {

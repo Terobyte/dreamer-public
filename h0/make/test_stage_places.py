@@ -76,6 +76,13 @@ class Places(unittest.TestCase):
         self.assertEqual(d["look"], [6.0, 2.5])
         self.assertFalse(d.get("obstacle"))
 
+    def test_door_yaw_points_into_the_room(self):
+        # the engine enters along the door yaw and exits against it (index.ts enter / exitThrough):
+        # Squidward, Nov 3 — the yaw faced the doorway, SpongeBob came in backwards, walked out onto the
+        # threshold and talked to the door with his back to Squidward
+        d = _by_name(_places())["living door"]
+        self.assertAlmostEqual(d["yaw"], 270.0, delta=1)  # door centre at +x of the place: the room is -x
+
     def test_no_nav_cell_warns_and_drops_place(self):
         res = _places()
         self.assertNotIn("cabinet", _by_name(res))

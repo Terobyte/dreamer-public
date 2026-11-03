@@ -87,7 +87,9 @@ export function createToucher(c: ToucherCtx) {
     };
     // B53: a place without a yaw ends facing along the walk (or as the actor stands), never NaN
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-    const asked = r.keepYaw ? r.yaw : finishYaw === "along" ? along() : finishYaw;
+    // "along" is for a place with no facing of its own: one with a thing to face (its look, its yaw) ends facing
+    // it (Squidward, Nov 3: SpongeBob at the easel faced the wall the last step pointed to, not the picture)
+    const asked = r.keepYaw ? r.yaw : finishYaw === "along" ? (finite(r.yaw) ? r.yaw : along()) : finishYaw;
     const fallback = finite(r.yaw) ? r.yaw : route.path.length >= 2 ? along() : a.yaw();
     const fin = finite(asked) ? asked : finite(fallback) ? fallback : a.yaw();
     a.go(route.path, fin, r.act, route.ys, r.act === "sit" ? r.place.top : undefined);
@@ -104,5 +106,22 @@ export function createToucher(c: ToucherCtx) {
   /** drop a touch that waits on a ramp: a newer order for the actor replaces it (B66) */
   const cancel = (who: string): void => void pending.delete(who);
 
-  return { touch, tick, levelOf, cancel };
+  /** the step in through a door: a route from the door to the farthest point along `yaw` (at most `max` m, 0.1 m
+   *  steps down to 0.2 m) whose cell one can walk on; null = not even 0.2 m in. Squidward, Nov 3: the fixed 1 m
+   *  step landed inside the table's block of the nav, and from there no route led anywhere. */
+  const stepIn = (doorAt: V2, yaw: number, level: string | null, max = 1.0): V2[] | null => {
+    const lvl = level ?? String((c.levels[0]?.layer as { level?: unknown } | undefined)?.level ?? "");
+    const openCells: Record<string, number[]> = {};
+    for (const [id, d] of Object.entries(c.doors)) if (c.doorOpen(id)) (openCells[d.level ?? lvl] ??= []).push(...d.cells);
+    const obstacles = c.places.map((p) => ({ level: p.level, rect: p.obstacle }));
+    const r = (yaw * Math.PI) / 180;
+    for (let d = max; d >= 0.2 - 1e-9; d -= 0.1) {
+      const to: V2 = [doorAt[0] + Math.sin(r) * d, doorAt[1] + Math.cos(r) * d];
+      const route = findStageRoute(c.levels, c.ramps, doorAt, lvl, to, lvl, { obstacles, openCells });
+      if (route) return [...route.path, to];  // the route ends on the goal cell's centre; the point is in that cell
+    }
+    return null;
+  };
+
+  return { touch, tick, levelOf, cancel, stepIn };
 }
