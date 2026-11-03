@@ -249,6 +249,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   let cutSeq = 0;
   let subjectIsListener = false;
   let walkSig = "";
+  /** a walk that began too soon after a cut is cut for on the action, WALK_CUT_S after it, not asl.min (Squidward v22
+   *  142–145 s: they got up 0.5 s into "Fine. One hour. Then I paint.", the walk's cut was swallowed for good and the
+   *  line's close held them walking into the lens) */
+  let walkCutOwed = false;
   const following = new Set<string>();
   let wideLock: { cut: number; cam: V3 } | null = null;
   // F1: the room the frame is built in; crossing into another room/level is a cut, never a smooth glide through the wall
@@ -431,6 +435,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         cut(r.plan, r.listener);
       }
     }
+    const walkChanged = sig !== walkSig;
     walkSig = sig;
     if (ev.kind === "line") lastSpeaker = ev.speaker;
     const key = `${speaker.level ?? ""}|${speaker.room ?? ""}`;
@@ -468,12 +473,24 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
       return !(p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1);
     };
-    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line" || subjectOut(curMove) || lostRecut;
-    if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) moveCut = cutSeq;
+    let walkCutDue = false;
+    if (walkCutOwed && clock - moveStart >= WALK_CUT_S) {
+      walkCutOwed = false;
+      if (walkers.length > 0) {
+        if (cutSeq === moveCut) cutSeq++;
+        walkCutDue = true;
+      }
+    }
+    const mustCut = curMove === null || !!(t.first || t.last || t.enter) || key !== moveRoom || ev.kind === "line" || subjectOut(curMove) || lostRecut || walkCutDue;
+    if (cutSeq !== moveCut && !driftNow && !mustCut && clock - moveStart < style.asl[0]) {
+      if (walkChanged && walkers.length > 0) walkCutOwed = true;
+      moveCut = cutSeq;
+    }
     // "shoot rarely, shoot true" (accent styles): a beat that is not a scene start/end, an entrance, a look or a
     // spoken line gets the base planner's frame, the readable legacy wide of restage12
     const mustCutBase = !!(t.first || t.last || t.enter) || key !== shownRoom || lostRecut;
-    const accentBeat = !!(t.first || t.last || t.enter || t.look) || ev.kind === "line";
+    // the owed cut on a walk is the move picker's (a walking speaker is followed), not the base planner's still wide
+    const accentBeat = !!(t.first || t.last || t.enter || t.look) || ev.kind === "line" || walkCutDue;
     /** a frame holding a head the probe does not see (v22 21–24.6 s: the base two-shot, unblock found no clear point,
      *  held SpongeBob behind the chair backs 3.5 s): the base planner's frame is not kept, the move picker frames it */
     const hidesHead = (o: DirectorOut): boolean => !!inp.clear && crew.some((a) => {
@@ -568,7 +585,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         return (cs = (Math.imul(cs, 1664525) + 1013904223) >>> 0) / 4294967296;
       };
       // a cut for a head the frame lost takes the room in (a random pick put the close back on the one left in view)
-      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : lostRecut ? { id: "wide", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0, walking: ev.kind === "line" && walkers.some((w) => w.name === speaker.name) });
+      const ownPick = (): { id: string; warnings: string[] } => driftNow ? { id: "drift", warnings: [] as string[] } : lostRecut ? { id: "wide", warnings: [] as string[] } : pickMove(style, tags, cutRng, { line: ev.kind === "line", noWalk: walkers.length === 0, walking: walkers.some((w) => w.name === speaker.name) });
       /** the move being tried (its id labels the frame) */
       let pk: { id: string; warnings: string[] } = { id: "", warnings: [] };
       let frontalRejected = false;
@@ -778,6 +795,8 @@ function probePoints(a: DActor, head: V3): V3[] {
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
+/** a cut on a walk's start comes this long after the last cut at the soonest (a cut on the action, not asl.min) */
+const WALK_CUT_S = 1.5;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
  *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
  *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
