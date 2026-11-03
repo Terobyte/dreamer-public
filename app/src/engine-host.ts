@@ -13,6 +13,8 @@ import {
   LocomotionSystem,
   Mesh,
   MeshBasicMaterial,
+  Pressed,
+  RayInteractable,
   Vector3,
   createSystem,
   type World,
@@ -20,6 +22,8 @@ import {
 import { TONE, buildWorld } from '../../engine/src/runtime/world.js';
 import { navBit } from '../../engine/src/nav/floor.js';
 import { buildFence } from '../../engine/src/nav/fence.js';
+import { type Door } from '../../engine/src/runtime/doors.js';
+import { connectSim, createBridge, simPost } from '../../engine/src/runtime/bridge.js';
 
 /** IWSDK capsule radius (F11); the engine nav is already eroded by its own 0.25 m */
 const FENCE_INSET_M = 0.5;
@@ -40,6 +44,18 @@ export interface DreamerXrReport {
   passages: Array<{ id: string; width: number; height: number; cells: number; xrOk: boolean }>;
   /** frames where the player moved against the previous frame's direction along Z (push-back / jitter) */
   reversals: number;
+  /** X4: ids of every `door_touch` the host raised (a press edge on a leaf), in order */
+  doorEvents: string[];
+  doorIds: string[];
+  /** open / close a door as the sim would (`EngineWorld.doors`); the leaf then turns in the door system */
+  openDoor: (id: string) => void;
+  closeDoor: (id: string) => void;
+  /** check helpers: put the player `dist` m before the closed leaf facing it; metres to the leaf; metres past the door line */
+  stageAtDoor: (id: string, dist: number, open: boolean) => void;
+  distToDoor: (id: string) => number;
+  signedPastDoor: (id: string) => number;
+  /** add `Pressed` to the leaf for `ms` (what a held ray trigger does) */
+  pressDoor: (id: string, ms: number) => Promise<void>;
   ready: boolean;
   error: string;
 }
@@ -56,9 +72,154 @@ const report: DreamerXrReport = {
   setPlayerCalls: 0,
   passages: [],
   reversals: 0,
+  doorEvents: [],
+  doorIds: [],
+  openDoor: () => undefined,
+  closeDoor: () => undefined,
+  stageAtDoor: () => undefined,
+  distToDoor: () => NaN,
+  signedPastDoor: () => NaN,
+  pressDoor: async () => undefined,
   ready: false,
   error: '',
 };
+
+/** The sim to talk to: ?sim= → localStorage (F9: the managed browser drops the URL). */
+export function pickSim(): string | null {
+  const fromEnv = (import.meta.env as Record<string, string | undefined>).VITE_DREAMER_SIM;
+  return new URLSearchParams(location.search).get('sim') || localStorage.getItem('dreamer.sim') || fromEnv || null;
+}
+
+/**
+ * X4 doors. Each leaf is a ray-interactable kinematic locomotor body; a press edge raises `door_touch` and
+ * tells the sim (`bridge.touch`), which decides: the door never moves itself. The loop runs in a system with
+ * priority < LocomotionSystem's -5, so the collision body is already turned when the player moves.
+ * Not done: poke (finger touch) outside the ray volume, parked as debt.
+ */
+function hostDoors(world: World, ew: Awaited<ReturnType<typeof buildWorld>>, rootEntity: any): void {
+  const doors = ew.doors;
+  const sim = pickSim();
+  const bridge = createBridge(
+    { door: (id) => doors.get(id) ?? null },
+    { post: sim ? simPost(sim) : () => undefined, warn: (m) => console.warn(`bridge: ${m}`) },
+  );
+  if (sim) connectSim(sim, bridge, (m) => console.warn(`bridge: ${m}`));
+
+  const idOf = new Map<unknown, string>();
+  const entities = new Map<string, any>();
+  const parts = new Map<string, any[]>();
+  for (const [id, door] of doors) {
+    const list: any[] = [];
+    for (const name of [`${id}:leaf`, `${id}:handle`]) {
+      const o = ew.objects.get(name);
+      if (o) list.push(o);
+    }
+    parts.set(id, list);
+    const leaf = ew.objects.get(`${id}:leaf`);
+    if (!leaf) continue;
+    const e = world.createTransformEntity(leaf, { parent: rootEntity });
+    e.addComponent(RayInteractable);
+    e.addComponent(LocomotionEnvironment, { type: 'kinematic' as any });
+    idOf.set(leaf, id);
+    entities.set(id, e);
+    void door;
+  }
+  report.doorIds = [...doors.keys()];
+  report.openDoor = (id) => doors.get(id)?.open();
+  report.closeDoor = (id) => doors.get(id)?.close();
+
+  const turned = new Map<string, number>();
+  const turnLeaf = (door: Door): void => {
+    const th = door.meshTurn();
+    if (turned.get(door.def.id) === th) return;
+    turned.set(door.def.id, th);
+    // pivotOffset inlined: it returns a fresh tuple, and this runs in a system update (no allocation)
+    const c = Math.cos(th);
+    const sn = Math.sin(th);
+    const hinge = door.def.hinge_at;
+    const hx = hinge[0];
+    const hz = hinge[1];
+    const ox = hx - (hx * c + hz * sn);
+    const oz = hz - (-hx * sn + hz * c);
+    // indexed loop: a for...of would allocate an array iterator every frame the leaf turns
+    const list = parts.get(door.def.id);
+    if (!list) return;
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      o.rotation.y = th;
+      o.position.x = ox;
+      o.position.z = oz;
+      o.updateMatrixWorld(true);
+    }
+  };
+  const doorList: Door[] = [...doors.values()];
+  const DoorSystem = class extends createSystem({ pressed: { required: [RayInteractable, Pressed] } }) {
+    init(): void {
+      // the edge: `qualify` fires once when the tag appears, however long the trigger is held
+      const off = this.queries.pressed.subscribe('qualify', (entity: any) => {
+        const id = idOf.get(entity.object3D);
+        if (!id) return;
+        report.doorEvents.push(id);
+        window.dispatchEvent(new CustomEvent('door_touch', { detail: { id } }));
+        if (sim) bridge.touch(id);
+      });
+      this.cleanupFuncs.push(off);
+    }
+    update(dt: number): void {
+      // indexed loop over an array built once: no MapIterator per frame
+      for (let i = 0; i < doorList.length; i++) {
+        doorList[i].update(dt);
+        turnLeaf(doorList[i]);
+      }
+    }
+  };
+  world.registerSystem(DoorSystem, { priority: -10 });
+
+  // check helpers (xr-check.mjs); not used by the app
+  const through = new Map<string, [number, number, number, number]>(); // cx, cz, dx, dz of the walking direction
+  report.stageAtDoor = (id, dist) => {
+    const door = doors.get(id);
+    if (!door) return;
+    const [hx, hz] = door.def.hinge_at;
+    const [ex, ez] = door.def.closed_end;
+    const cx = (hx + ex) / 2;
+    const cz = (hz + ez) / 2;
+    const len = Math.hypot(ex - hx, ez - hz) || 1;
+    let nx = -(ez - hz) / len;
+    let nz = (ex - hx) / len;
+    if ((ew.spawn.x - cx) * nx + (ew.spawn.z - cz) * nz < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+    // the player starts on the spawn side and walks through: direction is -n
+    through.set(id, [cx, cz, -nx, -nz]);
+    world.player.rotation.y = Math.atan2(nx, nz);
+    world.getSystem(LocomotionSystem)?.setPlayerPosition(new Vector3(cx + nx * dist, ew.spawn.floorY, cz + nz * dist));
+  };
+  report.distToDoor = (id) => {
+    const door = doors.get(id);
+    if (!door) return NaN;
+    const [[ax, az], [bx, bz]] = door.segment();
+    const p = world.player.position;
+    const ex = bx - ax;
+    const ez = bz - az;
+    const t = Math.max(0, Math.min(1, ((p.x - ax) * ex + (p.z - az) * ez) / (ex * ex + ez * ez || 1)));
+    return Math.hypot(p.x - (ax + ex * t), p.z - (az + ez * t));
+  };
+  report.signedPastDoor = (id) => {
+    const t = through.get(id);
+    if (!t) return NaN;
+    const p = world.player.position;
+    return (p.x - t[0]) * t[2] + (p.z - t[1]) * t[3];
+  };
+  report.pressDoor = async (id, ms) => {
+    const e = entities.get(id);
+    if (!e) return;
+    e.addComponent(Pressed);
+    await new Promise((r) => setTimeout(r, ms));
+    e.removeComponent(Pressed);
+  };
+}
 
 async function fetchJson(url: string): Promise<any> {
   const r = await fetch(url);
@@ -127,6 +288,8 @@ async function host(world: World, base: string): Promise<void> {
     fm.visible = false;
     world.createTransformEntity(fm, { parent: rootEntity }).addComponent(LocomotionEnvironment);
   }
+
+  hostDoors(world, ew, rootEntity);
 
   const { x, floorY, z, yawDeg } = ew.spawn;
   // engine yaw 0 faces +Z, a three Object3D faces -Z, hence + PI (F5)

@@ -26,3 +26,5 @@
 | Нужно | Используй |
 |---|---|
 | отдать нав локомотору IWSDK как геометрию (без отката стражем) | `buildFence(nav, 0.5)` из `nav/fence.ts` → невидимый меш с `LocomotionEnvironment` (`engine-host.ts`) |
+| `app/src/engine-host.ts` `hostDoors` / `pickSim` | X4: створка = RayInteractable + kinematic LocomotionEnvironment; цикл дверей в системе priority -10; фронт `Pressed` → `door_touch` + `bridge.touch`; `?sim=`/`dreamer.sim` |
+| `npm run xr:doors` (app) | X4: проверка дверей в IWER на мире `doors` (симлинк в `public/worlds`, gitignore) со stub-sim `VITE_DREAMER_SIM`; закрытая держит, нажатие → 1 `door_touch` + 1 `touch`; открытая у двери уже капсулы 1.0 м идёт в `xrBlocked` (F11) |

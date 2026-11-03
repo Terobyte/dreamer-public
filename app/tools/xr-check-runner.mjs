@@ -18,7 +18,12 @@ let xrExitSignal = null;
 
 // The world comes from VITE_DREAMER_WORLD (pickWorld fallback), so the app loads it on
 // first paint and xr-check.mjs never reloads the frame under an open XR session.
-process.env.VITE_DREAMER_WORLD = process.env.DREAMER_WORLD || 'koshakan';
+// X4 (`npm run xr:doors`, XR_MODE=doors): the world with a door and a stub sim URL the host posts `touch` to
+// (xr-check.mjs intercepts POST /event). The sim is set here, before the host is built (pickSim reads it).
+const DOORS = process.env.XR_MODE === 'doors';
+process.env.DREAMER_WORLD = process.env.DREAMER_WORLD || (DOORS ? 'doors' : 'koshakan');
+process.env.VITE_DREAMER_WORLD = process.env.DREAMER_WORLD;
+if (DOORS) process.env.VITE_DREAMER_SIM = process.env.VITE_DREAMER_SIM || 'http://localhost:4599';
 const dev = run('iwsdk dev restart --headless --allow-browser-automation');
 if (dev.signal || dev.status !== 0) process.exit(dev.status ?? 1);
 
@@ -61,7 +66,8 @@ try {
     browserSignal = enter.signal;
   } else {
     // X3: hold the stick forward during the in-session pass; xr-check.mjs samples the walk for 8 s
-    process.env.XR_WALK = '1';
+    if (DOORS) process.env.XR_DOORS = '1';
+    else process.env.XR_WALK = '1';
     run(`iwsdk xr set-gamepad-state --input-json '{"device":"controller-left","axes":[{"index":0,"value":0},{"index":1,"value":-1}]}'`, { stdio: 'pipe', encoding: 'utf8' });
     const br = run('iwsdk browser run tools/xr-check.mjs', { stdio: 'pipe', encoding: 'utf8' });
     run(`iwsdk xr set-gamepad-state --input-json '{"device":"controller-left","axes":[{"index":0,"value":0},{"index":1,"value":0}]}'`, { stdio: 'pipe', encoding: 'utf8' });
