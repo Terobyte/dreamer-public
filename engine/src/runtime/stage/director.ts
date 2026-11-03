@@ -89,8 +89,6 @@ export interface DirectorOut {
   warnings?: string[];
   /** seconds the move lasts (event duration, or `style.asl[0]`) */
   moveDurationS?: number;
-  /** a still frame whose look follows this walking actor (its look is not eased: `steadyCam`) */
-  tracking?: string;
 }
 
 /** who the director frames: actors of the focus room and level; an actor off every level (lying on a bed, sitting on
@@ -804,40 +802,19 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       trackMove = curMove;
     }
     const tracked = !curMove.end && trackName && trackMove === curMove ? crew.find((a) => a.name === trackName) : undefined;
-    if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut, tracking: tracked.name };
+    if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut };
     return { ...out, ...curMove, cut: heldCut };
   };
 
   // the last word on every frame: no steep look down (capTilt), nobody in the room cut by its edge (cleanEdges)
   return {
     step: (inp: DirectorInput): DirectorOut =>
-      (lastOut = steadyCam(lastOut, cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear }), inp.event.dt ?? 0,
-        { clear: inp.clear, heads: inp.actors.filter((a) => !a.offstage).flatMap((a) => probePoints(a, a.head ?? ([a.pos[0], (inp.room.floorY ?? 0) + a.height * 0.93, a.pos[1]] as V3))) })),
+      (lastOut = cleanEdges(capTilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear })),
   };
 }
 
 /** what the probe must see of an actor: the face and the eye (`DActor.eye`, where the film critic asks) both; without
  *  them the head point stands in (Squidward v7 21–25 s: the face point past a chair's scroll, the top of the box behind it) */
-/** how fast a still frame's camera and look catch up with a re-solved point inside one cut (s), and the way past
- *  which it jumps instead */
-const STEADY_S = 0.6, STEADY_JUMP_M = 2;
-/** Inside one cut a still frame eases toward the newly solved camera and look (Squidward v22 video 109.5–111 s: the
- *  base orbit re-solved every tick, capTilt/cleanEdges moved it 1.4 m one way and 0.3 m back, the picture shook for
- *  two seconds). A new cut jumps; a move (`end`) is played by the runtime; a way over STEADY_JUMP_M jumps. */
-export function steadyCam<T extends Pick<DirectorOut, "cut" | "cam" | "look" | "end" | "tracking">>(prev: Pick<DirectorOut, "cut" | "cam" | "look" | "end"> | null, out: T, dt: number, probe?: { heads: V3[]; clear?: (cam: V3, look: V3) => boolean }): T {
-  if (!prev || prev.cut !== out.cut || out.end || prev.end) return out;
-  const d = (a: V3, b: V3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-  if (d(prev.cam, out.cam) > STEADY_JUMP_M) return out;
-  const k = 1 - Math.exp(-Math.max(0, dt) / STEADY_S);
-  const ease = (a: V3, b: V3): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-  // a look on a walker is his head now: eased it lags behind him and he walks out (v26 140–143 s)
-  const cam = ease(prev.cam, out.cam);
-  // a point on the way that hides a head the new one sees: jump (v27 18.8–19.3 s, SpongeBob behind a chair back)
-  const c = probe?.clear;
-  if (c && probe!.heads.some((h) => c(out.cam, h) && !c(cam, h))) return out;
-  return { ...out, cam, look: out.tracking ? out.look : ease(prev.look, out.look) };
-}
-
 function probePoints(a: DActor, head: V3): V3[] {
   return [a.face ?? head, ...(a.eye ? [a.eye] : [])];
 }
