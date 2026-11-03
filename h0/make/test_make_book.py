@@ -359,3 +359,55 @@ class TestBookReviewRed(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSmartVoices(Base):
+    """live voices step: dream/voicecast casts by measuring (L177); fake keeps the sex/age label"""
+
+    def _voices_ctx(self):
+        self.run_chain(steps={s: (lambda ctx: 0.0) for s in ("world", "cast", "story", "stage", "film")})
+        run = mb.run_dir_for(self.out)
+        out = run / "voices.live"
+        out.mkdir()
+        ctx = mb.Ctx(run, out, TEXT, self.txt, "en", False, self.cast)
+        return ctx, json.loads((run / "read" / "book.json").read_text())
+
+    def test_live_cast_goes_into_the_book(self):
+        from dream import voicecast
+        ctx, book = self._voices_ctx()
+        names = list(book["cast"])
+        res = {n: {"brief": {}, "rows": [], "ok": [], "pick": ["%032x" % i]} for i, n in enumerate(names + ["Narrator"])}
+        added = {}
+        with mock.patch.object(voicecast, "cast_voices", return_value=res) as cv, \
+             mock.patch.object(voicecast, "page"), \
+             mock.patch.object(voicecast, "add_to_pool",
+                               side_effect=lambda t, ch, p: added.update(ch) or {n: "vc_x_" + n.lower() for n in ch}):
+            mb._step_voices(ctx)
+        people = cv.call_args[0][0]
+        self.assertEqual([p["name"] for p in people], names + ["Narrator"])
+        self.assertTrue(people[-1]["narrator"])
+        got = json.loads((ctx.out / "book.json").read_text())
+        for n in names:
+            self.assertEqual(got["cast"][n]["voice"], "vc_x_" + n.lower())
+        self.assertEqual(got["narrator_voice"], "vc_x_narrator")
+        self.assertEqual(added["Narrator"], "%032x" % len(names))
+        self.assertTrue((ctx.out / "voicecast.json").is_file())
+
+    def test_live_cast_failure_falls_back_with_a_warning(self):
+        from dream import voicecast
+        ctx, book = self._voices_ctx()
+        with mock.patch.object(voicecast, "cast_voices", side_effect=RuntimeError("no torch")):
+            mb._step_voices(ctx)
+        got = json.loads((ctx.out / "book.json").read_text())
+        warns = json.loads((ctx.out / "voices.json").read_text())["warnings"]
+        self.assertTrue(any("voicecast failed" in w and "no torch" in w for w in warns))
+        self.assertTrue(all(c["voice"] in mb._voices() for c in got["cast"].values()))
+
+    def test_vc_labels_stay_out_of_the_step_hash(self):
+        ctx = mb.Ctx(None, None, TEXT, self.txt, "en", True, None)
+        pool = json.loads(mb.VOICES_PATH.read_text())
+        with mock.patch.object(mb.Path, "read_text", lambda self, **k: json.dumps(dict(pool, vc_book_x="1" * 32))):
+            a = mb._params("voices", ctx)
+        with mock.patch.object(mb.Path, "read_text", lambda self, **k: json.dumps(pool)):
+            b = mb._params("voices", ctx)
+        self.assertEqual(a, b)

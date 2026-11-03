@@ -224,15 +224,41 @@ def _step_read(ctx):
     return usd
 
 
+def _smart_voices(ctx, book):
+    """--live: dream/voicecast casts every person and the narrator by measuring Fish samples (L177);
+    the first pick goes in, listen.html + voicecast.json stay in the step dir for a person to re-choose.
+    -> {name: pool label} with the narrator under voicecast.NARRATOR"""
+    from dream import voicecast
+    people = [{"name": n, "look": "%s, about %s; %s" % (c.get("sex") or "", c.get("age") or "?", c.get("look") or ""),
+               "lines": c.get("lines") or []} for n, c in book["cast"].items()]
+    people.append({"name": voicecast.NARRATOR, "narrator": True,
+                   "look": "tells the story%s" % (" in the first person as " + book["pov"] if book.get("pov") else "")})
+    title = book.get("title") or ctx.text_path.stem
+    res = voicecast.cast_voices(people, title)
+    (ctx.out / "voicecast.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    voicecast.page(res, str(ctx.out / "listen.html"))
+    return voicecast.add_to_pool(title, voicecast.choose(res), str(VOICES_PATH))
+
+
 def _step_voices(ctx):
-    voices = _voices()
     book = json.loads((ctx.prev("read") / "book.json").read_text(encoding="utf-8"))
-    assigned, warns = {}, []
+    assigned, warns, smart = {}, [], {}
+    if not ctx.fake:
+        try:
+            smart = _smart_voices(ctx, book)
+        except Exception as e:  # no ears (torch, ffmpeg, network): the label by sex and age still plays
+            warns.append("voicecast failed, voices by sex/age: %s: %s" % (type(e).__name__, e))
+    voices = _voices()
     for name, c in book["cast"].items():
-        c["voice"], w = pick_voice(c.get("sex"), c.get("age"), voices)
+        if smart.get(name):
+            c["voice"], w = smart[name], None
+        else:
+            c["voice"], w = pick_voice(c.get("sex"), c.get("age"), voices)
         assigned[name] = c["voice"]
         if w:
             warns.append(name + ": " + w)
+    if smart.get("Narrator"):
+        book["narrator_voice"] = assigned["(narrator)"] = smart["Narrator"]
     shutil.copy(ctx.prev("read") / "book.txt", ctx.out / "book.txt")
     # every chapter file travels on: load_book reads them from the voices dir on the world step
     for ch in book.get("chapters", []):
@@ -343,8 +369,9 @@ BODIES = {"read": _step_read, "voices": _step_voices, "world": _step_world, "cas
 def _params(step, ctx):
     if step == "read":
         return {"text": hashlib.sha256(ctx.text.encode()).hexdigest(), "fake": ctx.fake}
-    if step == "voices":
-        return {"voices": hashlib.sha256(VOICES_PATH.read_bytes()).hexdigest()}
+    if step == "voices":   # voicecast's own vc_ labels change on every live cast: they stay out of the hash
+        pool = {k: v for k, v in json.loads(VOICES_PATH.read_text(encoding="utf-8")).items() if not k.startswith("vc_")}
+        return {"voices": _sha(pool), "smart": not ctx.fake}
     if step == "world":
         return {"refs": _sha_dir(_refs_root(ctx))}
     if step == "cast":
