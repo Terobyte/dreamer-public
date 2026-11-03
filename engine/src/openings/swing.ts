@@ -21,22 +21,6 @@ export function jambsFor(center: V2, axis: V2, nSwing: V2, width: number): { lef
   return { left: [center[0] + L[0] * hw, center[1] + L[1] * hw], right: [center[0] - L[0] * hw, center[1] - L[1] * hw], L };
 }
 
-export function pickHinge(center: V2, axis: V2, nSwing: V2, width: number, from: V2, to: V2): {
-  hinge: "left" | "right";
-  hingeAt: V2;
-} {
-  const { left, right } = jambsFor(center, axis, nSwing, width);
-  const dL = Math.min(Math.hypot(left[0] - from[0], left[1] - from[1]), Math.hypot(left[0] - to[0], left[1] - to[1]));
-  const dR = Math.min(Math.hypot(right[0] - from[0], right[1] - from[1]), Math.hypot(right[0] - to[0], right[1] - to[1]));
-  const hinge = Math.abs(dL - dR) < 1e-3 ? "left" : dL < dR ? "left" : "right";
-  const j = hinge === "left" ? left : right;
-  return { hinge, hingeAt: [j[0] + nSwing[0] * 0, j[1] + nSwing[1] * 0] };
-}
-
-export function hingeAtInner(jamb: V2, nSwing: V2, thickness: number): V2 {
-  return [jamb[0] + nSwing[0] * (thickness / 2), jamb[1] + nSwing[1] * (thickness / 2)];
-}
-
 export function sectorFor(hingeAt: V2, otherJamb: V2, nSwing: V2, width: number): V2[] {
   const a0 = Math.atan2(otherJamb[0] - hingeAt[0], otherJamb[1] - hingeAt[1]);
   const a1 = Math.atan2(nSwing[0], nSwing[1]);

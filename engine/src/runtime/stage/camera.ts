@@ -7,8 +7,6 @@ export interface Rect {
   maxz: number;
 }
 export type V3 = [number, number, number];
-export type ShotKind = "wide" | "two" | "close";
-
 export const INSET = 0.3;
 export const CEIL_GAP = 0.3;
 
@@ -64,45 +62,6 @@ export function snapInside(outline: V2[], p: V2, r: Rect, inset = INSET): V2 {
       }
     }
   return best ?? p;
-}
-
-export interface ShotActor {
-  pos: V2;
-  speaking: boolean;
-}
-
-/** duo.html's three shots: the whole room, the two together, the speaker close. Always inside the room: inside `outline`
- * with the 0.3 m inset when given (round and concave rooms, F31), else inside the rect. */
-export function directShot(kind: ShotKind, actors: ShotActor[], r: Rect, height: number, floorY = 0, outline?: V2[]): { pos: V3; look: V3 } {
-  const cx = (r.minx + r.maxx) / 2;
-  const cz = (r.minz + r.maxz) / 2;
-  const top = height - CEIL_GAP;
-  const eye = Math.min(floorY + 1.5, top);
-  const mid = (list: ShotActor[]): V2 =>
-    list.length ? [list.reduce((s, a) => s + a.pos[0], 0) / list.length, list.reduce((s, a) => s + a.pos[1], 0) / list.length] : [cx, cz];
-  let pos: V3;
-  let look: V3;
-  if (kind === "wide") {
-    const m = mid(actors);
-    pos = [r.minx, top, r.minz];
-    look = [m[0], Math.min(floorY + 1.0, top), m[1]];
-  } else if (kind === "two") {
-    const m = mid(actors);
-    const span = actors.length > 1 ? Math.hypot(actors[0].pos[0] - actors[1].pos[0], actors[0].pos[1] - actors[1].pos[1]) : 1;
-    pos = [m[0] - 0.7 * (span + 2), eye, m[1] - 0.7 * (span + 2)];
-    look = [m[0], Math.min(floorY + 1.2, top), m[1]];
-  } else {
-    const s = actors.find((a) => a.speaking) ?? actors[0];
-    const at: V2 = s ? s.pos : [cx, cz];
-    pos = [at[0] - 1.6, eye, at[1] - 1.6];
-    look = [at[0], Math.min(floorY + 1.5, top), at[1]];
-  }
-  const p = clampCamera(pos, r, height, floorY);
-  if (outline && outline.length >= 3) {
-    const [sx, sz] = snapInside(outline, [p[0], p[2]], r);
-    return { pos: [sx, p[1], sz], look };
-  }
-  return { pos: p, look };
 }
 
 /** The 180° line: points with `(p - origin) · normal * sign > 0` are on the allowed side. */

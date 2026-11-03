@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { findPath, findStageRoute, type StageLevel } from "../src/runtime/stage/path.js";
 import { CELL, type NavLayer, type NavRamp } from "../src/nav/floor.js";
 import { createActor } from "../src/runtime/stage/actors.js";
-import { directShot, roomRect, insideInset } from "../src/runtime/stage/camera.js";
+import { legalCameraPoint, roomRect, insideInset } from "../src/runtime/stage/camera.js";
 import { audioUrl } from "../src/runtime/stage/subs.js";
 import { createToucher } from "../src/runtime/stage/touch.js";
 import type { Place, V2 } from "../src/runtime/stage/places.js";
@@ -85,12 +85,11 @@ describe("height changes only on the ramp (F24)", () => {
 describe("camera stays in the room outline, not its box (F31)", () => {
   it("L-shaped room: the shot is inside the polygon with the 0.3 m inset", () => {
     const L: V2[] = [[0, 0], [6, 0], [6, 2], [2, 2], [2, 6], [0, 6]];
-    // actors in the foot of the L; a box-clamped camera would land in the missing corner
-    const actors = [{ pos: [5, 1] as V2, speaking: false }, { pos: [1, 5] as V2, speaking: true }];
-    for (const kind of ["wide", "two", "close"] as const) {
-      const s = directShot(kind, actors, roomRect(L), 2.7, 0, L);
-      expect(insideInset(L, [s.pos[0], s.pos[2]], 0.3 - 1e-6)).toBe(true);
-      expect(s.pos[1]).toBeLessThanOrEqual(2.4 + 1e-9);
+    // points in the missing corner of the L: a box-clamped camera would stay there
+    for (const p of [[5, 5, 1.6], [4, 4, 1.6], [5.9, 2.5, 9]] as Array<[number, number, number]>) {
+      const s = legalCameraPoint(p, { outline: L, rect: roomRect(L), height: 2.7 });
+      expect(insideInset(L, [s[0], s[2]], 0.3 - 1e-6)).toBe(true);
+      expect(s[1]).toBeLessThanOrEqual(2.6 + 1e-9);
     }
   });
 });
