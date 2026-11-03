@@ -47,3 +47,29 @@ describe("a move that loses a head is cut again", () => {
     expect(recut).toBe(tried);
   }, 120_000);
 });
+
+describe("the accent styles' base frame is held to the same rule", () => {
+  // v22 21–24.6 s: on storybook's plain beats the base planner's two-shot (unblock found no clear point) framed
+  // SpongeBob behind the chair backs 3.5 s; the recut lived only in the move branch
+  it("a narrator beat whose base frame hides a head in it does not hold it past a second", () => {
+    const sb: DActor = { name: "SpongeBob", pos: [-2.25, 0.1], yaw: 60, height: 1.0, head: [-2.25, 0.57, 0.1], face: [-2.25, 0.75, 0.1], level: null, room: "r", walking: false };
+    /** the chairs and the table: SpongeBob's face is seen only from the far corner (x > 2.4, z < -2.4), out of unblock's ring */
+    const clear = (c: V3, l: V3): boolean => !(Math.hypot(l[0] - sb.face![0], l[1] - sb.face![1], l[2] - sb.face![2]) < 0.02 && !(c[0] > 2.4 && c[2] < -2.4));
+    const bad: string[] = [];
+    for (let seed = 1; seed <= 8; seed++) {
+      const rng = seeded(seed);
+      const d = createDirector(rng, { style: "storybook" });
+      let held = 0;
+      for (const ev of [{ kind: "narrator", durationS: 6, dt: 0.5, tags: { first: true } }, { kind: "narrator", durationS: 6, dt: 0.5, tags: {} }, { kind: "walk", speaker: "SpongeBob", dt: 0.5, tags: {} }, { kind: "narrator", durationS: 6, dt: 0.5, tags: {} }]) {
+        for (let k = 0; k < 8; k++) {
+          const out = d.step({ event: (k ? { kind: "tick", dt: 0.5 } : ev) as any, actors: [sq, sb], room: ROOM, rng, clear });
+          const p = ndcOf(sb.head!, out.cam, out.look, out.fov ?? 50, 16 / 9);
+          const hid = p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !clear(out.cam as V3, sb.face as V3);
+          held = hid ? held + 0.5 : 0;
+          if (held > 1 && bad.length < 6) bad.push(`seed ${seed} ${out.plan}/${out.move} cam ${out.cam.map((v) => v.toFixed(2))}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 120_000);
+});

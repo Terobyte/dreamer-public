@@ -427,11 +427,24 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // spoken line gets the base planner's frame, the readable legacy wide of restage12
     const mustCutBase = !!(t.first || t.last || t.enter) || key !== shownRoom;
     const accentBeat = !!(t.first || t.last || t.enter || t.look) || ev.kind === "line";
-    if (style.accent && (curMove === null || cutSeq !== moveCut) && !accentBeat) {
+    /** a frame holding a head the probe does not see (v22 21–24.6 s: the base two-shot, unblock found no clear point,
+     *  held SpongeBob behind the chair backs 3.5 s): the base planner's frame is not kept, the move picker frames it */
+    const hidesHead = (o: DirectorOut): boolean => !!inp.clear && crew.some((a) => {
+      if (a.offstage) return false;
+      const h = a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
+      const p = ndcOf(h, o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
+      return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !inp.clear!(o.cam, a.face ?? h);
+    });
+    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hidesHead(out);
+    if (baseHidden) {
+      moveCut = NaN;
+      recut = true;  // its own cut id: the runtime cuts to the new frame, it does not glide out of the hidden one
+    }
+    if (style.accent && (curMove === null || cutSeq !== moveCut) && !accentBeat && !baseHidden) {
       moveCut = cutSeq;
       curMove = null;
       // the base cuts no sooner than asl.min either: a too-early cut keeps the frame on screen
-      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0]) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
+      if (shown && out.cut !== shown.out.cut && !mustCutBase && clock - shown.at < style.asl[0] && !hidesHead(shown.out)) return { ...out, cam: shown.out.cam, look: shown.out.look, plan: shown.out.plan, cut: shown.out.cut };
       if (!shown || out.cut !== shown.out.cut) {
         shown = { out, at: clock };
         shownRoom = key;
