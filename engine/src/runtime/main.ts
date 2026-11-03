@@ -29,6 +29,7 @@ import { makeDoor, pivotOffset, setCells, touchTarget, type Door, type DoorDef }
 import { connectSim, createBridge, simPost, type StageHandlers } from "./bridge.js";
 import { scatterObjects, toSources, type ScatterSource } from "./scatter.js";
 import { startStage, type Stage } from "./stage/index.js";
+import { cameraStyleOf } from "./stage/camera-default.js";
 
 import type { MaterialDef } from "./assets.js";
 import { markNoblock } from "./stage/sight.js";
@@ -297,7 +298,8 @@ async function start(): Promise<void> {
       stageUrl,
       sim,
       film: params.get("film") === "1",
-      cameraStyle: params.get("camera_style") ?? undefined,
+      // current camera = K1 moves + K2 director style, storybook by default; the pre-K2 frames only on ?camera_style=legacy
+      cameraStyle: cameraStyleOf(params.get("camera_style")),
       geo,
       nav,
       layers: all,

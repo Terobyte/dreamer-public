@@ -8,6 +8,7 @@ arrived. Playwright never records sound, so each voiced event's wav is laid unde
 (ffmpeg adelay); the scene ends TAIL_MS after book_end. Scenes are joined in the order given.
 """
 import argparse
+import os
 import queue
 import shutil
 import socket
@@ -28,7 +29,8 @@ END = ("book_end", "stop")
 
 
 def page_url(run_dir, static_port, sim_port):
-    return static_url(run_dir, static_port, sim_port) + "&film=1"
+    style = os.environ.get("FILM_CAMERA_STYLE")  # K2 director style id (storybook, spielberg, ozu...); empty = current default storybook, "legacy" = pre-K2 frames
+    return static_url(run_dir, static_port, sim_port) + "&film=1" + (f"&camera_style={style}" if style else "")
 
 
 def mux_cmd(video, events, sim_outdir, dst):

@@ -117,7 +117,7 @@
 
 ### 2.4 engine/ runtime (страница)
 
-URL-параметры: `?cam=<id>` (камера из сцены), `?top`/режимы (`cams.ts pickCamera`), `?stage=<url stage.json>`, `?sim=<url sim>`, `?film=1`. Готовность: `window.__ready = true`, API `window.__dreamer`. События окна: `door_touch`, `stage_line`.
+URL-параметры: `?cam=<id>` (камера из сцены), `?top`/режимы (`cams.ts pickCamera`), `?stage=<url stage.json>`, `?sim=<url sim>`, `?film=1`, `?camera_style=<id>` (нет = текущая камера `storybook`; `legacy` = старые кадры до К2, `stage/camera-default.ts`). Готовность: `window.__ready = true`, API `window.__dreamer`. События окна: `door_touch`, `stage_line`.
 
 | файл | что делает | ключевое | тесты |
 |---|---|---|---|
@@ -141,6 +141,7 @@ URL-параметры: `?cam=<id>` (камера из сцены), `?top`/ре�
 | `stage/anim.ts` | AnimationMixer на персонажа: ретаргет по имени кости, срез калибровочной T-позы (`calibrationEnd`), root на месте, кроссфейд, rest-поза (`UPRIGHT`), выбор клипа по тексту | `createAnimator`, `Animator{play,idle,update,has,current,alive,...}`, `pickClip(text, who, cast, aliases)`, `clipForBeat(beat, cast)`, `DEFAULT_VERBS` (wake,hug,flick,stroke,leap,fall,sit,walk) | cast `clips`,`verbs`,`idle` | `stage-anim` (19), `stage-anim-pick` |
 | `stage/life.ts` | процедурный idle: дыхание (chest), перенос веса (spine), взгляд: свободный по сторонам + целевой `look` (yaw ≤60°, pitch ≤30°, τ 0.3 с, новая цель ≥1 с, оглядыш ≤2°), кивки при речи; кости по именам-кандидатам; руки/таз не трогает | `createLife(root, seed) -> Life{before, after(dt, {weight, talking, look?})}` | — | `stage-life.test.ts` |
 | `stage/director.ts` | чистый режиссёр камеры: банк планов `BANK = ots, close, two, wide, orbit, dolly, low, follow`; реакции, правило 180, очередь событий, сглаживание | `createDirector(rng, {snap})`, `step(DirectorInput) -> {plan,cam,look,cut}`, `createPendingQueue`, `initialYaws`, `smoothCam`, `fallbackFrame` | DEvent{line,narrator,walk,tick} | `stage-director` (38), `-room`, `-occlusion` |
+| `stage/camera-default.ts` | какая камера снимает: текущая = К1 приёмы + К2 стиль (`storybook` по умолчанию), легаси-кадры только по `?camera_style=legacy` | `CURRENT_CAMERA_STYLE`, `cameraStyleOf(param)` | — | `camera-default.test.ts` |
 | `stage/camera.ts` | прямоугольник комнаты, зажим камеры внутрь (inset 0.3, ceil gap 0.3), кадр по виду плана | `roomRect`, `clampCamera`, `insideInset`, `snapInside`, `legalCameraPoint`, `directShot(kind: wide\|two\|close)` | — | `stage-camera*.test.ts` |
 | `stage/sight.ts` | луч от камеры к цели: мешает ли мир (актёры не мешают), кэш на сетке 10 см; растительность (`noblock`) не мешает | `createSight(world, skip) -> (cam, look) => clear`, `markNoblock(root, id)`, `isPlantId(id)` | — | `stage-sight.test.ts` |
 | `stage/headbind.ts` | авториг кладёт часть лица на шею (рот Мамы Кошакана 100% `neck`: при повороте головы полоска рта висела на щеке); вершины выше сустава головы (≥0,2 длины шея→голова) с весом шеи ≥0,5 переходят на голову; зовётся в `createActor` | `bindHeadToHead(root) -> число вершин` | — | `stage-headbind.test.ts` |
