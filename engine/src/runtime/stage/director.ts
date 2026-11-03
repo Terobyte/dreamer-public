@@ -223,6 +223,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   let lostRecut = false;
   /** one such cut per beat: a room too small for both would cut every 0.75 s */
   let lostTried = false;
+  /** a still fallback frame on a walking speaker turns its look after him (Squidward v21 153–157 s) */
+  let trackName: string | null = null;
+  let trackMove: object | null = null;
   let recuts = 0;
   let recut = false;
   let moveStart = 0;
@@ -749,10 +752,15 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         else {
           const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, cameraLaw);
           curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+          trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
+          trackMove = curMove;
         }
       }
     }
-    return curMove ? { ...out, ...curMove, cut: heldCut } : out;
+    if (!curMove) return out;
+    const tracked = trackName && trackMove === curMove && !curMove.end ? crew.find((a) => a.name === trackName) : undefined;
+    if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut };
+    return { ...out, ...curMove, cut: heldCut };
   };
 
   // the last word on every frame: no steep look down (capTilt), nobody in the room cut by its edge (cleanEdges)
