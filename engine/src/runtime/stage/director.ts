@@ -789,8 +789,20 @@ export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect
   if (out.end) {
     const endFrame = { ...out, cam: out.end, look: out.lookEnd ?? out.look, fov: out.fovEnd ?? out.fov, end: undefined };
     const fixed = cleanEdges(endFrame, crew, aspect, o);
-    if (fixed === endFrame) return out;
-    return { ...out, lookEnd: fixed.look, fovEnd: fixed.fov, lookEndRef: undefined };
+    const withEnd = fixed === endFrame ? out : { ...out, lookEnd: fixed.look, fovEnd: fixed.fov, lookEndRef: undefined };
+    // and where it begins (Koshakan k2 29–31 s: a push_in began with lying Mirai's head on the bottom edge and slid
+    // it out over two seconds; the end frame, where she was gone, passed)
+    const startFrame = { ...withEnd, end: undefined };
+    const s = cleanEdges(startFrame, crew, aspect, o);
+    if (s === startFrame) return withEnd;
+    // a look on an actor keeps following him, shifted as the fix turned it (a walker's follow stays on the walker)
+    const ref = withEnd.lookRef as { actor?: string; o?: V3 } | undefined;
+    if (ref && typeof ref === "object" && ref.actor) {
+      const d: V3 = [s.look[0] - withEnd.look[0], s.look[1] - withEnd.look[1], s.look[2] - withEnd.look[2]];
+      const o = ref.o ?? [0, 0, 0];
+      return { ...withEnd, look: s.look, fov: s.fov, lookRef: { ...ref, o: [o[0] + d[0], o[1] + d[1], o[2] + d[2]] } as any };
+    }
+    return { ...withEnd, look: s.look, fov: s.fov, lookRef: undefined };
   }
   const fov0 = out.fov ?? 50;
   if (!isCut(out.cam, out.look, fov0)) return out;
