@@ -33,6 +33,8 @@ class MissingScore(unittest.TestCase):
                 "sim": sim,
                 "dialogue": SimpleNamespace(Dialogue=lambda *a, **k: SimpleNamespace(background=True)),
                 "fake": SimpleNamespace(FakeTransport=lambda *a, **k: object()),
+                # play imports voice from h0/dream, which _dream (patched out) would put on the path
+                "voice": SimpleNamespace(Voice=lambda *a, **k: object(), load_pool=lambda: {}),
             }),
         ]
         for p in patches:
