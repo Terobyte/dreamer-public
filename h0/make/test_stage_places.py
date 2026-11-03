@@ -38,6 +38,16 @@ class Places(unittest.TestCase):
         self.assertEqual(p["window"]["kind"], "stand")
         self.assertAlmostEqual(p["window"]["at"][1], 0.85, delta=0.05)  # 0.1 + 0.45
 
+    def test_sit_place_keeps_its_seat_on_the_furniture(self):
+        # Squidward, Nov 3: the chair stood in the table's block of the nav; the snap moved its sit point 0.65 m off
+        # the seat and SpongeBob sat in the air beside it. `at` is where one walks to, `seat.at` where one sits
+        for p in _places()["places"]:
+            if "sit" not in p["poses"]:
+                continue
+            x0, z0, x1, z1 = p["obstacle"]
+            sx, sz = p["seat"]["at"]
+            self.assertTrue(x0 <= sx <= x1 and z0 <= sz <= z1, (p["name"], p["seat"], p["obstacle"]))
+
     def test_glb_equals_placeholder(self):
         g, h = _by_name(_places(True)), _by_name(_places(False))
         for name in ("armchair", "sofa", "window", "table"):

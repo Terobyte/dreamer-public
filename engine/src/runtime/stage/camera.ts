@@ -167,6 +167,25 @@ export interface CamBody {
   r: number;
 }
 
+/** Another actor's body on the line from the camera to `look` (a subject's head): the frame shows his back, not the
+ *  subject (Squidward, Nov 3: "close SpongeBob" was the back of Squidward's head; the sight probe skips the actors).
+ *  The body whose column holds `look` is the subject's own and never blocks; over the shoulders only the head counts.
+ *  The line is checked every 5 cm. */
+export function bodyInTheWay(cam: V3, look: V3, bodies: CamBody[]): boolean {
+  const others = bodies.filter((b) => Math.hypot(look[0] - b.pos[0], look[2] - b.pos[1]) > b.r + 0.1);
+  if (!others.length) return false;
+  const len = Math.hypot(look[0] - cam[0], look[1] - cam[1], look[2] - cam[2]);
+  const n = Math.max(1, Math.ceil(len / 0.05));
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    const p: V3 = [cam[0] + (look[0] - cam[0]) * t, cam[1] + (look[1] - cam[1]) * t, cam[2] + (look[2] - cam[2]) * t];
+    // over the shoulders the column is the head, not the torso: an over-the-shoulder frame passes beside it
+    const r = (b: CamBody): number => (p[1] > b.top - 0.45 ? Math.min(b.r, 0.16) : b.r);
+    if (others.some((b) => p[1] >= b.y0 && p[1] <= b.top && Math.hypot(p[0] - b.pos[0], p[2] - b.pos[1]) < r(b))) return true;
+  }
+  return false;
+}
+
 /** The camera out of every body (Koshakan meadow, Nov 3: push_in / close ended 0.1–0.4 m from an actor, the frame full
  *  of hair; a close-up of Mirai in Mama's lap stood inside Mama). A camera within `min` of a body steps back along its
  *  look line, flat, 5 cm at a time, at most `cap` m; still inside at the cap -> the cap point. */

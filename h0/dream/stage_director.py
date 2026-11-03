@@ -110,6 +110,8 @@ def build_director_prompt(
             "after sitting down on the grass, a lap clip while held). Leave clip out on beats where nobody does "
             "anything new. beat_id is the `id` of a beat in `beats`. "
             "A start `idle` is what that actor is already doing when the film opens (painting at an easel). "
+            "Someone who leaves the room (goes out, heads outside, walks off together) gets `exit`: it walks them to "
+            "the door, opens it and takes them through; `goto` a door only stops them at it. "
             "Return JSON: {start: [{who, place, pose, offstage?: bool, idle?}], "
             "stage: [{beat_id, who, action, place?, pose?, look?, clip?, idle?}]}"
         )

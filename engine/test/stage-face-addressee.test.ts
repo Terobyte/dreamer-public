@@ -46,12 +46,24 @@ describe("a speaker turns his body to whom he talks to", () => {
     expect(yawOf(s, "Sponge").pos).toEqual(before);  // turns on the spot, does not walk off it
   });
 
-  it("a line without anyone named keeps the body as it is", async () => {
+  // "а где модуль, что NPC смотрят друг на друга, когда говорят": Squidward's lines name no one, he spoke to the
+  // canvas. Two in the room: a line that names no one is said to the other one.
+  it("two in the room, a line that names no one: the speaker turns to the other", async () => {
     clock = 0;
     const s = await runtime({ Sponge: "corner", Squid: "spot" });
     s.handlers.stage!({ type: "stage", who: "Sponge", action: "goto", place: "window", pose: "stand_at" });
     step(s, 180);
-    s.handlers.line!({ type: "line", who: "Sponge", text: "What a view.", dur: 3 });
+    s.handlers.line!({ type: "line", who: "Sponge", text: "Hi.", dur: 3 });
+    step(s, 60);
+    expect(off(yawOf(s, "Sponge").yaw, 90)).toBeLessThan(10);
+  });
+
+  it("a line that names a place, not a person, keeps the body as it is", async () => {
+    clock = 0;
+    const s = await runtime({ Sponge: "corner", Squid: "spot" });
+    s.handlers.stage!({ type: "stage", who: "Sponge", action: "goto", place: "window", pose: "stand_at" });
+    step(s, 180);
+    s.handlers.line!({ type: "line", who: "Sponge", text: "What a view.", dur: 3, look: "window" });
     step(s, 60);
     expect(off(yawOf(s, "Sponge").yaw, 0)).toBeLessThan(5);
   });
