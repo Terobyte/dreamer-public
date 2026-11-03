@@ -1,6 +1,7 @@
 """Tests for the asset queue. Offline: fake providers, fake clock, no engine."""
 
 import threading
+import time
 import unittest
 from pathlib import Path
 import tempfile
@@ -101,6 +102,13 @@ def queue(images=None, meshes=None, ledger=None, clock=None, **kw):
     q = AssetQueue(cache, images or FakeImages(), meshes or FakeMeshes(),
                    ledger or FakeLedger(), clock=clock, sleep=clock.sleep, **kw)
     return q, cache, clock
+
+
+def wait_real(q, room):
+    """Wait on real time. q.wait() ticks the shared fake clock from the test thread
+    while a worker is inside a call it times, so under load the charge grows."""
+    while not q.done(room):
+        time.sleep(0.001)
 
 
 def events_of(ledger, kind):
@@ -313,7 +321,7 @@ class TestFailedMeshCharge(unittest.TestCase):
 
         q, _, _ = queue(meshes=Meshes(), ledger=ledger, clock=clock, mesh_timeout_s=330)
         q.put("kitchen", [key("stool")])
-        q.wait("kitchen")
+        wait_real(q, "kitchen")
         charges = [c[2] for c in ledger.calls if c[0] == "charge" and c[1] == "h100_s"]
         self.assertEqual(charges, [5, 5])
         self.assertEqual(len(events_of(ledger, "asset_failed")), 1)
@@ -329,7 +337,7 @@ class TestFailedMeshCharge(unittest.TestCase):
 
         q, _, _ = queue(meshes=Meshes(), ledger=ledger, clock=clock, mesh_timeout_s=330)
         q.put("kitchen", [key("stool")])
-        q.wait("kitchen")
+        wait_real(q, "kitchen")
         charges = [c[2] for c in ledger.calls if c[0] == "charge" and c[1] == "h100_s"]
         self.assertEqual(charges, [2, 2])
 
