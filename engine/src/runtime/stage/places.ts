@@ -272,3 +272,9 @@ export function nearActor(from: V2, target: V2, gap: number): V2 {
   if (d < 1e-6) return [target[0] + gap, target[1]];
   return [target[0] + (dx / d) * gap, target[1] + (dz / d) * gap];
 }
+
+/** how far short of another actor a walker stops (nearActor's `gap`): into a lap close in (0.12 m), otherwise the two
+ *  capsules touch plus 5 cm (bathroom, Nov 3: a fixed 0.5 m put Mama inside Mirai's capsule, 74 overlap frames) */
+export function approachGap(clips: Array<string | undefined>, rWalker: number, rOther: number): number {
+  return clips.some((c) => !!c && /lap/i.test(c)) ? 0.12 : rWalker + rOther + 0.05;
+}

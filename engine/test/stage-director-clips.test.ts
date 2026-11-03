@@ -2,7 +2,7 @@
  *  "ran" is in no list): nobody ran, fell or climbed into a lap. The director now names the clip and the actor to go to. */
 import { describe, it, expect } from "vitest";
 import { fitStaged, stagedClips } from "../src/runtime/stage/anim.js";
-import { nearActor } from "../src/runtime/stage/places.js";
+import { approachGap, nearActor } from "../src/runtime/stage/places.js";
 
 describe("the clip the director names", () => {
   const clips = ["run_joy", "lap_cloud", "stand_idle"];
@@ -39,5 +39,14 @@ describe("a staged clip fits the pose (as a picked one does)", () => {
   });
   it("lying: a lying clip plays, a standing idle is dropped", () => {
     expect(fitStaged({ clip: "sleep_curled", idle: "idle_warm" }, "lie", facts)).toEqual({ clip: "sleep_curled" });
+  });
+});
+
+describe("how close a walker comes", () => {
+  it("next to someone: the two capsules touch, never overlap (bathroom, Nov 3: 74 overlap frames at 0.5 m)", () => {
+    expect(approachGap(["flick_drop"], 0.3, 0.25)).toBeCloseTo(0.6, 6);
+  });
+  it("into a lap: close in", () => {
+    expect(approachGap(["lap_cloud"], 0.3, 0.25)).toBeLessThan(0.2);
   });
 });

@@ -6,7 +6,7 @@ import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { BED_TUCK_M, bedLift, floorAt, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { approachGap, BED_TUCK_M, bedLift, floorAt, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -611,7 +611,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if ((action === "come" || action === "goto") && placeName && placeName !== who && actors.has(placeName)) {
         // walk up to another actor: a place made on the spot, `gap` short of her (a lap sits close in)
         const other = actors.get(placeName)!;
-        const gap = /lap/i.test(`${sc.clip ?? ""} ${sc.idle ?? ""}`) ? 0.12 : 0.5;
+        const gap = approachGap([sc.clip, sc.idle], a.radius(), other.radius());
         const at = nearActor(a.pos(), other.pos(), gap);
         const name = `@${placeName}#${nearSeq++}`;
         for (let i = places.length - 1; i >= 0; i--) if (places[i]!.name.startsWith(`@`) && claims[places[i]!.name] === who) (delete claims[places[i]!.name], places.splice(i, 1));
