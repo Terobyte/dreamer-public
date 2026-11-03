@@ -125,7 +125,7 @@ def _pick_surface(surfs, level_y, poses):
             c = [s for s in open_ if s["area"] >= 0.1]
         if not c:
             continue
-        if pose == "stand_on":
+        if pose == "stand_on" or "stand_on" in poses:  # steps/stools: the top platform, not the widest tread
             return max(c, key=lambda s: s["y"])
         return max(c, key=lambda s: s["area"])
     return None
@@ -255,8 +255,11 @@ def build_places(world_run):
         yaw = math.degrees(math.atan2(c[0] - at[0], c[1] - at[1])) % 360
         # two doors on one room: ` 2`, ` 3` like _name_places
         n = f"{room} door"
-        taken = sum(1 for q in places if q["kind"] == "door" and q["room"] == room)
-        places.append({"name": n if not taken else f"{n} {taken + 1}", "id": d["id"], "kind": "door", "room": room, "level": lv,
+        used = {q["name"] for q in places}  # props named `<room> door` count too
+        k = 1
+        while (n if k == 1 else f"{n} {k}") in used:
+            k += 1
+        places.append({"name": n if k == 1 else f"{n} {k}", "id": d["id"], "kind": "door", "room": room, "level": lv,
                        "at": at, "yaw": round(yaw, 3), "look": c, "obstacle": None,
                        "poses": ["door"]})
     return {"places": places, "warnings": warnings}

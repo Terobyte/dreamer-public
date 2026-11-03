@@ -51,7 +51,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def body(self):
-        return self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        n = int(self.headers.get("Content-Length", 0))
+        if n < 0:  # as B98: rfile.read(-1) reads until the client hangs up
+            raise ValueError("negative Content-Length")
+        return self.rfile.read(n)
 
     def trusted(self):
         """B32: only our own page on localhost. A foreign Origin is CSRF; a foreign
@@ -111,7 +114,12 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with lock:  # one turn at a time: history is one live session
                 history.append({"role": "user", "content": user})
-                line, ttft, _ = chat(SQUIDWARD_LOAD, history)
+                try:
+                    line, ttft, _ = chat(SQUIDWARD_LOAD, history)
+                except (OSError, ValueError) as e:  # B60: upstream failed (URLError/HTTPError are OSErrors)
+                    history.pop()  # the unanswered user message must not stay in the session
+                    self.send_json({"error": f"turn failed: {type(e).__name__}"}, 502)
+                    return
                 history.append({"role": "assistant", "content": line})
                 spoken = line.replace(OPEN, "").strip()
                 tid = uuid.uuid4().hex[:8]
@@ -132,7 +140,12 @@ class Handler(BaseHTTPRequestHandler):
                                                "latency": "balanced"}).encode(),
                                    {"Authorization": f"Bearer {FISH_KEY}", "Content-Type": "application/json",
                                     "model": "drama-3"})
-        with urllib.request.urlopen(r, timeout=60) as resp:
+        try:
+            resp = urllib.request.urlopen(r, timeout=60)
+        except (OSError, ValueError):  # B95: Fish failed before any byte went out: answer, not a dead socket
+            self.send_error(502)
+            return
+        with resp:
             self.send_response(200)
             self.send_header("Content-Type", "audio/mpeg")
             self.end_headers()

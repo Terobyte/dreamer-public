@@ -92,6 +92,25 @@ def _next(q, pred, timeout):
             return line
 
 
+def _record(cmd, play, poll_s=1.0):
+    """B78: record.mjs waits for the page's end, which a dead make.play never sends: while it
+    records, make.play is polled, and its exit stops the recorder at once with the real cause."""
+    rec = subprocess.Popen(cmd, cwd=ENGINE)
+    try:
+        while True:
+            try:
+                return rec.wait(timeout=poll_s)
+            except subprocess.TimeoutExpired:
+                code = play.poll()
+                if code is not None:
+                    raise RuntimeError(f"make.play exit {code} while recording "
+                                       "(its log is the 'play:' lines above)")
+    finally:
+        if rec.poll() is None:
+            rec.kill()
+            rec.wait()
+
+
 def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
     """One run -> dst mp4 with sound. Raises when the page never reaches book_end/stop."""
     import json
@@ -109,9 +128,9 @@ def record_scene(run_dir, dst, max_s=600, size="1280x720", lang="en"):
         q = _lines(play)
         _next(q, lambda l: l.startswith("http://"), 60)
         url = page_url(run_dir, static_port, sim_port)
-        r = subprocess.run(["node", "bin/record.mjs", url, str(rec), str(max_s), size], cwd=ENGINE)
-        if r.returncode != 0:
-            raise RuntimeError(f"record.mjs exit {r.returncode}: the scene did not reach its end in {max_s}s")
+        code = _record(["node", "bin/record.mjs", url, str(rec), str(max_s), size], play)
+        if code != 0:
+            raise RuntimeError(f"record.mjs exit {code}: the scene did not reach its end in {max_s}s")
         log = _next(q, lambda l: l.endswith("log.jsonl"), 120)
     finally:
         play.terminate()

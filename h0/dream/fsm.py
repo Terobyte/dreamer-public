@@ -291,8 +291,10 @@ class BuildFSM:
     def touch(self, now, obj):
         # only the bridge is the build's business: another object touched during a
         # build is plain input for the director -- it neither tells the hero the door
-        # is locked (building) nor carries the hero through the bridge (ready)
-        if self.state in ("building", "ready") and self.bridge and obj != self.bridge:
+        # is locked (building) nor carries the hero through the bridge (ready).
+        # B86: once the hero is awake the dream is over -- no door leads anywhere
+        if self.awake or (self.state in ("building", "ready") and self.bridge
+                          and obj != self.bridge):
             return [self._e(now, "input", source="touch", value=obj)]
         if self.state == "building":
             # the door is still closed: a world fact for the hero, no instruction to actors
@@ -359,6 +361,9 @@ class BuildFSM:
         elif hint == "nudge" and ticket["epoch"] == self.build_epoch:
             self.nudge_pending = True
             self.nudge_delivered = ticket["nudged_before"]
+        elif hint == "force" and self.force_active and ticket["epoch"] == self.build_epoch:
+            # B40: the forced consult is owed again -- due() must keep saying "force"
+            self.force_pending = True
 
     def finish_consult(self, now, ticket, decision):
         """Apply one director decision (dict, or anything else = broken JSON)."""
@@ -409,7 +414,8 @@ class BuildFSM:
             if ticket["label"] == "forced":
                 self.pending_wakeup = pending  # invalid reply: the next ticket carries it again
                 return ev + self._bad(now, ticket, ["bridge"], "null_bridge")
-            return ev + [self._consult(now, ticket, "ok")]
+            # B42: an abort with no build to abort is a rejected answer, as in a transition
+            return ev + [self._consult(now, ticket, "invalid" if abort else "ok")]
         extras = clean_extras(decision, self.hero)
         if extras:
             # a broken events/goals block is dropped, the bridge stands (1.4b)
@@ -418,9 +424,14 @@ class BuildFSM:
         if err:
             self.pending_wakeup = pending
             return ev + self._bad(now, ticket, [err[0]], err[1])
+        started = self.start_build(now, bridge, decision.get("destination"),
+                                   decision.get("next_scene"), decision.get("hero_next"))
+        ev += started
+        if started[0]["type"] == "invalid":
+            # B41: no_build refused the start -- the director must not take it for a build
+            self.pending_wakeup = pending
+            return ev + [self._consult(now, ticket, "invalid")]
         self.fail_streak = 0
-        ev += self.start_build(now, bridge, decision.get("destination"),
-                               decision.get("next_scene"), decision.get("hero_next"))
         return ev + [self._consult(now, ticket, "build")]
 
     def _deliver_messages(self, now, decision):

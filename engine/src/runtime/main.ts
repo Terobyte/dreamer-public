@@ -174,6 +174,7 @@ async function start(): Promise<void> {
         loadGlb(src, { min: mesh.geometry.boundingBox!.min, max: mesh.geometry.boundingBox!.max }).then((root) => {
           root.name = mesh.name;
           root.visible = mesh.visible;
+          root.userData.kind = mesh.userData.kind; // B73: the swapped model keeps the placeholder's kind
           // the sun traverse below runs before the GLB lands: flag the real
           // meshes on swap, or they never cast/receive shadows (F4)
           if (sunShadows) root.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });

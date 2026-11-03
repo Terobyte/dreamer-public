@@ -340,8 +340,10 @@ def _piece_parts(piece, prompt_tok):
     if not isinstance(usage, dict):
         usage = {"prompt_tokens": getattr(usage, "prompt_tokens", prompt_tok),
                  "completion_tokens": getattr(usage, "completion_tokens", _tokens(text))}
-    return (text, int(usage.get("prompt_tokens", prompt_tok)),
-            int(usage.get("completion_tokens", _tokens(text))))
+    # B93: a provider may send the keys with null counts -- that is "unknown", as a missing key
+    p_tok, c_tok = usage.get("prompt_tokens"), usage.get("completion_tokens")
+    return (text, int(prompt_tok if p_tok is None else p_tok),
+            int(_tokens(text) if c_tok is None else c_tok))
 
 
 def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
@@ -363,8 +365,13 @@ def call(role, system, messages, max_tokens=300, fake=False, _transport=None,
     transport = _transport or RealTransport(event_sink)
     for limit in (max_tokens, max_tokens * 2 + 100):
         # the retry is optional: skip it when its worst case would cross the cap
+        # B45: priced as the dearest model this call can land on -- the role's own, or
+        # the paid model a failed Baseten attempt already fell back to (it will again)
         if attempts and _cap[0] is not None and \
-                get_spent() + _price(model, est_prompt, limit) > _cap[0] + 1e-9:
+                get_spent() + max(_price(m, max(est_prompt, a_p), limit)
+                                  for m, a_p in [(model, 0)] + [(a["model"], a["prompt_tokens"])
+                                                                for a in attempts]) \
+                > _cap[0] + 1e-9:
             diagnostics.append({"type": "cap", "component": "llm", "role": role, "model": model,
                                 "error": "cap $%.2f: empty reply, paid retry skipped" % _cap[0]})
             break

@@ -112,7 +112,9 @@ def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=
                 raise FileNotFoundError(f"{score_p}: run `make --lang ru` first")
         else:
             score_p = run_dir / "story" / "score.json"
-        score = json.loads(score_p.read_text()) if score_p.is_file() else None
+            if not score_p.is_file():
+                raise FileNotFoundError(f"{score_p}: the story stage left no score")
+        score = json.loads(score_p.read_text())
         plan = sim._load_book_plan(b["dir"], [b["scene"]], score)
         for sc in plan["scenes"]:
             sc["dict"]["objects"] = list(objects)

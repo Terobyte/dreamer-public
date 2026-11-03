@@ -238,6 +238,8 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     drop: () => drop,
     go(p: V2[], fy: number, fa: "idle" | "sit", ys?: number | number[], st?: number) {
       path = [...p];
+      // B53: a finish yaw that is not a number would turn the actor to NaN and never finish
+      if (!Number.isFinite(fy)) fy = cur;
       // a turn in place keeps the seat it sits on
       finish = { yaw: fy, act: fa, seat: st ?? (fa === "sit" && !p.length && act === "sit" ? seat : undefined) };
       heights = Array.isArray(ys) ? [...ys] : path.map((_, k) => (k === path.length - 1 && ys !== undefined ? ys : y));

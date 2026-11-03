@@ -154,10 +154,16 @@ def fish_search(term, limit=CANDIDATES):
     return out[:limit]
 
 
+def _terms(person):
+    """The search words as a list: a model may send one string instead of a list."""
+    s = person["voice"].get("search") or []
+    return [s] if isinstance(s, (str, int, float)) else list(s)
+
+
 def candidates(person, search):
     """Voices the library really has for one person: the look, not the memory."""
     seen, out = set(), []
-    for term in (person["voice"].get("search") or [])[:3]:
+    for term in _terms(person)[:3]:
         try:
             found = search(str(term))
         except Exception:
@@ -199,6 +205,9 @@ def cast(d, search=fish_search, transport=None):
             if name in menu and rid in {c["id"] for c in menu[name]} and rid not in used:
                 out[name] = rid
                 used.add(rid)
+        if not out:
+            note = "no_valid_pick"
+            continue
         return out, ("ok" if len(out) == len(people) else "partial")
     return {}, note
 

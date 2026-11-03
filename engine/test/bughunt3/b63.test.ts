@@ -35,6 +35,10 @@ describe("B63: narrator remark cancels an active exit", () => {
     const stage = await runtime();
     stage.handlers.start!({ type: "start", who: "Mama", place: "chair" } as any);
     stage.handlers.stage!({ type: "stage", who: "Mama", action: "exit" } as any);
+    // the exit's own beat: a stage item before the narration makes it one beat, and then the beat's
+    // stage wins over the prose remark by design. The remark comes in the next beat.
+    stage.handlers.narrator!({ type: "narrator", text: "She stops." } as any);
+    advance(stage, 10);
     stage.handlers.narrator!({ type: "narrator", text: "Mama went to the chair." } as any);
     advance(stage, 60 * 20);
     expect((stage.api.actors()[0] as any).offstage).toBe(false);

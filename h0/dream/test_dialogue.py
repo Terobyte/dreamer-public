@@ -626,6 +626,13 @@ class WorldInputTest(unittest.TestCase):
                                  "outcome": "missed"})
             sim._tick()
             sim.director.wait()
+            # under load the click's consult is still in flight when the dart arrives: the dart then
+            # waits in director.pending and reaches the director with the next consult
+            for _ in range(5):
+                if not sim.director.pending:
+                    break
+                sim.director.consult_async(sim.clock.now())
+                sim.director.wait()
         finally:
             sim.close()
         rows = self._rows(d)

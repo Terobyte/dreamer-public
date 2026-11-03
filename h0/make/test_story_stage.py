@@ -1,5 +1,6 @@
 """N10: make.story wires the real staging director and its per-run cache."""
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -36,7 +37,7 @@ class StoryDirector(NoNet):
             self.assertTrue(factory.called, "live book scoring must construct the Spark director")
             self.assertIs(seen.get("director"), director_fn)
             self.assertEqual(seen.get("places"), places)
-            self.assertEqual(seen.get("cache_dir"), run / "story")
+            self.assertEqual(seen.get("cache_dir"), out)  # B51: inside ctx.out, so _publish keeps it
 
     def test_second_identical_run_hits_stage_cache_without_director_call(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -50,6 +51,9 @@ class StoryDirector(NoNet):
                 return response
             with mock.patch.object(story, "_spark_director", return_value=director_fn, create=True):
                 story.run_story(_ctx(run, first_out))
+                (run / "story").mkdir(exist_ok=True)  # what _publish does with the first out
+                for f in first_out.glob("stage_*.json"):
+                    shutil.copyfile(f, run / "story" / f.name)
                 second_out = run / "story-second.tmp"
                 second_out.mkdir()
                 story.run_story(_ctx(run, second_out))

@@ -164,6 +164,8 @@ def line_duration(text, audio_seconds=None):
 
 # --- book mode (block K): the score is played, nothing is generated -----------
 BOOK_PROMPT_WAIT = 12.0  # K3: seconds the prompter waits for the human hero
+# B83: the score fields a book beat hands its line (the human hero's line too)
+BOOK_BEAT_META = ("stage", "gesture", "remarks", "shot", "tone", "para")
 
 
 def _load_book_plan(book_dir, scene_ids=None, score=None):
@@ -1066,6 +1068,23 @@ class Sim:
                 self.hero_voice = hn["voice"]
 
     # --- scene transition ---------------------------------------------------
+    def _new_scene_turns(self):
+        """B43/B44: the turn state of the old stage does not cross a scene change --
+        who spoke last, the actor streak and the line the old cast prepared. Both
+        scene changes (_apply_transition and the book's _book_scene_end) call it."""
+        self._spoke_last = None
+        self._silent_ticks = {}
+        self._addressed = {}
+        self._event_hits = {}
+        self._actor_streak = 0
+        if self.prepared_npc is not None:
+            self._emit({"type": "line_discarded", "turn_owner": "npc", "text": self.prepared_npc,
+                        "who": (self._prepared_meta or {}).get("who"), "reason": "scene"})
+        self.prepared_npc = None
+        self._prepared_meta = None
+        self._prepared_audio_seconds = None
+        self._prepared_taken = None  # the old cast's events stay in the old scene
+
     def _apply_transition(self):
         self.n_transitions += 1
         ns = self.fsm.next_scene
@@ -1081,6 +1100,7 @@ class Sim:
         self._notes_seen = {}
         self._notes_shown = {}
         self._hero_world = ["you have just arrived in %s" % self.place]
+        self._new_scene_turns()
         if ns:
             # 1.4b: the director's reason for the hero to be here is not a start
             # value either -- it is the first event of this scene's schedule
@@ -1167,8 +1187,24 @@ class Sim:
         self.book["cursor"] += 1
         self.book["wait_since"] = None
         self._diagnostic(self.status())
-        return out + [self._start_line({"owner": "human", "who": self.hero, "role": "hero",
-                                        "source": "human", "text": clean, "beat": beat_i})]
+        # B83: the human says the hero's beat in their own words; the beat's staging and
+        # delivery are still the score's, exactly as when the book plays the line itself
+        self._book_beat_stage(beat)
+        line = {"owner": "human", "who": self.hero, "role": "hero",
+                "source": "human", "text": clean, "beat": beat_i}
+        line.update({k: beat[k] for k in BOOK_BEAT_META if beat.get(k) is not None})
+        return out + [self._start_line(line)]
+
+    def _book_beat_stage(self, beat):
+        """The stage items of a beat go out before its line (_book_step, _book_human_say)."""
+        if not beat.get("stage"):
+            return
+        stage_items = beat["stage"] if isinstance(beat["stage"], list) else [beat["stage"]]
+        for st in stage_items:
+            if isinstance(st, dict):
+                self._emit({"type": "stage", **st})
+            elif isinstance(st, str):
+                self._emit({"type": "stage", "action": st})
 
     def _book_step(self):
         bk = self.book
@@ -1197,13 +1233,7 @@ class Sim:
             self._diagnostic(self.status())
         beat_i = bk["cursor"]
         bk["cursor"] += 1
-        if beat.get("stage"):
-            stage_items = beat["stage"] if isinstance(beat["stage"], list) else [beat["stage"]]
-            for st in stage_items:
-                if isinstance(st, dict):
-                    self._emit({"type": "stage", **st})
-                elif isinstance(st, str):
-                    self._emit({"type": "stage", "action": st})
+        self._book_beat_stage(beat)
         if beat["kind"] == "line" and beat.get("who"):
             self.npc_start({"who": beat["who"], "actor": beat["who"], "role": "actor",
                             "text": beat["text"], "source": "book", "para": beat.get("para"),
@@ -1281,11 +1311,7 @@ class Sim:
         self._notes_shown = {}
         self._hero_world = []
         self._pending = {}
-        self._spoke_last = None
-        self._silent_ticks = {}
-        self._addressed = {}
-        self._event_hits = {}
-        self._actor_streak = 0
+        self._new_scene_turns()
         self._said_count = {}
         self.scene = {"objects": list(nxt["dict"]["objects"]),
                       "actors": [a["name"] for a in nxt["actors"]], "events": [], "goals": []}
@@ -1686,10 +1712,11 @@ class Sim:
         busy = self._gen_thread is not None and self._gen_thread.is_alive()
         # 1.2a: a free tick -- nothing queued, no worker running. B50: a playing line
         # does not block it, so the next line is ready when this one ends
-        # B43: a queued line waits for pending narration (_cycle_line), so the
-        # narration must still be allowed to start here or both wait forever
-        if (busy or self.prepared_npc is not None
-                or (self.next_line is not None and not self._narrate)):
+        # B43/B39: any queued line -- the human's next_line or a prepared NPC line --
+        # waits for pending narration (_cycle_line), so the narration must still be
+        # allowed to start here or both wait forever
+        queued = self.next_line is not None or self.prepared_npc is not None
+        if busy or (queued and not self._narrate):
             return
         if self.fsm.awake or self.stopped or not self._budget_ok():
             return

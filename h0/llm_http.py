@@ -123,7 +123,7 @@ def _once(url, auth, payload, timeout):
         raise TransportError(type(exc).__name__, None, False) from None
     try:
         data = _parse(raw)
-    except (ValueError, UnicodeDecodeError) as exc:
+    except (ValueError, UnicodeDecodeError, AttributeError, TypeError) as exc:
         raise TransportError("bad json: %s" % type(exc).__name__, None, False) from None
     choices = data.get("choices") if isinstance(data, dict) else None
     if not choices:

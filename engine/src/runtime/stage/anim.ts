@@ -179,10 +179,17 @@ function restPose(root: Object3D, reg: Map<string, AnimationClip>): { name: stri
  *  head cut (`calibrationEnd`/`cutHead`), the root X/Z frozen (walks in place). No track for the body ->
  *  a clip with no tracks. Shared by `createAnimator` and `clipFacts` (Г4), so facts match what plays. */
 export function prepareClip(src: AnimationClip, root: Object3D, name: string = src.name): AnimationClip {
+  // B70: the bind pose is the arm's rotation the first time any clip is prepared on it, kept on the bone.
+  // The animator poses idle right after preparing its clips; a later prepareClip (clipFacts on the same
+  // body) must still compare the calibration T-pose against the bind pose, not against idle's lowered arms.
   const bind: Record<string, Quaternion> = {};
   root.traverse((o) => {
     const m = ARM.exec(o.name);
-    if (m) bind[m[1].toLowerCase()] = o.quaternion.clone();
+    if (!m) return;
+    // an array, not a Quaternion: Object3D.clone copies userData through JSON
+    const ud = o.userData as { bindQuat?: number[] };
+    if (!Array.isArray(ud.bindQuat) || ud.bindQuat.length !== 4) ud.bindQuat = o.quaternion.toArray() as number[];
+    bind[m[1].toLowerCase()] = new Quaternion().fromArray(ud.bindQuat);
   });
   const known = src.tracks.filter((t) => {
     const n = PropertyBinding.parseTrackName(t.name).nodeName;

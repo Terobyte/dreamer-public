@@ -59,12 +59,15 @@ def _spark_director(ctx):
     ledger = Ledger(ctx.out / "events.jsonl", load_prices(), float("inf"), 2)
     spark = Spark(core._spark_transport(), ledger)
 
+    paid = [0.0]  # ledger.spent is cumulative: charge only the growth
+
     def director(prompt):
         msgs = [{"role": "system", "content": "You are a stage director. Answer one JSON object as the user's "
                  "instruction says; use only the given actor and place names."},
                 {"role": "user", "content": prompt}]
         ans = spark.ask("story", "stage", 0, msgs, "medium")
-        ctx.spend(ledger.spent)
+        ctx.spend(ledger.spent - paid[0])
+        paid[0] = ledger.spent
         return json.dumps(ans.scene, ensure_ascii=False) if ans.valid and isinstance(ans.scene, dict) else ""
     return director
 
@@ -110,8 +113,16 @@ def run_story(ctx):
             director = lambda p: json.dumps({"start": [], "stage": []})
         else:
             director = _spark_director(ctx)
+        # B51: the staging cache lives in ctx.out, so it is published with the story (run/story itself is
+        # replaced by _publish); the previous story's answers are copied in, as the tone cache below.
+        # A fake director's empty staging is never cached, so a live run cannot reuse it.
+        cache = None
+        if not ctx.params.get("fake"):
+            cache = ctx.out
+            for f in (ctx.run_dir / "story").glob("stage_*.json"):
+                shutil.copyfile(f, ctx.out / f.name)
         score = _book.score_scene(b["dir"], b["scene"], places=places, director=director,
-                                  cache_dir=ctx.run_dir / "story")
+                                  cache_dir=cache)
         if places is None:
             score = dict(score, warnings=list(score.get("warnings") or [])
                          + ["story: no world, staging without places"])

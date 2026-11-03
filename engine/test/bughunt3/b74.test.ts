@@ -11,9 +11,9 @@ describe("B74: cyclic around.center reference", () => {
     scene.props[1].around.center = "chairs";
     const { report, ctx } = runCheck(scene);
 
-    // This confirms the reachable downstream symptom: all four copies are
-    // absent and lintProps emits no unplaced-prop issue for `around`.
-    expect(ctx.props?.some((p) => p.id.startsWith("chairs."))).toBe(false);
+    // Downstream symptom: the four copies are never placed (with the schema error the pipeline
+    // stops before props exist, so ctx.props is undefined) and lintProps emits no unplaced-prop issue.
+    expect(ctx.props?.some((p) => p.id.startsWith("chairs.")) ?? false).toBe(false);
     expect([...report.errors, ...report.warnings].some((i) => i.path === "/props/1")).toBe(false);
 
     // Expected from the bug report: reject the cycle at schema validation.

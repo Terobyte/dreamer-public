@@ -193,12 +193,15 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const exitPending = new Map<string, { door: Place; noSide: boolean }>();
   /** exiting actors seen standing still once: they go offstage on the next update */
   const exitSettled = new Set<string>();
-  /** B01: a new move or turn cancels an exit in progress (else the old door pulls the actor out) */
+  /** B01: a new move or turn cancels an exit in progress (else the old door pulls the actor out);
+   *  B66: and a touch still waiting for the actor to step off a ramp -- a newer order wins.
+   *  Every new order for an actor goes through here: start, stage actions, line/touch/narrator moves. */
   const cancelExit = (who: string) => {
     exiting.delete(who);
     exitThrough.delete(who);
     exitPending.delete(who);
     exitSettled.delete(who);
+    toucher.cancel(who);
   };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   // measured head bone, low-passed (~1 s): the camera frames a seated / lying head, but does not bob with a nod
@@ -291,7 +294,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     actor: (w) => actors.get(w),
   });
   toucherLevel = (who) => toucher.levelOf(who);
-  const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): void => void toucher.touch(who, name, pose, finishYaw);
+  /** a move order: it replaces whatever the actor was doing, an exit included (B63: a narrator remark too) */
+  const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): void => {
+    cancelExit(who);
+    void toucher.touch(who, name, pose, finishYaw);
+  };
 
   const whoOf = (e: StageEvent): string | null => {
     const w = e.who ?? e.actor ?? e.turn_owner;
@@ -450,6 +457,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       };
 
       if (action === "stay") {
+        // B56: an explicit stay keeps an exiting actor in the room, where she stands now
+        if (exiting.has(who) || exitPending.has(who)) {
+          cancelExit(who);
+          a.go([], a.yaw(), a.act());
+        }
         return;
       }
       if (action === "turn_away") {
@@ -497,10 +509,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           // the director named where she goes, not the door: come in through the room's door, then walk there;
           // no door in the room -> walk there from where she is
           const via = places.find((p) => isDoor(p) && p.room === target.room) ?? null;
-          if (via && typeof via.yaw === "number" && Number.isFinite(via.yaw)) {
-            const s = interRoomDoorStep(via.at, via.yaw, 1.0);
+          if (via) {
+            // B64: a room door without a usable yaw still is the entrance, along a fixed side (as B04)
+            const viaYaw = typeof via.yaw === "number" && Number.isFinite(via.yaw) ? via.yaw : 0;
+            if (viaYaw !== via.yaw) warnings.push(`stage: enter door "${via.name}" has no known side -> yaw 0`);
+            const s = interRoomDoorStep(via.at, viaYaw, 1.0);
             a.teleport(s.doorPos, s.yaw, "idle", layerOf(via.level ?? null).layer.y ?? 0);
-          } else if (!via) warnings.push(`stage: enter "${target.name}" is not a door and room "${target.room ?? "?"}" has none -> walks from where she is`);
+          } else warnings.push(`stage: enter "${target.name}" is not a door and room "${target.room ?? "?"}" has none -> walks from where she is`);
           const tgt = getTargetPos(lookTarget);
           touch(who, target.name, pose, tgt ? yawTo(target.at, tgt) : "along");
           return;
@@ -667,7 +682,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   /** puts the camera on the active plan (no smoothing, a hard switch); false -> the director has the camera */
   const applyShot = (now: number): boolean => {
     const act = shots?.active(now) ?? null;
-    const fr = act ? shotFrame(act, now, boneOf) : null;
+    const fr = act ? shotFrame(act, now, boneOf, directorFov ?? c.camera.fov) : null;
     // only what the cut itself hides comes back (a mesh hidden by someone else stays hidden)
     const hide = (fr?.cut ? cutMeshes(c.scene, fr.pos, fr.look) : []).filter((m) => m.visible || cutHidden.includes(m));
     for (const m of cutHidden) if (!hide.includes(m)) m.visible = true;
