@@ -1,7 +1,7 @@
 import { Vector3, type PerspectiveCamera, type Scene } from "three";
 import type { StageEvent, StageHandlers } from "../bridge.js";
 import { navBit, type NavRamp } from "../../nav/floor.js";
-import { aliasesOf, clipForBeat, idleForPose } from "./anim.js";
+import { aliasesOf, clipForBeat, idleAfterClip, idleForPose } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
@@ -129,7 +129,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     (c as any).cast ?? (await fetch(castUrl).then((r) => r.json()));
   const names = Object.keys(cast);
   // Г4: clip facts next to cast.json (contact_y per clip); an old run has none -> null, silently
-  const clipfacts: Record<string, Record<string, { contact_y?: number; seat_y?: number; lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
+  const clipfacts: Record<string, Record<string, { contact_y?: number; seat_y?: number; lying?: boolean; end_lying?: boolean }>> | null = await fetch(new URL("clipfacts.json", castUrl))
     .then((r) => (r.ok ? r.json() : null))
     .then((j) => (j && typeof j === "object" && !Array.isArray(j) ? j : null))
     .catch(() => null);
@@ -429,6 +429,29 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   /** the lift fitIdle gave a body sitting up in its bed, undone when it lies back */
   const bedLifted = new Map<string, number>();
+  /** a once-clip that ends sitting (wake_up) hands over to a sitting idle; the bed lift waits for the clip's end */
+  const afterClip = new Map<string, string>();
+  const playOnce = (who: string, clip: string): void => {
+    const a = actors.get(who);
+    if (!a) return;
+    a.play(clip, { once: true });
+    const cur = a.idleName?.();
+    const next = cur ? idleAfterClip(clip, cur, Object.keys(cast[who]?.clips ?? {}), clipfacts?.[who] ?? null) : null;
+    if (!next || !a.setIdle?.(next)) return;
+    poseOf.set(who, "sit");
+    afterClip.set(who, clip);
+  };
+  const settleAfterClips = (): void => {
+    for (const [who, clip] of afterClip) {
+      const a = actors.get(who);
+      if (!a || a.clip?.() === clip) continue;
+      afterClip.delete(who);
+      if (!bedOf(who) || a.act() === "sit") continue;
+      const up = bedLift(clipfacts?.[who]?.[a.idleName?.() ?? ""]);
+      bedLifted.set(who, up);
+      a.teleport(a.pos(), a.yaw(), a.act(), a.y() + up);
+    }
+  };
   /** the bed an actor lies in: a place with a lie spot she claimed, or whose lie spot she is on */
   const bedOf = (who: string): Place | undefined => {
     const a = actors.get(who);
@@ -666,7 +689,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (who) actors.get(who)!.speak(Math.max(1, Number(e.dur ?? SPEAK_SECONDS)));
       const pick = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
       if (pick?.procedural) actors.get(pick.who)?.gesture();
-      else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
+      else if (pick) playOnce(pick.who, pick.clip);
       const t = touchName(e.touch);
       if (who && t) {
         cancelExit(who);
@@ -683,7 +706,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       }
       const pick = clipForBeat({ who: null, text: e.text }, cast, aliases, clipPose);
       if (pick?.procedural) actors.get(pick.who)?.gesture();
-      else if (pick) actors.get(pick.who)?.play(pick.clip, { once: true });
+      else if (pick) playOnce(pick.who, pick.clip);
       const hadStage = lastBeatHadStage || !!(e as any).stage;
       lastBeatHadStage = false;
       if (!hadStage) {
@@ -922,6 +945,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     }
     spread(dt);
     settleBeds(now);
+    settleAfterClips();
     for (const who of [...exiting]) {
       const act = actors.get(who);
       if (!act?.moving()) {

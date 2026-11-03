@@ -170,6 +170,15 @@ describe("clipFacts (Г4)", () => {
     expect(f.lying).toBe(false);
   });
 
+  it("end_lying: the pose of the clip's last frame (k24_true: wake_up lies, then ends sitting)", () => {
+    const rise = new AnimationClip("rise", -1, [
+      new VectorKeyframeTrack("head.position", [0, 0.5, 1], [0.6, 0, 0, 0.6, 0, 0, 0, 0.7, 0]),
+      new QuaternionKeyframeTrack("head.quaternion", [0, 1], [...qa(Y, 0), ...qa(Y, 0)]),
+    ]);
+    expect(clipFacts(makeBody(), rise, 1.0)!.end_lying).toBe(false);
+    expect(clipFacts(makeBody(), LIE(), 1.0)!.end_lying).toBe(true);
+  });
+
   it("no head bone -> null", () => {
     const g = new Group();
     expect(clipFacts(g, LIE(), 1.0)).toBeNull();

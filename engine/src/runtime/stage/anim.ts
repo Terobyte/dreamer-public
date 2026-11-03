@@ -24,6 +24,13 @@ export interface Animator {
   setIdle?(name: string): boolean;
 }
 
+/** the idle after once-clip `clip`: a lying idle under a clip that ends sitting (facts `end_lying` false) turns
+ *  into a sitting one (idleForPose "sit"); null = keep (k24_true: wake_up sat up, the idle laid her back down) */
+export function idleAfterClip(clip: string, cur: string, clips: string[], facts: Record<string, { lying?: boolean; end_lying?: boolean }> | null): string | null {
+  if (!facts || facts[cur]?.lying !== true || facts[clip]?.end_lying !== false) return null;
+  return idleForPose("sit", cur, clips, facts);
+}
+
 /** The idle a staged pose needs, or null = keep the current one. Only a lying idle against a non-lying pose (or the
  *  reverse) changes: a standing idle on a sit is the procedural seated legs' job (Mama on the bed edge).
  *  k18_true 50–58 s: Mirai staged to sit fell back to sleep_curled after wake_up and spoke lying down. */

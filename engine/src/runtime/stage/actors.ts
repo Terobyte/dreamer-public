@@ -77,6 +77,8 @@ export interface Actor {
   /** the rest clip; `setIdle` switches it (a staged pose that the cast idle does not fit) */
   idleName?(): string;
   setIdle?(clip: string): boolean;
+  /** the clip playing now (the idle when none) */
+  clip?(): string;
   /** bounded procedural nod (1.5 s): head/chest bones on a rig, the group on a box; never moves a bone out of range */
   gesture(): void;
   update(dt: number, now: number): void;
@@ -289,6 +291,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     },
     idleName: () => animator?.idleName?.() ?? "",
     setIdle: (clip) => animator?.setIdle?.(clip) ?? false,
+    clip: () => animator?.current() ?? "",
     speak(seconds) {
       talkUntil = clock + seconds;
     },

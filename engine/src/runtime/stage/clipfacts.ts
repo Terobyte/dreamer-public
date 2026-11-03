@@ -24,6 +24,9 @@ export interface ClipFacts {
   /** where the seat rests: the support of the skin under the pelvis, relative to the root (m). A chair sit's
    *  contact is the feet; in a bed the seat sits on the blanket (k23_true: sit_idle's seat 14 cm over the bed) */
   seat_y?: number;
+  /** the pose of the clip's last frame (head over the support < 0.5 x height): the idle after a once-clip goes on
+   *  from it (k24_true: wake_up ended sitting, the lying idle dropped Mirai back on the bed) */
+  end_lying?: boolean;
 }
 
 const MAX_POINTS = 2000;
@@ -132,6 +135,7 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   act.play();
   const frames: Array<{ contact: number; dir: Vector3; head: number }> = [];
   const seats: number[] = [];
+  let endHead = 0;
   const curve: number[] = [];
   try {
     const d = c.duration > 0 ? c.duration : 0;
@@ -152,6 +156,10 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
       const seat = seatY(root, heightM);
       if (seat !== null) seats.push(seat - rootY);
     }
+    // the last frame (just short of the end: a looping action at its duration wraps to 0)
+    mixer.setTime(d * 0.999);
+    root.updateMatrixWorld(true);
+    endHead = headPose(root)!.pos[1] - supportY(root);
   } finally {
     act.stop();
     mixer.uncacheRoot(root);
@@ -168,6 +176,7 @@ export function clipFacts(root: Object3D, clip: AnimationClip, heightM: number):
   const faceYaw = Math.abs(dir.y) > 0.8 ? null : (((Math.atan2(dir.x, dir.z) * 180) / Math.PI) % 360 + 360) % 360;
   const headY = mean("head");
   return { contact_y: mean("contact"), face_dir: [dir.x, dir.y, dir.z], face_yaw: faceYaw, head_y: headY, lying: headY < 0.5 * heightM, contact_curve: curve,
+    end_lying: endHead < 0.5 * heightM,
     ...(seats.length ? { seat_y: seats.reduce((a, b) => a + b, 0) / seats.length } : {}) };
 }
 
@@ -239,6 +248,7 @@ export async function writeClipfacts(castDir: string): Promise<string[]> {
         head_y: r3(f.head_y),
         ...(f.contact_curve ? { contact_curve: f.contact_curve.map(r3) } : {}),
         ...(f.seat_y !== undefined ? { seat_y: r3(f.seat_y) } : {}),
+        ...(f.end_lying !== undefined ? { end_lying: f.end_lying } : {}),
         lying: f.lying,
       };
     }
