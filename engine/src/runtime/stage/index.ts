@@ -112,6 +112,9 @@ export interface Stage {
 }
 
 const SPEAK_SECONDS = 3;
+/** the gaze turns the head this far alone (life.ts: yaw <= 60); seated, the body turns on the seat at most
+ *  SEAT_TURN_DEG and leaves the head HEAD_REST_DEG of the way */
+const HEAD_REACH_DEG = 55, HEAD_REST_DEG = 45, SEAT_TURN_DEG = 60;
 /** time constant of the head point the camera frames (DActor.head) */
 const HEAD_SMOOTH_S = 1;
 /** a door an actor passed shuts this long after the last one is through */
@@ -353,6 +356,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   /** last known pose per actor (start/stage carry it): the line event passes it to clipForBeat (Н17 F2) */
   const poseOf = new Map<string, string>();
+  /** a seated actor's seat yaw before it turned toward whom it talks to (cleared once it stands) */
+  const seatYaw = new Map<string, number>();
   const dActors = (list: Actor[]): DActor[] =>
     list.map((a) => {
       const lvl = toucherLevel(a.who);
@@ -720,6 +725,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const action = typeof e.action === "string" ? e.action : "stay";
       const placeName = typeof e.place === "string" ? e.place : undefined;
       const lookTarget = typeof e.look === "string" ? e.look : undefined;
+      if (action !== "stay") seatYaw.delete(who);  // a new place or a turn: the next seat is measured anew
       const pose = typeof e.pose === "string" ? e.pose : undefined;
       if (pose) {
         poseOf.set(who, pose);
@@ -906,6 +912,15 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving()) {
         const y = yawTo(sp.pos(), addressee.pos());
         if (Math.abs((((y - sp.yaw()) % 360) + 540) % 360 - 180) > 30) sp.turn(y);
+      }
+      // seated, the head alone (60 deg) may not reach him (v8: Squidward 106 deg off SpongeBob's chair): the body turns
+      // on the seat, SEAT_TURN_DEG off the seat's own yaw at most, so the rest is within the head's reach
+      if (sp && addressee && sp.act() === "sit" && !sp.moving()) {
+        const base = seatYaw.get(sp.who) ?? sp.yaw();
+        seatYaw.set(sp.who, base);
+        const need = (((yawTo(sp.pos(), addressee.pos()) - base) % 360) + 540) % 360 - 180;
+        const turn = Math.abs(need) <= HEAD_REACH_DEG ? 0 : Math.sign(need) * Math.min(SEAT_TURN_DEG, Math.abs(need) - HEAD_REST_DEG);
+        if (Math.abs((((base + turn - sp.yaw()) % 360) + 540) % 360 - 180) > 1) sp.turn((((base + turn) % 360) + 360) % 360);
       }
       const pick0 = clipForBeat({ who, text: e.text, gesture: e.gesture, remarks: e.remarks, pose: who ? poseOf.get(who) : undefined, seed: lineSeed((stage as any).seed, lineSeq++) }, cast, aliases, clipPose);
       const pick = pick0 && stagedClipWho.has(pick0.who) ? null : pick0;

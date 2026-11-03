@@ -10,6 +10,7 @@ const places: any[] = [
   { name: "window", id: "window", kind: "stand", room: "room", level: null, at: [3, 5], yaw: 0, look: [3, 60], obstacle: null, poses: ["stand_at"] },
   { name: "chair", id: "chair", kind: "sit", room: "room", level: null, at: [3, 5], yaw: 0, look: null, obstacle: null, poses: ["sit"] },
   { name: "corner", id: "corner", kind: "stand", room: "room", level: null, at: [3, 2], yaw: 0, look: null, obstacle: null, poses: ["stand_at"] },
+  { name: "front", id: "front", kind: "stand", room: "room", level: null, at: [3.5, 8], yaw: 180, look: null, obstacle: null, poses: ["stand_at"] },
   { name: "spot", id: "spot", kind: "stand", room: "room", level: null, at: [6, 5], yaw: 270, look: null, obstacle: null, poses: ["stand_at"] },
 ];
 
@@ -68,15 +69,38 @@ describe("a speaker turns his body to whom he talks to", () => {
     expect(off(yawOf(s, "Sponge").yaw, 0)).toBeLessThan(5);
   });
 
-  it("a seated speaker keeps his seat's yaw (the head turns, the chair does not)", async () => {
+  // v8 ("на кресле он не смотрит на сквидварда"): seated, Squidward 106 deg off the chair; the head alone (60 deg)
+  // looked past him. Seated, the body turns on the seat (60 deg off the seat's yaw at most), the head does the rest;
+  // what the head reaches alone keeps the body as it is.
+  it("a seated speaker whose listener the head cannot reach turns on the seat, no more than 60 deg", async () => {
     clock = 0;
     const s = await runtime({ Sponge: "corner", Squid: "spot" });
     s.handlers.stage!({ type: "stage", who: "Sponge", action: "goto", place: "chair", pose: "sit" });
     step(s, 180);
     expect(yawOf(s, "Sponge").act).toBe("sit");
+    const before = yawOf(s, "Sponge").pos;
     s.handlers.line!({ type: "line", who: "Sponge", text: "Play it again!", dur: 3, look: "Squid" });
     step(s, 60);
-    expect(off(yawOf(s, "Sponge").yaw, 0)).toBeLessThan(5);
+    // Squid at 90 deg: the body turns so the rest (<= 45 deg) is the head's
+    const y = yawOf(s, "Sponge").yaw;
+    expect(off(y, 90)).toBeLessThanOrEqual(46);
+    expect(off(y, 0)).toBeLessThanOrEqual(61);
     expect(yawOf(s, "Sponge").act).toBe("sit");
+    expect(yawOf(s, "Sponge").pos).toEqual(before);
+    // a second line does not turn him further than 60 deg off the seat
+    s.handlers.line!({ type: "line", who: "Sponge", text: "Again!", dur: 3, look: "Squid" });
+    step(s, 60);
+    expect(off(yawOf(s, "Sponge").yaw, 0)).toBeLessThanOrEqual(61);
+  });
+
+  it("seated, a listener the head reaches: the body keeps the seat's yaw", async () => {
+    clock = 0;
+    const s = await runtime({ Sponge: "corner", Squid: "corner" });
+    s.handlers.stage!({ type: "stage", who: "Squid", action: "goto", place: "front", pose: "stand_at" });
+    s.handlers.stage!({ type: "stage", who: "Sponge", action: "goto", place: "chair", pose: "sit" });
+    step(s, 180);
+    s.handlers.line!({ type: "line", who: "Sponge", text: "Hi.", dur: 3, look: "Squid" });
+    step(s, 60);
+    expect(off(yawOf(s, "Sponge").yaw, 0)).toBeLessThan(5);
   });
 });

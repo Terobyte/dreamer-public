@@ -1,4 +1,4 @@
-import { Quaternion, Vector3, type Object3D } from "three";
+import { Quaternion, Vector3, type Object3D, type SkinnedMesh } from "three";
 
 // Н9 (раунд 6 прогона worlds-a, перенесено 11-02): сидя бедро вперёд 85°, колено 85°, голень висит вниз.
 
@@ -81,6 +81,36 @@ export interface LegHeights {
   pelvis: number;
   /** knee -> ankle (the knee bone to its foot/first child bone), mean of the sides */
   shin: number;
+  /** the bottom of the body between the legs above the knees (the crotch: what lands on a seat), from the skin;
+   *  absent without a skinned mesh there (the hip joints sit then) */
+  seat?: number;
+}
+
+/** lowest skin point above `aboveY` in the strip between the thighs (within 30% of half their spacing of the middle) */
+function crotchY(root: Object3D, thighs: Object3D[], aboveY: number): number | undefined {
+  if (thighs.length < 2) return undefined;
+  const tp = thighs.slice(0, 2).map((t) => t.getWorldPosition(new Vector3()));
+  const mid = tp[0]!.clone().add(tp[1]!).multiplyScalar(0.5);
+  const ax = tp[1]!.clone().sub(tp[0]!).setY(0);
+  const half = ax.length() / 2;
+  if (half < 1e-4) return undefined;
+  ax.normalize();
+  let low = Infinity;
+  const v = new Vector3();
+  root.traverse((o) => {
+    if (!(o as { isSkinnedMesh?: boolean }).isSkinnedMesh) return;
+    const m = o as SkinnedMesh;
+    const pos = m.geometry.attributes.position;
+    if (!pos) return;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      m.applyBoneTransform(i, v);
+      v.applyMatrix4(m.matrixWorld);
+      if (v.y <= aboveY || v.y >= low) continue;
+      if (Math.abs((v.x - mid.x) * ax.x + (v.z - mid.z) * ax.z) < half * 0.3) low = v.y;
+    }
+  });
+  return Number.isFinite(low) ? low : undefined;
 }
 
 /**
@@ -100,17 +130,22 @@ export function legHeights(root: Object3D, feetY = 0): LegHeights | null {
     return ankle ? wp(k).distanceTo(wp(ankle)) : wp(k).y - feetY;
   };
   const shin = knees.reduce((s, k) => s + shinOf(k), 0) / knees.length;
-  return pelvis > 0 && shin > 0 ? { pelvis, shin } : null;
+  if (!(pelvis > 0 && shin > 0)) return null;
+  const kneeY = knees.reduce((s, k) => s + wp(k).y, 0) / knees.length;
+  const c = crotchY(root, thighs, kneeY);
+  // a skin point under the hips by more than a hand is not the seat (a skirt, a tail): the hip joints sit then
+  const seat = c !== undefined && c - feetY < pelvis && pelvis - (c - feetY) < 0.15 * (pelvis + shin) ? c - feetY : undefined;
+  return seat !== undefined ? { pelvis, shin, seat } : { pelvis, shin };
 }
 
 /**
- * How far a seated actor's feet go down (L154): standing hip height − seat height, so the pelvis lands on the
- * seat. Seat = the place's `top` (metres above the actor's level) if set, else the shin (thigh level, shin
+ * How far a seated actor's feet go down (L154): standing height of the body's bottom between the legs (`seat`,
+ * else the hip joints) − seat height, so the body lands on the seat (Squidward v8: SpongeBob's pants sank 7 cm). Seat = the place's `top` (metres above the actor's level) if set, else the shin (thigh level, shin
  * hanging down). A rig without legs (a box stand-in) keeps the old 0.45 m scaled by height (0.45 at 1.7 m).
  * Negative = a seat above the hips (a child on a high bed): the actor is lifted onto it.
  */
 export function sitDrop(legs: LegHeights | null, heightM: number, top?: number): number {
   if (!legs) return (0.45 * heightM) / 1.7;
   const seat = typeof top === "number" && Number.isFinite(top) ? top : legs.shin;
-  return legs.pelvis - seat;
+  return (legs.seat ?? legs.pelvis) - seat;
 }
