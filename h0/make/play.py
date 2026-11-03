@@ -78,11 +78,13 @@ def _wait_for_viewer(timeout):
 
 
 def play(run_dir, fake=False, freestyle=None, serve=None, max_seconds=None, run=None,
-         wait_viewer=False, wait_timeout=120, lang="en"):
+         wait_viewer=False, wait_timeout=120, lang=None):
     """-> (outdir, log.jsonl path) as sim.run. `serve`: port (0 = any) for the sim's SSE server."""
     run_dir = Path(run_dir)
     sj = json.loads((run_dir / "stage" / "stage.json").read_text())
     freestyle = bool(sj.get("freestyle")) if freestyle is None else freestyle
+    # `make --lang ru` wrote it into stage.json: a plain `make.play RUN` plays that score
+    lang = lang or sj.get("lang") or "en"
     _dream()
     import sim
     from dialogue import Dialogue
@@ -154,7 +156,7 @@ def main(argv=None, hold=_hold):
     ap.add_argument("--wait-viewer", dest="wait_viewer", action="store_true", default=None,
                     help="start the sim when a page connects (default on unless --fake)")
     ap.add_argument("--no-wait-viewer", dest="wait_viewer", action="store_false")
-    ap.add_argument("--lang", choices=["en", "ru"], default="en", help="ru: play story/score.ru.json")
+    ap.add_argument("--lang", choices=["en", "ru"], default=None, help="ru: play story/score.ru.json (default: stage.json lang)")
     a = ap.parse_args(argv)
     wait = (not a.fake) if a.wait_viewer is None else (a.wait_viewer and not a.fake)
     srv = None
@@ -165,7 +167,7 @@ def main(argv=None, hold=_hold):
     try:
         out, log = play(a.run, fake=a.fake, freestyle=a.freestyle or None,
                         serve=None if a.fake else (sim_port or 8770), wait_viewer=wait,
-                        **({"lang": a.lang} if a.lang != "en" else {}))
+                        **({"lang": a.lang} if a.lang else {}))
         print(log)
         if wait:
             hold()
