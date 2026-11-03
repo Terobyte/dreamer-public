@@ -25,6 +25,8 @@ export interface Place {
   /** the seat itself (make/stage.py): `at` is the nav cell one walks to, the last step lands on the seat — a chair
    *  in the table's block of the nav had its sit point 0.65 m off the seat (Squidward, Nov 3) */
   seat?: { at: V2 };
+  /** a door that leads elsewhere: the place (a door or a spot) one comes out at, San Andreas style (stage exitBy) */
+  to?: string;
 }
 
 /** a sleeper lies in the bed, not on the blanket: the body sinks this far below the top (Koshakan, Nov 2) */

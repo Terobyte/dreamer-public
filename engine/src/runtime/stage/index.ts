@@ -335,6 +335,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     exitThrough.delete(who);
     exitPending.delete(who);
     exitSettled.delete(who);
+    doorTo.delete(who);
     toucher.cancel(who);
   };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
@@ -442,6 +443,79 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const touch = (who: string, name: string, pose?: string, finishYaw?: number | "along"): void => {
     cancelExit(who);
     void toucher.touch(who, name, pose, finishYaw);
+  };
+
+  /** come in by a door: from the doorway (the door opens), a step in onto walkable floor, the door shuts behind */
+  const enterBy = (who: string, door: Place, look: V2 | null): void => {
+    const a = actors.get(who)!;
+    const lvl = door.level ?? null;
+    const y = layerOf(lvl).layer.y ?? 0;
+    // B04: a door without a usable yaw enters along a fixed side, like exit does
+    const doorYaw = typeof door.yaw === "number" && Number.isFinite(door.yaw) ? door.yaw : 0;
+    if (doorYaw !== door.yaw) warnings.push(`stage: enter door "${door.name}" has no known side -> yaw 0`);
+    const step = interRoomDoorStep(door.at, doorYaw, 1.0);
+    a.teleport(step.doorPos, step.yaw, "idle", y);
+    passStart(door.id, who);
+    enteringBy.set(who, door.id);
+    // the step in ends on a cell one can walk on (a table a step inside the door would trap her there)
+    const route = toucher.stepIn(door.at, doorYaw, lvl);
+    if (!route) warnings.push(`stage: enter "${door.name}": nothing walkable inside the door -> stays in the doorway`);
+    const path = route ?? [];
+    const end = path.length ? path[path.length - 1]! : step.doorPos;
+    a.go(path, look ? yawTo(end, look) : step.yaw, "idle", y);
+  };
+  /** a door with `to` (Squidward v8: "они же ушли на улицу"; the San Andreas door of h0/squid_live/duo.html): who
+   *  walks out through it comes in by its `to` place, a door elsewhere in the world (it opens and shuts too) or a
+   *  plain spot; the director cuts there. Who it was going to look at stays the look. */
+  const doorTo = new Map<string, string>();
+  const comeOutAt = (who: string, name: string): void => {
+    const a = actors.get(who);
+    const to = places.find((p) => p.name === name || p.id === name);
+    if (!a || !to) {
+      warnings.push(`stage: door leads to "${name}", not in places bank -> offstage`);
+      offstageActors.add(who);
+      return;
+    }
+    offstageActors.delete(who);
+    if (to.kind === "door" || to.poses?.includes("door")) enterBy(who, to, null);
+    else a.teleport(to.at, to.yaw, "idle", layerOf(to.level ?? null).layer.y ?? 0);
+    pendingQueue.push({ kind: "walk", speaker: who, dt: 0, tags: { enter: true } } as any);
+  };
+  /** exit: walk to the door, through it (it opens), then offstage, or out at its `to` */
+  const exitBy = (who: string, door: Place): void => {
+    if (door.to) doorTo.set(who, door.to);
+    else doorTo.delete(who);
+    const sideKnown = typeof door.yaw === "number" && Number.isFinite(door.yaw);
+    if (!sideKnown) {
+      warnings.push(`stage: exit door "${door.name}" has no known exit side -> stops at the door`);
+      const r0 = toucher.touch(who, door.name, "door", 0); // door yaw is unusable, face a fixed way
+      if (r0 === "walk") exiting.add(who);
+      else if (r0 === "skip") leave(who);
+      else if (r0 === "queued") {
+        exitPending.set(who, { door, noSide: true });
+        warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
+      }
+      else warnings.push(`stage: exit to "${door.name}" is ${r0} -> stay`);
+      return;
+    }
+    const res = toucher.touch(who, door.name, "door");
+    if (res === "walk") {
+      exiting.add(who);
+      exitThrough.set(who, door);
+    }
+    else if (res === "skip") leave(who);
+    else if (res === "queued") {
+      exitPending.set(who, { door, noSide: false });
+      warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
+    }
+    else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
+  };
+  /** the end of an exit: offstage, or out at the door's `to` */
+  const leave = (who: string): void => {
+    const to = doorTo.get(who);
+    doorTo.delete(who);
+    if (to) comeOutAt(who, to);
+    else offstageActors.add(who);
   };
 
   const whoOf = (e: StageEvent): string | null => {
@@ -797,6 +871,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         const tgtPos = getTargetPos(lookTarget);
         const lookYaw = tgtPos ? yawTo(pl.at, tgtPos) : "along";
         pendingQueue.push({ kind: "walk", speaker: who, dt: 0, ...beatOf(e), tags: { ...tagsOf(false), enter: true } });
+        // a door that leads somewhere (`to`): going to it is going through it
+        if (pl.to && (pl.kind === "door" || pl.poses?.includes("door"))) {
+          exitBy(who, pl);
+          onArrive.set(who, sc);
+          return;
+        }
         touch(who, pl.name, pose, lookYaw);
         onArrive.set(who, sc);
         return;
@@ -830,24 +910,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           touch(who, target.name, pose, tgt ? yawTo(target.at, tgt) : "along");
           return;
         }
-        const door = target;
-        const lvl = door.level ?? null;
-        const y = layerOf(lvl).layer.y ?? 0;
-        // B04: a door without a usable yaw enters along a fixed side, like exit does
-        const doorYaw = typeof door.yaw === "number" && Number.isFinite(door.yaw) ? door.yaw : 0;
-        if (doorYaw !== door.yaw) warnings.push(`stage: enter door "${door.name}" has no known side -> yaw 0`);
-        const step = interRoomDoorStep(door.at, doorYaw, 1.0);
-        a.teleport(step.doorPos, step.yaw, "idle", y);
-        passStart(door.id, who);
-        enteringBy.set(who, door.id);
-        // the step in ends on a cell one can walk on (a table a step inside the door would trap her there)
-        const route = toucher.stepIn(door.at, doorYaw, lvl);
-        if (!route) warnings.push(`stage: enter "${door.name}": nothing walkable inside the door -> stays in the doorway`);
-        const path = route ?? [];
-        const end = path.length ? path[path.length - 1]! : step.doorPos;
-        const tgtPos = getTargetPos(lookTarget);
-        const faceYaw = tgtPos ? yawTo(end, tgtPos) : step.yaw;
-        a.go(path, faceYaw, "idle", y);
+        enterBy(who, target, getTargetPos(lookTarget));
         return;
       }
       if (action === "exit") {
@@ -858,30 +921,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           warnings.push(`stage: exit finds no door in room "${curRoom ?? "?"}" -> stay`);
           return;
         }
-        const sideKnown = typeof door.yaw === "number" && Number.isFinite(door.yaw);
-        if (!sideKnown) {
-          warnings.push(`stage: exit door "${door.name}" has no known exit side -> stops at the door`);
-          const r0 = toucher.touch(who, door.name, "door", 0); // door yaw is unusable, face a fixed way
-          if (r0 === "walk") exiting.add(who);
-          else if (r0 === "skip") offstageActors.add(who);
-          else if (r0 === "queued") {
-            exitPending.set(who, { door, noSide: true });
-            warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
-          }
-          else warnings.push(`stage: exit to "${door.name}" is ${r0} -> stay`);
-          return;
-        }
-        const res = toucher.touch(who, door.name, "door");
-        if (res === "walk") {
-          exiting.add(who);
-          exitThrough.set(who, door);
-        }
-        else if (res === "skip") offstageActors.add(who);
-        else if (res === "queued") {
-          exitPending.set(who, { door, noSide: false });
-          warnings.push(`stage: exit waits for "${who}" to step off the ramp to "${door.name}"`);
-        }
-        else warnings.push(`stage: exit to "${door.name}" is ${res} -> stay`);
+        exitBy(who, door);
         return;
       }
       warnings.push(`stage: unknown action "${action}" -> stay`);
@@ -1221,9 +1261,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         }
         exitSettled.delete(who);
         exiting.delete(who);
-        offstageActors.add(who);
         const d = exitDoor.get(who);
         if (d) (exitDoor.delete(who), passEnd(d, who));
+        leave(who);
       } else exitSettled.delete(who);
     }
     for (const [who, id] of [...enteringBy]) {
@@ -1245,7 +1285,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         exiting.add(who);
         if (!p.noSide) exitThrough.set(who, p.door);
       }
-      else if (res === "skip") offstageActors.add(who);
+      else if (res === "skip") leave(who);
       else warnings.push(`stage: exit to "${p.door.name}" is ${res} -> stay`);
     }
     toucher.tick();
