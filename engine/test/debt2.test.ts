@@ -110,8 +110,9 @@ describe("phase 2 debt", () => {
   it("test_id_charset", () => {
     // Д5: an author id may not look like a generated mesh id (`cap:0`)
     const { report } = runCheck(patched([{ op: "replace", path: "/props/4/id", value: "cap:0" }]) as never);
-    expect(report.errors.map((e) => e.code)).toEqual(["SCHEMA_TYPE"]);
-    expect(report.errors[0].path).toBe("/props/4/id");
+    // L99 also refuses ':' as reserved: both point at the same id
+    expect(report.errors.map((e) => e.code).sort()).toEqual(["ID_RESERVED", "SCHEMA_TYPE"]);
+    for (const e of report.errors) expect(e.path).toBe("/props/4/id");
     expect(runCheck(demoFlat() as never).report.errors).toEqual([]);
     const { raw } = parseScene(
       readFileSync(new URL("../../specs/examples/demo.scene.json", import.meta.url), "utf-8"),
