@@ -89,6 +89,8 @@ export interface DirectorOut {
   warnings?: string[];
   /** seconds the move lasts (event duration, or `style.asl[0]`) */
   moveDurationS?: number;
+  /** a still frame whose look follows this walking actor (its look is not eased: `steadyCam`) */
+  tracking?: string;
 }
 
 /** who the director frames: actors of the focus room and level; an actor off every level (lying on a bed, sitting on
@@ -802,7 +804,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       trackMove = curMove;
     }
     const tracked = !curMove.end && trackName && trackMove === curMove ? crew.find((a) => a.name === trackName) : undefined;
-    if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut };
+    if (tracked) return { ...out, ...curMove, look: tracked.head ?? [tracked.pos[0], (inp.room.floorY ?? 0) + tracked.height * 0.93, tracked.pos[1]], cut: heldCut, tracking: tracked.name };
     return { ...out, ...curMove, cut: heldCut };
   };
 
@@ -821,13 +823,14 @@ const STEADY_S = 0.6, STEADY_JUMP_M = 2;
 /** Inside one cut a still frame eases toward the newly solved camera and look (Squidward v22 video 109.5–111 s: the
  *  base orbit re-solved every tick, capTilt/cleanEdges moved it 1.4 m one way and 0.3 m back, the picture shook for
  *  two seconds). A new cut jumps; a move (`end`) is played by the runtime; a way over STEADY_JUMP_M jumps. */
-export function steadyCam<T extends Pick<DirectorOut, "cut" | "cam" | "look" | "end">>(prev: Pick<DirectorOut, "cut" | "cam" | "look" | "end"> | null, out: T, dt: number): T {
+export function steadyCam<T extends Pick<DirectorOut, "cut" | "cam" | "look" | "end" | "tracking">>(prev: Pick<DirectorOut, "cut" | "cam" | "look" | "end"> | null, out: T, dt: number): T {
   if (!prev || prev.cut !== out.cut || out.end || prev.end) return out;
   const d = (a: V3, b: V3): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
   if (d(prev.cam, out.cam) > STEADY_JUMP_M) return out;
   const k = 1 - Math.exp(-Math.max(0, dt) / STEADY_S);
   const ease = (a: V3, b: V3): V3 => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-  return { ...out, cam: ease(prev.cam, out.cam), look: ease(prev.look, out.look) };
+  // a look on a walker is his head now: eased it lags behind him and he walks out (v26 140–143 s)
+  return { ...out, cam: ease(prev.cam, out.cam), look: out.tracking ? out.look : ease(prev.look, out.look) };
 }
 
 function probePoints(a: DActor, head: V3): V3[] {

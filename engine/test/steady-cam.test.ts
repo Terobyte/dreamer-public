@@ -24,6 +24,10 @@ describe("steadyCam", () => {
     expect(a.look[0]).toBeGreaterThan(0.2);
     expect(a.look[0]).toBeLessThan(1.6);
   });
+  it("a look that follows a walker is not held back (v26 140–143 s: the eased pan lagged, the walkers left the frame)", () => {
+    const a = steadyCam(o(1, [0, 1, 0], [0, 1, 5]), { ...o(1, [0, 1, 0], [2, 1, 5]), tracking: "SpongeBob" }, 0.5);
+    expect(a.look).toEqual([2, 1, 5]);
+  });
   it("a move is left to the runtime", () => {
     const m = o(1, [1, 1, 0], [0, 1, 0], [2, 1, 0]);
     expect(steadyCam(o(1, [0, 1, 0]), m, 0.5)).toBe(m);

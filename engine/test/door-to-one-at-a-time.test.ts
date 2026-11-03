@@ -46,4 +46,20 @@ describe("a door that leads elsewhere, two through it", () => {
     expect(both).toBeGreaterThan(0);
     expect(worst).toBeGreaterThan(0.4);
   });
+
+  it("on the way to the door, inside, the one behind keeps off the one ahead", async () => {
+    let clock = 0;
+    const s = await runtime();
+    s.handlers.stage!({ type: "stage", who: "Sponge", action: "goto", place: "front door", pose: "door" });
+    s.handlers.stage!({ type: "stage", who: "Squid", action: "goto", place: "front door", pose: "door" });
+    let worst = Infinity;
+    for (let i = 0; i < 600; i++) {
+      s.update(1 / 60, (clock += 1 / 60));
+      const [a, b] = ["Sponge", "Squid"].map((w) => s.api.actors().find((x) => x.who === w)!);
+      if (a.offstage || b.offstage || a.pos[0] > 11 || b.pos[0] > 11) continue;
+      worst = Math.min(worst, Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1]));
+    }
+    // a guard: side by side at the doorway they come to 0.38 m today
+    expect(worst).toBeGreaterThan(0.35);
+  });
 });
