@@ -60,3 +60,15 @@ def test_negative_content_length_is_rejected_with_400(monkeypatch):
            "Connection: close\r\n\r\n").encode()
     actual = _request(bad, 0.15)
     assert actual == 400, f"expected: HTTP 400 for negative Content-Length; actual: {actual}"
+
+
+def test_l71_think_goes_through_llm_http(monkeypatch):
+    """L71: the duo page's Spark call is the shared client (paid-model guard, keys), not its own urllib."""
+    llm_http = server._shared()[1]
+    seen = []
+    monkeypatch.setattr(server, "_key", lambda n: "k" if n == "META" else "")
+    monkeypatch.setattr(llm_http, "post", lambda url, auth, body, t, r: seen.append((url, body["model"])) or
+                        {"content": '{"gesture": "none", "action": "stay", "place": "", "line": "Hm."}'})
+    g, act, place, line, model = server.think([{"role": "user", "content": "hi"}])
+    assert line == "Hm." and model == server.META_MODEL
+    assert seen == [(server.META_API, "muse-spark-1.3-contributor")]
