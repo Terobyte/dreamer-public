@@ -16,7 +16,7 @@ import { createSubs } from "./subs.js";
 import { createHeight, createSight } from "./sight.js";
 import { createCritic, boneSig, headPose, type CriticFact } from "./critic.js";
 import { bodyInTheWay, clearOfBodies, legalCameraPoint, roomRect, type CamBody, type V3 } from "./camera.js";
-import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, steadyBone, type ActiveShot, type ShotClock } from "./shotplan.js";
+import { createShotClock, cutMeshes, parseShotplan, shakeOf, shotFrame, steadyBone, walkProgress, type ActiveShot, type ShotClock } from "./shotplan.js";
 import { clipFaceYaw } from "./clipfacts.js";
 
 export interface StageCtx {
@@ -1097,7 +1097,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let shotClamped = false;
   let cutHidden: any[] = [];
   let directorFov: number | null = null;
-  let dirMove: { out: ReturnType<typeof director.step>; t0: number; durationS: number } | null = null;
+  /** `walk`: a walk move goes as far as its walker has gone (walkProgress), `u` its last share */
+  let dirMove: { out: ReturnType<typeof director.step>; t0: number; durationS: number; walk?: { who: string; p0: [number, number]; u: number } } | null = null;
+  /** a walk move's walker and where he stands at its cut */
+  const walkOfMove = (o: ReturnType<typeof director.step>): { who: string; p0: [number, number]; u: number } | undefined => {
+    const who = (o.lookRef as { actor?: string } | undefined)?.actor;
+    const a = who ? actors.get(who) : undefined;
+    if (!o.end || !o.move || !MOVES[o.move]?.defaults.walk || !a) return undefined;
+    const p = a.pos();
+    return { who: a.who, p0: [p[0], p[1]], u: 0 };
+  };
   let dirCut = 0;
   /** the director's last input crew and warnings, for the critic (k15: a pair shot lost a lying actor) */
   let dirSaw: unknown = null;
@@ -1111,7 +1120,16 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       shot: { name: o.move ?? o.plan, at: { k: "num", x: 0 }, to: { k: "num", x: m.durationS }, from: { pos: o.cam, look: o.lookRef ?? o.look, fov: o.fov }, end: { pos: o.end!, look: o.lookEndRef ?? o.lookEnd ?? o.look, fov: o.fovEnd }, cut: false, shake: o.shake ?? 0, ease: o.ease ?? "io" },
       index: 0, at: m.t0, to: m.t0 + m.durationS,
     };
-    const fr = shotFrame(act, now, lookBone(now), directorFov ?? c.camera.fov);
+    // a walk move runs on its walker's way, not on the clock (he stops short: the camera stops with him)
+    let at = now;
+    const wk = m.walk;
+    const wa = wk ? actors.get(wk.who) : undefined;
+    if (wk && wa) {
+      const q = wa.pos();
+      wk.u = walkProgress(wk.p0, [q[0], q[1]], [o.end![0] - o.cam[0], o.end![2] - o.cam[2]], wk.u);
+      at = m.t0 + wk.u * m.durationS;
+    }
+    const fr = shotFrame(act, at, lookBone(now), directorFov ?? c.camera.fov);
     const f = roomAt([fr.pos[0], fr.pos[2]]) ?? (camRoom ? (c.geo.floors ?? []).find((q: any) => q.room === camRoom) : null) ?? (c.geo.floors ?? [])[0];
     let p: V3 = fr.pos;
     if (f?.outline?.length) {
@@ -1423,10 +1441,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null } };
         dirCutSaw = dirSaw;
         dirCut = out.cut;
-        dirMove = { out, t0: now, durationS: out.moveDurationS ?? 4 };
+        dirMove = { out, t0: now, durationS: out.moveDurationS ?? 4, walk: walkOfMove(out) };
       } else if (dirMove && out.end) {
         // a drift added to a long static plan starts now; any other refresh keeps the clock
-        dirMove = !dirMove.out.end ? { out, t0: now, durationS: out.moveDurationS ?? 4 } : { ...dirMove, out };
+        dirMove = !dirMove.out.end ? { out, t0: now, durationS: out.moveDurationS ?? 4, walk: walkOfMove(out) } : { ...dirMove, out };
       }
     }
     if (!s) return;

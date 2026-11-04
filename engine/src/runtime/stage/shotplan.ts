@@ -210,6 +210,16 @@ export interface ShotFrame {
   cut: boolean;
 }
 
+/** How far (0..1) a walk move (follow_side/behind, lead: the camera's path is the walker's path shifted) has gone:
+ *  the walker's way from `p0` along the camera path `delta`, never back, never past the end (v37 149–152 s: the clock
+ *  ran the camera on after Squidward stopped at the table, a metre off his body). `prev` is the last value. */
+export function walkProgress(p0: [number, number], p: [number, number], delta: [number, number], prev: number): number {
+  const L2 = delta[0] * delta[0] + delta[1] * delta[1];
+  if (L2 < 1e-9) return 1;
+  const u = ((p[0] - p0[0]) * delta[0] + (p[1] - p0[1]) * delta[1]) / L2;
+  return Math.max(prev, Math.min(1, Math.max(0, u)));
+}
+
 /** how long the head's offset from the root takes to settle, s: a walk's bob (4 Hz) and sway (2 Hz) are cut to a
  *  sixth, a lean or a turn of the head is followed in about a second */
 const STEADY_TAU_S = 0.5;
