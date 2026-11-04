@@ -108,10 +108,9 @@ function renderWorlds() {
       el("a", { href: "#", onclick: (e) => { e.preventDefault(); play(yard.id, "freestyle", "Opening the yard…"); } }, `walk into ${yard.title}`),
       " and say what should open there.");
   }
-  if (!data.create) {
-    $("#build").hidden = true;
-    $("#mic-note").textContent = "Writing new chapters is switched off on this machine.";
-  }
+  // create switched off in scenes.json: no world picker, no form; the yard and Your scenes stay
+  $("#worlds").hidden = $("#write-col").hidden = !data.create;
+  $("#world-col h2").textContent = data.create ? "Pick a world" : "Writing new chapters is switched off here";
 }
 
 function setTab(t) {
@@ -179,6 +178,7 @@ function updateBuild() {
   const n = idea.value.trim().length;
   $("#count").textContent = `${idea.value.length} / 600`;
   $("#build").disabled = n < 8 || !chosenWorld || building;
+  $("#build-hint").textContent = building ? "" : n < 8 ? "Write a sentence or two first." : "";
 }
 idea.addEventListener("input", updateBuild);
 
@@ -232,16 +232,20 @@ function renderStages(st) {
 
 // ---------- voice: hold to talk -> 16 kHz mono s16 WAV -> Meta ASR (same encoder as place/host/dictate.js) ----------
 let rec = null;
+let held = false;          // the button is down; a release during the permission prompt cancels the start
 const mic = $("#mic");
 async function startRec() {
-  if (rec) return;
+  if (rec || held) return;
+  held = true;
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
   } catch {
+    held = false;
     $("#mic-note").textContent = "The microphone is blocked. Allow it for this page, or type instead.";
     return;
   }
+  if (!held) { stream.getTracks().forEach((t) => t.stop()); return; }
   const ac = new AudioContext();
   const src = ac.createMediaStreamSource(stream);
   const proc = ac.createScriptProcessor(4096, 1, 1);
@@ -268,6 +272,7 @@ function wavOf(chunks, rate) {
   return new Blob([buf], { type: "audio/wav" });
 }
 async function stopRec() {
+  held = false;
   if (!rec) return;
   const r = rec; rec = null;
   r.proc.disconnect(); r.stream.getTracks().forEach((t) => t.stop());

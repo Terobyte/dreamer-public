@@ -54,8 +54,8 @@ _CAST_OK = {}
 
 
 def _cast_errors(cs: Path):
-    """make's own cast check (GLBs, heights, voices), cached by the cast.json mtime"""
-    key = (str(cs), (cs / "cast.json").stat().st_mtime)
+    """make's own cast check (GLBs, heights, voices), cached by the newest file mtime in the cast"""
+    key = (str(cs), max(f.stat().st_mtime for f in cs.rglob("*") if f.is_file()))
     if key not in _CAST_OK:
         from make.cast import check_cast
         _CAST_OK[key] = check_cast(cs)

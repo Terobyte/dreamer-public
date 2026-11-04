@@ -33,7 +33,7 @@ button { font: inherit; color: inherit; }
 
 .lead { margin: 26px 0 18px; }
 .lead h1 {
-  font: 400 54px/1.05 var(--serif);
+  font: 400 50px/1.08 var(--serif);
   margin: 0 0 18px;
   letter-spacing: -.01em;
 }
@@ -136,6 +136,8 @@ kbd { font: 600 13px var(--sans); border: 1px solid var(--dusk); border-radius: 
 .stages li.failed, .stages li.failed .ic { color: var(--ember); }
 .stages li .t { font-size: 13px; font-variant-numeric: tabular-nums; }
 @keyframes blink { 50% { opacity: .3; } }
+.build-row { display: flex; align-items: center; gap: 14px; }
+.build-row .aside { margin: 0; }
 .build-msg { min-height: 1.5em; margin: 12px 0 0; }
 .build-msg.err { color: var(--ember); }
 

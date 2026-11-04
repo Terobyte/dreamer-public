@@ -39,7 +39,17 @@ try {
   await page.waitForSelector("#shelf article");
   const book = await page.$$eval("#shelf article", (a) => a.map((x) => x.dataset.id));
   check(JSON.stringify(book) === JSON.stringify(["koshakan-bedroom", "koshakan-bathroom", "koshakan-meadow", "sherlock-221b"]), `Book shows the 4 book scenes (${book})`);
+  const tabs = await page.$$eval(".tabs a", (a) => a.filter((x) => x.offsetParent).map((x) => x.textContent));
+  check(JSON.stringify(tabs) === '["Book","Freestyle","Create"]', `all three tabs visible (${tabs})`);
+  const whole = await page.$$eval("#shelf article", (a) => a.filter((x) => x.getBoundingClientRect().bottom <= innerHeight).length);
+  check(whole >= 3, `at least 3 whole cards on the first screen (${whole})`);
   await page.screenshot({ path: join(OUT, "book_1280.png") });
+  await page.click('#shelf article[data-id="koshakan-bathroom"] .primary');
+  await page.waitForSelector("#stage:not([hidden])");
+  const srcB = await page.getAttribute("#frame", "src");
+  check(srcB.includes("id=koshakan-bathroom") && srcB.includes("mode=book"), `Read it opens the scene as a book (${srcB})`);
+  await page.click("#back");
+  await page.waitForSelector("#home:not([hidden])");
   await page.click("#tab-freestyle");
   await page.waitForFunction(() => document.querySelectorAll("#shelf article[data-mode=freestyle]").length > 0);
   const free = await page.$$eval("#shelf article", (a) => a.map((x) => x.dataset.id));
@@ -94,7 +104,7 @@ try {
   const stages = await page.$$eval("#stages li", (l) => l.map((x) => `${x.dataset.stage}:${x.className}`));
   check(stages[0] === "chapter:ok" && stages.every((s) => s.endsWith(":ok")), `every stage done (${stages})`);
   await page.waitForSelector("#mine article");
-  await page.screenshot({ path: join(OUT, "create_done_1280.png") });
+  await page.screenshot({ path: join(OUT, "create_done_1280.png"), fullPage: true });
   const mine = await page.$$eval("#mine article", (a) => a.length);
   check(mine === 1, "the new scene is in Your scenes");
   await page.click("#mine article .primary");

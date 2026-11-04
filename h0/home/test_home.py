@@ -216,6 +216,23 @@ class TestSceneSlot(unittest.TestCase):
         self.assertFalse(st["alive"])
         self.assertEqual(st["id"], "a")
 
+    def test_stop_kills_grandchild_that_ignores_term(self):
+        """make.play's servers are children of the leader: a stop must take the whole group, SIGKILL if needed"""
+        kid = self.tmp / "kid.pid"
+        code = ("import os,signal,subprocess,sys,time\n"
+                "c=subprocess.Popen([sys.executable,'-c','import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)'])\n"
+                "open(%r,'w').write(str(c.pid))\n"
+                "import http.server\n"
+                "s=http.server.ThreadingHTTPServer(('127.0.0.1',0),http.server.SimpleHTTPRequestHandler)\n"
+                "print('http://127.0.0.1:%%d/' %% s.server_address[1], flush=True)\n"
+                "s.serve_forever()\n") % str(kid)
+        self.s.start("a", "book", [PY, "-c", code])
+        pid = self.s.proc.pid
+        cpid = int(kid.read_text())
+        self.s.stop()
+        self.assertTrue(_wait_dead(pid))
+        self.assertTrue(_wait_dead(cpid), "the grandchild survived the stop")
+
     def test_stop_kills_group(self):
         self.s.start("a", "book", self._stub())
         pid = self.s.proc.pid
@@ -262,6 +279,8 @@ class TestApi(Base):
         self.assertEqual(self.req("/api/play", body, headers={"Origin": "http://evil.example"})[0], 403)
         self.assertEqual(self.req("/api/play", body, ctype="text/plain")[0], 403)
         self.assertEqual(self.req("/api/play", body, ctype=None)[0], 403)
+        self.assertEqual(self.req("/api/play", body, ctype="application/jsonp")[0], 403)
+        self.assertEqual(self.req("/api/play", body, ctype="application/json; charset=utf-8")[0], 200)
         self.assertEqual(self.req("/api/stop", {}, headers={"Host": "evil.example"})[0], 403)
         code, d = self.req("/api/scenes", headers={"Host": "evil.example"})
         self.assertEqual((code, d.get("error")), (403, "forbidden"))
@@ -328,6 +347,11 @@ class TestApi(Base):
         self.assertEqual(self.req("/api/create/home-..%2f..")[0], 404)
         self.assertEqual(self.req("/api/create/home-20200101-000000")[0], 404)
 
+    def test_create_switched_off(self):
+        self.home.cat = lambda: dict(catalog.load(), create=False)
+        self.assertEqual(self.req("/api/create", {"world": "koshakan-house", "prompt": "a long enough idea"})[0], 403)
+        self.assertFalse(self.req("/api/scenes")[1]["create"])
+
     def test_chapter_failure_is_a_failed_build(self):
         self.home.fake = False
         self.home.ask = lambda system, user: '{"title": "t", "room": "attic", "paragraphs": []}'
@@ -375,6 +399,9 @@ class TestWrite(unittest.TestCase):
         g = self.good()
         g["paragraphs"][1] = 'Mirai said "hi" and "bye".'
         self.assertTrue(any("exactly" in e for e in write.check(g, self.world)))
+        g = self.good()
+        g["paragraphs"][1] = "\u201cLook, a kitten!\u201d said Mirai."
+        self.assertTrue(any("straight double quotes" in e for e in write.check(g, self.world)))
 
     def test_retry_then_ok(self):
         answers = iter(['not json', json.dumps(self.good())])

@@ -35,28 +35,40 @@ def _close(p):
             pass
 
 
+def _group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
 def _kill_group(p, wait=KILL_AFTER_S):
+    """SIGTERM the whole group, SIGKILL whatever of it is still there after `wait` s: the leader may
+    already be gone while its children (make.play's servers, a pipe2 worker) are not."""
     if p is None:
-        return
-    if p.poll() is not None:
-        try:
-            os.killpg(p.pid, signal.SIGTERM)   # the leader is gone, its children may not be
-        except (ProcessLookupError, PermissionError):
-            pass
-        _close(p)
         return
     try:
         os.killpg(p.pid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
-        return
-    try:
-        p.wait(wait)
-    except subprocess.TimeoutExpired:
+        pass
+    end = time.time() + wait
+    while time.time() < end:
+        p.poll()                      # reap the leader, or the group never looks empty
+        if not _group_alive(p.pid):
+            break
+        time.sleep(0.05)
+    else:
         try:
             os.killpg(p.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             pass
-        p.wait(wait)
+        try:
+            p.wait(wait)
+        except subprocess.TimeoutExpired:
+            pass
     _close(p)
 
 
@@ -185,6 +197,7 @@ class Build:
         self.run = None
         self.log = None
         self.stopped = False
+        self.error = None     # why the build never started (spawn failed), for the status
 
     def busy(self):
         with self.mu:
@@ -208,25 +221,38 @@ class Build:
         if self.busy():
             raise LaunchError("a build is already running", code=429)
         with self.mu:
-            self.run, self.proc, self.stopped = Path(run).resolve(), None, False
+            self.run, self.proc, self.stopped, self.error = Path(run).resolve(), None, False, None
             self.log = _log_path(Path(run).name)
 
             def go():
-                argv = prepare()
+                try:
+                    argv = prepare()
+                except Exception as e:  # noqa: BLE001 — prepare reports its own errors; this is the last net
+                    self.error = "preparing the build failed: %s" % str(e)[:200]
+                    return
                 with self.mu:
                     if argv is None or self.stopped:
                         return
-                    with open(self.log, "w", buffering=1) as lf:
-                        self.proc = subprocess.Popen(argv, cwd=str(H0), stdout=lf, stderr=subprocess.STDOUT,
-                                                     stdin=subprocess.DEVNULL, start_new_session=True,
-                                                     env=dict(os.environ, PYTHONUNBUFFERED="1"))
+                    try:
+                        with open(self.log, "w", buffering=1) as lf:
+                            self.proc = subprocess.Popen(argv, cwd=str(H0), stdout=lf, stderr=subprocess.STDOUT,
+                                                         stdin=subprocess.DEVNULL, start_new_session=True,
+                                                         env=dict(os.environ, PYTHONUNBUFFERED="1"))
+                    except OSError as e:
+                        self.error = "could not start make: %s" % e
 
             self.thread = threading.Thread(target=go, daemon=True)
             self.thread.start()
 
-    def stop(self):
+    def stop(self, wait=5.0):
+        """no make starts after this; a running one is killed. The chapter's Spark call cannot be cut,
+        so the thread is waited for a few seconds and then left to find the stop flag."""
         with self.mu:
             self.stopped = True
+            t = self.thread
+        if t is not None and t is not threading.current_thread():
+            t.join(wait)
+        with self.mu:
             _kill_group(self.proc)
 
 

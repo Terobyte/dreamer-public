@@ -14,7 +14,7 @@
   </header>
 
   <section class="lead">
-    <h1>Step inside a story.</h1>
+    <h1>Step inside a story, or write the next one.</h1>
     <nav class="tabs" role="tablist" aria-label="Modes">
       <a role="tab" id="tab-book" href="#book" data-tab="book">Book</a>
       <a role="tab" id="tab-freestyle" href="#freestyle" data-tab="freestyle">Freestyle</a>
@@ -28,16 +28,16 @@
 
     <section class="create" id="create" hidden>
       <div class="create-grid">
-        <div class="col">
+        <div class="col" id="world-col">
           <h2>Pick a world</h2>
           <div class="worlds" id="worlds"></div>
           <p class="aside" id="yard-hint"></p>
         </div>
-        <div class="col">
+        <div class="col" id="write-col">
           <h2>What happens next?</h2>
           <label class="field" for="idea">
             <textarea id="idea" maxlength="600" rows="4"
-              placeholder="Mirai finds a lost kitten in the meadow and wants to keep it."></textarea>
+              placeholder="For example: Mirai finds a lost kitten in the meadow and wants to keep it."></textarea>
           </label>
           <div class="field-row">
             <button type="button" class="mic" id="mic" aria-pressed="false">
@@ -46,7 +46,10 @@
             <span class="count" id="count">0 / 600</span>
           </div>
           <p class="aside" id="mic-note">Muse Spark writes the chapter with this world's characters, then Dreamer stages it. Usually 2–4 minutes.</p>
-          <button type="button" class="primary" id="build" disabled>Write and stage it</button>
+          <div class="build-row">
+            <button type="button" class="primary" id="build" disabled>Write and stage it</button>
+            <span class="aside" id="build-hint">Write a sentence or two first.</span>
+          </div>
           <ol class="stages" id="stages" hidden></ol>
           <p class="build-msg" id="build-msg" role="status"></p>
         </div>

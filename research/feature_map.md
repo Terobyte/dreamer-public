@@ -278,6 +278,7 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | `app/` | IWSDK/WebXR приложение: `src/{splats,dissolve,assets,env,panel,robot*}.ts` 336 строк — старая сцена сплатов; `src/engine-host.ts` — спайк 11-02, мир `engine/` внутри IWSDK по `?world=` (копия `materialOf`/`meshOf` из `main.ts` до X1 `buildWorld`), спека `specs/2026-11-02-engine-xr.md` |
 | `specs/` | `engine-scene.md` (контракт сцены), `2026-10-31-dreamer-make.md` (make), `2026-11-01-engine-anim-camera.md` (А1-А4), `2026-11-01-engine-worlds.md` (ночь 2: Н7-Н15), `tero-*.md` |
 | `LESSONS.md` | реестр уроков L1-L33+ со статусами (читать перед новой спекой) |
+| `h0/home/` | **Dreamer Home — витрина сабмита** (`cd h0 && python3 -m home [--port 8800] [--fake]`): `catalog.py` (`scenes.json` → готовые сцены/миры, `allowed` пути, `build_status` из `make.json`, `mine` = `runs/home-*`), `session.py` (слоты `Scene`/`Build`: свой process group, URL из stdout, проверка жизни + GET страницы, `_kill_group`), `write.py` (идея гостя → глава Spark `{title, room, paragraphs}` → `check` → `write_book` одна сцена `custom` с `room`), `server.py` (API `/api/scenes|play|stop|session|create|asr`, same-origin как `place.serve`), `static/` (страница, обложки `covers/`), тесты `test_home.py` (в гейте), `e2e.mjs` (Playwright, fake). Спека `specs/2026-11-04-home-ui.md` |
 | `engine/docs/critic.md` | как гонять критика ПО КАРТИНКАМ (референс | снимок) — это критик мира, не фильма; `street.md` — как описывать улицу/двор/дом |
 
 ---
@@ -419,6 +420,10 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | настоящее место (двор по адресу) -> мир движка: OSM + спутник + кадры Street View -> Spark read/plan -> scene.json -> Muse/SAM3D -> dist | `cd h0 && python3 -m place --run R --lat --lon --yard-at x,y --house "<конец имени OSM>" --refs DIR [--from X]` (`h0/place/`: `geo` OSM/Esri/кадр двора `SN`, `topview`, `sheets`, `prompts` READ/PLAN, `compile.compile_scene`, `assets.fill_cache/build_dist/fit_props`) |
 | лист «референс | результат» с точек панорам | `views.json` (lat/lon/heading/fov) -> `compile.cameras_from_views` -> `dreamer shots` -> `python3 -m place.sheet` |
 | честный процент стройки для страницы | `place/progress.py Progress` (веса = замер прошлого прогона `timings.json`, ассеты по готовым файлам) -> `progress.jsonl` |
+| одна страница со всеми готовыми сценами (книга / фристайл) и «создать свою» | `h0/home` (`python3 -m home`); новая сцена в витрину — запись в `h0/home/scenes.json` + обложка `static/covers/<id>.jpg` |
+| запустить сцену из кода и получить её URL / погасить со всеми детьми | `home/session.py Scene.start(id, mode, argv)` / `stop()` (не писать третий `Popen` + `killpg`) |
+| своя книжная сцена из одной фразы с готовым кастом и миром | `home/write.py write_chapter` + `write_book` → `make "<idea>" --book <run>/book --scene custom --world <dir>` (seed-режим берёт актёров режиссёра, а не каст) |
+| показать реплику без тегов голоса (`[soft]`, `<emphasis>`) | `engine/src/runtime/stage/subs.ts cleanSubtitle` |
 | голосом достроить здание в готовом месте (диктовка -> Meta ASR -> стройка -> attach) | `python3 -m place.serve <run> --port N [--warm]` + `place/host/dictate.js` (пробел = микрофон, `__wish(text)` для тестов); стройка `place/shop.py build_wish`; e2e `node ../h0/place/host/e2e.mjs URL "" OUT wav` из `engine/` |
 
 ---

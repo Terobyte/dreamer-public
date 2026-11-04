@@ -74,6 +74,9 @@ def check(ans, world):
     spoke = set()
     for i, p in enumerate(paras):
         p = " ".join(p.split())
+        if any(q in p for q in "\u201c\u201d\u00ab\u00bb"):
+            errs.append("paragraph %d: use straight double quotes, not curly or angle quotes" % i)
+            continue
         if '"' not in p:
             continue
         m = LINE.match(p)

@@ -108,7 +108,7 @@ class Home:
                 run = self.runs / ("home-" + time.strftime("%Y%m%d-%H%M%S"))
             run.mkdir()
             h = {"prompt": prompt, "title": prompt[:60], "world": world_id,
-                 "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "chapter": {"status": "running"}}
+                 "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "chapter": {"status": "running", "started": time.time()}}
             _write_home(run, h)
             self.build.begin(run, lambda: self._build(run, prompt, world, h))
         return run.name
@@ -140,11 +140,16 @@ class Home:
         st = catalog.build_status(run, alive, code)
         h = catalog.home_json(run)
         ch = h.get("chapter") or {}
-        chap = {"name": "chapter", "status": ch.get("status") or "waiting", "seconds": ch.get("seconds"),
+        sec = ch.get("seconds")
+        if sec is None and ch.get("status") == "running" and ch.get("started"):
+            sec = round(time.time() - ch["started"], 1)
+        chap = {"name": "chapter", "status": ch.get("status") or "waiting", "seconds": sec,
                 "usd": 0.0, "error": ch.get("error")}
         st["stages"] = [chap] + st["stages"]
         if chap["status"] == "failed":
             st["status"], st["error"] = "failed", chap["error"]
+        elif self.build.error and self.build.run == run.resolve():
+            st["status"], st["error"] = "failed", self.build.error
         elif alive and st["status"] != "failed":
             st["status"] = "running"
         try:
@@ -224,7 +229,8 @@ def make_handler(home: Home):
             port = self.server.server_address[1]
             origin = self.headers.get("Origin")
             ok_origin = origin is None or origin in ("http://localhost:%d" % port, "http://127.0.0.1:%d" % port)
-            return self._local_host() and ok_origin and (self.headers.get("Content-Type") or "").startswith(ctype)
+            media = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            return self._local_host() and ok_origin and media == ctype
 
         def do_GET(self):
             if not self._local_host():
@@ -246,7 +252,7 @@ def make_handler(home: Home):
                                 "cover_url": "/wcover/%s" % w["id"] if w.get("_cover") else None}
                                for w in c["worlds"] if w["ready"]],
                     "mine": [_mine_public(m, c["worlds"]) for m in home.mine()],
-                    "session": home.scene.current() and {k: v for k, v in home.scene.current().items() if k != "log"},
+                    "session": (lambda cur: cur and {k: v for k, v in cur.items() if k != "log"})(home.scene.current()),
                     "building": building, "fake": home.fake, "create": c["create"]})
             if path.startswith("/wcover/"):
                 w = home.world(path[8:])

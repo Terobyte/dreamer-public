@@ -627,7 +627,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   const goFree = (): void => {
     if (c.film || mode !== "book" || !c.sim || !btn) return;
-    btn.textContent = "⚡ переключаю…";
+    btn.textContent = "⚡ switching…";
     fetch(`${c.sim.replace(/\/$/, "")}/freestyle`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(
       () => (btn.textContent = "⚡ Freestyle [G] (the engine did not answer)"),
     );
