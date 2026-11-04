@@ -1540,7 +1540,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (isLast) s = out;
       dirInputs.push({ ...(r3({ event: ev, actors: here, room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY }, fov: directorFov ?? c.camera.fov, aspect: c.camera.aspect }) as object), blocked: tape.blocked });
       if (dirInputs.length > 60) dirInputs.shift();
-      if (dirTape && draws) dirTape.push({ ...(dirInputs[dirInputs.length - 1] as object), rngs: draws.drawn, out: { cut: out.cut, plan: out.plan, move: out.move ?? null, cam: out.cam } });
+      // the event unrounded: r3 made dt 1/60 -> 0.017, the replay's clock ran 0.1 s ahead in 325 ticks and recut early
+      if (dirTape && draws) dirTape.push({ ...(dirInputs[dirInputs.length - 1] as object), event: { ...ev }, rngs: draws.drawn, out: { cut: out.cut, plan: out.plan, move: out.move ?? null, cam: out.cam } });
       dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };
       if (out.cut !== dirCut) {
         dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null, fov: out.fov ?? null, inputs: [...dirInputs] } };
