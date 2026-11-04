@@ -10,6 +10,7 @@ import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
+import { parseHand, pinPose, type HandPin } from "./hand.js";
 import { approachGap, BED_TUCK_M, bedLift, floorAt, hugMode, hugSpot, lapHugSpot, lapSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate, yieldPace } from "./separate.js";
@@ -247,6 +248,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           })
       : (planWarn = "stage: no shotplan -> director", null);
 
+  // hand pins (optional, `stage.hand`): the scene's hand placement from a beat on (hand.ts)
+  const handJson: unknown = (c as any).hand !== undefined
+    ? (c as any).hand
+    : typeof stage.hand === "string"
+      ? await fetch(new URL(stage.hand, runBase)).then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      : null;
+
   const NOT_READ = Symbol("moves not read");
   // К3м: Spark's move choice (optional), read like the shotplan; none or unreadable -> the director's own draw
   let movesWarn: string | null = null;
@@ -452,7 +460,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const planParsed = planJson !== null && planJson !== undefined ? parseShotplan(planJson, warnings) : null;
   const shots: ShotClock | null = planParsed ? createShotClock(planParsed, warnings) : null;
   /** a beat event (`beat` = index in score.beats) reached a handler: its start is the last update's now */
+  const handPins: HandPin[] = parseHand(handJson, warnings);
+  /** the latest beat any event named: the hand pins up to it are in force */
+  let beatNow = -1;
   const beatIn = (e: StageEvent): void => {
+    if (typeof e.beat === "number" && Number.isInteger(e.beat)) beatNow = Math.max(beatNow, e.beat);
     if (shots && typeof e.beat === "number" && Number.isInteger(e.beat)) {
       const d = Number(e.dur);
       shots.beat(e.beat, nowT, e.dur !== undefined && e.dur !== null && Number.isFinite(d) ? d : undefined);
@@ -735,7 +747,25 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   /** children hugging from a lap: their partner's hug plays in place */
   const lapHugging = new Set<string>();
   /** in a lap: the child, or the holder of one; neither turns her body to whom she speaks */
-  const inLap = (who: string): boolean => lapOf.has(who) || lapHugging.has(who) || [...lapOf.values()].includes(who);
+  const inLap = (who: string): boolean => lapOf.has(who) || lapHugging.has(who) || [...lapOf.values()].includes(who) || pinned.has(who);
+  /** who the hand holds now (the latest pin in force per actor) */
+  const pinned = new Map<string, HandPin>();
+  const applyPins = (): void => {
+    for (const p of handPins) if (p.beat <= beatNow && pinned.get(p.who)?.beat !== p.beat && (pinned.get(p.who)?.beat ?? -1) <= p.beat) pinned.set(p.who, p);
+    for (const [who, p] of pinned) {
+      const a = actors.get(who);
+      if (!a || a.moving() || onArrive.has(who)) continue;
+      const o = p.rel ? actors.get(p.rel) : undefined;
+      const s = pinPose(p, o ? { pos: o.pos(), yaw: o.yaw(), y: o.y() } : null);
+      if (!s) continue;
+      const yaw = s.yaw ?? a.yaw(), y = s.y ?? a.y();
+      const dy = Math.abs((((yaw - a.yaw()) % 360) + 540) % 360 - 180);
+      if (Math.hypot(s.at[0] - a.pos()[0], s.at[1] - a.pos()[1]) < 0.005 && Math.abs(y - a.y()) < 0.005 && dy < 0.5) continue;
+      a.teleport(s.at, yaw, a.act(), y);
+      together.add(who);
+      if (p.rel) together.add(p.rel);
+    }
+  };
   /** actors that walked up to another one (a hug, a lap): the pair is never pushed apart until one of them moves on */
   const together = new Set<string>();
   let nearSeq = 0;
@@ -1386,6 +1416,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     settleBeds(now);
     settleAfterClips();
     settleArrivals();
+    applyPins();
     for (const who of [...exiting]) {
       const act = actors.get(who);
       if (!act?.moving()) {
