@@ -849,7 +849,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   const tilt = steadyTilt();
   return {
     step: (inp: DirectorInput): DirectorOut =>
-      (lastOut = cleanEdges(tilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear, fov: inp.fov })),
+      (lastOut = cleanEdges(tilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear, fov: inp.fov, maxFov: style.fov[1] })),
   };
 }
 
@@ -1019,6 +1019,8 @@ export function steadyTilt(): typeof capTilt {
 }
 
 const EDGE_IN = 0.9, EDGE_OUT = 1.3;
+/** a head's half size at the frame's edge, hair and ears (m) */
+const HEAD_R = 0.15;
 /** unblock's first pass keeps the camera this far (m, flat) from every actor */
 const UNBLOCK_OFF_BODY = 1.2;
 /** Nobody in the room is cut by the frame's edge (Squidward, Nov 3, v6 18–36 s: Squidward's head at ndc x 1.1–1.37,
@@ -1029,11 +1031,18 @@ const UNBLOCK_OFF_BODY = 1.2;
 export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect: number, o: { maxFov?: number; clear?: (cam: V3, look: V3) => boolean; fov?: number } = {}): T {
   // the head and the face of each (a box figure's face stands in at the edge while its head bone is past it)
   const heads = crew.filter((a) => !a.offstage).flatMap((a) => [a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3), ...(a.face ? [a.face] : [])]);
-  const reach = (cam: V3, look: V3, fov: number, h: V3): number => {
+  // a head has a size (Koshakan k11 4.3 s: 1.23 m from the camera Mama's head bone was at 0.75 and her head top out):
+  // `reach` is its far side in the frame, `reachIn` its near side
+  const span = (cam: V3, look: V3, fov: number, h: V3, sign: number): number => {
     const p = ndcOf(h, cam, look, fov, aspect);
-    return p.depth <= 0.2 ? Infinity : Math.max(Math.abs(p.x), Math.abs(p.y));
+    if (p.depth <= 0.2) return Infinity;
+    const r = HEAD_R / (p.depth * Math.tan((fov * Math.PI) / 360));
+    return Math.max(Math.abs(p.x) + (sign * r) / aspect, Math.abs(p.y) + sign * r);
   };
-  const isCut = (cam: V3, look: V3, fov: number): boolean => heads.some((h) => { const r = reach(cam, look, fov, h); return r > EDGE_IN && r < EDGE_OUT; });
+  const reach = (cam: V3, look: V3, fov: number, h: V3): number => span(cam, look, fov, h, 1);
+  const reachIn = (cam: V3, look: V3, fov: number, h: V3): number => span(cam, look, fov, h, -1);
+  const centre = (cam: V3, look: V3, fov: number, h: V3): number => span(cam, look, fov, h, 0);
+  const isCut = (cam: V3, look: V3, fov: number): boolean => heads.some((h) => reach(cam, look, fov, h) > EDGE_IN && reachIn(cam, look, fov, h) < EDGE_OUT);
   // a move: its end frame (where it holds) gets the same word — its look and fov, never its path (Squidward v16 60–69 s:
   // a push_in ended with SpongeBob's head on the bottom edge and held it nine seconds)
   if (out.end) {
@@ -1058,10 +1067,12 @@ export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect
   const fov0 = out.fov ?? o.fov ?? 50;
   if (!isCut(out.cam, out.look, fov0)) return out;
   const held = out;
-  const sees = (look: V3, keep: V3[]): boolean => !o.clear || keep.every((h) => o.clear!(out.cam, h));
+  // only a head the fix brings into the frame must be seen; one the frame already holds stays as it was (Koshakan k11:
+  // lying Mirai's face hidden from everywhere forbade widening for Mama's head top)
+  const sees = (look: V3, keep: V3[]): boolean => !o.clear || (o.clear(out.cam, look) && keep.filter((h) => reach(out.cam, out.look, fov0, h) > 1).every((h) => o.clear!(out.cam, h)));
   const cam = out.cam;
   // 1) all the heads near the frame in: aim at their middle, widen
-  const near = heads.filter((h) => reach(cam, out.look, fov0, h) < EDGE_OUT);
+  const near = heads.filter((h) => reachIn(cam, out.look, fov0, h) < EDGE_OUT);
   if (near.length) {
     const mid: V3 = [0, 1, 2].map((k) => near.reduce((s, h) => s + h[k], 0) / near.length) as V3;
     for (let fov = fov0; fov <= Math.max(fov0, o.maxFov ?? 70) + 1e-9; fov += 2) {
@@ -1071,11 +1082,13 @@ export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect
   }
   // 2) the cut ones out: turn the look sideways about the camera
   const inside = heads.filter((h) => reach(cam, out.look, fov0, h) <= EDGE_IN);
+  // a head whose middle is in the frame is not turned out of it (Mama's head top over the edge, her face in)
+  const heldIn = heads.filter((h) => centre(cam, out.look, fov0, h) <= 1);
   const f: V3 = [out.look[0] - cam[0], out.look[1] - cam[1], out.look[2] - cam[2]];
   for (const deg of [3, -3, 6, -6, 9, -9, 12, -12, 15, -15, 20, -20, 25, -25]) {
     const r = (deg * Math.PI) / 180, c = Math.cos(r), s = Math.sin(r);
     const look: V3 = [cam[0] + f[0] * c + f[2] * s, out.look[1], cam[2] - f[0] * s + f[2] * c];
-    if (!isCut(cam, look, fov0) && inside.every((h) => reach(cam, look, fov0, h) <= EDGE_IN)) return { ...held, look, lookRef: undefined };
+    if (!isCut(cam, look, fov0) && inside.every((h) => reach(cam, look, fov0, h) <= EDGE_IN) && heldIn.every((h) => centre(cam, look, fov0, h) <= 1) && (!o.clear || o.clear(cam, look))) return { ...held, look, lookRef: undefined };
   }
   return held;
 }
