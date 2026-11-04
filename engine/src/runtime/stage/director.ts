@@ -807,7 +807,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const outline = inp.room.outline;
         const rect = roomRect(outline);
         let best: { o: DirectorOut; score: number } | null = null;
-        for (const d of [2.6, 2.2, 1.8, 1.4])
+        // a two holds its pair whole: nobody taller than 0.95 of the frame (Squidward v55 56.6 s and 71 s: the ring stood
+        // 1.9 m off, Squidward 1.8 m tall was 1.16 frames, his eyes cut by the top edge) — such a point loses to any whole one; the ring goes out to 3.4 m for it
+        const whole = (cam: V3): boolean => pair.every((a, i) => {
+          if (a.lying) return true;  // a lying body's height runs along the floor, not up the frame
+          // as tall as it stands now: floor to the eye (0.92 of the height) and a little over; seated Mama on the bed
+          // is not her 1.7 m. No eye: the head point and a head over it
+          const tall = a.eye ? a.eye[1] - floorY + 0.15 : Math.min(a.height, hs[i]![1] - floorY + 0.25);
+          const p = ndcOf(hs[i]!, cam, look, fov, inp.aspect ?? 16 / 9);
+          return p.depth > 0 && tall / (2 * p.depth * Math.tan((fov * DEG) / 2)) <= 0.95;
+        });
+        for (const d of [3.4, 3.0, 2.6, 2.2, 1.8, 1.4])
           for (let k = 0; k < 24; k++) {
             const r = k * 15 * DEG;
             const p = snap(outline, [look[0] + Math.sin(r) * d, look[2] + Math.cos(r) * d], rect, 0.25);
@@ -816,7 +826,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
             if (!inView(pair, cam, look, fov) || !faces(cam)) continue;
             if (inp.clear && !pair.every((a, i) => probePoints(a, hs[i]!).every((q) => inp.clear!(cam, q)))) continue;
             if (foreBody({ ...out, plan: "two", cam, look, fov }, pair)) continue;
-            const score = angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) + Math.abs(d - 2.2) * 10;
+            // a point that cuts someone loses to any that holds both whole; a room too small for whole (the 3.6 m
+            // bedroom, seated Mama) still gets its two
+            const score = angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) + Math.abs(d - 2.2) * 10 + (whole(cam) ? 0 : 1000);
             if (!best || score < best.score) best = { o: { ...out, plan: "two", cam, look, fov }, score };
           }
         return best?.o ?? null;
