@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createDirector, smoothCam, type DActor, type DEvent, type DRoom } from "../src/runtime/stage/director.js";
 import { insideInset, legalCameraPoint, roomRect } from "../src/runtime/stage/camera.js";
+import { ndcOf } from "../src/runtime/stage/moves.js";
 
 const rng = () => 0.5;
 const act = (name: string, pos: [number, number], o: Partial<DActor> = {}): DActor => ({ name, pos, yaw: 0, height: 1.7, level: null, room: "r", walking: false, ...o });
@@ -56,7 +57,12 @@ describe("camera debt: legalCameraPoint", () => {
           expect(a).toBeLessThanOrEqual(60.001);
           // Tight tolerance comparing against the best achievable angle on the side; an ots steps aside of the near
           // head on that line (v30 146–150 s, ots-shoulder-aside.test.ts) and gives up to 20° of it
-          expect(a).toBeLessThanOrEqual(best + (shot === "ots" ? 20 : 0.1));
+          // ... unless that point lost the listener's shoulder: then it stands behind him (v45 150.6 s,
+          // ots-holds-the-shoulder.test.ts) and b is in the frame
+          if (shot === "ots" && a > best + 20) {
+            const n = ndcOf([5, 1.7 * 0.9, 3], s.cam, s.look, 50, 16 / 9);
+            expect(n.depth > 0.2 && Math.abs(n.x) <= 1 && Math.abs(n.y) <= 1, `yaw ${yaw}`).toBe(true);
+          } else expect(a).toBeLessThanOrEqual(best + (shot === "ots" ? 20 : 0.1));
           expect(a).toBeGreaterThanOrEqual(best - 1e-3);
         }
       }

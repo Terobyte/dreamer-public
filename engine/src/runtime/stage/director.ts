@@ -1150,6 +1150,11 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
   const span = pair.length > 1 ? dist(pair[0].pos, pair[1].pos) : 0;
   const meanH = pair.reduce((s, a) => s + a.height, 0) / pair.length;
   const head = (a: DActor, k = 0.9): V3 => a.head ?? at(a.pos, a.height * k);
+  /** a's face (else head) inside a frame from cam looking at look */
+  const holds = (cam: V3, look: V3, a: DActor): boolean => {
+    const q = ndcOf(a.face ?? head(a), cam, look, inp.fov ?? 50, aspect);
+    return q.depth > 0.2 && Math.abs(q.x) <= 0.95 && Math.abs(q.y) <= 0.95;
+  };
   /** camera height above the floor a little under the eyes: the measured head when known */
   const eyeCam = (a: DActor): number => (a.head ? Math.max(0.5, a.head[1] - floorY - 0.1 * a.height) : a.height * 0.8);
   let cameraSide: CameraSide | undefined = pair.length > 1 ? { origin, normal: n, sign: side } : undefined;
@@ -1379,7 +1384,19 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       const d0 = other ? dist(other.pos, subj.pos) + 1 : 2.5;
       const y = (other ?? subj).height * 0.9;
       const cam = bestFacePoint(subj, y, [d0, 2, 1.4, 1, 0.6], true);
-      return { plan: p, cut, cam: other ? shoulderAside(cam, head(subj), head(other), y) : cam, look: head(subj) };
+      const ots = other ? shoulderAside(cam, head(subj), head(other), y) : cam;
+      // v45 150.6 s: the point nearest SpongeBob's face had Squidward, 3.9 m off behind him, out of the frame for five
+      // seconds of a line to him. Over the shoulder holds the shoulder: else from behind the listener, else the two
+      if (!other || holds(ots, head(subj), other)) return { plan: p, cut, cam: ots, look: head(subj) };
+      const u = norm([subj.pos[0] - other.pos[0], subj.pos[1] - other.pos[1]]);
+      for (const back of [0.9, 0.6, 0.35])
+        for (const lat of [0.45, -0.45, 0.25, -0.25]) {
+          const pt: V2 = [other.pos[0] - u[0] * back - u[1] * lat, other.pos[1] - u[1] * back + u[0] * lat];
+          if (room.outline.length >= 3 && !insideInset(room.outline, pt)) continue;
+          const c = place(pt[0], pt[1], y);
+          if (Math.hypot(c[0] - pt[0], c[2] - pt[1]) < 0.05 && holds(c, head(subj), other) && holds(c, head(subj), subj)) return { plan: p, cut, cam: c, look: head(subj) };
+        }
+      return frame("two", subj, other, crew, walkers, inp, t, clock, cut, st, snap, gaze, closeAxis, false, closeOrigin);
     }
     case "two": {
       const d = Math.max(3, span * 1.2 + 2.5);
