@@ -823,7 +823,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const [b0, wide] = [out, frame("wide", speaker, frameOther, crew, walkers, inp, 0, clock, cutSeq, st, snap, speaker)].map(fit);
         const sees = (o: DirectorOut): boolean => inView(who, o.cam, o.look, o.fov ?? 50);
         // every candidate asks the probe; none clear -> the wide turned off the furniture (unblock)
-        const ok = (o: DirectorOut): boolean => sees(o) && seesAll(who, o.cam);
+        // ... about every head in the frame, not the subjects only: the hidden-head recut fires on anyone in frame
+        // (Squidward v53 66.6–72.1 s: the close on SpongeBob failed, the wide behind the easel passed for him alone,
+        // and the recut for Squidward's face behind the canvas landed on it again and again)
+        const ok = (o: DirectorOut): boolean => sees(o) && seesAll(who, o.cam) && !hidesHead(o);
         const good = [b0, wide].find((o) => ok(o) && faces(o.cam)) ?? faceTwo();
         // a pair no clear frame holds (Squidward 25 s: SpongeBob at the door 4.4 m off, chairs between): the speaker's
         // close, before a base frame that shows the chairs
@@ -839,16 +842,33 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           // easel, recut 20 -> 20.001 onto the same point, Squidward behind the canvas 7 s)
           const left = leaving;
           const fresh = (o: DirectorOut): boolean => !left || Math.hypot(o.cam[0] - left.cam[0], o.cam[1] - left.cam[1], o.cam[2] - left.cam[2]) >= 0.05 || Math.hypot(o.look[0] - left.look[0], o.look[1] - left.look[1], o.look[2] - left.look[2]) >= 0.05;
-          let base = good ?? [b0, wide].find(ok) ?? unblockAt(wide, inp, snap, capped, true) ?? [b0, wide].find((o) => sees(o) && fresh(o)) ?? unblock(wide, inp, snap, capped);
-          if (left && !fresh(base)) {
-            const alt = [b0, wide].find((o) => sees(o) && fresh(o));
-            if (alt) base = alt;
-            // nowhere new to go: no cut at all, the frame stays with its own cut id
-            else heldCut = left.cut;
+          const probed = good ?? [b0, wide].find(ok) ?? unblockAt(wide, inp, snap, capped, true);
+          // no frame the probe passes: the other plans are tried before a frame it refused (Squidward v53 66.6–72.1 s:
+          // the wide behind the easel taken again and again, Squidward hidden 6 s; an ots on the same side saw both);
+          // a plan kept here holds no hidden head either and is not the frame being left
+          const tried = new Set([atom, ...(ev.kind === "line" ? ["close"] : [])]);
+          const keeps = (m: NonNullable<ReturnType<typeof attempt>>): boolean => {
+            const o = { ...out, cam: m.cam, look: m.look, fov: m.fov } as DirectorOut;
+            return !hidesHead(o) && fresh(o);
+          };
+          const rescue = probed ? null : RESCUE_ATOMS.filter((a) => !tried.has(a)).reduce<ReturnType<typeof attempt>>((m, a) => {
+            if (m) return m;
+            const r = attempt(a, null, fw);
+            return r && keeps(r) ? r : null;
+          }, null);
+          if (rescue) curMove = { ...rescue, warnings: [...(rescue.warnings ?? []), `MOVE_OUT_OF_FRAME ${pk.id}`] };
+          else {
+            let base = probed ?? [b0, wide].find((o) => sees(o) && fresh(o)) ?? unblock(wide, inp, snap, capped);
+            if (left && !fresh(base)) {
+              const alt = [b0, wide].find((o) => sees(o) && fresh(o));
+              if (alt) base = alt;
+              // nowhere new to go: no cut at all, the frame stays with its own cut id
+              else heldCut = left.cut;
+            }
+            curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
+            trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
+            trackMove = curMove;
           }
-          curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
-          trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
-          trackMove = curMove;
         }
       }
     }
@@ -896,6 +916,9 @@ function probePoints(a: DActor, head: V3): V3[] {
 }
 /** a lying face is this far over the head bone (the probe's point for a lying actor without a face point) */
 const LYING_FACE_UP_M = 0.1;
+
+/** the plans the fallback tries, in this order, when no frame of its own passes the probe */
+const RESCUE_ATOMS = ["two", "ots", "medium", "close"];
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
