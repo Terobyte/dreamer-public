@@ -13,7 +13,7 @@ from pathlib import Path
 
 TIMINGS = Path(__file__).with_name("timings.json")
 DEFAULT = {"read": 35, "plan": 120, "compile": 3, "assets": 240, "build": 25, "shell_assets": 60, "shell_build": 10,
-           "wish": 25}
+           "wish": 25, "critic": 400}
 
 
 def load_timings():
@@ -81,7 +81,7 @@ class Progress:
         """time-only stages (Spark) creep against their measured length, never past 90 %"""
         while not self._stop.wait(1.0):
             s = self.cur
-            if s in ("read", "plan", "wish", "compile", "build", "shell_build"):
+            if s in ("read", "plan", "wish", "compile", "build", "shell_build", "critic"):
                 el = self.clock() - self.stage_t0
                 f = min(0.9, el / max(1.0, self.w[s]))
                 if f > self.frac[s] + 0.005:

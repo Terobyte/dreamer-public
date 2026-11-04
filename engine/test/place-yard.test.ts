@@ -53,4 +53,21 @@ describe("place yard", () => {
     const dx = p[3 * i1] - p[3 * i0], dz = p[3 * i1 + 2] - p[3 * i0 + 2];
     expect(dx * right[0] + dz * right[2]).toBeGreaterThan(0);
   });
+
+  it("an upright floor decal stands as three crossed planes from the floor up", () => {
+    const s: any = scene({
+      assets: { tree: { kind: "decal", prompt: "a tree" } },
+      decals: [{ asset: "tree", room: "b", at: [8, -5], rotation: 0, upright: true, size: { w: 6, h: 8 } }],
+    });
+    const { ctx, report } = runCheck(s);
+    expect(report.errors).toEqual([]);
+    const ms = buildGeometry(ctx).meshes.filter((x: any) => x.kind === "decal");
+    expect(ms.length).toBe(3);
+    for (const m of ms) {
+      const ys = [1, 4, 7, 10].map((i) => m.positions[i]);
+      expect(Math.min(...ys)).toBeCloseTo(0, 5);
+      expect(Math.max(...ys)).toBeCloseTo(8, 5);
+      expect(m.normals![1]).toBe(0);
+    }
+  });
 });

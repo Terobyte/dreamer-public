@@ -12,7 +12,7 @@ interface PassDecal {
 
 /** A flat quad per decal, exactly at the passport centre (inner face + 0.02). */
 export function decalMeshes(ctx: Ctx): Mesh[] {
-  const out: Mesh[] = floorDecals(ctx).map(floorMesh);
+  const out: Mesh[] = floorDecals(ctx).flatMap((d) => (d.upright ? uprightMeshes(d) : [floorMesh(d)]));
   const scene: any = ctx.scene;
   const raws = (scene.decals ?? []) as any[];
   for (const d of (ctx.passport.decals ?? []) as PassDecal[]) {
@@ -54,6 +54,20 @@ export interface FloorDecal {
   u: V3;
   size: { w: number; h: number };
   rotation: number;
+  /** stands up from the floor as crossed planes (a cut-out tree) instead of lying on it */
+  upright?: boolean;
+}
+
+/** three vertical planes crossed at 60°, standing on the floor: reads as a cut-out tree from any side */
+function uprightMeshes(d: FloorDecal): Mesh[] {
+  const base = (d.rotation * Math.PI) / 180;
+  const c: V3 = [d.center[0], d.center[1] - FLOOR_LIFT + d.size.h / 2, d.center[2]];
+  return [0, 1, 2].map((k) => {
+    const a = base + (k * Math.PI) / 3;
+    const u: V3 = [Math.cos(a), 0, -Math.sin(a)];
+    const n: V3 = [Math.sin(a), 0, Math.cos(a)];
+    return planeMesh({ id: `decal.${d.i}.${k}`, kind: "decal", material: d.asset, room: d.room }, c, n, u, d.size.w / 2, d.size.h / 2);
+  });
 }
 
 /** Every floor decal of the scene, on its room's floor + FLOOR_LIFT. */
@@ -77,6 +91,7 @@ export function floorDecals(ctx: Ctx): FloorDecal[] {
       u: [Math.cos(a), 0, -Math.sin(a)],
       size: { w: Number(raw.size.w), h: Number(raw.size.h) },
       rotation: Number(raw.rotation),
+      ...(raw.upright === true ? { upright: true } : {}),
     });
   });
   return out;

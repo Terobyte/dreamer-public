@@ -121,7 +121,11 @@ export function materialOf(id: string, def: MaterialDef, loadedMap?: Texture): M
     loadedMap.colorSpace = SRGBColorSpace;
     m.map = loadedMap;
     m.color.set(0xffffff); // avoid double-tinting: the map already carries the real pixels
-    if (def.transparent) m.transparent = true;
+    if (def.transparent) {
+      m.transparent = true;
+      // cut-outs (trees, signs on white) are mostly 0/1 alpha: test it so crossed planes sort cleanly
+      m.alphaTest = 0.35;
+    }
     if (def.repeat_m) {
       loadedMap.wrapS = loadedMap.wrapT = RepeatWrapping;
       // UVs are in metres, so a texture that should tile every `repeat_m`

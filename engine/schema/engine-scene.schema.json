@@ -3,29 +3,71 @@
   "$id": "https://meta-world/engine-scene.schema.json",
   "title": "engine-scene v0",
   "type": "object",
-  "required": ["version", "name", "spawn", "levels", "rooms", "materials", "assets"],
+  "required": [
+    "version",
+    "name",
+    "spawn",
+    "levels",
+    "rooms",
+    "materials",
+    "assets"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": { "const": 0 },
-    "name": { "type": "string", "minLength": 1 },
+    "version": {
+      "const": 0
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
     "spawn": {
       "type": "object",
-      "required": ["room", "at"],
+      "required": [
+        "room",
+        "at"
+      ],
       "additionalProperties": false,
       "properties": {
-        "room": { "type": "string" },
-        "at": { "$ref": "#/$defs/point2" },
-        "yaw": { "type": "number", "default": 0 }
+        "room": {
+          "type": "string"
+        },
+        "at": {
+          "$ref": "#/$defs/point2"
+        },
+        "yaw": {
+          "type": "number",
+          "default": 0
+        }
       }
     },
     "style": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "ambient": { "type": "number", "default": 1.0 },
-        "exterior": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#808080" },
-        "tone": { "type": "string", "enum": ["neutral", "none"], "description": "runtime tone mapping; none = off (unlit, shadowless worlds)" },
-        "exposure": { "type": "number", "exclusiveMinimum": 0, "maximum": 4, "description": "tone mapping exposure, default 0.9" }
+        "ambient": {
+          "type": "number",
+          "default": 1.0
+        },
+        "exterior": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "default": "#808080"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "neutral",
+            "none"
+          ],
+          "description": "runtime tone mapping; none = off (unlit, shadowless worlds)"
+        },
+        "exposure": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 4,
+          "description": "tone mapping exposure, default 0.9"
+        }
       }
     },
     "materials": {
@@ -34,27 +76,62 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "tile": { "type": "string" },
-          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-          "repeat_m": { "type": "number", "minimum": 0, "default": 1.0 }
+          "tile": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "repeat_m": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1.0
+          }
         },
-        "allOf": [{ "not": { "required": ["tile", "color"] } }]
+        "allOf": [
+          {
+            "not": {
+              "required": [
+                "tile",
+                "color"
+              ]
+            }
+          }
+        ]
       }
     },
     "outdoor": {
       "type": "object",
-      "required": ["sky", "ground"],
+      "required": [
+        "sky",
+        "ground"
+      ],
       "additionalProperties": false,
       "properties": {
-        "sky": { "type": "string" },
+        "sky": {
+          "type": "string"
+        },
         "ground": {
           "type": "object",
-          "required": ["material", "radius", "fade"],
+          "required": [
+            "material",
+            "radius",
+            "fade"
+          ],
           "additionalProperties": false,
           "properties": {
-            "material": { "type": "string" },
-            "radius": { "type": "number", "exclusiveMinimum": 0 },
-            "fade": { "type": "number", "exclusiveMinimum": 0 }
+            "material": {
+              "type": "string"
+            },
+            "radius": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "fade": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
           }
         }
       }
@@ -63,11 +140,18 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "y"],
+        "required": [
+          "id",
+          "y"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "y": { "type": "number" }
+          "id": {
+            "type": "string"
+          },
+          "y": {
+            "type": "number"
+          }
         }
       }
     },
@@ -75,55 +159,114 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "level", "floor"],
+        "required": [
+          "id",
+          "level",
+          "floor"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "level": { "type": "string" },
-          "open": { "type": "boolean" },
-          "height": { "type": "number", "exclusiveMinimum": 0 },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
           "shape": {
             "type": "array",
-            "items": { "$ref": "#/$defs/vertex" }
+            "items": {
+              "$ref": "#/$defs/vertex"
+            }
           },
           "circle": {
             "type": "object",
-            "required": ["c", "r"],
+            "required": [
+              "c",
+              "r"
+            ],
             "additionalProperties": false,
             "properties": {
-              "c": { "$ref": "#/$defs/point2" },
-              "r": { "type": "number", "exclusiveMinimum": 0 }
+              "c": {
+                "$ref": "#/$defs/point2"
+              },
+              "r": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
             }
           },
-          "floor": { "type": "string" },
-          "ceiling": { "type": "string" },
-          "facade": { "type": "string" },
+          "floor": {
+            "type": "string"
+          },
+          "ceiling": {
+            "type": "string"
+          },
+          "facade": {
+            "type": "string"
+          },
           "roof": {
             "type": "object",
-            "required": ["material", "kind"],
+            "required": [
+              "material",
+              "kind"
+            ],
             "additionalProperties": false,
             "properties": {
-              "material": { "type": "string" },
-              "kind": { "enum": ["flat", "gable"] },
-              "overhang": { "type": "number", "minimum": 0, "default": 0 }
+              "material": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "flat",
+                  "gable"
+                ]
+              },
+              "overhang": {
+                "type": "number",
+                "minimum": 0,
+                "default": 0
+              }
             }
           },
           "walls": {
             "type": "object",
-            "required": ["material"],
+            "required": [
+              "material"
+            ],
             "additionalProperties": false,
             "properties": {
-              "material": { "type": "string" },
-              "thickness": { "type": "number", "exclusiveMinimum": 0, "default": 0.12 },
+              "material": {
+                "type": "string"
+              },
+              "thickness": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "default": 0.12
+              },
               "bands": {
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "required": ["to", "material"],
+                  "required": [
+                    "to",
+                    "material"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "to": { "type": "number", "exclusiveMinimum": 0 },
-                    "material": { "type": "string" }
+                    "to": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "material": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -133,10 +276,14 @@
             "type": "object",
             "additionalProperties": {
               "type": "object",
-              "required": ["material"],
+              "required": [
+                "material"
+              ],
               "additionalProperties": false,
               "properties": {
-                "material": { "type": "string" }
+                "material": {
+                  "type": "string"
+                }
               }
             }
           },
@@ -144,23 +291,65 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["from", "to", "material"],
+              "required": [
+                "from",
+                "to",
+                "material"
+              ],
               "additionalProperties": false,
               "properties": {
-                "from": { "$ref": "#/$defs/point2" },
-                "to": { "$ref": "#/$defs/point2" },
-                "material": { "type": "string" },
-                "w": { "type": "number", "minimum": 0, "default": 0.2 },
-                "h": { "type": "number", "minimum": 0, "default": 0.25 }
+                "from": {
+                  "$ref": "#/$defs/point2"
+                },
+                "to": {
+                  "$ref": "#/$defs/point2"
+                },
+                "material": {
+                  "type": "string"
+                },
+                "w": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.2
+                },
+                "h": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 0.25
+                }
               }
             }
           }
         },
         "allOf": [
-          { "not": { "required": ["shape", "circle"] } },
           {
-            "if": { "not": { "required": ["open"], "properties": { "open": { "const": true } } } },
-            "then": { "required": ["height", "walls", "ceiling"] }
+            "not": {
+              "required": [
+                "shape",
+                "circle"
+              ]
+            }
+          },
+          {
+            "if": {
+              "not": {
+                "required": [
+                  "open"
+                ],
+                "properties": {
+                  "open": {
+                    "const": true
+                  }
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "height",
+                "walls",
+                "ceiling"
+              ]
+            }
           }
         ]
       }
@@ -170,16 +359,42 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["level", "from", "to", "material"],
+        "required": [
+          "level",
+          "from",
+          "to",
+          "material"
+        ],
         "additionalProperties": false,
         "properties": {
-          "level": { "type": "string" },
-          "from": { "$ref": "#/$defs/point2" },
-          "to": { "$ref": "#/$defs/point2" },
-          "h": { "type": ["number", "null"], "exclusiveMinimum": 0 },
-          "thickness": { "type": "number", "exclusiveMinimum": 0, "default": 0.12 },
-          "material": { "type": "string" },
-          "glass": { "type": "boolean", "default": false }
+          "level": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/$defs/point2"
+          },
+          "to": {
+            "$ref": "#/$defs/point2"
+          },
+          "h": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0
+          },
+          "thickness": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 0.12
+          },
+          "material": {
+            "type": "string"
+          },
+          "glass": {
+            "type": "boolean",
+            "default": false
+          }
         }
       }
     },
@@ -188,17 +403,45 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["kind", "room", "from", "to", "material"],
+        "required": [
+          "kind",
+          "room",
+          "from",
+          "to",
+          "material"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["counter", "shelf", "cabinet-wall"] },
-          "room": { "type": "string" },
-          "from": { "$ref": "#/$defs/point2" },
-          "to": { "$ref": "#/$defs/point2" },
-          "depth": { "type": "number", "exclusiveMinimum": 0 },
-          "h": { "type": "number", "exclusiveMinimum": 0 },
-          "material": { "type": "string" },
-          "top": { "type": "string" }
+          "kind": {
+            "enum": [
+              "counter",
+              "shelf",
+              "cabinet-wall"
+            ]
+          },
+          "room": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/$defs/point2"
+          },
+          "to": {
+            "$ref": "#/$defs/point2"
+          },
+          "depth": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "h": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "material": {
+            "type": "string"
+          },
+          "top": {
+            "type": "string"
+          }
         }
       }
     },
@@ -207,31 +450,73 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "kind", "from", "to"],
+        "required": [
+          "id",
+          "kind",
+          "from",
+          "to"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "kind": { "enum": ["straight"] },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "straight"
+            ]
+          },
           "from": {
             "type": "object",
-            "required": ["room", "at", "dir"],
+            "required": [
+              "room",
+              "at",
+              "dir"
+            ],
             "additionalProperties": false,
             "properties": {
-              "room": { "type": "string" },
-              "at": { "$ref": "#/$defs/point2" },
-              "dir": { "type": "number" }
+              "room": {
+                "type": "string"
+              },
+              "at": {
+                "$ref": "#/$defs/point2"
+              },
+              "dir": {
+                "type": "number"
+              }
             }
           },
           "to": {
             "type": "object",
-            "required": ["room"],
+            "required": [
+              "room"
+            ],
             "additionalProperties": false,
-            "properties": { "room": { "type": "string" } }
+            "properties": {
+              "room": {
+                "type": "string"
+              }
+            }
           },
-          "width": { "type": "number", "exclusiveMinimum": 0, "default": 1.0 },
-          "rise": { "type": "number", "exclusiveMinimum": 0, "default": 0.17 },
-          "going": { "type": "number", "exclusiveMinimum": 0, "default": 0.28 },
-          "rail": { "type": "boolean", "default": false }
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 1.0
+          },
+          "rise": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 0.17
+          },
+          "going": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 0.28
+          },
+          "rail": {
+            "type": "boolean",
+            "default": false
+          }
         }
       }
     },
@@ -240,39 +525,97 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "kind", "width"],
+        "required": [
+          "id",
+          "kind",
+          "width"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "kind": { "enum": ["door", "window", "arch", "gap"] },
-          "at": { "$ref": "#/$defs/point2" },
-          "on": { "$ref": "#/$defs/on" },
-          "width": { "type": "number", "exclusiveMinimum": 0 },
-          "height": { "type": "number", "exclusiveMinimum": 0 },
-          "sill": { "type": "number", "minimum": 0 },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "door",
+              "window",
+              "arch",
+              "gap"
+            ]
+          },
+          "at": {
+            "$ref": "#/$defs/point2"
+          },
+          "on": {
+            "$ref": "#/$defs/on"
+          },
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "sill": {
+            "type": "number",
+            "minimum": 0
+          },
           "leaf": {
             "type": "object",
-            "required": ["decal"],
+            "required": [
+              "decal"
+            ],
             "additionalProperties": false,
             "properties": {
-              "decal": { "type": "string" },
-              "open": { "type": "boolean", "default": true },
-              "swing": { "type": "string" },
-              "hinge": { "enum": ["left", "right"] },
-              "glass": { "type": "boolean" }
+              "decal": {
+                "type": "string"
+              },
+              "open": {
+                "type": "boolean",
+                "default": true
+              },
+              "swing": {
+                "type": "string"
+              },
+              "hinge": {
+                "enum": [
+                  "left",
+                  "right"
+                ]
+              },
+              "glass": {
+                "type": "boolean"
+              }
             }
           },
           "outside": {
             "type": "object",
-            "required": ["backdrop"],
+            "required": [
+              "backdrop"
+            ],
             "additionalProperties": false,
             "properties": {
-              "backdrop": { "type": "string" }
+              "backdrop": {
+                "type": "string"
+              }
             }
           },
-          "to": { "type": "string", "description": "where the door leads (a door id or a portal id): who walks out through it comes in there, San Andreas style" }
+          "to": {
+            "type": "string",
+            "description": "where the door leads (a door id or a portal id): who walks out through it comes in there, San Andreas style"
+          }
         },
-        "allOf": [{ "not": { "required": ["at", "on"] } }]
+        "allOf": [
+          {
+            "not": {
+              "required": [
+                "at",
+                "on"
+              ]
+            }
+          }
+        ]
       }
     },
     "portals": {
@@ -281,15 +624,31 @@
       "description": "door spots on an open place (a street has no wall to cut a door in); `to` as an opening's",
       "items": {
         "type": "object",
-        "required": ["id", "room", "at"],
+        "required": [
+          "id",
+          "room",
+          "at"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "room": { "type": "string" },
-          "at": { "$ref": "#/$defs/point2" },
-          "yaw": { "type": "number" },
-          "name": { "type": "string" },
-          "to": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          },
+          "at": {
+            "$ref": "#/$defs/point2"
+          },
+          "yaw": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
         }
       }
     },
@@ -298,44 +657,94 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "asset", "room", "size"],
+        "required": [
+          "id",
+          "asset",
+          "room",
+          "size"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "asset": { "type": "string" },
-          "cat": { "type": "string" },
-          "room": { "type": "string" },
-          "at": { "$ref": "#/$defs/point2" },
-          "on": { "$ref": "#/$defs/on" },
+          "id": {
+            "type": "string"
+          },
+          "asset": {
+            "type": "string"
+          },
+          "cat": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          },
+          "at": {
+            "$ref": "#/$defs/point2"
+          },
+          "on": {
+            "$ref": "#/$defs/on"
+          },
           "size": {
             "type": "object",
-            "required": ["w", "d", "h"],
+            "required": [
+              "w",
+              "d",
+              "h"
+            ],
             "additionalProperties": false,
             "properties": {
-              "w": { "type": "number", "minimum": 0 },
-              "d": { "type": "number", "minimum": 0 },
-              "h": { "type": "number", "minimum": 0 }
+              "w": {
+                "type": "number",
+                "minimum": 0
+              },
+              "d": {
+                "type": "number",
+                "minimum": 0
+              },
+              "h": {
+                "type": "number",
+                "minimum": 0
+              }
             }
           },
-          "y": { "type": "number" },
+          "y": {
+            "type": "number"
+          },
           "mount": {
             "anyOf": [
-              { "enum": ["floor", "ceiling", "wall"] },
+              {
+                "enum": [
+                  "floor",
+                  "ceiling",
+                  "wall"
+                ]
+              },
               {
                 "type": "object",
-                "required": ["top_of"],
+                "required": [
+                  "top_of"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "top_of": { "type": "string" }
+                  "top_of": {
+                    "type": "string"
+                  }
                 }
               },
               {
                 "type": "object",
-                "required": ["tier_of", "tier"],
+                "required": [
+                  "tier_of",
+                  "tier"
+                ],
                 "additionalProperties": false,
                 "properties": {
-                  "tier_of": { "type": "string" },
-                  "tier": { "type": "integer", "minimum": 0 }
+                  "tier_of": {
+                    "type": "string"
+                  },
+                  "tier": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
                 }
               }
             ],
@@ -343,31 +752,91 @@
           },
           "face": {
             "anyOf": [
-              { "const": "room" },
-              { "type": "string" },
-              { "$ref": "#/$defs/point2" }
+              {
+                "const": "room"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/point2"
+              }
             ]
           },
-          "yaw": { "type": "number" },
+          "yaw": {
+            "type": "number"
+          },
           "around": {
             "type": "object",
-            "required": ["center", "n", "r"],
+            "required": [
+              "center",
+              "n",
+              "r"
+            ],
             "additionalProperties": false,
             "properties": {
-              "center": { "type": "string" },
-              "n": { "type": "integer", "minimum": 1 },
-              "r": { "type": "number", "minimum": 0 },
-              "start": { "type": "number" }
+              "center": {
+                "type": "string"
+              },
+              "n": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "r": {
+                "type": "number",
+                "minimum": 0
+              },
+              "start": {
+                "type": "number"
+              }
             }
           },
-          "solid": { "type": "boolean", "default": true }
+          "solid": {
+            "type": "boolean",
+            "default": true
+          }
         },
         "allOf": [
-          { "not": { "required": ["at", "on"] } },
-          { "not": { "required": ["face", "yaw"] } },
-          { "not": { "required": ["around", "at"] } },
-          { "not": { "required": ["around", "face"] } },
-          { "not": { "required": ["around", "yaw"] } }
+          {
+            "not": {
+              "required": [
+                "at",
+                "on"
+              ]
+            }
+          },
+          {
+            "not": {
+              "required": [
+                "face",
+                "yaw"
+              ]
+            }
+          },
+          {
+            "not": {
+              "required": [
+                "around",
+                "at"
+              ]
+            }
+          },
+          {
+            "not": {
+              "required": [
+                "around",
+                "face"
+              ]
+            }
+          },
+          {
+            "not": {
+              "required": [
+                "around",
+                "yaw"
+              ]
+            }
+          }
         ]
       }
     },
@@ -376,14 +845,42 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["assets", "count", "area", "seed"],
+        "required": [
+          "assets",
+          "count",
+          "area",
+          "seed"
+        ],
         "additionalProperties": false,
         "properties": {
-          "assets": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-          "count": { "type": "integer", "minimum": 1 },
-          "area": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number" } },
-          "seed": { "type": "integer" },
-          "avoid": { "type": "array", "items": { "$ref": "#/$defs/point2" } }
+          "assets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "area": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {
+              "type": "number"
+            }
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "avoid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/point2"
+            }
+          }
         }
       }
     },
@@ -392,26 +889,65 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["asset", "size"],
+        "required": [
+          "asset",
+          "size"
+        ],
         "additionalProperties": false,
         "properties": {
-          "asset": { "type": "string" },
-          "room": { "type": "string" },
-          "at": { "$ref": "#/$defs/point2" },
-          "on": { "$ref": "#/$defs/on" },
-          "rotation": { "type": "number" },
-          "y": { "type": "number", "default": 1.6 },
+          "asset": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          },
+          "at": {
+            "$ref": "#/$defs/point2"
+          },
+          "on": {
+            "$ref": "#/$defs/on"
+          },
+          "rotation": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number",
+            "default": 1.6
+          },
           "size": {
             "type": "object",
-            "required": ["w", "h"],
+            "required": [
+              "w",
+              "h"
+            ],
             "additionalProperties": false,
             "properties": {
-              "w": { "type": "number", "minimum": 0 },
-              "h": { "type": "number", "minimum": 0 }
+              "w": {
+                "type": "number",
+                "minimum": 0
+              },
+              "h": {
+                "type": "number",
+                "minimum": 0
+              }
             }
+          },
+          "upright": {
+            "type": "boolean",
+            "default": false,
+            "description": "a floor decal (`at` + `rotation`) that stands up: three crossed vertical planes `size.w` wide, `size.h` tall (a tree or bush cut out of a white background)"
           }
         },
-        "allOf": [{ "not": { "required": ["at", "on"] } }]
+        "allOf": [
+          {
+            "not": {
+              "required": [
+                "at",
+                "on"
+              ]
+            }
+          }
+        ]
       }
     },
     "lights": {
@@ -419,25 +955,75 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["point", "hemi", "sun"] },
-          "pos": { "$ref": "#/$defs/point3" },
-          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "default": "#ffffff" },
-          "power": { "type": "number", "default": 1.0 },
-          "dir": { "$ref": "#/$defs/point3" },
-          "intensity": { "type": "number", "minimum": 0 },
-          "castShadow": { "type": "boolean" }
+          "kind": {
+            "enum": [
+              "point",
+              "hemi",
+              "sun"
+            ]
+          },
+          "pos": {
+            "$ref": "#/$defs/point3"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "default": "#ffffff"
+          },
+          "power": {
+            "type": "number",
+            "default": 1.0
+          },
+          "dir": {
+            "$ref": "#/$defs/point3"
+          },
+          "intensity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "castShadow": {
+            "type": "boolean"
+          }
         },
         "allOf": [
           {
-            "if": { "required": ["kind"], "properties": { "kind": { "const": "point" } } },
-            "then": { "required": ["pos"] }
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "point"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "pos"
+              ]
+            }
           },
           {
-            "if": { "required": ["kind"], "properties": { "kind": { "const": "sun" } } },
-            "then": { "required": ["dir"] }
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "sun"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "dir"
+              ]
+            }
           }
         ]
       }
@@ -446,23 +1032,59 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["kind", "prompt"],
+        "required": [
+          "kind",
+          "prompt"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "enum": ["tile", "decal", "object", "sky"] },
-          "prompt": { "type": "string" },
-          "aspect": { "type": "string", "default": "1:1" },
-          "front_deg": { "type": "number", "default": 0 },
-          "foliage": { "type": "boolean", "default": false, "description": "an object whose leaves are an opaque JPEG with no alpha (a Tripo tree): normalization cuts them out with MASK" },
+          "kind": {
+            "enum": [
+              "tile",
+              "decal",
+              "object",
+              "sky"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "aspect": {
+            "type": "string",
+            "default": "1:1"
+          },
+          "front_deg": {
+            "type": "number",
+            "default": 0
+          },
+          "foliage": {
+            "type": "boolean",
+            "default": false,
+            "description": "an object whose leaves are an opaque JPEG with no alpha (a Tripo tree): normalization cuts them out with MASK"
+          },
           "ref": {
             "type": "object",
-            "required": ["image", "what"],
+            "required": [
+              "image",
+              "what"
+            ],
             "additionalProperties": false,
             "description": "object only (REF_KIND otherwise): a picture of the place, path relative to the scene folder, and what to cut out of it",
             "properties": {
-              "image": { "type": "string" },
-              "what": { "type": "string" },
-              "mode": { "enum": ["mask", "redraw"], "default": "mask", "description": "mask: SAM 3 cuts `what` out of the frame and SAM3D meshes it with that mask; redraw: Muse redraws it on white first (Н2)" }
+              "image": {
+                "type": "string"
+              },
+              "what": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "mask",
+                  "redraw"
+                ],
+                "default": "mask",
+                "description": "mask: SAM 3 cuts `what` out of the frame and SAM3D meshes it with that mask; redraw: Muse redraws it on white first (Н2)"
+              }
             }
           }
         }
@@ -473,14 +1095,29 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "pos"],
+        "required": [
+          "id",
+          "pos"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
-          "ref": { "type": "string" },
-          "pos": { "$ref": "#/$defs/point3" },
-          "look": { "$ref": "#/$defs/point3" },
-          "fov": { "type": "number", "exclusiveMinimum": 0, "default": 60 }
+          "id": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "pos": {
+            "$ref": "#/$defs/point3"
+          },
+          "look": {
+            "$ref": "#/$defs/point3"
+          },
+          "fov": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "default": 60
+          }
         }
       }
     },
@@ -489,22 +1126,36 @@
       "default": [],
       "items": {
         "type": "object",
-        "required": ["id", "path"],
+        "required": [
+          "id",
+          "path"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
+          "id": {
+            "type": "string"
+          },
           "path": {
             "type": "array",
             "items": {
               "anyOf": [
-                { "type": "string" },
+                {
+                  "type": "string"
+                },
                 {
                   "type": "object",
-                  "required": ["room", "at"],
+                  "required": [
+                    "room",
+                    "at"
+                  ],
                   "additionalProperties": false,
                   "properties": {
-                    "room": { "type": "string" },
-                    "at": { "$ref": "#/$defs/point2" }
+                    "room": {
+                      "type": "string"
+                    },
+                    "at": {
+                      "$ref": "#/$defs/point2"
+                    }
                   }
                 }
               ]
@@ -517,27 +1168,52 @@
   "$defs": {
     "point2": {
       "type": "array",
-      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
       "minItems": 2,
       "maxItems": 2
     },
     "point3": {
       "type": "array",
-      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
       "minItems": 3,
       "maxItems": 3
     },
     "vertex": {
       "type": "array",
       "prefixItems": [
-        { "type": "number" },
-        { "type": "number" },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
         {
           "type": "object",
-          "required": ["bulge"],
+          "required": [
+            "bulge"
+          ],
           "additionalProperties": false,
           "properties": {
-            "bulge": { "type": "number" }
+            "bulge": {
+              "type": "number"
+            }
           }
         }
       ],
@@ -546,19 +1222,56 @@
     },
     "on": {
       "type": "object",
-      "required": ["room", "edge"],
+      "required": [
+        "room",
+        "edge"
+      ],
       "additionalProperties": false,
       "properties": {
-        "room": { "type": "string" },
-        "edge": { "type": "integer", "minimum": 0 },
-        "t": { "type": "number", "minimum": 0, "maximum": 1 },
-        "m": { "type": "number" },
-        "az": { "type": "number" }
+        "room": {
+          "type": "string"
+        },
+        "edge": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "m": {
+          "type": "number"
+        },
+        "az": {
+          "type": "number"
+        }
       },
       "allOf": [
-        { "not": { "required": ["t", "m"] } },
-        { "not": { "required": ["t", "az"] } },
-        { "not": { "required": ["m", "az"] } }
+        {
+          "not": {
+            "required": [
+              "t",
+              "m"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "t",
+              "az"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "m",
+              "az"
+            ]
+          }
+        }
       ]
     }
   }

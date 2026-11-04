@@ -14,7 +14,7 @@ await page.waitForFunction(() => window.__dreamer && window.__wish, null, { time
 await page.waitForTimeout(1500);
 let wish = text;
 if (wav) {
-  const r = await fetch(new URL("/asr", url), { method: "POST", body: fs.readFileSync(wav) }).then((x) => x.json());
+  const r = await fetch(new URL("/asr", url), { method: "POST", headers: { "Content-Type": "audio/wav" }, body: fs.readFileSync(wav) }).then((x) => x.json());
   console.log("asr:", r);
   wish = r.text;
 }

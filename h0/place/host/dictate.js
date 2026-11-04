@@ -78,7 +78,7 @@ async function stopRec() {
   mic.classList.remove("on"); mic.querySelector(".lbl").innerHTML = "Hold <b>Space</b> and say what should open here";
   if (performance.now() - r.t0 < 500) return;
   sayText("…", "Meta ASR");
-  const res = await fetch("/asr", { method: "POST", body: wav }).then((x) => x.json());
+  const res = await fetch("/asr", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav }).then((x) => x.json());
   if (!res.text) { sayText("Didn't catch that", res.error ?? ""); return; }
   sayText(`“${res.text}”`, `Meta ASR · ${res.s}s`);
   wish(res.text);
@@ -149,7 +149,7 @@ function reveal(objs, box) {
 let ticks = [];
 D.onFrame((dt) => { ticks = ticks.filter((f) => !f(dt)); });
 async function wish(text) {
-  const { id, error } = await fetch("/wish", { method: "POST", body: JSON.stringify({ text }) }).then((x) => x.json());
+  const { id, error } = await fetch("/wish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }).then((x) => x.json());
   if (!id) { sayText("Could not start", String(error)); return; }
   bar.style.display = "block";
   let s = null, last = null;

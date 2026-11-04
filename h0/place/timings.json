@@ -1,9 +1,9 @@
 {
  "read": 35,
  "plan": 120,
- "compile": 0.0,
- "assets": 26.1,
- "build": 21.1,
+ "compile": 0.3,
+ "assets": 23.1,
+ "build": 22.5,
  "shell_assets": 128.1,
  "shell_build": 13.9,
  "wish": 16.6

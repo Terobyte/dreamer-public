@@ -14,7 +14,7 @@ for f in ("/System/Library/Fonts/Supplemental/Arial.ttf", "/Library/Fonts/Arial.
         pass
 
 
-def render(sat: Image.Image, to_px, sn: SN, box, layout, mpp=0.2, grid=10):
+def render(sat: Image.Image, to_px, sn: SN, box, layout, mpp=0.2, grid=10, marks=True):
     """box = (s0, s1, n0, n1) metres; image rows go from n1 (top) to n0 (bottom), s left to right."""
     s0, s1, n0, n1 = box
     W, H = int((s1 - s0) / mpp), int((n1 - n0) / mpp)
@@ -30,6 +30,8 @@ def render(sat: Image.Image, to_px, sn: SN, box, layout, mpp=0.2, grid=10):
     src = np.asarray(sat)
     out = cv2.remap(src, U.astype(np.float32), V.astype(np.float32), cv2.INTER_LINEAR)
     img = Image.fromarray(out)
+    if not marks:
+        return img
     d = ImageDraw.Draw(img, "RGBA")
     px = lambda s, n: ((s - s0) / mpp, (n1 - n) / mpp)
     for b in layout["buildings"]:
@@ -45,3 +47,20 @@ def render(sat: Image.Image, to_px, sn: SN, box, layout, mpp=0.2, grid=10):
         d.line([px(s0, n), px(s1, n)], fill=(255, 255, 255, 110 if n % 50 else 200), width=1)
         d.text((2, px(s0, n)[1] - 16), f"n{n}", fill=(255, 255, 255, 255), font=FONT)
     return img
+
+
+def crowns(raw: Image.Image, box, mpp, cell=3.5):
+    """Tree crowns on the plain satellite: (s, n, r) where a cell is mostly dark green. Cheap and literal."""
+    a = np.asarray(raw.convert("RGB")).astype(int)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    green = (g > r + 6) & (g > b + 2) & (g < 170)
+    s0, s1, n0, n1 = box
+    out = []
+    k = max(1, int(cell / mpp))
+    H, W = green.shape
+    for j in range(0, H - k, k):
+        for i in range(0, W - k, k):
+            f = green[j:j + k, i:i + k].mean()
+            if f > 0.55:
+                out.append((s0 + (i + k / 2) * mpp, n1 - (j + k / 2) * mpp, f))
+    return out

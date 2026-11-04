@@ -80,7 +80,7 @@ def cameras_from_views(views, fr, sn: SN):
     return cams
 
 
-def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: Path, name="place", cameras=None):
+def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: Path, name="place", cameras=None, crowns=()):
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "refs").mkdir(exist_ok=True)
     H = feat["house"]
@@ -163,15 +163,17 @@ def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: P
                           "size": {"w": 2.6, "d": 1.5, "h": max(0.6, min(ch, 1.6))}, "mount": "wall", "y": 2.3, "solid": False})
     # ---- objects from the frames ----
     kinds = {o["id"]: o for o in feat.get("objects", [])}
-    for t in feat.get("trees", []):
-        kinds[t["id"]] = {**t, "tree": True}
+    tree_kinds = [t for t in feat.get("trees", [])] or [{"id": "tree", "what": "a deciduous tree", "height_m": 9, "share": 1}]
+    for t in tree_kinds:     # a tree is a cut-out picture on crossed planes (a SAM3D tree reads as a blob)
+        assets["tb_" + t["id"]] = {"kind": "decal", "aspect": "3:4", "prompt": f"{t['what']}, {feat.get('season', '')}; the whole tree from the "
+                                   "ground to the top of the crown, trunk visible, isolated, nothing else in the picture"}
     for k, o in kinds.items():
         if o.get("frame") and (refs / o["frame"]).exists():
             _copy(refs, out_dir, o["frame"])
             assets[f"o_{k}"] = {"kind": "object", "prompt": o["what"], "ref": {"image": f"refs/{o['frame']}", "what": o["what"]}}
         else:
             assets[f"o_{k}"] = {"kind": "object", "prompt": o["what"]}
-    for i, p in enumerate(plan.get("props", []) + [{**t, "tree": True} for t in plan.get("trees", [])]):
+    for i, p in enumerate(plan.get("props", [])):
         if p.get("id") not in kinds:
             continue
         h = float(p.get("h") or kinds[p["id"]].get("height_m", 1.0))
@@ -184,6 +186,33 @@ def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: P
         props.append({"id": f"{p['id']}_{i}", "asset": f"o_{p['id']}", "room": room,
                       "at": at, "size": {"w": round(w, 2), "d": round(d, 2), "h": round(h, 2)},
                       "yaw": float(p.get("yaw", 0)), "solid": not p.get("tree")})
+    # ---- trees: the plan's, then the satellite's crowns that fall on the yard's lawns, kept off props and drives ----
+    import random
+    rnd = random.Random(7)
+    lawns = [Polygon(r["shape"]) for r in rooms if r.get("open") and r["floor"] == "lawn"]
+    taken = [(p["at"][0], p["at"][1], max(p["size"]["w"], p["size"]["d"]) / 2 + 1.2) for p in props]
+    trees = [(t["s"], t["n"], float(t.get("h", 9)), t.get("id")) for t in plan.get("trees", [])]
+    trees += [(cs, cn, 8 + 6 * f * rnd.random() + 2, None) for cs, cn, f in crowns]
+    byid = {t["id"]: t for t in tree_kinds}
+    shares = [(t["id"], float(t.get("share", 1))) for t in tree_kinds]
+    placed = []
+    for ts, tn, th, tid in trees:
+        x, z = P(ts, tn)
+        if not any(l.buffer(-0.8).contains(Point(x, z)) for l in lawns):
+            continue
+        if any(math.hypot(x - a, z - b) < r for a, b, r in taken) or any(math.hypot(x - a, z - b) < 2.6 for a, b in placed):
+            continue
+        if tid not in byid:
+            u, acc, tid = rnd.random() * sum(w for _, w in shares), 0, shares[0][0]
+            for k, w in shares:
+                acc += w
+                if u <= acc:
+                    tid = k
+                    break
+        h = max(5.0, min(16.0, th))
+        decals.append({"asset": "tb_" + tid, "room": _room_at(rooms, ts, tn), "at": [round(x, 3), round(z, 3)],
+                       "rotation": round(rnd.random() * 60, 1), "upright": True, "size": {"w": round(h * 0.8, 2), "h": round(h, 2)}})
+        placed.append((x, z))
     # ---- kerbs and fences: low walls ----
     # kerbs: flat white strips on the floor (a 18 cm wall would cut the nav into islands)
     for a in plan.get("kerbs", []):
@@ -215,6 +244,12 @@ def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: P
     }
     if cameras:
         scene["cameras"] = cameras
+    ov = out_dir.parent / "overrides.json"          # the critic's new prompts (look -> fix)
+    if ov.exists():
+        for k, prompt in json.loads(ov.read_text()).get("assets", {}).items():
+            if k in scene["assets"]:
+                pre = BAY if scene["assets"][k]["kind"] == "decal" or k.startswith(("t_bay", "t_b")) else TILE if scene["assets"][k]["kind"] == "tile" else ""
+                scene["assets"][k]["prompt"] = pre + prompt
     (out_dir / "scene.json").write_text(json.dumps(scene, ensure_ascii=False, indent=1))
     return scene
 

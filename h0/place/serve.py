@@ -94,9 +94,22 @@ def make_handler(run: Path):
             rel = path.lstrip("/") or "index.html"
             return self._file(dist / rel)
 
+        def _same_origin(self, ctype):
+            """only this page may spend money: host is local, origin (if sent) is ours, and a non-simple
+            content type (forces a CORS preflight that this server never answers) is required"""
+            host = (self.headers.get("Host") or "").split(":")[0]
+            origin = self.headers.get("Origin")
+            port = self.server.server_address[1]
+            ok_origin = origin is None or origin in (f"http://localhost:{port}", f"http://127.0.0.1:{port}")
+            return host in ("localhost", "127.0.0.1") and ok_origin and (self.headers.get("Content-Type") or "").startswith(ctype)
+
         def do_POST(self):
             n = int(self.headers.get("Content-Length") or 0)
+            if n > 20_000_000:
+                return self.send_error(413)
             body = self.rfile.read(n)
+            if not self._same_origin("audio/wav" if self.path == "/asr" else "application/json"):
+                return self._json({"error": "forbidden"}, 403)
             if self.path == "/asr":
                 t = time.time()
                 try:
@@ -108,9 +121,13 @@ def make_handler(run: Path):
                 text = (json.loads(body or b"{}").get("text") or "").strip()
                 if not text:
                     return self._json({"error": "empty wish"}, 400)
+                running = sum(1 for j in jobs.values() if j.get("thread") and j["thread"].is_alive())
+                if running >= 2:
+                    return self._json({"error": "two builds are already running"}, 429)
                 wid = "w" + time.strftime("%H%M%S")
-                jobs[wid] = {"text": text}
-                threading.Thread(target=shop.build_wish, args=(text, run, wid), daemon=True).start()
+                th = threading.Thread(target=shop.build_wish, args=(text, run, wid), daemon=True)
+                jobs[wid] = {"text": text, "thread": th}
+                th.start()
                 return self._json({"id": wid})
             self.send_error(404)
 

@@ -50,3 +50,17 @@ Read positions off the satellite and the frames. Do not invent a generic yard. R
 }
 Rules: props at least 1 m apart and never inside a drive; trees where the satellite shows crowns (25 to 60 trees), not on drives,
 the court or props; entrances where the frames show canopies; all numbers in metres in this frame."""
+
+
+CRITIC = """You check a 3D engine build of a real courtyard against its Street View frames. Each row of the sheet is the
+same viewpoint: Street View on the left, the engine on the right. You get the scene's asset list (id, kind, prompt) and
+the plan. Find what makes the engine view NOT read as this place: wrong colours or materials of a texture, a wrong facade,
+objects that look wrong, things missing or misplaced, wrong ground. Ignore lighting quality and low detail.
+Return ONE JSON object:
+{
+ "verdict": "one line",
+ "redo": [{"id": "asset id", "prompt": "the full new prompt (what the frame really shows: colour, material, pattern)", "why": "..."}],
+ "plan_patch": {"props_remove": ["prop id prefix"], "props_add": [{"id": "object id from notes", "s": n, "n": n, "yaw": d, "h": m}],
+                "trees_add": [{"id": "tree id", "s": n, "n": n, "h": m}]}
+}
+Redo at most 8 assets, the ones that matter most for recognising the place. Keep prompts concrete."""
