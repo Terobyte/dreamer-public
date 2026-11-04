@@ -113,6 +113,8 @@ const BODY_R = 0.3, LENS_HEAD = 0.4;
 const NARRATION_FACE_OK = 120;
 /** how far from the lens anyone else in a two or a close may turn her face (Koshakan meadow: Mirai 117–131°), deg */
 const OTHER_BACK_OK = 110;
+/** a back taller than this share of the frame fills it: a move holding one is not kept (Koshakan meadow t3: 3.06) */
+const BACK_FILL = 0.9;
 /** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
 const WIDE_SWING = 60;
 /** the wide's camera height above the floor (metres) and its largest look down (degrees) */
@@ -759,6 +761,19 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           // an occluded move (moves.ts found no clear one) or a start the probe rejects is not kept: the next try or
           // the base frame takes over (Squidward, Nov 3: the close stood in the easel's canvas)
           if (r.warnings.includes("MOVE_OCCLUDED") || !seesAll(who, mv.cam)) return null;
+          // a back that fills the frame is not kept (Koshakan meadow t3 59.8–62.3 s: a recut close on Mirai from right
+          // behind Mama, her back 165° and three frame heights tall); a back smaller than the frame is the pair's
+          // shoulder (ozu's frontal over b) and stays. Judged by the atom, not the base plan's label
+          const backOf = (c: V3, l: V3, f: number): boolean => at !== "wide" && at !== "master" && at !== "ots" && crew.some((a) => {
+            if (a.walking || a.offstage) return false;
+            const fd = faceDir(a);
+            if (!fd) return false;
+            const p = ndcOf(headOf(a), c, l, f, inp.aspect ?? 16 / 9);
+            if (!(p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1)) return false;
+            const tall = a.height / (2 * p.depth * Math.tan((f * DEG) / 2));
+            return tall > BACK_FILL && angleBetween(fd, [c[0] - a.pos[0], c[2] - a.pos[1]]) > (a === speaker ? NARRATION_FACE_OK : OTHER_BACK_OK);
+          });
+          if (backOf(mv.cam, mv.look, mv.fov) || (mv.end && backOf(mv.end, mv.lookEnd ?? mv.look, mv.fovEnd ?? mv.fov))) return null;
           curPair = usePair;
           pairNames = usePair ? [speaker.name, listener!.name] : [];
           return mv;
