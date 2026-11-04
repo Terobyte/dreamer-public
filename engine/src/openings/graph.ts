@@ -18,6 +18,17 @@ export function roomGraph(ctx: Ctx): Map<string, string[]> {
     }
     for (const r of rooms) if (!g.has(r)) g.set(r, new Set());
   }
+  // two open places (yards, a street) sharing an edge: no wall stands there, the way is free (docs/street.md)
+  const open = new Set(((ctx.scene as any).rooms ?? []).filter((r: any) => r?.open === true).map((r: any) => String(r.id)));
+  const levels = (ctx as any).levels as Map<string, { intervals: Array<{ sides: Array<{ room: string }> }> }> | undefined;
+  if (open.size > 1 && levels) {
+    for (const plan of levels.values()) {
+      for (const iv of plan.intervals ?? []) {
+        const rs = (iv.sides ?? []).map((x) => x.room).filter((r) => open.has(r));
+        for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) if (rs[i] !== rs[j]) link(rs[i], rs[j]);
+      }
+    }
+  }
   // a stair is an edge of the graph too, across levels (spec "Лестницы")
   for (const st of ((ctx.scene as any).stairs ?? []) as any[]) {
     const a = st?.from?.room;

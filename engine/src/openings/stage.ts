@@ -253,10 +253,14 @@ export function openingsStage(ctx: Ctx): Issue[] {
           if (lvl !== undefined) stairLevels.add(lvl);
         }
       }
+      const openingRooms = new Set<string>();
+      for (const g of geos) for (const sd of g.interval?.sides ?? []) if (!g.error) openingRooms.add(String(sd.room));
       for (let i = 0; i < rawRooms.length; i++) {
         const r = rawRooms[i];
         if (r?.level !== spawnLevel && !stairLevels.has(r?.level)) continue;
         if (r?.id === spawnRoom) continue;
+        // a building seen only from outside (roof or facade, no door or window of its own) is scenery, not a place to reach
+        if (r?.open !== true && (r?.roof || typeof r?.facade === "string") && !openingRooms.has(String(r?.id))) continue;
         if (!dist.has(r?.id)) {
           const path = `/rooms/${i}`;
           issues.push({

@@ -19,8 +19,9 @@ export function decalMeshes(ctx: Ctx): Mesh[] {
     const raw = raws[d.i];
     if (!raw) continue;
     const n: V3 = [d.normal[0], 0, d.normal[1]];
-    // the in-plan perpendicular of a unit normal is already unit length
-    const u: V3 = [-d.normal[1], 0, d.normal[0]];
+    // the in-plan perpendicular of a unit normal is already unit length; it must point to the right of a
+    // viewer facing the wall (looking along -n), or every picture with text on a wall reads mirrored
+    const u: V3 = [d.normal[1], 0, -d.normal[0]];
     out.push(
       planeMesh(
         { id: `decal.${d.i}`, kind: "decal", material: String(raw.asset), room: String(raw.room) },

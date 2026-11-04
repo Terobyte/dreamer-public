@@ -617,9 +617,16 @@ export function navStage(ctx: Ctx): Issue[] {
   }
 
   const rawRooms: any[] = (ctx.scene as any).rooms ?? [];
+  // a building seen only from outside (roof or facade, no opening of its own) is scenery: nobody walks in (as ROOM_UNREACHABLE)
+  const opened = new Set<string>();
+  for (const g of (ctx.openings ?? []) as OpeningGeo[]) if (!g.error) for (const sd of g.interval?.sides ?? []) opened.add(String(sd.room));
+  const shell = (id: string): boolean => {
+    const raw = rawRooms.find((x: any) => String(x?.id) === id);
+    return !!raw && raw.open !== true && (!!raw.roof || typeof raw.facade === "string") && !opened.has(id);
+  };
   for (const L of layers) {
     L.rooms.forEach((r, k) => {
-      if (reached.has(`${L.level}/${k}`)) return;
+      if (reached.has(`${L.level}/${k}`) || shell(r.id)) return;
       const idx = rawRooms.findIndex((x: any) => String(x?.id) === r.id);
       const path = `/rooms/${idx < 0 ? 0 : idx}`;
       issues.push({

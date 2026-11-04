@@ -416,6 +416,10 @@ CLI: `python3 h0/dream/sim.py [--profile A|B|C] [--seed "текст"] [--fake] [
 | индекс бита книги в событии | поле `beat` у `line`/`narrator` (`h0/dream/sim.py`); в `events.json` через `pickEvent` (`engine/bin/rec_event.mjs`) |
 | проп-контейнер с содержимым по картинке | `pipe2.floor.attach_refs` (`CONTAINERS`, `ref.mode=redraw`, `CONTAINED`) |
 | проверить, что пол и стены комнаты с картинкой плиточные | `pipe2.surface_rule.plain_surfaces` |
+| настоящее место (двор по адресу) -> мир движка: OSM + спутник + кадры Street View -> Spark read/plan -> scene.json -> Muse/SAM3D -> dist | `cd h0 && python3 -m place --run R --lat --lon --yard-at x,y --house "<конец имени OSM>" --refs DIR [--from X]` (`h0/place/`: `geo` OSM/Esri/кадр двора `SN`, `topview`, `sheets`, `prompts` READ/PLAN, `compile.compile_scene`, `assets.fill_cache/build_dist/fit_props`) |
+| лист «референс | результат» с точек панорам | `views.json` (lat/lon/heading/fov) -> `compile.cameras_from_views` -> `dreamer shots` -> `python3 -m place.sheet` |
+| честный процент стройки для страницы | `place/progress.py Progress` (веса = замер прошлого прогона `timings.json`, ассеты по готовым файлам) -> `progress.jsonl` |
+| голосом достроить здание в готовом месте (диктовка -> Meta ASR -> стройка -> attach) | `python3 -m place.serve <run> --port N [--warm]` + `place/host/dictate.js` (пробел = микрофон, `__wish(text)` для тестов); стройка `place/shop.py build_wish`; e2e `node ../h0/place/host/e2e.mjs URL "" OUT wav` из `engine/` |
 
 ---
 

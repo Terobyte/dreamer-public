@@ -390,7 +390,10 @@ export function mergeLevel(
     }
   }
 
-  return { intervals, snaps, body: wallBody(intervals) };
+  // two open places side by side (yard strips, a street): no wall stands on their common edge, the capsule walks across
+  const openIds = new Set(rooms.filter((r) => r.height === 0).map((r) => String(r.id)));
+  const walled = openIds.size < 2 ? intervals : intervals.filter((iv) => !(iv.sides.length === 2 && iv.sides.every((sd) => openIds.has(sd.room))));
+  return { intervals, snaps, body: wallBody(walled) };
 }
 
 interface ArcEdge {
