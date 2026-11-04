@@ -223,6 +223,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   /** the frame last handed out, and how long a still one has left a standing head of its room off screen (Squidward
    *  v19 155–159 s: SpongeBob walked 2.7 m to the table, the two-shot cut before it held both heads off its edges) */
   let lastOut: DirectorOut | null = null;
+  /** the frame a hidden-head recut is leaving (null on any other cut) */
+  let leaving: DirectorOut | null = null;
   let lostFor = 0;
   let lostRecut = false;
   /** one such cut per beat: a room too small for both would cut every 0.75 s */
@@ -607,6 +609,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         shown = null;
         // a re-cut of the same beat gets its own cut id (the runtime cuts on a new id)
         heldCut = recut ? cutSeq + ++recuts / 1000 : cutSeq;
+        leaving = recut ? lastOut : null;
         recut = false;
         moveStart = clock;
         moveRoom = key;
@@ -832,7 +835,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           // ... and off the bodies: a clear point only at a body (k10 3.7 s: 0.6 m from Mirai, Mama's back and her head
           // cut) loses to a plain frame holding every head
           const capped = { ...cameraLaw, height: Math.min(cameraLaw.height, hi + 0.1) };
-          const base = good ?? [b0, wide].find(ok) ?? unblockAt(wide, inp, snap, capped, true) ?? [b0, wide].find(sees) ?? unblock(wide, inp, snap, capped);
+          // a recut for a hidden head does not land on the frame it left (Squidward v52 66–73 s: the wide behind the
+          // easel, recut 20 -> 20.001 onto the same point, Squidward behind the canvas 7 s)
+          const left = leaving;
+          const fresh = (o: DirectorOut): boolean => !left || Math.hypot(o.cam[0] - left.cam[0], o.cam[1] - left.cam[1], o.cam[2] - left.cam[2]) >= 0.05 || Math.hypot(o.look[0] - left.look[0], o.look[1] - left.look[1], o.look[2] - left.look[2]) >= 0.05;
+          let base = good ?? [b0, wide].find(ok) ?? unblockAt(wide, inp, snap, capped, true) ?? [b0, wide].find((o) => sees(o) && fresh(o)) ?? unblock(wide, inp, snap, capped);
+          if (left && !fresh(base)) {
+            const alt = [b0, wide].find((o) => sees(o) && fresh(o));
+            if (alt) base = alt;
+            // nowhere new to go: no cut at all, the frame stays with its own cut id
+            else heldCut = left.cut;
+          }
           curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
           trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
           trackMove = curMove;
