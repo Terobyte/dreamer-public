@@ -822,7 +822,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   const tilt = steadyTilt();
   return {
     step: (inp: DirectorInput): DirectorOut =>
-      (lastOut = cleanEdges(tilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear })),
+      (lastOut = cleanEdges(tilt(step(inp), inp.room.floorY ?? 0, inp.clear, inp.actors, inp.room.outline), inp.actors, inp.aspect ?? 16 / 9, { clear: inp.clear, fov: inp.fov })),
   };
 }
 
@@ -999,7 +999,7 @@ const UNBLOCK_OFF_BODY = 1.2;
  *  look re-aims at the middle of the heads in view and the fov widens (up to `maxFov`) until all are inside; else the
  *  look turns (up to 25°) until the cut one is out and the rest stay in; else the frame stays. A move (`end`)
  *  gets its end frame cleaned (look, fov). `clear` (the sight probe) must see every head the new frame keeps. */
-export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect: number, o: { maxFov?: number; clear?: (cam: V3, look: V3) => boolean } = {}): T {
+export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect: number, o: { maxFov?: number; clear?: (cam: V3, look: V3) => boolean; fov?: number } = {}): T {
   // the head and the face of each (a box figure's face stands in at the edge while its head bone is past it)
   const heads = crew.filter((a) => !a.offstage).flatMap((a) => [a.head ?? ([a.pos[0], (a.height ?? 1.7) * 0.93, a.pos[1]] as V3), ...(a.face ? [a.face] : [])]);
   const reach = (cam: V3, look: V3, fov: number, h: V3): number => {
@@ -1027,7 +1027,8 @@ export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect
     }
     return { ...withEnd, look: s.look, fov: s.fov, lookRef: undefined };
   }
-  const fov0 = out.fov ?? 50;
+  // a frame without a fov is shot at the page camera's (Koshakan k6 9.4 s: judged at 50°, shot at 70°, Mama cut)
+  const fov0 = out.fov ?? o.fov ?? 50;
   if (!isCut(out.cam, out.look, fov0)) return out;
   const held = out;
   const sees = (look: V3, keep: V3[]): boolean => !o.clear || keep.every((h) => o.clear!(out.cam, h));
