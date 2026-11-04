@@ -786,7 +786,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // line he walks, at its cut only
     // (v35 141.9–144 s: and off the path of everyone else walking, Squidward trudging after SpongeBob past the lens)
     if (curMove && !curMove.end && moveStart === clock && walkers.length) {
-      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name);
+      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name, curMove.fov);
       if (q[0] !== curMove.cam[0] || q[1] !== curMove.cam[2]) curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
     }
     if (!curMove) return out;
@@ -827,6 +827,8 @@ const WALK_CUT_S = 1.5;
 const PATH_CLEAR_M = 1.2;
 /** ... and this far off the line anyone else walks: a 1.8 m walker passing it whole in a 50° frame from 1.1 m up */
 const OTHER_PATH_CLEAR_M = 2.0;
+/** a walker framed whole keeps head and feet inside this share of the half-frame (as moves.ts walk shots) */
+const WALK_FRAME_NDC = 0.85;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
  *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
  *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
@@ -892,7 +894,7 @@ export function walkGoal(a: DActor): V2 {
   const L = a.walkLeft ?? 2;
   return [a.pos[0] + Math.sin(a.yaw * DEG) * L, a.pos[1] + Math.cos(a.yaw * DEG) * L];
 }
-export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string): V2 {
+export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string, fov?: number): V2 {
   let c = c0;
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
@@ -904,7 +906,10 @@ export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V
       const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
       const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
       const off = Math.hypot(c[0] - near[0], c[1] - near[1]);
-      const need = w.name === held ? PATH_CLEAR_M : OTHER_PATH_CLEAR_M;
+      // as far back as it takes to hold him head to feet, never nearer than the floor (v41 147–151 s: 1.2 m off a
+      // 1.9 m Squidward, he walked up to it two frame heights tall)
+      const whole = fov ? w.height / (2 * WALK_FRAME_NDC * Math.tan((fov * DEG) / 2)) : 0;
+      const need = Math.max(w.name === held ? PATH_CLEAR_M : OTHER_PATH_CLEAR_M, whole);
       if (off >= need - 1e-9) continue;
       const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
       const p: V2 = [near[0] + n[0] * need * 1.001, near[1] + n[1] * need * 1.001];

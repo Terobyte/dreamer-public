@@ -1111,6 +1111,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   let dirCut = 0;
   /** the director's last input crew and warnings, for the critic (k15: a pair shot lost a lying actor) */
   let dirSaw: unknown = null;
+  // the director's inputs since the last few cuts, on the critic's cut row: a bad frame of a film replays in a test
+  // (v41 152 s: three synthetic replays did not find the frame the film had)
+  const dirInputs: unknown[] = [];
+  const r3 = (v: unknown): unknown => (typeof v === "number" ? Math.round(v * 1000) / 1000 : Array.isArray(v) ? v.map(r3) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, r3(x)])) : v);
   let dirCutSaw: unknown = null;
   /** К2: the director's move through the same shotFrame as a Spark plan; false = no `end`, smoothCam path */
   const applyDirectorMove = (now: number): boolean => {
@@ -1226,6 +1230,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     shotName = fr.name;
     return true;
   };
+  // the cut's inputs go on the first critic row after it only (the rows repeat the cut's record)
+  const takeSaw = (): unknown => {
+    const saw = dirCutSaw as { atCut?: { inputs?: unknown } } | null;
+    if (!saw?.atCut?.inputs) return saw;
+    dirCutSaw = { ...saw, atCut: { ...saw.atCut, inputs: undefined } };
+    return saw;
+  };
   const critic = typeof window !== "undefined"
     ? createCritic(((window as any).__critic ??= []) as CriticFact[], () => {
         const cam = c.camera.position;
@@ -1239,7 +1250,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           shot: shotName,
           move: shotName ?? dirMove?.out.move ?? null,
           dcut: dirCut,
-          dir_saw: dirCutSaw,
+          dir_saw: takeSaw(),
           bed_saw: bedSaw,
           shot_clamped: shotClamped,
           cam: [cam.x, cam.y, cam.z] as [number, number, number],
@@ -1437,9 +1448,11 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         clear: seesPast,
       });
       if (isLast) s = out;
+      dirInputs.push(r3({ event: ev, actors: here, room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY }, fov: directorFov ?? c.camera.fov, aspect: c.camera.aspect }));
+      if (dirInputs.length > 60) dirInputs.shift();
       dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };
       if (out.cut !== dirCut) {
-        dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null } };
+        dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null, fov: out.fov ?? null, inputs: [...dirInputs] } };
         dirCutSaw = dirSaw;
         dirCut = out.cut;
         dirMove = { out, t0: now, durationS: out.moveDurationS ?? 4, walk: walkOfMove(out) };

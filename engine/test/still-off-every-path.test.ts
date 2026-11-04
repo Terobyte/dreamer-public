@@ -26,6 +26,15 @@ describe("offWalkPaths", () => {
     expect(off(q, sq)).toBeGreaterThanOrEqual(2 - 1e-6);
     expect(off(q, bob)).toBeGreaterThanOrEqual(1.2 - 1e-6);
   });
+  // v41 147–151 s: the still frame on Squidward (1.9 m) coming into the pineapple stood 1.2 m off his path; he walked
+  // up to it two frame heights tall. The clearance is how far back the frame must be to hold the walker whole.
+  it("the held walker's path is kept as far off as it takes to frame him head to feet", () => {
+    const sq: DActor = { ...walker("Squidward", [0, 0], 90, 4), height: 1.9 };
+    const fov = 45;
+    const whole = 1.9 / (2 * 0.85 * Math.tan((fov / 2) * (Math.PI / 180)));
+    const q = offWalkPaths([2, 1.2], [sq], snapInside, ROOM, "Squidward", fov);
+    expect(off(q, sq)).toBeGreaterThanOrEqual(whole - 1e-6);
+  });
   it("a camera off every path stays where it is", () => {
     const bob = walker("SpongeBob", [0, 0], 90, 6);
     expect(offWalkPaths([3, 4], [bob], snapInside, ROOM, "SpongeBob")).toEqual([3, 4]);
