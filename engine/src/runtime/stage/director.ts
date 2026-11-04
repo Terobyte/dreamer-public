@@ -261,6 +261,8 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
    *  142–145 s: they got up 0.5 s into "Fine. One hour. Then I paint.", the walk's cut was swallowed for good and the
    *  line's close held them walking into the lens) */
   let walkCutOwed = false;
+  /** the face rule's cut, owed until the frame has stood the style's shortest plan (one cut, not one per tick) */
+  let faceCutOwed = false;
   const following = new Set<string>();
   let wideLock: { cut: number; cam: V3 } | null = null;
   // F1: the room the frame is built in; crossing into another room/level is a cut, never a smooth glide through the wall
@@ -374,8 +376,14 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       // a cut on every tick, 13 in 0.2 s)
       if (a && fd && !a.walking) {
         const toCam: V2 = [curMove.cam[0] - a.pos[0], curMove.cam[2] - a.pos[1]];
-        if (angleBetween(fd, faceBase.dir) > 30 || angleBetween(fd, toCam) > 90) forceCut = true;
+        if (angleBetween(fd, faceBase.dir) > 30 || angleBetween(fd, toCam) > 90) faceCutOwed = true;
       }
+    }
+    // Koshakan k12 25.3–30.3 s: the rule cut on every tick while each cut was swallowed (sooner than asl.min after
+    // the move began), and the one that passed at 30.3 s was id 281; it is owed once and paid when it can show
+    if (faceCutOwed && clock - moveStart >= style.asl[0]) {
+      faceCutOwed = false;
+      forceCut = true;
     }
     lostRecut = false;
     if (ev.kind !== "tick") lostTried = false;
@@ -604,6 +612,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       moveCut = cutSeq;
       curMove = null;
       faceBase = null;
+      faceCutOwed = false;
       const tags = ev.tags ?? {};
       const carried = carryWarn;
       carryWarn = [];
