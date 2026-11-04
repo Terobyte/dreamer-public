@@ -320,10 +320,46 @@ export function hugSpot(mover: V2, anchor: V2, rMover: number, rAnchor: number):
 /** how a staged hug plays, from the hugger's idle and her partner's: a child in the lap hugs from the lap and keeps
  *  her clip ("keep"; full f1 meadow: hug_cling, a standing clip, took Mirai off Mama's lap onto the grass), a partner
  *  holding a lap keeps the lap hold ("lap"), a pair standing apart plays the chest-to-chest hug ("chest") */
-export function hugMode(own: string | undefined, other: string | undefined): "keep" | "lap" | "chest" {
+export function hugMode(own: string | undefined, other: string | undefined): "lapHug" | "lap" | "chest" {
   const lap = (s: string | undefined): boolean => !!s && /lap/i.test(s);
   if (!lap(own) && !lap(other)) return "chest";
-  return lap(own) && !/hold/i.test(own!) ? "keep" : "lap";
+  return lap(own) && !/hold/i.test(own!) ? "lapHug" : "lap";
+}
+
+/** Sonnet's hand-made Koshakan demo (anymove/runs/koshakan/demo/story.js:159-171), the lap that looked right:
+ *  the child sits LAP_FWD_M forward and LAP_SIDE_M to the holder's left, her lowest point LAP_SEAT_M over the
+ *  holder's ground; a hug from the lap puts her LAP_HUG_FWD_M in front, face to face, at LAP_HUG_SEAT_M */
+const LAP_FWD_M = 0.12, LAP_SIDE_M = 0.3, LAP_SEAT_M = 0.27, LAP_HUG_FWD_M = 0.26, LAP_HUG_SEAT_M = 0.31;
+/** a body sitting on the ground keeps this much of its lowest point in the grass (the skirt meets it; demo MY 0.25) */
+const SKIRT_SINK_M = 0.07;
+
+const fwdLeft = (yaw: number): [V2, V2] => {
+  const r = (yaw * Math.PI) / 180;
+  return [[Math.sin(r), Math.cos(r)], [Math.cos(r), -Math.sin(r)]];
+};
+
+/** where a child sits in a seated holder's lap: facing the holder's way, forward and to her left, her clip's lowest
+ *  point (`contact_y`, from the root) on the lap. Koshakan f2: she sat on the grass facing Mama, under her arms */
+export function lapSpot(holder: V2, holderYaw: number, groundY: number, childContactY: number): { at: V2; yaw: number; y: number } {
+  const [f, l] = fwdLeft(holderYaw);
+  return {
+    at: [holder[0] + f[0] * LAP_FWD_M + l[0] * LAP_SIDE_M, holder[1] + f[1] * LAP_FWD_M + l[1] * LAP_SIDE_M],
+    yaw: holderYaw,
+    y: groundY + LAP_SEAT_M - childContactY,
+  };
+}
+
+/** a hug from the lap: the child turns to face the holder, in front of her, a little higher (the demo's last shot) */
+export function lapHugSpot(holder: V2, holderYaw: number, groundY: number, childContactY: number): { at: V2; yaw: number; y: number } {
+  const [f] = fwdLeft(holderYaw);
+  return { at: [holder[0] + f[0] * LAP_HUG_FWD_M, holder[1] + f[1] * LAP_HUG_FWD_M], yaw: (holderYaw + 180) % 360, y: groundY + LAP_HUG_SEAT_M - childContactY };
+}
+
+/** how far to lift a body whose idle sits on the ground (its lowest point under the root): out of the grass but for
+ *  the skirt; 0 for a standing or lying clip, or one with no facts */
+export function groundLift(facts: { contact_y?: number; lying?: boolean } | undefined | null): number {
+  if (!facts || facts.lying || typeof facts.contact_y !== "number") return 0;
+  return Math.max(0, -facts.contact_y - SKIRT_SINK_M);
 }
 
 /** how far short of another actor a walker stops (nearActor's `gap`): into a lap close in (0.12 m), otherwise the two

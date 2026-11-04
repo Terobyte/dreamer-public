@@ -7,7 +7,7 @@ import { hugMode } from "../src/runtime/stage/places.js";
 
 describe("a hug in the lap stays in the lap", () => {
   it("the child sitting in the lap keeps her lap clip", () => {
-    expect(hugMode("lap_cloud", "lap_hold")).toBe("keep");
+    expect(hugMode("lap_cloud", "lap_hold")).toBe("lapHug");
   });
   it("the mother holding a child in her lap keeps her lap hold", () => {
     expect(hugMode("lap_hold", "lap_cloud")).toBe("lap");

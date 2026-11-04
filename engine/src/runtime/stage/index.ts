@@ -10,7 +10,7 @@ import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { approachGap, BED_TUCK_M, bedLift, floorAt, hugMode, hugSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { approachGap, BED_TUCK_M, bedLift, floorAt, groundLift, hugMode, hugSpot, lapHugSpot, lapSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate, yieldPace } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -725,11 +725,34 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (sc.idle) a.setIdle?.(sc.idle);
     if (sc.clip) playOnce(who, sc.clip);
     else if (sc.procedural) a.gesture();
+    // an idle sitting on the ground (Mama on the grass, contact 0.32 m under her root) is lifted out of it once its
+    // clip has played; a bed, a seat and a lap place their bodies themselves
+    if (sc.idle && !bedOf(who) && a.act() !== "sit" && !lapOf.has(who) && !lapHugging.has(who)) {
+      const want = groundLift(factOf(who, sc.idle));
+      if (sc.clip) pendingLift.set(who, { clip: sc.clip, want });
+      else liftTo(who, want);
+    }
   };
   /** actors whose clip this beat's staging named: the text pick of the same beat does not override it */
   const stagedClipWho = new Set<string>();
   /** clips that wait for the walk of their directive to end */
   const onArrive = new Map<string, { clip?: string; idle?: string }>();
+  const factOf = (who: string, clip: string | undefined): { contact_y?: number; lying?: boolean } | undefined =>
+    clip ? (clipfacts?.[who]?.[clip] as { contact_y?: number; lying?: boolean } | undefined) : undefined;
+  /** child -> the holder whose lap she walks to (a lap clip in her directive); she sits in it on arrival */
+  const lapOf = new Map<string, string>();
+  /** children hugging from a lap: their partner's hug plays in place */
+  const lapHugging = new Set<string>();
+  /** how far a body sitting on the ground is lifted out of it now (groundLift of its idle), and a lift waiting for the clip before it */
+  const groundLifted = new Map<string, number>();
+  const pendingLift = new Map<string, { clip: string; want: number }>();
+  const liftTo = (who: string, want: number): void => {
+    const a = actors.get(who);
+    const had = groundLifted.get(who) ?? 0;
+    if (!a || Math.abs(want - had) < 1e-3) return;
+    groundLifted.set(who, want);
+    a.teleport(a.pos(), a.yaw(), a.act(), a.y() + want - had);
+  };
   /** actors that walked up to another one (a hug, a lap): the pair is never pushed apart until one of them moves on */
   const together = new Set<string>();
   let nearSeq = 0;
@@ -747,9 +770,18 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (d < best && d < a.radius() + b.radius() + 0.6) (best = d), (other = b);
     }
     if (!other) return sc;
-    // a child in the lap hugs from the lap (full f1 meadow: hug_cling took Mirai off the lap onto the grass)
+    // a pair already hugging from the lap: the holder's hug plays where she sits, nobody moves
+    if (lapHugging.has(who) || lapHugging.has(other.who)) return sc;
+    // a child in the lap hugs from the lap, face to face in front of the holder (Sonnet's demo; full f1 meadow:
+    // hug_cling took Mirai off the lap onto the grass, f2: she kept lap_cloud and never hugged)
     const mode = hugMode(a.idleName?.(), other.idleName?.());
-    if (mode === "keep") return {};
+    if (mode === "lapHug") {
+      const fy = other.y() - (groundLifted.get(other.who) ?? 0);
+      const s = lapHugSpot(other.pos(), other.yaw(), fy, factOf(who, sc.idle ?? sc.clip)?.contact_y ?? 0);
+      a.teleport(s.at, s.yaw, a.act(), s.y);
+      lapHugging.add(who);
+      return sc;
+    }
     if (mode === "lap") return { idle: sc.idle };
     const [mover, anchor] = a.radius() <= other.radius() ? [a, other] : [other, a];
     const at = hugSpot(mover.pos(), anchor.pos(), mover.radius(), anchor.radius());
@@ -764,10 +796,21 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const a = actors.get(who);
       if (!a || a.moving()) continue;
       onArrive.delete(who);
+      const holder = lapOf.has(who) ? actors.get(lapOf.get(who)!) : undefined;
+      if (holder) {
+        const fy = holder.y() - (groundLifted.get(holder.who) ?? 0);
+        const s = lapSpot(holder.pos(), holder.yaw(), fy, factOf(who, sc.idle ?? sc.clip)?.contact_y ?? 0);
+        a.teleport(s.at, s.yaw, a.act(), s.y);
+      }
       actOut(who, sc);
     }
   };
   const settleAfterClips = (): void => {
+    for (const [who, pl] of pendingLift) {
+      if (actors.get(who)?.clip?.() === pl.clip) continue;
+      pendingLift.delete(who);
+      liftTo(who, pl.want);
+    }
     for (const [who, clip] of afterClip) {
       const a = actors.get(who);
       if (!a || a.clip?.() === clip) continue;
@@ -882,6 +925,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const sc = stagedClips(e as { clip?: unknown; idle?: unknown }, Object.keys(cast[who]?.clips ?? {}));
       onArrive.delete(who);
       if (sc.clip) stagedClipWho.add(who);
+      if (action !== "stay") (lapOf.delete(who), lapHugging.delete(who));
       const workAt = (sc.clip || sc.idle) && placeName ? places.find((p) => (p.name === placeName || p.id === placeName) && p.look) : undefined;
       if (workAt && action !== "turn_away" && action !== "exit") busyAt.set(who, workAt);
       else busyAt.delete(who);
@@ -932,6 +976,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         together.add(who);
         together.add(placeName);
         onArrive.set(who, sc);
+        if ([sc.clip, sc.idle].some((c) => !!c && /lap/i.test(c) && !/hold/i.test(c))) lapOf.set(who, placeName);
         return;
       }
       if (action === "come" || action === "goto") {
