@@ -35,3 +35,21 @@ describe("a narration longer than the style's longest plan is cut", () => {
     expect(run(0.5, 7.3).length).toBe(1);
   });
 });
+
+describe("the next narration goes on from the piece shown last", () => {
+  // Koshakan k7 9.4–23.4 s: the second piece of beat 0 was the two; beat 1 (7.3 s) picked the two again, 14 s of one frame
+  for (const seed of [0.1, 0.5, 0.9]) {
+    it(`rng ${seed}: 10.4 s then 7.3 s of narration -> beat 1 is not the plan beat 0 ended on`, () => {
+      const d = createDirector(() => seed, { style: "storybook" });
+      d.step({ ...IN, event: { ...tick, dt: 0.017 } });
+      let o = d.step({ ...IN, event: { ...IN.event, durationS: 10.4 } });
+      for (let k = 1; k < 10.4 * 60; k++) o = d.step({ ...IN, event: tick });
+      const before = o;
+      o = d.step({ ...IN, event: { ...IN.event, beat: 1, durationS: 7.3, tags: undefined } });
+      for (let k = 1; k < 30; k++) o = d.step({ ...IN, event: tick });
+      expect(before.plan).toBe("two");
+      expect(o.cut).not.toBe(before.cut);
+      expect(o.plan).not.toBe("two");
+    });
+  }
+});

@@ -451,6 +451,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         explicitPlan = false;
         const r = pending.shift()!;
         cut(r.plan, r.listener);
+        // the piece shown is the one the next line or narration goes on from (Koshakan k7 9.4–23.4 s: beat 1 took
+        // the two again after beat 0 ended on it, 14 s of one frame)
+        lastPlan = r.plan;
       }
     }
     const walkChanged = sig !== walkSig;
