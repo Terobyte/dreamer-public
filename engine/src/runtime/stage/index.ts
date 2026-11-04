@@ -159,6 +159,14 @@ export interface GazeActor {
   room: unknown;
   pos: V2;
   eye: [number, number, number];
+  /** busy at a thing (a staged clip at a place with a `look`): the point of the thing, it wins over any beat */
+  busy?: [number, number, number] | null;
+}
+
+/** the point an actor busy at a place looks at: its `look` at its working height (`size.h`, else 0.9 m) over the floor; null without a `look` */
+export function busyGazePoint(p: Place, floorY = 0): [number, number, number] | null {
+  if (!p.look) return null;
+  return [p.look[0], floorY + (p.size?.h ?? 0.9), p.look[1]];
 }
 
 /** who looks at whom (the pure decision behind the per-frame gaze): the speaker follows their `look` bit
@@ -171,6 +179,7 @@ export function resolveGaze(
   cast: GazeActor[],
   placePoint: (p: Place) => [number, number, number],
 ): [number, number, number] | null {
+  if (self.busy) return self.busy;
   if (!beat || now > beat.until) return null;
   const mates = cast.filter((o) => o.who !== self.who && o.room === self.room);
   const nearest = (): GazeActor | undefined =>
@@ -664,6 +673,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const floorY = typeof layer === "number" ? layer : layer?.layer?.y ?? (layer as { y?: number } | undefined)?.y ?? 0;
     return placeGazePoint(p, Number.isFinite(floorY) ? (floorY as number) : 0);
   };
+  /** who works at which thing now (a staged clip at a place with a `look`): looks at it, not at the speaker */
+  const busyAt = new Map<string, Place>();
+  const busyPoint = (p: Place): [number, number, number] | null => {
+    const fy = placePoint(p)[1] - 1.4;
+    return busyGazePoint(p, fy);
+  };
   // a clip fits a non-standing pose only when it was made for it (clipfacts `lying` for "lie"; no seated clip facts yet)
   const clipPose = {
     poseOf: (w: string): string | undefined => poseOf.get(w),
@@ -867,6 +882,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const sc = stagedClips(e as { clip?: unknown; idle?: unknown }, Object.keys(cast[who]?.clips ?? {}));
       onArrive.delete(who);
       if (sc.clip) stagedClipWho.add(who);
+      const workAt = (sc.clip || sc.idle) && placeName ? places.find((p) => (p.name === placeName || p.id === placeName) && p.look) : undefined;
+      if (workAt && action !== "turn_away" && action !== "exit") busyAt.set(who, workAt);
+      else busyAt.delete(who);
 
       const getTargetPos = (tgt?: string): V2 | null => {
         if (!tgt) return null;
@@ -1100,7 +1118,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   const look = new Vector3();
   /** the world point `a` looks at right now, or null */
   const gazeOf = (a: Actor, list: Actor[]): [number, number, number] | null => {
-    const cast: GazeActor[] = list.map((o) => ({ who: o.who, room: roomAt(o.pos(), toucher.levelOf(o.who))?.room, pos: o.pos(), eye: o.eye() }));
+    const cast: GazeActor[] = list.map((o) => ({ who: o.who, room: roomAt(o.pos(), toucher.levelOf(o.who))?.room, pos: o.pos(), eye: o.eye(), busy: busyAt.has(o.who) ? busyPoint(busyAt.get(o.who)!) : null }));
     const self = cast.find((o) => o.who === a.who);
     return self ? resolveGaze(gazeBeat, nowT, self, cast, placePoint) : null;
   };
