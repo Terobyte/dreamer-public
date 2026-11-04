@@ -228,3 +228,59 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 ### Отклонено / оставлено
 - NAV_ROOM_CUT (warn в движке) — не баг для pipe2: `engine.py:23` и так считает его блокирующим. Для других потребителей это MINOR, без ID.
 - `at`-проём на ничьей между уровнями: поведение задокументировано (`validate.ts:549`). Без ID.
+
+## Hunt 2026-11-04 — semey live world (4 hunters: H1 state/money, H2 http/security, H3 build races, H4 client)
+
+### B11 — Warm.lock / World.lock order inversion deadlocks the server — CRIT — fixed
+- class: concurrency · location: h0/place/semey.py Warm.remove/_maybe_off/tick → on_spend=_spend_line (World.lock); World holds lock → warm.remove/count · found-by: H1 (corroborated: H3)
+- trigger: last warm hold released in run_job finally (no world lock) while a claim/watch/admin free holds World.lock
+- expected vs actual: no lock cycle vs permanent hang of every request
+### B12 — Modal RPCs (autoscaler set, heartbeat Dict) run inside Warm.lock — MAJOR — fixed
+- class: concurrency · location: semey.py Warm.add/tick/_maybe_off · found-by: H3 · pattern P1 with B11, B13
+- expected vs actual: claim/view never wait on a network call vs they queue behind the RPC
+### B13 — failed warm-off is never retried, GPU stays warm — MAJOR — fixed
+- class: silent failure / money · location: semey.py Warm._maybe_off (on_since cleared before the try) · found-by: H3
+### Pattern P1 — Warm does network I/O and calls back into World under its own lock
+- members: B11 B12 B13 · repair: Warm decides under its lock, acts (RPC, on_spend) outside it; off retried by tick until it succeeds
+### B14 — asset_cost sums the ledger's cumulative cap_hit row — MAJOR — fixed
+- class: money · location: semey.py asset_cost; h0/pipe2/ledger.py cap_hit row carries cost_usd=self.spent · found-by: H1 (corroborated: H3)
+- expected vs actual: capped build at ~$3 booked $3 vs ~$6
+### B15 — over_budget auto-off only checked on warm spend — MAJOR — fixed
+- class: money/contract · location: semey.py _spend_line only; run_job finally and _recover add to spent_usd directly · found-by: H1
+- expected vs actual (spec): spent_usd > 20 → claims false + over_budget line vs claims stay true
+### B16 — raw wish text shown on the public sign before any rude check — MINOR — fixed
+- class: data/contract · location: semey.py claim label=text[:40], run_job Progress label, view · found-by: H1
+### B17 — encoded ../ in /parts/<wid>/dist/ serves any file under parts/ — CRIT — fixed
+- class: security · location: semey.py _get /parts/ check on raw rel, _safe unquotes and checks only base=parts · found-by: H2
+- trigger: GET /parts/<wid>/dist/..%2fwish.txt → 200
+### B18 — non-ASCII judge/admin key raises TypeError in compare_digest, connection dropped — MINOR — fixed
+- class: input validation · location: semey.py admin key check, _key_ok · found-by: H2 (corroborated: H3)
+### B19 — /api/admin with a non-object JSON body crashes the handler — MINOR — fixed
+- class: input validation · location: semey.py admin route body.get · found-by: H2 (corroborated: H1)
+### B20 — %00 in a path crashes the handler — MINOR — fixed
+- class: input validation · location: semey.py _safe resolve() · found-by: H2
+### B21 — fix_spec dedup truncates the suffix away for 24-char ids — MINOR — fixed
+- class: logic · location: semey.py fix_spec oid = f"{oid}_{n}"[:24] · found-by: H2 (corroborated: H3)
+### B22 — progress weights: timings.json "assets": 1.9 overrides the default, bar lies; DEFAULT has assets twice — MINOR — fixed
+- class: progress · location: h0/place/progress.py DEFAULT/load_timings, h0/place/timings.json (user file, do not edit) · found-by: H3
+### B23 — build_dist has no timeout; a hung engine build holds running + slots_sem forever — MAJOR — fixed
+- class: lifecycle · location: h0/place/assets.py build_dist subprocess.run · found-by: H3
+### B24 — Space hijacked on confirm/error cards (flow.field is the stale askWish textarea) — MAJOR — fixed
+- class: client state · location: app/src/live.js confirm1/keydown handler · found-by: H4
+### B25 — mic can stay open forever after cancel / early keyup; mic dead afterwards — MAJOR — fixed
+- class: client lifecycle/privacy · location: live.js talk() early return on !flow, recorder.start async race · found-by: H4
+### B26 — failed built-place load retried every frame (~60 req/s) — MAJOR — fixed
+- class: client error handling · location: live.js loadBuilt catch + per-frame loop; interior.js no res.ok · found-by: H4
+### B27 — any tolerated asset 404 shows the fatal "could not load" shell — MAJOR — fixed
+- class: client contract · location: app/src/index.ts DefaultLoadingManager.onError · found-by: H4
+### B28 — player inside a newly blocked zone is frozen — MINOR — fixed
+- class: client collision · location: live.js move/blockedAt · found-by: H4
+### B29 — unmapped server errors (403 origin/host/type, 400 fields, ASR 403/429/502) give misleading text — MINOR — fixed
+- class: client error mapping · location: live.js ANSWERS / talk · found-by: H4
+
+### Fix pass 2026-11-04 — haiku red tests, all red at their own assertion, then green
+- server: h0/place/test_semey_bugs_world.py (B11–B15), test_semey_bugs_http.py (B16–B21), test_semey_bugs_build.py (B22–B23); `cd h0 && python3 -m unittest place.test_semey place.test_semey_bugs_world place.test_semey_bugs_http place.test_semey_bugs_build` → 52 OK
+- client (bench, not in git): ~/.dreamer-bench/demo-bread/app/test/live_bugs.test.mjs (B24–B29) → 11/11; B24, B25, B26b, B27, B29c are structural checks of the source, the rest behavioral
+- P1 fixed at the source: Warm decides under its lock, RPCs and on_spend outside it, the autoscaler state it applied is tracked and tick re-sends it (a restart starts from "unknown" and sends off — also closes "_recover never switches the autoscaler off")
+- B15: World._book is the only place money is added; B22 floor = a quarter of DEFAULT, timings.json untouched; B23 timeout 900 s → code 124
+- e2e look on a local server with the rebuilt client: five signs, door, no 4xx/5xx

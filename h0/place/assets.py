@@ -11,11 +11,11 @@ REPO = Path(__file__).resolve().parents[2]
 ENGINE = REPO / "engine"
 
 
-def fill_cache(scene, scene_dir: Path, cache: Path, prog=None, cap_usd=15.0, log=None, cutouts=()):
+def fill_cache(scene, scene_dir: Path, cache: Path, prog=None, cap_usd=15.0, log=None, cutouts=(), workers=32):
     eng = Engine(ENGINE, shots=False)
     keys = eng.asset_keys(scene, scene_dir)
     ledger = Ledger(scene_dir / "events.jsonl", load_prices(), cap_usd, 600, None, resume=(scene_dir / "events.jsonl").exists())
-    q = AssetQueue(cache, MuseImage(), ModalMesh(*MESH_APPS["sam3d"]), ledger, mesh_timeout_s=MESH_TIMEOUT_S["sam3d"], workers=32)
+    q = AssetQueue(cache, MuseImage(), ModalMesh(*MESH_APPS["sam3d"]), ledger, mesh_timeout_s=MESH_TIMEOUT_S["sam3d"], workers=workers)
     weight = {k["key"]: (4 if k["kind"] == "object" else 1) for k in keys}
     total = sum(weight.values()) or 1
     q.put("place", keys)
@@ -23,7 +23,8 @@ def fill_cache(scene, scene_dir: Path, cache: Path, prog=None, cap_usd=15.0, log
         while True:
             have = sum(weight[k["key"]] for k in keys if q._cached(k))
             if prog:
-                prog.set(have / total, f"{have}/{total}")
+                objs = [k for k in keys if k["kind"] == "object"]
+                prog.set(have / total, f"{have}/{total} · 3D {sum(1 for k in objs if q._cached(k))}/{len(objs)}")
             if q.done("place"):
                 break
             time.sleep(1.0)
@@ -37,10 +38,17 @@ def fill_cache(scene, scene_dir: Path, cache: Path, prog=None, cap_usd=15.0, log
     return {"keys": len(keys), "missing": missing}
 
 
-def build_dist(scene_path: Path, out: Path, cache: Path):
-    r = subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "build", str(scene_path.resolve()), "--out", str(out.resolve()),
-                        "--assets", "cache", "--cache", str(cache.resolve()), "--apply-fixes"],
-                       cwd=ENGINE, capture_output=True, text=True)
+def build_dist(scene_path: Path, out: Path, cache: Path, timeout=900):
+    """a hung engine build returns 124 after `timeout` s instead of holding its build slot forever"""
+    try:
+        r = subprocess.run(["node", "--import", "tsx", "bin/dreamer.ts", "build", str(scene_path.resolve()), "--out", str(out.resolve()),
+                            "--assets", "cache", "--cache", str(cache.resolve()), "--apply-fixes"],
+                           cwd=ENGINE, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        log = e.stdout or ""
+        log = log.decode(errors="replace") if isinstance(log, bytes) else log
+        (out.parent / "build.log").write_text(log + f"\nbuild timed out after {timeout} s\n")
+        return 124
     (out.parent / "build.log").write_text((r.stdout or "") + (r.stderr or ""))
     return r.returncode
 

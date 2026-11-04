@@ -42,3 +42,4 @@ assets/props/**/*.glb
 
 # engine worlds linked into the IWSDK app (symlinks to dist)
 app/public/worlds/
+.claude/

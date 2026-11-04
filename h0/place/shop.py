@@ -93,7 +93,9 @@ def shop_scene(spec, site, wid):
         "assets": assets,
         "lights": [{"kind": "point", "pos": [round(sc, 2), 0.15 + H - 0.4, round(-(n0 + D / 2), 2)], "color": "#fff1d8", "intensity": 1.2}],
     }
-    box = {"x0": min(s0, s1), "x1": max(s0, s1), "z0": -(n0 + D + PD), "z1": -n0, "y0": 0.15, "h": H}
+    box = {"x0": min(s0, s1), "x1": max(s0, s1), "z0": -(n0 + D + PD), "z1": -n0, "y0": 0.15, "h": H,
+           "room": {"x0": s0, "x1": s1, "z0": -(n0 + D), "z1": -n0}, "porch": {"x0": s0, "x1": s1, "z0": -(n0 + D + PD), "z1": -(n0 + D)},
+           "door": {"x": round(sc, 3), "width": 1.1}}
     return scene, box
 
 

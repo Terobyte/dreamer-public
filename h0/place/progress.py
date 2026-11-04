@@ -12,20 +12,29 @@ import time
 from pathlib import Path
 
 TIMINGS = Path(__file__).with_name("timings.json")
-DEFAULT = {"read": 35, "plan": 120, "compile": 3, "assets": 240, "build": 25, "shell_assets": 60, "shell_build": 10,
-           "wish": 25, "critic": 400}
+DEFAULT = {"read": 35, "plan": 120, "compile": 3, "assets": 150, "build": 25, "shell_assets": 60, "shell_build": 10,
+           "wish": 25, "critic": 400, "queue": 5, "wait": 5}
 
 
 def load_timings():
+    """DEFAULT, overridden by what runs measured; a measured stage never weighs under a quarter of its default
+    (a fully cached run measures assets at ~2 s, and the next cold run's bar would then skip the GPU wait)"""
     try:
-        return {**DEFAULT, **json.loads(TIMINGS.read_text())}
+        got = json.loads(TIMINGS.read_text())
     except (OSError, ValueError):
         return dict(DEFAULT)
+    w = dict(DEFAULT)
+    for k, v in (got.items() if isinstance(got, dict) else ()):
+        if isinstance(v, (int, float)):
+            w[k] = max(float(v), DEFAULT[k] / 4) if k in DEFAULT else float(v)
+    return w
 
 
 class Progress:
-    def __init__(self, path: Path, stages: list[str], label: str, clock=time.time):
+    def __init__(self, path: Path, stages: list[str], label: str, clock=time.time, save_timings=True):
+        """save_timings=False: finish() leaves the shared timings.json alone (parallel builds would clobber it)"""
         self.path, self.stages, self.label, self.clock = Path(path), stages, label, clock
+        self.save_timings = save_timings
         self.w = load_timings()
         self.frac = {s: 0.0 for s in stages}
         self.cur, self.t0, self.stage_t0, self.took = None, clock(), clock(), {}
@@ -72,7 +81,7 @@ class Progress:
                "eta_s": 0, "label": self.label, "note": note, "took": self.took}
         with self.lock, self.path.open("a") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        if ok:  # the next bar is weighted by what this run measured
+        if ok and self.save_timings:  # the next bar is weighted by what this run measured
             w = load_timings()
             w.update(self.took)
             TIMINGS.write_text(json.dumps(w, indent=1))
