@@ -289,10 +289,13 @@ function geoOf(spec: Spec, faceMove: boolean, subject: MoveSubject, ctx: Ctx, wa
         const t = ctx.walk?.[x.name]?.to ?? x.pos;
         return [x.pos[0] + (t[0] - x.pos[0]) * u, y, x.pos[1] + (t[1] - x.pos[1]) * u];
       };
-      const tall = Math.max(...group.map((x) => headOf(x, floorY)[1] - floorY));
+      // the top of each is his height, not his head bone (v42 151 s: Squidward's head bone is mid-body, 1.17 of 1.8 m;
+      // framed by it, the shot held him from the knees to the chest)
+      const topY = (x: DActor): number => Math.max(headOf(x, floorY)[1], floorY + x.height);
+      const tall = Math.max(...group.map((x) => topY(x) - floorY));
       const spread = Math.max(0, ...group.map((x) => Math.hypot(x.pos[0] - a.pos[0], x.pos[1] - a.pos[1])));
       const need = tall / (2 * WALK_FRAME_NDC * Math.tan((ctx.fov * DEG) / 2)) + spread;
-      const frame = (u: number): V3[] => group.flatMap((x) => [along(x, headOf(x, floorY)[1], u), along(x, floorY, u)]);
+      const frame = (u: number): V3[] => group.flatMap((x) => [along(x, topY(x), u), along(x, floorY, u)]);
       return { kind: "actor", aim: aimAt, base: bearing(dx, dz), hBase: Math.max(h[1], floorY + tall / 2), dAdd: Math.max(0, need - spec.d[0]), frame, lookO: [0, floorY + tall / 2 - h[1], 0], keepOff: group.filter((x) => ctx.walk?.[x.name]).map((x) => [x.pos, ctx.walk![x.name]!.to] as [V2, V2]), limit: () => 100, lying: [], lookActor: a.name, noFace: spec.walk === "behind" || spec.walk === "lead" };
     }
     if (spec.pan || spec.tilt) return turnGeo(spec, a, ctx.actors.find((x) => x.name !== a.name && !x.offstage), ctx);
