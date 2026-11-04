@@ -25,16 +25,24 @@ image = (
     .add_local_file(META / "engine" / "package.json", "/root/engine/package.json", copy=True)
     .add_local_file(META / "engine" / "package-lock.json", "/root/engine/package-lock.json", copy=True)
     .run_commands("cd /root/engine && npm ci --no-audit --no-fund")
-    .add_local_dir(META / "engine" / "bin", "/root/engine/bin")
-    .add_local_dir(META / "engine" / "src", "/root/engine/src")
-    .add_local_dir(META / "engine" / "schema", "/root/engine/schema")
-    .add_local_file(META / "engine" / "tsconfig.json", "/root/engine/tsconfig.json")
-    .add_local_dir(H0 / "place", "/root/h0/place", ignore=SKIP + ["host/**"])
-    .add_local_dir(H0 / "pipe2", "/root/h0/pipe2", ignore=SKIP)
-    .add_local_file(H0 / "keys.py", "/root/h0/keys.py")
-    .add_local_file(H0 / "llm_http.py", "/root/h0/llm_http.py")
-    .add_local_file(FEATURES, "/assets/features.json")
-    .add_local_dir(CLIENT, "/client")
+    .add_local_dir(META / "engine" / "bin", "/root/engine/bin", copy=True)
+    .add_local_dir(META / "engine" / "src", "/root/engine/src", copy=True)
+    .add_local_dir(META / "engine" / "schema", "/root/engine/schema", copy=True)
+    .add_local_file(META / "engine" / "tsconfig.json", "/root/engine/tsconfig.json", copy=True)
+    .add_local_dir(H0 / "place", "/root/h0/place", ignore=SKIP + ["host/**"], copy=True)
+    .add_local_dir(H0 / "pipe2", "/root/h0/pipe2", ignore=SKIP, copy=True)
+    .add_local_file(H0 / "keys.py", "/root/h0/keys.py", copy=True)
+    .add_local_file(H0 / "llm_http.py", "/root/h0/llm_http.py", copy=True)
+    .add_local_file(FEATURES, "/assets/features.json", copy=True)
+    .add_local_dir(CLIENT, "/client", copy=True)
+    # B51: a broken image fails the deploy, not the first judge
+    .run_commands(
+        "cd /root/h0 && python -c 'import place.semey, place.shop, place.assets, place.compile, place.spark, pipe2.assets, "
+        "pipe2.ledger, pipe2.engine, llm_http, keys, PIL, shapely, modal'",
+        "cd /root/h0 && python -m place.semey --selftest /tmp/semey-selftest",
+        "node -e 'const [a,b]=process.versions.node.split(\".\").map(Number); if (a<22||(a===22&&b<12)) process.exit(1)' && node --version",
+        "test -f /client/index.html && test -d /client/yard && test -d /client/shop2 && ! grep -q '%VITE_' /client/index.html",
+    )
 )
 app = modal.App("semey", image=image)
 world = modal.Volume.from_name("semey-world", create_if_missing=True)
@@ -45,7 +53,7 @@ world = modal.Volume.from_name("semey-world", create_if_missing=True)
 @modal.concurrent(max_inputs=64)
 @modal.web_server(8000, startup_timeout=120)
 def web():
-    env = {**os.environ, "SEMEY_VOLUME": "semey-world", "PUBLIC_HOST": "highskilltero--semey-web.modal.run"}
+    env = {**os.environ, "SEMEY_VOLUME": "semey-world", "PUBLIC_HOST": "highskilltero--semey-web.modal.run,highskilltero--semey-web.us-east.modal.run"}
     cmd = ["python", "-m", "place.semey", "--bind", "0.0.0.0", "--port", "8000", "--data", "/data",
            "--client", "/client", "--features", "/assets/features.json", "--warm"]
     threading.Thread(target=supervise, args=(cmd, "/root/h0", env), daemon=True).start()
@@ -57,6 +65,8 @@ def supervise(cmd, cwd, env, popen=subprocess.Popen, sleep=time.sleep):
     while True:
         t0 = time.monotonic()
         rc = popen(cmd, cwd=cwd, env=env).wait()
+        if time.monotonic() - t0 > 60:                 # a healthy run forgets the crash loop before it sleeps (B53)
+            delay = 1
         print(f"semey exited ({rc}); restarting in {delay} s", flush=True)
         sleep(delay)
-        delay = 1 if time.monotonic() - t0 > 60 else min(30, delay * 2)
+        delay = min(30, delay * 2)

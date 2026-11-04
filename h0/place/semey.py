@@ -304,6 +304,14 @@ class Warm:
             held = self._maybe_off()
         self._after_off(held)
 
+    def remove_later(self, wid):
+        """for callers holding World.lock: the hold goes now (count() is right at once), the RPC and booking run on
+        their own thread, so a slow Modal never blocks slots, claims or the watchdog (B42)"""
+        with self.lock:
+            self.until.pop(wid, None)
+            held = self._maybe_off()
+        threading.Thread(target=self._after_off, args=(held,), daemon=True).start()
+
     def _beat(self):
         if self.hb is not None:
             try:
@@ -515,7 +523,7 @@ class World:
         sl = self.st["places"][p]
         if sl.get("state") == "building":
             self._drop_token(sl)
-            self.warm.remove(sl.get("wid"))
+            self.warm.remove_later(sl.get("wid"))
         new = {"state": "free"}
         if note:
             new.update(note=note, note_until=self.clock() + NOTE_S)
@@ -715,7 +723,7 @@ class World:
                 self.save()
                 return {"claims": self.st["claims"]}
             if op == "free":
-                if place not in FREE_PLACES:
+                if type(place) is not int or place not in FREE_PLACES:
                     raise Refused(400, "place")
                 p = str(place)
                 sl = self.st["places"][p]
@@ -804,6 +812,7 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
     client = Path(client).resolve()
     parts = (world.data / "parts").resolve()
     local = ("localhost", "127.0.0.1")
+    hosts = tuple(h.strip().lower() for h in (public_host or "").split(",") if h.strip())   # modal serves the bare and the region host (B41)
 
     class H(SimpleHTTPRequestHandler):
         timeout = 15
@@ -837,7 +846,7 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
 
         def _host_ok(self):
             h = self._host()
-            return h in local or (public_host and h == public_host)
+            return h in local or h in hosts
 
         def _ip(self):
             xff = self.headers.get("X-Forwarded-For")
@@ -865,18 +874,39 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
             if p.suffix == ".js":
                 ctype = "text/javascript"
             size = p.stat().st_size
-            self.send_response(200)
+            start, end = 0, size - 1
+            rng = self.headers.get("Range")
+            m = re.fullmatch(r"bytes=(\d*)-(\d*)", (rng or "").strip())
+            if rng and m and (m[1] or m[2]):          # one byte range (Safari plays mp4 only with these, B49); others -> whole file
+                if m[1]:
+                    start, end = int(m[1]), min(int(m[2]) if m[2] else size - 1, size - 1)
+                else:
+                    start = max(0, size - int(m[2]))
+                if start >= size or start > end:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self.send_response(206)
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            else:
+                self.send_response(200)
             self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(size))
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Accept-Ranges", "bytes")
             self.send_header("Cache-Control", "no-cache" if p.name == "index.html" else "public, max-age=3600")
             self.end_headers()
             if not head:
                 with p.open("rb") as f:
-                    while True:
-                        chunk = f.read(1 << 16)
+                    f.seek(start)
+                    left = end - start + 1
+                    while left > 0:
+                        chunk = f.read(min(1 << 16, left))
                         if not chunk:
                             break
                         self.wfile.write(chunk)
+                        left -= len(chunk)
 
         def _safe(self, base: Path, rel: str, head=False):
             rel = urllib.parse.unquote(rel)
@@ -933,7 +963,8 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
             port = self.server.server_address[1]
             if self._host() in local:
                 return origin is None or origin in (f"http://localhost:{port}", f"http://127.0.0.1:{port}")
-            return origin == f"https://{public_host}"
+            h = self._host()
+            return h in hosts and origin == f"https://{h}"
 
         def do_POST(self):
             if not self._host_ok():

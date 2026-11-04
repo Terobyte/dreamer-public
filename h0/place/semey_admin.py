@@ -14,6 +14,8 @@ import keys
 
 def call(url, body):
     k = os.environ.get("ADMIN_KEY") or keys._from_file("SEMEY_ADMIN_KEY")
+    if not k:
+        sys.exit("no admin key: set ADMIN_KEY or SEMEY_ADMIN_KEY in meta/.env")
     r = urllib.request.Request(url.rstrip("/") + "/api/admin", data=json.dumps(body).encode(), method="POST",
                                headers={"X-Admin-Key": k, "Content-Type": "application/json"})
     try:
@@ -35,8 +37,12 @@ def main(argv):
     if op in ("free", "claims") and not rest:
         sys.exit(__doc__)
     if op == "free":
+        if not rest[0].isdigit():
+            sys.exit(__doc__)
         body["place"] = int(rest[0])
     if op == "claims":
+        if rest[0] not in ("on", "off"):
+            sys.exit(__doc__)
         body["on"] = rest[0] == "on"
     code, out = call(url, body)
     print(code, json.dumps(out, ensure_ascii=False, indent=1))

@@ -320,3 +320,42 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 - extra: BoundedServer.handle_error drops client hang-ups (ConnectionError) instead of a traceback per scanner
 - B31 deadline 20 s for the whole request (headers, POST body); a big file download after that is not cut
 - still open, not code: /video.mp4 (Tero's film), Space+mic by hand with a real microphone, B40 after deploy
+
+## Hunt 2026-11-04 (c) — final pre-deploy sweep (3 sonnet hunters: H1 deploy/lifecycle, H2 money/security, H3 client contract) + first real deploy
+### B41 — Modal prints the region host `highskilltero--semey-web.us-east.modal.run`; PUBLIC_HOST knows only the bare one → 403 host on the printed link — MINOR — fixed
+- class: deploy config · location: h0/place/semey.py make_handler _host_ok/_origin_ok, semey_modal.py PUBLIC_HOST · found-by: senior (deploy)
+- expected vs actual: both modal hosts of the app serve and accept same-origin POSTs vs only the bare one
+### B42 — autoscaler RPC runs under World.lock: _release_locked → warm.remove → _after_off → _sync → a.set(...) — MAJOR — fixed
+- class: lock discipline (rest of B12) · location: semey.py _release_locked / Warm._after_off / _sync, callers watch, admin free, _recover · found-by: H2
+- expected vs actual: no RPC under World.lock (slots/claims keep answering while Modal is slow) vs every request blocks for the RPC
+### B43 — admin free with place 2.0 → KeyError, no reply; admin CLI crashes on `free abc` and on a missing key (None header) — MINOR — fixed
+- class: input validation · location: semey.py admin free (place in FREE_PLACES then st["places"][str(place)]); semey_admin.py main/call · found-by: H2
+### B44 — server 400 nick/text shows the bare word ("nick") and Back goes to the wish step, the nick can never be fixed — MINOR — fixed
+- class: client error mapping · location: live.js claim 400 branch · found-by: H3
+### B45 — invalid nick / too-short wish: Next does nothing, no message — MINOR — fixed
+- class: client UX · location: live.js nick/wish checks · found-by: H3
+### B46 — held W sticks after window blur (keyup lost), player walks alone — MINOR — fixed
+- class: client input · location: live.js keydown/keyup, no blur handler · found-by: H3
+### B47 — "Sending…" card has no buttons and api() no timeout: a stalled request freezes the page until reload — MINOR — fixed
+- class: client lifecycle · location: live.js api(), sending card · found-by: H3
+### B48 — retry after a lost claim response says "already built" (403 used) while the build is running — MINOR — fixed
+- class: client state machine · location: live.js claim 403 used mapping · found-by: H3
+### B49 — /video.mp4 served without Range / Accept-Ranges: Safari will not play it, no seeking — MINOR — fixed
+- class: serving · location: semey.py _file · found-by: H3
+### B50 — dist built without .env carries the literal `%VITE_VIDEO_URL%`: "Watch the recording" links are dead (live on the first deploy) — MAJOR — fixed
+- class: build config · location: app/index.html SEMEY_VIDEO + link href, .env gitignored · found-by: H3 parking, confirmed by senior on the deployed dist
+### verified after deploy
+- B40: admin status `you` = 50.208.132.118 with and without `X-Forwarded-For: 1.2.3.4` → trust holds behind Modal's proxy — fixed (verified)
+### B51 — the Modal image runs none of the spec's build-time checks (imports, --selftest, node ≥ 22.12, client files): a broken image shows up only at the first judge — MAJOR — fixed
+- class: deploy contract · location: h0/place/semey_modal.py image · found-by: H1
+### B52 — live mode dies whole (fatal "could not load") when localStorage throws (site data blocked) — MINOR — fixed
+- class: client robustness · location: live.js keyAndToken / semey_nick · found-by: H1
+### B53 — supervise sleeps the stale crash-loop delay once after a healthy run — MINOR — fixed
+- class: logic · location: semey_modal.py supervise · found-by: H1
+### note: B43 also covers `semey_admin claims <not on|off>` silently sending off (H1 #3); B42 corroborated by H1; B49 corroborated by H1 parking
+
+### Fix pass (c) 2026-11-04 — sonnet red tests, red at own assertion on the old code, green now
+- server: h0/place/test_semey_bugs_c.py (B41 B42 B43 B49), test_semey_bugs_c2.py (B43b B51 B53) → full place suite 72 OK; selftest ok
+- client: test/live_bugs3.test.mjs (B44–B48, B50), live_bugs4.test.mjs (B52, red on HEAD live.js via LIVE_JS) → green; tsc clean
+- B42: Warm.remove_later (hold drops at once, RPC + booking on their own thread); B41: PUBLIC_HOST is a comma list, Origin must match the Host used; B49: one byte range, 206/416, Accept-Ranges; B50: vite.config default + runtime '%' guard; B51: image runs imports, --selftest, node ≥ 22.12, client files and no '%VITE_' at build
+- not mine: test/film_bugs.test.mjs F2 red on the uncommitted film edits of demo.js (another session's work in progress)
