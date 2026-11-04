@@ -24,3 +24,24 @@ describe("a walker's turning face does not cut the frame", () => {
     });
   }
 });
+
+describe("a face that keeps turning cuts once per 30°, not on every tick", () => {
+  // Koshakan k10 24.7–25.2 s: Mama stopped at the bed and sat, turning; the face rule cut on every tick (cut id
+  // 5 -> 26 -> 29) because its base face was kept while the cut was swallowed
+  const W: Taped[] = JSON.parse(readFileSync(new URL("./fixtures/kosh-wake-line.json", import.meta.url), "utf8"));
+  const last = W[W.length - 1];
+  for (const seed of [0.1, 0.5, 0.9]) {
+    it(`rng ${seed}: Mama turning 180° in 1 s after her line and holding 2 s -> the cut id grows by at most 4`, () => {
+      const d = createDirector(() => seed, { style: "storybook" });
+      d.step({ ...last, event: { kind: "tick", dt: 0.017, room: "bedroom" } });
+      let o = d.step({ ...last });
+      const c0 = o.cut;
+      for (let k = 1; k <= 180; k++) {
+        const turn = 3 * Math.min(k, 60);
+        const actors = last.actors.map((a) => (a.name === "Mama" ? { ...a, yaw: (a.yaw + turn) % 360, faceYaw: ((a.faceYaw ?? a.yaw) + turn) % 360 } : a));
+        o = d.step({ ...last, actors, event: { kind: "tick", dt: 1 / 60, room: "bedroom" } });
+      }
+      expect(Math.floor(o.cut) - Math.floor(c0), `${c0} -> ${o.cut}`).toBeLessThanOrEqual(4);
+    });
+  }
+});

@@ -233,6 +233,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   /** the cut a hidden head was already cut again for: once per cut, the second frame is kept (Koshakan k8 37–40 s:
    *  Mirai's face to the wall, every new frame lost her too and the camera jumped every half second) */
   let hiddenRecutOf = -1;
+  /** ... and the clock of the last one: recuts are asl.min apart however the cut id grows (k10 23.7–25.2 s: three in
+   *  1.5 s while Mama sat down and the cut id ran from 5 to 29) */
+  let hiddenRecutAt = -Infinity;
   let moveStart = 0;
   let moveRoom: string | null = null;
   /** accent styles: the last base frame on screen and when its cut began */
@@ -534,9 +537,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
       return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - speaker.pos[0], o.cam[2] - speaker.pos[1]]) > NARRATION_FACE_OK;
     };
-    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hiddenRecutOf !== cutSeq && (hidesHead(out) || showsBack(out));
+    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hiddenRecutOf !== cutSeq && clock - hiddenRecutAt >= style.asl[0] && (hidesHead(out) || showsBack(out));
     if (baseHidden) {
       hiddenRecutOf = cutSeq;
+      hiddenRecutAt = clock;
       lostTried = true;
       moveCut = NaN;
       recut = true;  // its own cut id: the runtime cuts to the new frame, it does not glide out of the hidden one
@@ -578,9 +582,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !probePoints(a, h).every((q) => inp.clear!(cam, q));
       });
       hiddenFor = lost ? hiddenFor + (ev.dt ?? 0) : 0;
-      if (hiddenFor >= HIDDEN_RECUT_S && hiddenRecutOf !== cutSeq) {
+      if (hiddenFor >= HIDDEN_RECUT_S && hiddenRecutOf !== cutSeq && clock - hiddenRecutAt >= style.asl[0]) {
         hiddenFor = 0;
         hiddenRecutOf = cutSeq;
+        hiddenRecutAt = clock;
         // ... and it is the one try of this cut: the lost-head recut does not cut it again
         lostTried = true;
         recut = true;
@@ -804,7 +809,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         else {
           // unblock stays at the style's height (Koshakan k9 4.8 s: lying Mirai's face to the wall, it climbed to 2.4 m
           // and the opening narration looked down on Mama's head)
-          const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, { ...cameraLaw, height: Math.min(cameraLaw.height, hi + 0.1) });
+          // ... and off the bodies: a clear point only at a body (k10 3.7 s: 0.6 m from Mirai, Mama's back and her head
+          // cut) loses to a plain frame holding every head
+          const capped = { ...cameraLaw, height: Math.min(cameraLaw.height, hi + 0.1) };
+          const base = good ?? [b0, wide].find(ok) ?? unblockAt(wide, inp, snap, capped, true) ?? [b0, wide].find(sees) ?? unblock(wide, inp, snap, capped);
           curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
           trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
           trackMove = curMove;
@@ -1075,6 +1083,10 @@ export function cleanEdges<T extends DirectorOut>(out: T, crew: DActor[], aspect
 /** A blocked frame turns about its look point (smallest turn first, so the 180° side mostly holds), rises, and
  *  moves in or out, until the probe sees the subject; no clear spot in the room -> legal fallback. */
 export function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law: CameraLaw): DirectorOut {
+  return unblockAt(out, inp, snap, law, false) ?? { ...out, cam: legalCameraPoint(out.cam, law) };
+}
+/** unblock, `offOnly`: only points 1.2 m off every body, none -> null (the fallback then keeps a plain frame) */
+function unblockAt(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law: CameraLaw, offOnly: boolean): DirectorOut | null {
   const probe = inp.clear;
   if (!probe) return out;
   // the probe is asked about the heads the frame holds, not its look point (Squidward v18 20–22 s: a two-shot looked
@@ -1095,7 +1107,7 @@ export function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law:
   // first a point 1.2 m from everybody, then anywhere: the 0.55 ring about a follow's look point (1 m ahead of the
   // walker) is 0.9 m behind him, over his head (Squidward, Nov 3: the frame was the top of Squidward's head)
   const offBodies = (c: V3): boolean => inp.actors.every((a) => a.offstage || Math.hypot(c[0] - a.pos[0], c[2] - a.pos[1]) >= UNBLOCK_OFF_BODY);
-  for (const keepOff of [true, false])
+  for (const keepOff of offOnly ? [true] : [true, false])
   for (const a of [0, 15, -15, 30, -30, 45, -45, 60, -60, 90, -90, 120, -120])
     for (const dy of [0, 0.35, 0.7, 1.1])
       for (const k of [1, 0.75, 1.3, 0.55]) {
@@ -1114,7 +1126,7 @@ export function unblock(out: DirectorOut, inp: DirectorInput, snap: SnapFn, law:
         if (keepOff && !offBodies(c)) continue;
         if (clear(c, L)) return { ...out, cam: c };
       }
-  return { ...out, cam: legalCameraPoint(out.cam, law) };
+  return null;
 }
 
 function nearestOther(crew: DActor[], s: DActor): DActor | undefined {

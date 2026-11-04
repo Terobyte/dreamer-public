@@ -30,3 +30,21 @@ describe("a frame that hides a head is cut again once", () => {
     });
   }
 });
+
+describe("hidden-head recuts are at least the style's shortest plan apart", () => {
+  // Koshakan k10 23.7–25.2 s: three recuts in 1.5 s; the cut id grew under them (Mama sitting down), so the
+  // once-per-cut cap never held. However the cut id grows, a recut waits asl.min (storybook 5 s) after the last one.
+  for (const seed of [0.1, 0.5, 0.9]) {
+    it(`rng ${seed}: a new beat every 10 ticks for 3 s, Mirai's face hidden -> at most one recut`, () => {
+      const d = createDirector(() => seed, { style: "storybook" });
+      d.step({ ...IN, event: { ...tick, dt: 0.017 }, clear: wall });
+      let o = d.step({ ...IN, event: { ...tick, tags: { last: true } } as DirectorInput["event"], clear: wall });
+      const recuts = new Set<number>();
+      for (let k = 0; k < 3 * 60; k++) {
+        o = d.step({ ...IN, event: { ...tick, beat: Math.floor(k / 10) } as DirectorInput["event"], clear: wall });
+        if (o.cut % 1 !== 0) recuts.add(o.cut);
+      }
+      expect(recuts.size, JSON.stringify([...recuts])).toBeLessThanOrEqual(1);
+    });
+  }
+});
