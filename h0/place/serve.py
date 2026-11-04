@@ -13,6 +13,8 @@ import argparse
 import atexit
 import io
 import json
+import urllib.parse
+import re
 import mimetypes
 import threading
 import time
@@ -75,14 +77,24 @@ def make_handler(run: Path):
             self.end_headers()
             self.wfile.write(b)
 
+        def _safe(self, base: Path, rel: str):
+            """a file under base only: '..' and absolute paths (raw or %-encoded) never leave it"""
+            p = (base / urllib.parse.unquote(rel).lstrip("/")).resolve()
+            b = base.resolve()
+            return self._file(p) if p.is_relative_to(b) else self.send_error(404)
+
         def do_GET(self):
+            if (self.headers.get("Host") or "").split(":")[0] not in ("localhost", "127.0.0.1"):
+                return self.send_error(403)   # DNS rebinding: a foreign name pointed at 127.0.0.1
             path = self.path.split("?")[0]
             if path.startswith("/host/"):
-                return self._file(HOST_DIR / path[6:])
+                return self._safe(HOST_DIR, path[6:])
             if path.startswith("/parts/"):
-                return self._file(run / path.lstrip("/"))
+                return self._safe(run / "parts", path[7:])
             if path.startswith("/part/"):
                 wid = path[6:]
+                if not re.fullmatch(r"w[0-9a-z]{1,20}", wid):
+                    return self.send_error(404)
                 part = run / "parts" / wid
                 lines = (part / "progress.jsonl").read_text().splitlines() if (part / "progress.jsonl").exists() else []
                 last = json.loads(lines[-1]) if lines else {"pct": 0, "stage": "queued"}
@@ -91,8 +103,7 @@ def make_handler(run: Path):
                                    "failed": last.get("stage") == "failed", "text": jobs.get(wid, {}).get("text")})
             if path == "/frame.json":
                 return self._file(run / "frame.json")
-            rel = path.lstrip("/") or "index.html"
-            return self._file(dist / rel)
+            return self._safe(dist, path.lstrip("/") or "index.html")
 
         def _same_origin(self, ctype):
             """only this page may spend money: host is local, origin (if sent) is ours, and a non-simple
