@@ -136,6 +136,8 @@ export const SCHEMES: Record<string, { id: string; meaning: string }> = {
 
 // ---- math ----
 const DEG = Math.PI / 180;
+/** the frame check's edge (okAt: |ndc| <= 0.85): a walk shot sizes its distance so the tallest walker fits inside it */
+const WALK_FRAME_NDC = 0.85;
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -220,6 +222,8 @@ interface Geo {
   lookActor: string | null;
   /** world point the camera looks at, if not `aim` (pair: midpoint of the heads) */
   lookAt?: (w: number) => V3;
+  /** offset of the look from the lookActor's head (a walk group: aimed at the group's middle height, still riding the bone) */
+  lookO?: V3;
   noFace: boolean;
   /** pan / tilt: look goes from p0 (ref r0) to p1 (ref r1), the camera stands */
   turn?: { p0: V3; p1: V3; r0: ShotLook; r1: ShotLook };
@@ -271,7 +275,19 @@ function geoOf(spec: Spec, faceMove: boolean, subject: MoveSubject, ctx: Ctx, wa
         if (segBox([a.pos[0], y, a.pos[1]], [w.to[0], y, w.to[1]], bx)) return "NOWALK";
       }
       const aimAt = (u: number): V3 => [h[0] + dx * u, h[1], h[2] + dz * u];
-      return { kind: "actor", aim: aimAt, base: bearing(dx, dz), hBase: h[1], dAdd: 0, frame: (u) => [aimAt(u)], limit: () => 100, lying: [], lookActor: a.name, noFace: spec.walk === "behind" || spec.walk === "lead" };
+      // every walker of the beat is framed whole, head to feet (v37/v38 street: the one beside the held walker stood
+      // a metre off the lens, two frame heights tall); the camera stands back as far as the tallest body needs at
+      // this fov, plus how far apart they walk
+      const group = ctx.actors.filter((x) => !x.offstage && (x.name === a.name || ctx.walk?.[x.name]));
+      const along = (x: DActor, y: number, u: number): V3 => {
+        const t = ctx.walk?.[x.name]?.to ?? x.pos;
+        return [x.pos[0] + (t[0] - x.pos[0]) * u, y, x.pos[1] + (t[1] - x.pos[1]) * u];
+      };
+      const tall = Math.max(...group.map((x) => headOf(x, floorY)[1] - floorY));
+      const spread = Math.max(0, ...group.map((x) => Math.hypot(x.pos[0] - a.pos[0], x.pos[1] - a.pos[1])));
+      const need = tall / (2 * WALK_FRAME_NDC * Math.tan((ctx.fov * DEG) / 2)) + spread;
+      const frame = (u: number): V3[] => group.flatMap((x) => [along(x, headOf(x, floorY)[1], u), along(x, floorY, u)]);
+      return { kind: "actor", aim: aimAt, base: bearing(dx, dz), hBase: Math.max(h[1], floorY + tall / 2), dAdd: Math.max(0, need - spec.d[0]), frame, lookO: [0, floorY + tall / 2 - h[1], 0], limit: () => 100, lying: [], lookActor: a.name, noFace: spec.walk === "behind" || spec.walk === "lead" };
     }
     if (spec.pan || spec.tilt) return turnGeo(spec, a, ctx.actors.find((x) => x.name !== a.name && !x.offstage), ctx);
     const frame = a.lying ? [h, hipsOf(a, floorY)] : [h];
@@ -424,7 +440,7 @@ function build(e: Env, shift: number, scale: number, flip: 1 | -1): { from: Pt; 
         o = [r[0] * k, 0, r[2] * k];
       } else o = [0, dd * Math.tan((spec.tilt ?? 0) * DEG), 0];
     }
-    return { pos, fov: clampN(ctx.fov + spec.f[w] + (e.fovAdd ?? 0), 15, 90), o, lookW: g.turn ? (w ? g.turn.p1 : g.turn.p0) : ((l) => [l[0] + o[0], l[1] + o[1], l[2] + o[2]] as V3)(g.lookAt ? g.lookAt(w) : aim), ref: g.turn ? (w ? g.turn.r1 : g.turn.r0) : undefined };
+    return { pos, fov: clampN(ctx.fov + spec.f[w] + (e.fovAdd ?? 0), 15, 90), o, lookW: g.turn ? (w ? g.turn.p1 : g.turn.p0) : ((l) => [l[0] + o[0], l[1] + o[1], l[2] + o[2]] as V3)(g.lookAt ? g.lookAt(w) : g.lookO ? [aim[0] + g.lookO[0], aim[1] + g.lookO[1], aim[2] + g.lookO[2]] : aim), ref: g.turn ? (w ? g.turn.r1 : g.turn.r0) : undefined };
   };
   const from = mk(0);
   return { from, full: e.spec.d[0] === e.spec.d[1] && spec.az[0] === spec.az[1] && spec.h[0] === spec.h[1] && spec.f[0] === spec.f[1] && !spec.pan && !spec.tilt && !spec.walk ? null : mk(1) };
@@ -486,7 +502,7 @@ function searchOnce(e: Env): Found | null {
 
 const toPoint = (p: Pt, g: Geo, world: boolean): ShotPoint => ({
   pos: p.pos,
-  look: p.ref ? p.ref : g.lookActor && !world ? { actor: g.lookActor, bone: "head", o: [0, 0, 0] } : (p.lookW as ShotLook),
+  look: p.ref ? p.ref : g.lookActor && !world ? { actor: g.lookActor, bone: "head", o: g.lookO ?? [0, 0, 0] } : (p.lookW as ShotLook),
   fov: p.fov,
 });
 
