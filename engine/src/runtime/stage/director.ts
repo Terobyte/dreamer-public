@@ -111,6 +111,8 @@ const WIDE_FACE_OK = 100;
 const BODY_R = 0.3, LENS_HEAD = 0.4;
 /** off a spoken line: the camera stays within this many degrees of a standing subject's face */
 const NARRATION_FACE_OK = 120;
+/** how far from the lens anyone else in a two or a close may turn her face (Koshakan meadow: Mirai 117–131°), deg */
+const OTHER_BACK_OK = 110;
 /** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
 const WIDE_SWING = 60;
 /** the wide's camera height above the floor (metres) and its largest look down (degrees) */
@@ -542,12 +544,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     });
     /** a plan on a standing subject taken from behind her (Koshakan k2 27–29 s: the base two-shot over Mama's back
      *  while the narrator read about her); a wide and a walker are let be */
+    // ... and nobody else in it shows the lens her back (Koshakan full f1, meadow 259–291 s: the two and the close on
+    // Mama held Mirai's back 117–131° for 8 s, the film's last minute); the ots's near shoulder is its point
     const showsBack = (o: DirectorOut): boolean => {
-      if (o.plan === "wide" || o.plan === "master" || speaker.walking || speaker.offstage) return false;
-      const fd = faceDir(speaker);
-      if (!fd) return false;
-      const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
-      return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - speaker.pos[0], o.cam[2] - speaker.pos[1]]) > NARRATION_FACE_OK;
+      if (o.plan === "wide" || o.plan === "master" || o.plan === "ots") return false;
+      return crew.some((a) => {
+        if (a.walking || a.offstage) return false;
+        const fd = faceDir(a);
+        if (!fd) return false;
+        const p = ndcOf(a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
+        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - a.pos[0], o.cam[2] - a.pos[1]]) > (a === speaker ? NARRATION_FACE_OK : OTHER_BACK_OK);
+      });
     };
     const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hiddenRecutOf !== cutSeq && clock - hiddenRecutAt >= style.asl[0] && (hidesHead(out) || showsBack(out));
     if (baseHidden) {
