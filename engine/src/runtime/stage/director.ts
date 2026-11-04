@@ -414,6 +414,17 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       closeLineAxis = isClose ? faceOf(speaker.yaw) : null;
       closeLineOrigin = isClose ? [speaker.pos[0], speaker.pos[1]] : null;
       const dur = ev.durationS ?? 0;
+      // a narration longer than the style's longest plan is cut into even pieces, each the picture book's next plan
+      // (Koshakan k5 3.8–15.3 s: 10.4 s of narration over one still wide, then the same wide again)
+      if (ev.kind === "narrator" && !explicitPlan && walkers.length === 0 && dur > style.asl[1]) {
+        const n = Math.ceil(dur / style.asl[1]);
+        let prev: Plan = p;
+        for (let k = 1; k < n; k++) {
+          const np: Plan[] = ["close", "dolly", "orbit"];
+          prev = crew.length < 2 || maxSpan(crew) > 4 ? "wide" : prev !== "two" ? "two" : np[Math.floor(rng() * np.length) % np.length];
+          pending.push({ at: clock + (dur * k) / n, plan: prev, listener: false });
+        }
+      }
       if (ev.kind === "line" && listener && dur > LONG_LINE && p !== "orbit" && p !== "dolly") {
         pending = [
           { at: clock + dur * REACT_AT, plan: "close", listener: true },
