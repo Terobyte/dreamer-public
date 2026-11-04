@@ -558,6 +558,20 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - a.pos[0], o.cam[2] - a.pos[1]]) > (a === speaker ? NARRATION_FACE_OK : OTHER_BACK_OK);
       });
     };
+    /** someone's body right over the lens in front of the frame's subjects (Koshakan f7 bedroom 34–42 s: the fallback
+     *  close on Mama across lying Mirai 0.95 m off, her legs and tutu half the frame for 8 s); lying actors have no face
+     *  direction, so no back rule sees them. The ots's near shoulder is its point. */
+    const foreBody = (o: DirectorOut, who: DActor[]): boolean => {
+      if (o.plan === "ots" || !who.length) return false;
+      const f = o.fov ?? 50, asp = inp.aspect ?? 16 / 9;
+      const hd = (a: DActor): V3 => a.head ?? ([a.pos[0], floorY + a.height * 0.93, a.pos[1]] as V3);
+      const far = Math.max(...who.map((a) => ndcOf(hd(a), o.cam, o.look, f, asp).depth));
+      return crew.some((a) => {
+        if (a.walking || a.offstage) return false;
+        const p = ndcOf(hd(a), o.cam, o.look, f, asp);
+        return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && p.depth < far - 0.3 && a.height / (2 * p.depth * Math.tan((f * DEG) / 2)) > BACK_FILL;
+      });
+    };
     const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hiddenRecutOf !== cutSeq && clock - hiddenRecutAt >= style.asl[0] && (hidesHead(out) || showsBack(out));
     if (baseHidden) {
       hiddenRecutOf = cutSeq;
@@ -801,6 +815,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
             if (Math.hypot(cam[0] - look[0], cam[2] - look[2]) < 1.2) continue;
             if (!inView(pair, cam, look, fov) || !faces(cam)) continue;
             if (inp.clear && !pair.every((a, i) => probePoints(a, hs[i]!).every((q) => inp.clear!(cam, q)))) continue;
+            if (foreBody({ ...out, plan: "two", cam, look, fov }, pair)) continue;
             const score = angleBetween(sf, [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]]) + Math.abs(d - 2.2) * 10;
             if (!best || score < best.score) best = { o: { ...out, plan: "two", cam, look, fov }, score };
           }
@@ -848,7 +863,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         // ... about every head in the frame, not the subjects only: the hidden-head recut fires on anyone in frame
         // (Squidward v53 66.6–72.1 s: the close on SpongeBob failed, the wide behind the easel passed for him alone,
         // and the recut for Squidward's face behind the canvas landed on it again and again)
-        const ok = (o: DirectorOut): boolean => sees(o) && seesAll(who, o.cam) && !hidesHead(o);
+        const ok = (o: DirectorOut): boolean => sees(o) && seesAll(who, o.cam) && !hidesHead(o) && !foreBody(o, who);
         const good = [b0, wide].find((o) => ok(o) && faces(o.cam)) ?? faceTwo();
         // a pair no clear frame holds (Squidward 25 s: SpongeBob at the door 4.4 m off, chairs between): the speaker's
         // close, before a base frame that shows the chairs
