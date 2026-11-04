@@ -50,3 +50,18 @@ describe("the probe asks about a lying face, not the head bone in the pillow", (
     });
   }
 });
+
+describe("a line is shot from where the speaker will look: at her listener", () => {
+  // Koshakan k8 29–37 s: at the cut Mama's face was at 21°, the camera stood at −42°; on her line she turned to Mirai
+  // (face 60–83°) and the frame was the back of her head. The speaker's face turns to whom she speaks to.
+  const to = (a: [number, number], b: [number, number]): number => (Math.atan2(b[0] - a[0], b[1] - a[1]) * 180) / Math.PI;
+  for (const seed of [0.1, 0.5, 0.9]) {
+    it(`rng ${seed}: the camera within 100° of Mama-to-Mirai`, () => {
+      const d = createDirector(() => seed, { style: "storybook" });
+      let o = d.step({ ...INPUTS[0], clear: replayProbe(INPUTS[0].blocked ?? []) });
+      for (const i of INPUTS.slice(1)) o = d.step({ ...i, clear: replayProbe(i.blocked ?? []) });
+      const diff = Math.abs(((to(mama.pos, [o.cam[0], o.cam[2]]) - to(mama.pos, mirai.pos) + 540) % 360) - 180);
+      expect(diff, `cam ${o.cam} plan ${o.plan}`).toBeLessThanOrEqual(100);
+    });
+  }
+});

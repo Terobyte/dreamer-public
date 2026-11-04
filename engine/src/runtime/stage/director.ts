@@ -230,6 +230,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
   let trackMove: object | null = null;
   let recuts = 0;
   let recut = false;
+  /** the cut a hidden head was already cut again for: once per cut, the second frame is kept (Koshakan k8 37–40 s:
+   *  Mirai's face to the wall, every new frame lost her too and the camera jumped every half second) */
+  let hiddenRecutOf = -1;
   let moveStart = 0;
   let moveRoom: string | null = null;
   /** accent styles: the last base frame on screen and when its cut began */
@@ -529,8 +532,10 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       const p = ndcOf(speaker.head ?? ([speaker.pos[0], floorY + speaker.height * 0.93, speaker.pos[1]] as V3), o.cam, o.look, o.fov ?? 50, inp.aspect ?? 16 / 9);
       return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && angleBetween(fd, [o.cam[0] - speaker.pos[0], o.cam[2] - speaker.pos[1]]) > NARRATION_FACE_OK;
     };
-    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && (hidesHead(out) || showsBack(out));
+    const baseHidden = !!style.accent && !accentBeat && (curMove === null || cutSeq !== moveCut) && hiddenRecutOf !== cutSeq && (hidesHead(out) || showsBack(out));
     if (baseHidden) {
+      hiddenRecutOf = cutSeq;
+      lostTried = true;
       moveCut = NaN;
       recut = true;  // its own cut id: the runtime cuts to the new frame, it does not glide out of the hidden one
     }
@@ -571,8 +576,11 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         return p.depth > 0.2 && Math.abs(p.x) <= 1 && Math.abs(p.y) <= 1 && !probePoints(a, h).every((q) => inp.clear!(cam, q));
       });
       hiddenFor = lost ? hiddenFor + (ev.dt ?? 0) : 0;
-      if (hiddenFor >= HIDDEN_RECUT_S) {
+      if (hiddenFor >= HIDDEN_RECUT_S && hiddenRecutOf !== cutSeq) {
         hiddenFor = 0;
+        hiddenRecutOf = cutSeq;
+        // ... and it is the one try of this cut: the lost-head recut does not cut it again
+        lostTried = true;
         recut = true;
         moveCut = NaN;
       }
@@ -629,9 +637,13 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
       // off a line (narration, a walk, a recut) a standing subject is not shot from behind either, with a looser limit;
       // a walker may be followed (Koshakan k2 27–29 s: "Mama bent down..." over the back of her head)
       const nf = !sf && !speaker.walking && !speaker.offstage ? faceDir(speaker) : null;
+      // ... and where her face will turn: to whom she speaks (Koshakan k8 29–37 s: face 21° at the cut, the camera at
+      // −42°; she turned to Mirai, 60–83°, and the line was the back of her head)
+      const tl: V2 | null = sf && listener ? [listener.pos[0] - speaker.pos[0], listener.pos[1] - speaker.pos[1]] : null;
+      const turns = tl && Math.hypot(tl[0], tl[1]) > 0.3 ? tl : null;
       const faces = (cam: V3): boolean => {
         const to: V2 = [cam[0] - speaker.pos[0], cam[2] - speaker.pos[1]];
-        if (sf) return angleBetween(sf, to) <= WIDE_FACE_OK;
+        if (sf) return angleBetween(sf, to) <= WIDE_FACE_OK && (!turns || angleBetween(turns, to) <= WIDE_FACE_OK);
         return !nf || angleBetween(nf, to) <= NARRATION_FACE_OK;
       };
       /** the probe sees every subject's head from `cam` (no probe: always) */
