@@ -788,6 +788,12 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     if (curMove && !curMove.end && moveStart === clock && walkers.length) {
       const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name, curMove.fov, inp.clear ? (c) => inp.clear!([c[0], curMove!.cam[1], c[1]], curMove!.look) : undefined);
       if (q[0] !== curMove.cam[0] || q[1] !== curMove.cam[2]) curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
+      // where it could not stand back far enough, the frame widens for the walker it holds
+      const held = walkers.find((w) => w.name === speaker.name);
+      if (held) {
+        const f = fovToHoldWalker(q, curMove.fov ?? 50, held);
+        if (f > (curMove.fov ?? 50) + 1e-6) curMove = { ...curMove, fov: f };
+      }
     }
     if (!curMove) return out;
     // a still frame turns after a walking speaker, the director's fallback's or a move that came out still (v24 141–145 s)
@@ -929,6 +935,19 @@ export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V
     if (!moved) break;
   }
   return c;
+}
+
+/** The fov a still camera at `c` needs to hold a walker whole (head to feet inside WALK_FRAME_NDC) where his walk
+ *  comes nearest it; never narrower than `fov`, never wider than 90° (v43 145.7 s: the pineapple's wall kept the
+ *  camera 1.2 m off Squidward's path, at fov 44 his back was two frame heights). */
+export function fovToHoldWalker(c: V2, fov: number, w: DActor): number {
+  const g = walkGoal(w);
+  const [dx, dz] = [g[0] - w.pos[0], g[1] - w.pos[1]];
+  const L2 = dx * dx + dz * dz;
+  const t = L2 > 1e-9 ? Math.max(0, Math.min(1, ((c[0] - w.pos[0]) * dx + (c[1] - w.pos[1]) * dz) / L2)) : 0;
+  const near = Math.max(0.3, Math.hypot(c[0] - w.pos[0] - dx * t, c[1] - w.pos[1] - dz * t));
+  const need = (2 * Math.atan(w.height / (2 * WALK_FRAME_NDC * near))) / DEG;
+  return Math.min(90, Math.max(fov, need));
 }
 
 /** capTilt for a director that holds its frames: a still frame (the same cut, the camera where the director left it)
