@@ -110,7 +110,11 @@ def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: P
 
     rooms, props, walls, decals = [], [], [], []
     levels = [{"id": "L0", "y": 0}, {"id": "L1", "y": fh + 0.6}]
-    yard = plan["yard"]
+    yard = list(plan["yard"])
+    # a Street View pano is a spot someone stood in the yard: the yard reaches at least 3 m around each one
+    for c in cameras or []:
+        cs, cn = c["pos"][0], -c["pos"][2]
+        yard = [min(yard[0], cs - 3), max(yard[1], cs + 3), min(yard[2], max(0.0, cn - 3)), max(yard[3], cn + 3)]
     yard_rooms = []
     # ---- buildings: the main house is two stacked rooms (ground floor + the rest) so it gets two facades ----
     others = 0
@@ -242,8 +246,9 @@ def compile_scene(feat, plan, layout, sn: SN, house_name, refs: Path, out_dir: P
         "outdoor": {"sky": "s_sky", "ground": {"material": "lawn", "radius": 160, "fade": 50}},
         "lights": [{"kind": "sun", "dir": [-0.4, -1.0, -0.3], "intensity": 1.2, "castShadow": False}],
     }
-    if cameras:
-        scene["cameras"] = cameras
+    if cameras:   # a pano that lands inside a building footprint (OSM error) is left out of the sheet
+        inside = lambda c: any(Polygon(r["shape"]).contains(Point(c["pos"][0], c["pos"][2])) for r in rooms if r.get("open"))
+        scene["cameras"] = [c for c in cameras if inside(c)]
     ov = out_dir.parent / "overrides.json"          # the critic's new prompts (look -> fix)
     if ov.exists():
         for k, prompt in json.loads(ov.read_text()).get("assets", {}).items():

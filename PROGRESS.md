@@ -20,6 +20,12 @@
 
 _Обновлено: 2026-11-02_
 
+## Двор движком + диктовка магазина (Nov 4, Claude без tero)
+
+- `cd h0 && python3 -m place --run ../runs/<run> --lat 50.40734 --lon 80.25444 --yard-at -18.4,57.4 --house "Козбагарова 7" --refs ~/.dreamer-bench/tasks/03-kozb7-yard/refs/clean`: OSM + спутник + Street View → Spark read/plan → scene.json → Muse/SAM3D → build → critic → rebuild. Проверено с нуля в `runs/yard-kozb7-fresh` (около 16 мин), лист `sheet.jpg`.
+- Диктовка: `python3 -m place.serve ../runs/yard-kozb7 --port 18811 [--warm]`, держать пробел (или клик по пилюле), Meta ASR → магазин пристраивается к первому этажу дома, над стройкой честный процент и ETA. e2e: `runs/yard-kozb7/e2e2/` (159 с, надпись больше не зеркальная).
+- Для подписи в ролике: магазин около 2.5 мин, двор около 16 мин без кэша.
+
 ## Дедлайны
 - **Nov 4, 21:00 ET** — Meta AI hackathon, Indie track (сабмит + видео).
 - **Nov 18** — VR Start (Devpost). Железа нет, только эмуляторы (IWER).
