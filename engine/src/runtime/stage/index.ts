@@ -5,6 +5,7 @@ import type { HeldSpec } from "./held.js";
 import { aliasesOf, clipForBeat, fitStaged, idleAfterClip, idleForPose, stagedClips, startStaged } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { MOVES, SCHEMES, RECORDS, type MoveSubject } from "./moves.js";
+import { tapeProbe } from "./probe-tape.js";
 import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
@@ -1447,6 +1448,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (ev.kind !== "line" && ev.kind !== ("walk" as string)) ev.speaker = undefined;
       ev.room = f.room;
       stepBodies = camBodies();
+      // the probe's "no"s ride with the inputs: a replay answers from them (probe-tape.ts)
+      const tape = tapeProbe(seesPast);
       const out = director.step({
         event: ev,
         actors: here,
@@ -1454,10 +1457,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         rng,
         fov: directorFov ?? c.camera.fov,
         aspect: c.camera.aspect,
-        clear: seesPast,
+        clear: tape.clear,
       });
       if (isLast) s = out;
-      dirInputs.push(r3({ event: ev, actors: here, room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY }, fov: directorFov ?? c.camera.fov, aspect: c.camera.aspect }));
+      dirInputs.push({ ...(r3({ event: ev, actors: here, room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY }, fov: directorFov ?? c.camera.fov, aspect: c.camera.aspect }) as object), blocked: tape.blocked });
       if (dirInputs.length > 60) dirInputs.shift();
       dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };
       if (out.cut !== dirCut) {
