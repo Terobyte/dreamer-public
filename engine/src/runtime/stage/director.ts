@@ -18,6 +18,8 @@ export interface DActor {
   walking: boolean;
   /** metres of route still ahead while walking; none = unknown (counts as a long walk) */
   walkLeft?: number;
+  /** where the route ends (the runtime's real goal); none = guessed from yaw x walkLeft */
+  walkTo?: V2;
   /** measured head point (world, smoothed): seated or lying, the head is not at height × 0.9 above `pos` */
   head?: V3;
   /** the face: between the head bone and the eye (a box figure's head bone sits mid-body); the sight probe and the
@@ -659,7 +661,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
             actors: crew, room: inp.room, fov: (style.fov[0] + style.fov[1]) / 2, aspect: inp.aspect ?? 16 / 9,
             durationS: ev.durationS ?? style.asl[0], rng: cutRng, speaker: whoName, clear: inp.clear,
             // a walker's straight route: where it ends, from its heading and what is left of the walk
-            walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: [a.pos[0] + Math.sin(a.yaw * DEG) * (a.walkLeft ?? 2), a.pos[1] + Math.cos(a.yaw * DEG) * (a.walkLeft ?? 2)] as V2 }])),
+            walk: Object.fromEntries(crew.filter((a) => a.walking).map((a) => [a.name, { to: walkGoal(a) }])),
             side: st.side && st.origin && st.normal ? { origin: st.origin, normal: st.normal, sign: st.side } : undefined,
           });
           if (forced && r.warnings.includes("MOVE_NO_LEGAL_POINT")) return null;
@@ -883,13 +885,22 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
  *  the one the frame holds (`held`), OTHER_PATH_CLEAR_M off anyone else (v36 141–143.5 s: Squidward trudging 1.2 m past
  *  a 1.1 m high camera was a body filling the frame). Pushed out from the nearest point of a path it stands on, a few
  *  passes for paths that cross. */
+/** where a walker's route ends: the runtime's goal, else guessed from where it faces (Squidward v39 149.6 s: he came
+ *  into the pineapple facing south, his route went south-east; a follow beside the guess stood on his real path) */
+export function walkGoal(a: DActor): V2 {
+  if (a.walkTo) return a.walkTo;
+  const L = a.walkLeft ?? 2;
+  return [a.pos[0] + Math.sin(a.yaw * DEG) * L, a.pos[1] + Math.cos(a.yaw * DEG) * L];
+}
 export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string): V2 {
   let c = c0;
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
     for (const w of walkers) {
-      const f = faceOf(w.yaw);
-      const L = Math.max(0.5, w.walkLeft ?? 2);
+      const g = walkGoal(w);
+      const gl = Math.hypot(g[0] - w.pos[0], g[1] - w.pos[1]);
+      const f: V2 = gl > 1e-6 ? [(g[0] - w.pos[0]) / gl, (g[1] - w.pos[1]) / gl] : faceOf(w.yaw);
+      const L = Math.max(0.5, gl);
       const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
       const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
       const off = Math.hypot(c[0] - near[0], c[1] - near[1]);

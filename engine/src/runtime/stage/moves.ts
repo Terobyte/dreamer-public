@@ -138,6 +138,8 @@ export const SCHEMES: Record<string, { id: string; meaning: string }> = {
 const DEG = Math.PI / 180;
 /** the frame check's edge (okAt: |ndc| <= 0.85): a walk shot sizes its distance so the tallest walker fits inside it */
 const WALK_FRAME_NDC = 0.85;
+/** a walk shot's camera stands at least this far off every walker's path (director PATH_CLEAR_M) */
+const WALK_PATH_CLEAR_M = 1.2;
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -224,6 +226,8 @@ interface Geo {
   lookAt?: (w: number) => V3;
   /** offset of the look from the lookActor's head (a walk group: aimed at the group's middle height, still riding the bone) */
   lookO?: V3;
+  /** walk shots: the walkers' paths (floor segments) the camera keeps WALK_PATH_CLEAR_M off at every sample */
+  keepOff?: [V2, V2][];
   noFace: boolean;
   /** pan / tilt: look goes from p0 (ref r0) to p1 (ref r1), the camera stands */
   turn?: { p0: V3; p1: V3; r0: ShotLook; r1: ShotLook };
@@ -289,7 +293,7 @@ function geoOf(spec: Spec, faceMove: boolean, subject: MoveSubject, ctx: Ctx, wa
       const spread = Math.max(0, ...group.map((x) => Math.hypot(x.pos[0] - a.pos[0], x.pos[1] - a.pos[1])));
       const need = tall / (2 * WALK_FRAME_NDC * Math.tan((ctx.fov * DEG) / 2)) + spread;
       const frame = (u: number): V3[] => group.flatMap((x) => [along(x, headOf(x, floorY)[1], u), along(x, floorY, u)]);
-      return { kind: "actor", aim: aimAt, base: bearing(dx, dz), hBase: Math.max(h[1], floorY + tall / 2), dAdd: Math.max(0, need - spec.d[0]), frame, lookO: [0, floorY + tall / 2 - h[1], 0], limit: () => 100, lying: [], lookActor: a.name, noFace: spec.walk === "behind" || spec.walk === "lead" };
+      return { kind: "actor", aim: aimAt, base: bearing(dx, dz), hBase: Math.max(h[1], floorY + tall / 2), dAdd: Math.max(0, need - spec.d[0]), frame, lookO: [0, floorY + tall / 2 - h[1], 0], keepOff: group.filter((x) => ctx.walk?.[x.name]).map((x) => [x.pos, ctx.walk![x.name]!.to] as [V2, V2]), limit: () => 100, lying: [], lookActor: a.name, noFace: spec.walk === "behind" || spec.walk === "lead" };
     }
     if (spec.pan || spec.tilt) return turnGeo(spec, a, ctx.actors.find((x) => x.name !== a.name && !x.offstage), ctx);
     const frame = a.lying ? [h, hipsOf(a, floorY)] : [h];
@@ -367,6 +371,7 @@ function faceAngle(a: DActor, head: V3, cam: V3): number {
 function okAt(e: Env, pos: V3, lookW: V3, fov: number, u: number, checkClear: boolean): boolean {
   const { ctx } = e;
   if (!okPoint(e, pos)) return false;
+  for (const [p0, p1] of e.g.keepOff ?? []) if (segDist2([pos[0], pos[2]], [pos[0], pos[2]], p0, p1) < WALK_PATH_CLEAR_M - 1e-9) return false;
   for (const p of e.g.frame(u)) {
     const n = ndcOf(p, pos, lookW, fov, ctx.aspect);
     if (n.depth < 0.1 || Math.abs(n.x) > 0.85 || Math.abs(n.y) > 0.85) return false;

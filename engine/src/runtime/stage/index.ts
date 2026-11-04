@@ -391,6 +391,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
         room: f?.room ?? null,
         walking: a.moving(),
         walkLeft: a.walkLeft?.(),
+        walkTo: a.walkTo?.() ?? undefined,
         lying,
         offstage: offstageActors.has(a.who),
       };

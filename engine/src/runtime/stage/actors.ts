@@ -64,6 +64,8 @@ export interface Actor {
   moving(): boolean;
   /** metres of route still ahead (0 when standing or only turning) */
   walkLeft(): number;
+  /** where the route ends (null when standing) */
+  walkTo(): V2 | null;
   /** collision capsule radius (Н9, `capsuleRadius`) */
   radius(): number;
   /** put the actor on a point (collision push, Н9): no walking, the walk goes on from there */
@@ -326,6 +328,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       for (const q of path) (s += Math.hypot(q[0] - p[0], q[1] - p[1])), (p = q);
       return s;
     },
+    walkTo: () => (path.length ? ([...path[path.length - 1]] as V2) : null),
     radius: () => radius,
     shove(nx, nz) {
       x = nx;
