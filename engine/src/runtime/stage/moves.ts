@@ -278,7 +278,9 @@ function geoOf(spec: Spec, faceMove: boolean, subject: MoveSubject, ctx: Ctx, wa
       // every walker of the beat is framed whole, head to feet (v37/v38 street: the one beside the held walker stood
       // a metre off the lens, two frame heights tall); the camera stands back as far as the tallest body needs at
       // this fov, plus how far apart they walk
-      const group = ctx.actors.filter((x) => !x.offstage && (x.name === a.name || ctx.walk?.[x.name]));
+      // ...and one standing nearer the walker than the camera stands is in the shot anyway (v39 141 s: Squidward set
+      // off a beat after the cut, not a walker yet, and walked in by the lens with his head cut off)
+      const group = ctx.actors.filter((x) => !x.offstage && (x.name === a.name || ctx.walk?.[x.name] || Math.hypot(x.pos[0] - a.pos[0], x.pos[1] - a.pos[1]) < spec.d[0]));
       const along = (x: DActor, y: number, u: number): V3 => {
         const t = ctx.walk?.[x.name]?.to ?? x.pos;
         return [x.pos[0] + (t[0] - x.pos[0]) * u, y, x.pos[1] + (t[1] - x.pos[1]) * u];

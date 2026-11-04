@@ -39,4 +39,19 @@ describe("a walk shot frames every walker whole", () => {
         }
     }
   });
+
+  // v39 141–143 s: the cut came as SpongeBob set off; Squidward "trudged after him" a beat later, was not a walker
+  // yet, so not framed, and walked in beside the lens with his head cut off
+  it("one standing beside the walker, nearer than the camera stands, is framed whole too", () => {
+    const c: Ctx = { ...ctx, walk: { SpongeBob: { to: [18, 5] } } };
+    const r = resolveMove("follow_side", { actor: "SpongeBob" }, c);
+    expect(r.end).not.toBeNull();
+    const l = r.from.look;
+    const look: V3 = Array.isArray(l) ? l : [bob.head![0] + l.o[0], bob.head![1] + l.o[1], bob.head![2] + l.o[2]];
+    for (const pt of [sq.head!, [sq.pos[0], 0, sq.pos[1]] as V3]) {
+      const n = ndcOf(pt, r.from.pos, look, r.from.fov!, c.aspect);
+      expect(n.depth).toBeGreaterThan(0.1);
+      expect(Math.abs(n.y)).toBeLessThanOrEqual(0.85 + 1e-6);
+    }
+  });
 });
