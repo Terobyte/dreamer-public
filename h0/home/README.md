@@ -31,7 +31,7 @@ python3 -m home --fake     # no network, no money: stub scenes, canned chapter, 
 ## Tests
 
 ```sh
-cd h0 && python3 -m unittest home.test_home   # 37 tests, part of tools/gate.sh
+cd h0 && python3 -m unittest home.test_home   # 39 tests, part of tools/gate.sh
 cd h0 && node home/e2e.mjs                    # Playwright against --fake, screenshots in h0/out/home/
 ```
 
