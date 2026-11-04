@@ -802,7 +802,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
         const close = !good && ev.kind === "line" && atom !== "close" ? attempt("close", null, fw) : null;
         if (close) curMove = { ...close, warnings: [...(close.warnings ?? []), `MOVE_OUT_OF_FRAME ${pk.id}`] };
         else {
-          const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, cameraLaw);
+          // unblock stays at the style's height (Koshakan k9 4.8 s: lying Mirai's face to the wall, it climbed to 2.4 m
+          // and the opening narration looked down on Mama's head)
+          const base = good ?? [b0, wide].find(ok) ?? unblock(wide, inp, snap, { ...cameraLaw, height: Math.min(cameraLaw.height, hi + 0.1) });
           curMove = { cam: base.cam, look: base.look, fov: base.fov, shake: 0, warnings: [...styleWarn, ...carried, ...fw, `MOVE_OUT_OF_FRAME ${pk.id}`] };
           trackName = walkers.some((w) => w.name === speaker.name) ? speaker.name : null;
           trackMove = curMove;
