@@ -26,10 +26,12 @@ describe("a child in the lap, as in the demo", () => {
     expect(s.yaw).toBe(0);
   });
 
-  it("hugs from the lap face to face, 0.26 m in front, a little higher", () => {
-    // demo: Mama yaw 90 at [1.15, -7], Mirai hug_cling (contact 0.261) at [1.41, 0.05, -7] yaw 270
+  it("hugs from the lap face to face, 0.26 m in front, a little higher, her head by the holder's left cheek", () => {
+    // demo: Mama yaw 90 at [1.15, -7], Mirai hug_cling at [1.41, 0.05, -7] yaw 270; f4 put the two heads 4 cm apart
+    // (Mama's hug_hold leans her head 0.12 m forward) and the close on Mirai's face was over the back of Mama's head:
+    // 0.15 m to the holder's left, cheek by cheek
     const s = lapHugSpot([1.15, -7], 90, 0);
-    close(s.at, [1.41, -7]);
+    close(s.at, [1.41, -7.15]);
     expect(s.yaw).toBe(270);
     expect(s.y).toBeCloseTo(0.38, 2);
   });

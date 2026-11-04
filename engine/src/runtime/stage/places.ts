@@ -332,6 +332,8 @@ export function hugMode(own: string | undefined, other: string | undefined): "la
  *  rests each clip's skin on its y (Г4), so these are support heights: the demo's 0.27 / 0.31 plus the 0.067 m its
  *  Mama sat in the grass */
 const LAP_FWD_M = 0.12, LAP_SIDE_M = 0.3, LAP_SEAT_M = 0.34, LAP_HUG_FWD_M = 0.26, LAP_HUG_SEAT_M = 0.38;
+/** a hug from the lap: the child's head by the holder's left cheek, not in her face (f4: the heads 4 cm apart) */
+const LAP_HUG_SIDE_M = 0.15;
 
 const fwdLeft = (yaw: number): [V2, V2] => {
   const r = (yaw * Math.PI) / 180;
@@ -351,8 +353,8 @@ export function lapSpot(holder: V2, holderYaw: number, supportY: number): { at: 
 
 /** a hug from the lap: the child turns to face the holder, in front of her, a little higher (the demo's last shot) */
 export function lapHugSpot(holder: V2, holderYaw: number, supportY: number): { at: V2; yaw: number; y: number } {
-  const [f] = fwdLeft(holderYaw);
-  return { at: [holder[0] + f[0] * LAP_HUG_FWD_M, holder[1] + f[1] * LAP_HUG_FWD_M], yaw: (holderYaw + 180) % 360, y: supportY + LAP_HUG_SEAT_M };
+  const [f, l] = fwdLeft(holderYaw);
+  return { at: [holder[0] + f[0] * LAP_HUG_FWD_M + l[0] * LAP_HUG_SIDE_M, holder[1] + f[1] * LAP_HUG_FWD_M + l[1] * LAP_HUG_SIDE_M], yaw: (holderYaw + 180) % 360, y: supportY + LAP_HUG_SEAT_M };
 }
 
 /** how far short of another actor a walker stops (nearActor's `gap`): into a lap close in (0.12 m), otherwise the two
