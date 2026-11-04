@@ -59,20 +59,6 @@
       ],
       "cover": "covers/sherlock-221b.jpg",
       "minutes": 3
-    },
-    {
-      "id": "kozb7-yard",
-      "title": "Kozbagarov St. 7",
-      "subtitle": "A real yard in Semey, Kazakhstan",
-      "book": null,
-      "blurb": "Built from OpenStreetMap, satellite and Street View. Walk in, hold Space and say what should open here — a shop grows into the house in about 2.5 minutes.",
-      "kind": "place",
-      "run": "runs/yard-kozb7",
-      "modes": [
-        "freestyle"
-      ],
-      "cover": "covers/kozb7-yard.jpg",
-      "minutes": 5
     }
   ],
   "worlds": [
