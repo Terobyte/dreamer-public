@@ -1077,8 +1077,9 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const roomOf = (x: Actor): unknown => roomOfActor(x, toucher.levelOf(x.who))?.room;
       const mates = sp ? [...actors.values()].filter((o) => o !== sp && !offstageActors.has(o.who) && roomOf(o) === roomOf(sp)) : [];
       const addressee = lookName ? (lookName !== who && !offstageActors.has(lookName) ? actors.get(lookName) : undefined) : mates.length === 1 ? mates[0] : undefined;
-      // a pair in a lap keeps its bodies (f3: Mama and Mirai turned to each other on every line, out of the lap)
-      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving() && !inLap(sp.who)) {
+      // a pair in a lap keeps its bodies (f3: Mama and Mirai turned to each other on every line, out of the lap); busy
+      // at a thing, the body stays to it (f5: Mirai spun on the stool to Mama, her back to the sink)
+      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving() && !inLap(sp.who) && !busyAt.has(sp.who)) {
         const y = yawTo(sp.pos(), addressee.pos());
         if (Math.abs((((y - sp.yaw()) % 360) + 540) % 360 - 180) > 30) sp.turn(y);
       }
