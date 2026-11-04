@@ -559,3 +559,13 @@ describe("round 11 fixes", () => {
     expect((p.end?.look as any).actor).toBe("B");
   });
 });
+
+// Koshakan meadow: a close on Mirai with her face in Mama's chest came back as a room wide still called "close", so the
+// director's back and fill rules judged a wide as a close. The wide fallback says what it is.
+describe("a face fallback that went wide says so", () => {
+  it("a close on a face 0.25 m from the wall comes back as the room wide, and its warning names it", () => {
+    const A = act("A", [2, 0.25], 180, { head: [2, 1.5, 0.25] });
+    const r = resolveMove("close", { actor: "A" }, mkCtx({ outline: rect(4, 4), ceiling: 2.7, open: false }, [A], { rng: () => 0.5, clear: (c) => Math.hypot(c[0] - 2, c[2] - 0.25) > 1.5 }));
+    expect(r.warnings).toContain("MOVE_FACE_FALLBACK wide");
+  });
+});

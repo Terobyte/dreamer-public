@@ -593,7 +593,8 @@ export function resolveMove(id: string, subject0: MoveSubject, ctx: Ctx): Resolv
   const wide = run(MOVES.wide, roomish, true, false, true) ?? run(MOVES.wide, roomish, false, true, true);
   if (wide && wide !== "NOWALK") {
     wide.f.end = null;
-    return finish(out(wide, ["MOVE_FACE_FALLBACK"]));
+    // "wide": the frame is the room's, not the atom's; the director labels and judges it as a wide
+    return finish(out(wide, ["MOVE_FACE_FALLBACK wide"]));
   }
   // nothing passes: clamp the wanted point, else the room centre
   const g = geoOf(md.defaults, md.faceMove, subject, ctx, false);
