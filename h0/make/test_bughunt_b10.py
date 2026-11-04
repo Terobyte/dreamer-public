@@ -36,6 +36,7 @@ def test_voices_preserves_chapter_files(tmp_path):
     ctx = SimpleNamespace(
         prev=lambda step: read_dir if step == "read" else tmp_path / step,
         out=out_dir,
+        fake=True,
     )
     bookmod._step_voices(ctx)
 

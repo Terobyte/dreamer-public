@@ -233,6 +233,26 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
   let wasMoving = false;
   let pivot: number | null = null;
   const wrap = (a: number): number => ((a % 360) + 540) % 360 - 180;
+  // a seated idle (cast clip `sit_idle`: upper body for sitting, hands on the thighs; the legs stay the procedural
+  // sitLegs' job) plays while the actor sits; standing up gives back the idle it had. No such clip -> as before.
+  let standIdle: string | null = null;
+  // sitting down / standing up is eased, not a pop: seatK 0 (standing) .. 1 (seated) scales the leg bend and the drop;
+  // a walk that starts from a seat waits until the actor has stood up
+  let seatK = 0;
+  let riseUntil = -Infinity;
+  const SEAT_S = 0.6;
+  const seatE = (): number => seatK * seatK * (3 - 2 * seatK);
+  const syncSeatIdle = (): void => {
+    if (!animator?.setIdle || !animator.has("sit_idle")) return;
+    const curIdle = animator.idleName?.() ?? "";
+    if (act === "sit" && curIdle !== "sit_idle") {
+      standIdle = curIdle || null;
+      animator.setIdle("sit_idle");
+    } else if (act !== "sit" && curIdle === "sit_idle") {
+      animator.setIdle(standIdle ?? "idle");
+      standIdle = null;
+    }
+  };
 
   // F8: a rigged body nods with its head/chest bones; a box (no named bones) rocks as a whole
   const nodBones = findNodBones(body);
@@ -250,7 +270,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
     const talking = now < talkUntil;
     // Н17: procedural gesture — a bounded 1.5 s nod (never a bone out of range, F8)
     const nod = nodBones.length ? 0 : nodAmp(now);
-    group.position.set(x, y + bob - (act === "sit" && !moving ? drop : 0), z);
+    group.position.set(x, y + bob - drop * seatE(), z);
     // a rigged body nods with its head (life layer); a box or an unrigged mesh rocks as a whole
     const rock = talking && !animator?.alive() ? 0.04 + Math.sin(now * 6) * 0.05 : 0;
     group.rotation.set(rock + nod, (cur * Math.PI) / 180, sway);
@@ -274,7 +294,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       heights = Array.isArray(ys) ? [...ys] : path.map((_, k) => (k === path.length - 1 && ys !== undefined ? ys : y));
       segFrom = [x, z];
       segY = y;
+      if ((fa === "idle" || path.length) && act === "sit" && path.length) riseUntil = clock + SEAT_S * seatK;
       if (fa === "idle" || path.length) act = "idle";
+      syncSeatIdle();
     },
     teleport(at: V2, newYaw: number, newAct: "idle" | "sit" = "idle", newY?: number, st?: number) {
       x = at[0];
@@ -282,6 +304,9 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       cur = newYaw;
       act = newAct;
       sitOn(st);
+      seatK = act === "sit" ? 1 : 0;
+      riseUntil = -Infinity;
+      syncSeatIdle();
       if (newY !== undefined) {
         y = newY;
         segY = newY;
@@ -322,14 +347,14 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       gestureUntil = clock + 1.5;
     },
     speaking: () => clock < talkUntil,
-    eye: () => [x, y + heightM * 0.92 - (act === "sit" ? drop : 0), z],
+    eye: () => [x, y + heightM * 0.92 - drop * seatE(), z],
     look(p) {
       gaze = p;
     },
     update(dt, now, pace = 1) {
       clock = now;
       let moving = false;
-      let budget = WALK_SPEED * dt * Math.max(0, Math.min(1, pace));
+      let budget = now < riseUntil ? 0 : WALK_SPEED * dt * Math.max(0, Math.min(1, pace));
       while (path.length && budget > 0) {
         const [tx, tz] = path[0];
         const d = Math.hypot(tx - x, tz - z);
@@ -369,6 +394,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
           act = finish.act;
           sitOn(finish.seat);
           finish = null;
+          syncSeatIdle();
         }
       }
       if (pivot !== null && !path.length && !finish) {
@@ -376,9 +402,11 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
         cur += Math.max(-240 * dt, Math.min(240 * dt, dy));
         if (Math.abs(dy) < 1) (cur = pivot), (pivot = null);
       }
+      const seated = act === "sit" && !finish && !path.length;
+      seatK = Math.max(0, Math.min(1, seatK + (seated ? dt : -dt) / SEAT_S));
       apply(now, moving);
       if (animator) {
-        const m = path.length > 0 || finish !== null;
+        const m = (path.length > 0 && now >= riseUntil) || finish !== null;
         if (m && !wasMoving) (animator.has("walk") ? animator.play("walk") : animator.idle());
         else if (!m && wasMoving) animator.idle();
         wasMoving = m;
@@ -388,7 +416,7 @@ export async function createActor(who: string, glbUrl: string, heightM: number, 
       }
       // F8: lay the procedural nod on the head/chest bones after the mixer+life
       // (undone at the next apply, so it never accumulates and never leaves a range)
-      if (act === "sit" && !moving && !finish) legUndo = sitLegs(body);
+      if (seatK > 0 && !moving) legUndo = sitLegs(body, seatE());
       const ga = nodAmp(now);
       if (ga && nodBones.length) nodUndo = applyNod(body, ga);
     },

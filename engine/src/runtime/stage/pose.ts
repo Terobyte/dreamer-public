@@ -61,16 +61,16 @@ function bend(bone: Object3D, axis: Vector3, deg: number): void {
  * the seat height stays the caller's (`sitDrop`). Returns the undo (call it before the next mixer update, like
  * `applyNod`); null when the rig has no thigh or no knee bone (a box, a rigid mesh): nothing is bent.
  */
-export function sitLegs(root: Object3D): (() => void) | null {
+export function sitLegs(root: Object3D, k = 1): (() => void) | null {
   const { thighs, knees } = findLegs(root);
   if (!thighs.length || !knees.length) return null;
   const bones = [...thighs, ...knees];
   const saved = bones.map((b) => b.quaternion.clone());
   root.updateMatrixWorld(true);
   const right = new Vector3(1, 0, 0).applyQuaternion(root.getWorldQuaternion(new Quaternion())).normalize();
-  for (const t of thighs) bend(t, right, -SIT_HIP);
+  for (const t of thighs) bend(t, right, -SIT_HIP * k);
   root.updateMatrixWorld(true);
-  for (const k of knees) bend(k, right, SIT_KNEE);
+  for (const kn of knees) bend(kn, right, SIT_KNEE * k);
   root.updateMatrixWorld(true);
   return () => bones.forEach((b, k) => b.quaternion.copy(saved[k]!));
 }

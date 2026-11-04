@@ -27,7 +27,7 @@ def test_step_cast_copies_clips_in_subdir(tmp_path):
 
     out = tmp_path / "out"
     out.mkdir()
-    ctx = SimpleNamespace(cast_dir=src, out=out)
+    ctx = SimpleNamespace(cast_dir=src, out=out, prev=lambda step: tmp_path / step)
     # expected: step succeeds and clips are copied; bug: StepError "...clips.wake: 'clips/wake.glb' missing or not a GLB"
     book_mod._step_cast(ctx)
     assert (out / "clips" / "wake.glb").is_file()

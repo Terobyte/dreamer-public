@@ -152,9 +152,13 @@ def _check_input(step, ctx):
 # ---- step bodies (fake = fixtures; live wiring is the owner's) -----------------------------
 
 def _read_live(ctx):
+    # age is a number even when the book never says it: null stopped Jane Eyre's read twice (Mrs. Reed, Eliza);
+    # pov names a cast member: "first-person" stopped A Study in Scarlet
     system = ("Turn the book text into JSON: pov, narrator_voice, cast{name:{sex,age,look}}, "
               "places{id:{desc,exits[]}}, chapters[{n,file,title,scenes[{id,paras:[from,to],place,cast[]}]}]. "
-              "Answer JSON only.")
+              "pov is the cast name of who tells the story (the \"I\" of a first-person book), a key of cast. "
+              "sex is \"man\" or \"woman\"; age is the apparent age in years as a number, your best guess when "
+              "the book does not say, never null. Answer JSON only.")
     return json.loads(spark_call(system, ctx.text))
 
 
@@ -224,15 +228,59 @@ def _step_read(ctx):
     return usd
 
 
+def _smart_voices(ctx, book):
+    """--live: dream/voicecast casts every person and the narrator by measuring Fish samples (L177);
+    the first pick goes in, listen.html + voicecast.json stay in the step dir for a person to re-choose.
+    -> {name: pool label} with the narrator under voicecast.NARRATOR"""
+    from dream import voicecast
+    people = [{"name": n, "look": "%s, about %s; %s" % (c.get("sex") or "", c.get("age") or "?", c.get("look") or ""),
+               "lines": c.get("lines") or []} for n, c in book["cast"].items()]
+    people.append({"name": voicecast.NARRATOR, "narrator": True,
+                   "look": "tells the story%s" % (" in the first person as " + book["pov"] if book.get("pov") else "")})
+    title = book.get("title") or ctx.text_path.stem
+    pool, ear = _voices(), voicecast.heard(title)
+    kept = {}   # a voice a person chose by ear (voicecast --apply) is not re-cast: 2nd Scarlet run lost Holmes's
+    for p in people:
+        label = ear.get(p["name"]) or ear.get(_book_name(p["name"], ear) or "")
+        if label in pool:
+            kept[p["name"]] = label
+    people = [p for p in people if p["name"] not in kept]
+    if not people:
+        return kept
+    res = voicecast.cast_voices(people, title, taken=[pool[l] for l in kept.values()],
+                                briefs_path=str(VOICES_PATH.with_name("voices_briefs.json")))
+    (ctx.out / "voicecast.json").write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding="utf-8")
+    voicecast.page(res, str(ctx.out / "listen.html"))
+    chosen = voicecast.choose(res)
+    # no library voice passed the ears (no British boy of 14 for John Reed): design one, clone the best into Fish;
+    # design.html stays for the ear, voicedesign --pick re-chooses. A failure leaves the sex/age label.
+    try:
+        from dream import voicedesign
+        chosen.update(voicedesign.design_missing(people, res, title, str(ctx.out)))
+    except Exception as e:
+        print("voicedesign failed: %s: %s" % (type(e).__name__, e))
+    return dict(voicecast.add_to_pool(title, chosen, str(VOICES_PATH)), **kept)
+
+
 def _step_voices(ctx):
-    voices = _voices()
     book = json.loads((ctx.prev("read") / "book.json").read_text(encoding="utf-8"))
-    assigned, warns = {}, []
+    assigned, warns, smart = {}, [], {}
+    if not ctx.fake:
+        try:
+            smart = _smart_voices(ctx, book)
+        except Exception as e:  # no ears (torch, ffmpeg, network): the label by sex and age still plays
+            warns.append("voicecast failed, voices by sex/age: %s: %s" % (type(e).__name__, e))
+    voices = _voices()
     for name, c in book["cast"].items():
-        c["voice"], w = pick_voice(c.get("sex"), c.get("age"), voices)
+        if smart.get(name):
+            c["voice"], w = smart[name], None
+        else:
+            c["voice"], w = pick_voice(c.get("sex"), c.get("age"), voices)
         assigned[name] = c["voice"]
         if w:
             warns.append(name + ": " + w)
+    if smart.get("Narrator"):
+        book["narrator_voice"] = assigned["(narrator)"] = smart["Narrator"]
     shutil.copy(ctx.prev("read") / "book.txt", ctx.out / "book.txt")
     # every chapter file travels on: load_book reads them from the voices dir on the world step
     for ch in book.get("chapters", []):
@@ -271,9 +319,31 @@ def _step_world(ctx):
     return 3.0 if not ctx.fake else ESTIMATE["world"]
 
 
+def _book_name(who, names):
+    """cast.json name -> the book's name for that person: same name, else the one sharing its last word"""
+    low = {n.lower(): n for n in names}
+    if who.lower() in low:
+        return low[who.lower()]
+    last = who.lower().split()[-1:]
+    hits = [n for n in names if n.lower().split()[-1:] == last]
+    return hits[0] if len(hits) == 1 else None
+
+
 def _step_cast(ctx):
     from . import cast as _cast
     shutil.copytree(ctx.cast_dir, ctx.out, dirs_exist_ok=True)
+    # the voices step's pick (voicecast in --live) is what the film speaks with (L177)
+    bj = ctx.prev("voices") / "book.json"
+    if bj.is_file():
+        said = {n: c.get("voice") for n, c in json.loads(bj.read_text(encoding="utf-8")).get("cast", {}).items()}
+        pool = _voices()
+        cp = ctx.out / "cast.json"
+        cast = json.loads(cp.read_text(encoding="utf-8"))
+        for who, c in cast.items():
+            v = said.get(_book_name(who, said) or "")
+            if isinstance(c, dict) and v in pool and "@" not in v:
+                c["voice"] = v
+        cp.write_text(json.dumps(cast, ensure_ascii=False, indent=2), encoding="utf-8")
     errs = _cast.check_cast(ctx.out)
     if errs:
         raise StepError("cast: " + "; ".join(errs))
@@ -343,8 +413,11 @@ BODIES = {"read": _step_read, "voices": _step_voices, "world": _step_world, "cas
 def _params(step, ctx):
     if step == "read":
         return {"text": hashlib.sha256(ctx.text.encode()).hexdigest(), "fake": ctx.fake}
-    if step == "voices":
-        return {"voices": hashlib.sha256(VOICES_PATH.read_bytes()).hexdigest()}
+    if step == "voices":   # voicecast's own vc_ labels change on every live cast: they stay out of the hash
+        pool = {k: v for k, v in json.loads(VOICES_PATH.read_text(encoding="utf-8")).items() if not k.startswith("vc_")}
+        heard = H0 / "dream" / "voices_heard.json"   # a new choice by ear re-runs the step
+        ear = json.loads(heard.read_text(encoding="utf-8")) if heard.is_file() and not ctx.fake else {}
+        return {"voices": _sha(pool), "smart": not ctx.fake, "heard": _sha(ear)}
     if step == "world":
         return {"refs": _sha_dir(_refs_root(ctx))}
     if step == "cast":
