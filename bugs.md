@@ -284,3 +284,39 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 - P1 fixed at the source: Warm decides under its lock, RPCs and on_spend outside it, the autoscaler state it applied is tracked and tick re-sends it (a restart starts from "unknown" and sends off — also closes "_recover never switches the autoscaler off")
 - B15: World._book is the only place money is added; B22 floor = a quarter of DEFAULT, timings.json untouched; B23 timeout 900 s → code 124
 - e2e look on a local server with the rebuilt client: five signs, door, no 4xx/5xx
+
+## Hunt 2026-11-04 (b) — parking notes of the same hunt, promoted (stop-hook review + automated security review)
+### B30 — main prints the judge key to stdout (lands in Modal logs) — MINOR — fixed
+- class: security/observability · location: h0/place/semey.py main print(...?k={judge_key}) · found-by: H2 parking, security review
+### B31 — slow-drip clients: 15 s per recv, no whole-request deadline; 48 slow sockets hold every server thread — MAJOR — fixed
+- class: availability · location: semey.py H.timeout=15, BoundedServer(limit=48) · found-by: H2 parking
+- expected vs actual: a request that is not fully read within a deadline is closed vs it holds a thread as long as one byte per 15 s arrives
+### B32 — semey_modal starts the server with a bare Popen; a crash leaves the container up and the world dead — MAJOR — fixed
+- class: lifecycle · location: h0/place/semey_modal.py web() · found-by: H3 parking
+### B33 — Rate never prunes keys; one entry per IP forever — MINOR — fixed
+- class: resource leak · location: semey.py Rate.ok · found-by: H2 parking
+### B34 — after a restart nobody switches the autoscaler off (a crash mid-build leaves the GPU warm) — MAJOR — fixed
+- class: money · location: semey.py World._recover / Warm · found-by: H1 parking · note: covered by the P1 fix (Warm.applied starts unknown, the first tick sends off); test owed
+### B35 — build_place ignores fill_cache's missing list: every object missing (GPU down) still ships an empty room as "built" — MAJOR — fixed
+- class: silent failure · location: semey.py build_place after fill_cache · found-by: H3 parking
+- expected vs actual: all 3D objects missing → the build fails (the slot frees, the try is refunded) vs an empty shell is built and booked
+### B36 — semey_admin crashes on a non-JSON error body and on a missing argument (free / claims without N / on|off) — MINOR — fixed
+- class: input validation · location: h0/place/semey_admin.py call() json.loads, main rest[0] · found-by: H2 parking
+### B37 — client poll has no in-flight guard: a slow server stacks /api/slots requests every 2 s — MINOR — fixed
+- class: client · location: app/src/live.js setInterval api('/api/slots') · found-by: H4 parking
+### B38 — a built place that goes away is removed without disposing its meshes/materials/textures — MINOR — fixed
+- class: client resource leak · location: live.js applySlots unload branch · found-by: H4 parking
+### B39 — window error / unhandledrejection show the fatal "could not load" shell over a world that already runs — MAJOR — fixed
+- class: client contract · location: app/src/index.ts addEventListener('error'|'unhandledrejection') · found-by: H4 parking
+### B40 — X-Forwarded-For: last hop trusted, unverified against Modal's proxy — MAJOR — partly fixed: the probe is in (admin status `you`, test B40 green locally); trust itself verified only after deploy
+- class: security (rate-limit bypass if the proxy does not append) · location: semey.py H._ip · found-by: H2 parking, security review
+- manual verify after deploy: admin status reports the caller ip as the server sees it; call it with and without `X-Forwarded-For: 1.2.3.4` — the ip must not become 1.2.3.4
+### not code: /video.mp4 is missing from the client (the "Watch the recording" links 404) — owed content; putting the film online is Tero's action
+
+### Fix pass (b) 2026-11-04
+- server: h0/place/test_semey_bugs_more.py (B30–B36, B40), red at own assertion except B34 (green on arrival: the P1 fix already sends off on the first tick after a restart; kept as regression)
+- client: ~/.dreamer-bench/demo-bread/app/test/live_bugs2.test.mjs (B37–B39), red on the old copy (LIVE_JS/INDEX_TS env), green now; B39 structural
+- `cd h0 && python3 -m unittest discover -s place -p "test_*.py" -t .` OK (61 semey tests); client 14/14; e2e look clean, the start line prints `?k=<judge key>`
+- extra: BoundedServer.handle_error drops client hang-ups (ConnectionError) instead of a traceback per scanner
+- B31 deadline 20 s for the whole request (headers, POST body); a big file download after that is not cut
+- still open, not code: /video.mp4 (Tero's film), Space+mic by hand with a real microphone, B40 after deploy

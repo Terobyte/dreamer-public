@@ -6,6 +6,8 @@ turn them on with `python -m place.semey_admin <url> claims on`. SAM3D is warmed
 """
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import modal
@@ -44,5 +46,17 @@ world = modal.Volume.from_name("semey-world", create_if_missing=True)
 @modal.web_server(8000, startup_timeout=120)
 def web():
     env = {**os.environ, "SEMEY_VOLUME": "semey-world", "PUBLIC_HOST": "highskilltero--semey-web.modal.run"}
-    subprocess.Popen(["python", "-m", "place.semey", "--bind", "0.0.0.0", "--port", "8000", "--data", "/data",
-                      "--client", "/client", "--features", "/assets/features.json", "--warm"], cwd="/root/h0", env=env)
+    cmd = ["python", "-m", "place.semey", "--bind", "0.0.0.0", "--port", "8000", "--data", "/data",
+           "--client", "/client", "--features", "/assets/features.json", "--warm"]
+    threading.Thread(target=supervise, args=(cmd, "/root/h0", env), daemon=True).start()
+
+
+def supervise(cmd, cwd, env, popen=subprocess.Popen, sleep=time.sleep):
+    """keeps the world server up: when it exits it starts again (1 s, doubling to 30 s while it keeps crashing fast)"""
+    delay = 1
+    while True:
+        t0 = time.monotonic()
+        rc = popen(cmd, cwd=cwd, env=env).wait()
+        print(f"semey exited ({rc}); restarting in {delay} s", flush=True)
+        sleep(delay)
+        delay = 1 if time.monotonic() - t0 > 60 else min(30, delay * 2)

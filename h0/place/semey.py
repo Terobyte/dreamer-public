@@ -15,6 +15,7 @@ import json
 import mimetypes
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -57,6 +58,7 @@ STOP_RE = re.compile("|".join(map(re.escape, STOP)), re.I)
 NICK_RE = re.compile(r"^[\w \-]{1,20}$", re.U)
 LINKISH = re.compile(r"(https?|www|\.)", re.I)
 HEX = lambda n: re.compile(r"^[0-9a-f]{%d}$" % n)
+READ_DEADLINE_S = 20
 TOKEN_RE, KEY_RE, WID_RE = HEX(32), HEX(16), re.compile(r"^w[0-9a-f]{12}$")
 
 
@@ -212,6 +214,11 @@ def build_place(job, prog, spark_lock, slots_sem, pulse=PULSE_S):
         prog.start("assets", "0/0 · 3D 0/0")
         res = A.fill_cache(scene, part, part / "cache", prog, cap_usd=ASSET_CAP_USD, workers=16)
         (part / "assets.json").write_text(json.dumps(res, indent=1))
+        objs = [k for k, a in (scene.get("assets") or {}).items() if isinstance(a, dict) and a.get("kind") == "object"]
+        objs += [o.get("id") for o in scene.get("objects") or [] if isinstance(o, dict)]
+        miss = set(res.get("missing") or [])
+        if objs and all(o in miss for o in objs):    # an empty shell is not a place: fail, the slot frees, the try comes back
+            raise RuntimeError(f"no 3D object came back ({len(objs)} asked)")
         prog.start("build", "engine build")
         code = A.build_dist(part / "scene.json", part / "dist", part / "cache")
         if code == 0 and A.fit_props(part / "scene.json", part / "dist"):
@@ -365,13 +372,24 @@ class Warm:
 
 
 class Rate:
-    """sliding one-minute windows in memory"""
+    """sliding one-minute windows in memory; keys whose window has passed are forgotten (at most every 10 s)"""
     def __init__(self, clock=time.time):
         self.clock, self.hits, self.lock = clock, {}, threading.Lock()
+        self.per, self.pruned = {}, clock()
+
+    def _prune(self, now):
+        if now - self.pruned < 10:
+            return
+        self.pruned = now
+        for k in [k for k, h in self.hits.items() if not h or now - h[-1] >= self.per.get(k, 60.0)]:
+            self.hits.pop(k, None)
+            self.per.pop(k, None)
 
     def ok(self, key, n, per=60.0):
         with self.lock:
             now = self.clock()
+            self._prune(now)
+            self.per[key] = per
             h = [t for t in self.hits.get(key, []) if now - t < per]
             if len(h) >= n:
                 self.hits[key] = h
@@ -685,12 +703,13 @@ class World:
                     "refund": self.refund_next(), "busy": len(self.running) >= MAX_RUNNING}
 
     # ----- operator -----
-    def admin(self, op, place=None, on=None):
+    def admin(self, op, place=None, on=None, caller=None):
         with self.lock:
             if op == "status":
                 return {"slots": self.st["places"], "launches": self.st["launches"], "spent_usd": self.st["spent_usd"],
                         "reserves": self.st["reserves"], "asr_count": self.st["asr_count"], "claims": self.st["claims"],
-                        "running": list(self.running), "warm": self.warm.count(), "budget_left": round(self.budget_left(), 2)}
+                        "running": list(self.running), "warm": self.warm.count(), "budget_left": round(self.budget_left(), 2),
+                        "you": caller}
             if op == "claims":
                 self.st["claims"] = bool(on)
                 self.save()
@@ -768,6 +787,11 @@ class BoundedServer(ThreadingHTTPServer):
             self.sem.release()
             raise
 
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], ConnectionError):   # a client that hung up is not a server error
+            return
+        super().handle_error(request, client_address)
+
     def process_request_thread(self, request, client_address):
         try:
             super().process_request_thread(request, client_address)
@@ -783,6 +807,25 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
 
     class H(SimpleHTTPRequestHandler):
         timeout = 15
+        read_deadline = READ_DEADLINE_S    # the whole request (headers, and a POST body) must arrive by then
+
+        def setup(self):
+            super().setup()
+            self._read_done = False
+            self._dl = threading.Timer(self.read_deadline, self._too_slow)
+            self._dl.daemon = True
+            self._dl.start()
+
+        def _too_slow(self):
+            if not self._read_done:          # a slow-drip client: its blocked read returns, the thread goes free
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+        def finish(self):
+            self._dl.cancel()
+            super().finish()
         server_version = "semey"
         sys_version = ""
 
@@ -850,6 +893,7 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
             return self._file(p, head)
 
         def _get(self, head=False):
+            self._read_done = True
             if not self._host_ok():
                 return self._err(403, "host", head)
             u = urllib.parse.urlsplit(self.path)
@@ -910,15 +954,17 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
             if n > limit:
                 self.close_connection = True
                 return self._err(413, "too large")
+            body = self.rfile.read(n)
+            self._read_done = True
             if path == "/api/admin":
                 k = self.headers.get("X-Admin-Key") or ""
                 if not admin_key or not hmac.compare_digest(k.encode("utf-8", "surrogateescape"), admin_key.encode()):
                     return self._err(404, "not found")
                 try:
-                    body = json.loads(self.rfile.read(n) or b"{}")
+                    body = json.loads(body or b"{}")
                     if not isinstance(body, dict):
                         return self._err(400, "json")
-                    return self._json(world.admin(body.get("op"), body.get("place"), body.get("on")))
+                    return self._json(world.admin(body.get("op"), body.get("place"), body.get("on"), caller=self._ip()))
                 except Refused as r:
                     return self._err(r.code, r.error)
                 except ValueError:
@@ -928,7 +974,6 @@ def make_handler(world: World, client: Path, public_host="", judge_key="", admin
             want = "audio/wav" if path == "/api/asr" else "application/json"
             if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != want:
                 return self._err(403, "type")
-            body = self.rfile.read(n)
             ip = self._ip()
             if path == "/api/asr":
                 return self._asr(body, ip)
@@ -1079,7 +1124,7 @@ def main():
     stop = threading.Event()
     threading.Thread(target=_ticker, args=(world, stop), daemon=True).start()
     srv = BoundedServer((a.bind, a.port), make_handler(world, client, os.environ.get("PUBLIC_HOST", "").lower(), judge_key, admin_key))
-    print(f"semey: http://localhost:{a.port}/?k={judge_key}  claims={world.st['claims']}", flush=True)
+    print(f"semey: http://localhost:{a.port}/?k=<judge key>  claims={world.st['claims']}", flush=True)   # the key never goes to logs
     srv.serve_forever()
 
 

@@ -20,7 +20,11 @@ def call(url, body):
         with urllib.request.urlopen(r, timeout=30) as resp:
             return resp.status, json.loads(resp.read())
     except urllib.error.HTTPError as e:
-        return e.code, json.loads(e.read() or b"{}")
+        raw = e.read() or b"{}"
+        try:
+            return e.code, json.loads(raw)
+        except ValueError:                    # a proxy page (502 html), not the server's json
+            return e.code, {"error": raw[:200].decode(errors="replace")}
 
 
 def main(argv):
@@ -28,6 +32,8 @@ def main(argv):
         sys.exit(__doc__)
     url, op, rest = argv[0], argv[1], argv[2:]
     body = {"op": op}
+    if op in ("free", "claims") and not rest:
+        sys.exit(__doc__)
     if op == "free":
         body["place"] = int(rest[0])
     if op == "claims":
