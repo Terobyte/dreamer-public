@@ -121,12 +121,21 @@ const HEAD_SMOOTH_S = 1;
 const HEAD_JUMP_M = 1.5;
 /** one step of the director's head smoothing: `dt` s after `prev`, the head bone at `hp`. A jump past HEAD_JUMP_M
  *  snaps (Squidward v15 145.8 s: through the pineapple's door the smoothed head slid 585 m, "at" x 401 for seconds). */
-export function smoothHeadStep(prev: { p: V3; yaw: number; t: number } | undefined, hp: { pos: V3; faceYaw: number }, dt: number): { p: V3; yaw: number } {
-  if (!prev || Math.hypot(hp.pos[0] - prev.p[0], hp.pos[1] - prev.p[1], hp.pos[2] - prev.p[2]) > HEAD_JUMP_M) return { p: hp.pos, yaw: hp.faceYaw };
+export function smoothHeadStep(
+  prev: { p: V3; yaw: number; t: number; b?: [number, number] } | undefined,
+  hp: { pos: V3; faceYaw: number },
+  dt: number,
+  base?: [number, number],
+): { p: V3; yaw: number; b?: [number, number] } {
+  if (!prev || Math.hypot(hp.pos[0] - prev.p[0], hp.pos[1] - prev.p[1], hp.pos[2] - prev.p[2]) > HEAD_JUMP_M) return { p: hp.pos, yaw: hp.faceYaw, b: base };
   const k = 1 - Math.exp(-Math.max(0, dt) / HEAD_SMOOTH_S);
-  const p: V3 = [prev.p[0] + (hp.pos[0] - prev.p[0]) * k, prev.p[1] + (hp.pos[1] - prev.p[1]) * k, prev.p[2] + (hp.pos[2] - prev.p[2]) * k];
+  // Koshakan k1 23.9 s: smoothed in the world, a walker's head trailed her by 0.6 m. The head's place on the body is
+  // smoothed (a nod), the body carries it along unsmoothed.
+  const [bx, bz] = base && prev.b ? [base[0] - prev.b[0], base[1] - prev.b[1]] : [0, 0];
+  const q: V3 = [prev.p[0] + bx, prev.p[1], prev.p[2] + bz];
+  const p: V3 = [q[0] + (hp.pos[0] - q[0]) * k, q[1] + (hp.pos[1] - q[1]) * k, q[2] + (hp.pos[2] - q[2]) * k];
   const dy = ((((hp.faceYaw - prev.yaw) % 360) + 540) % 360) - 180;
-  return { p, yaw: (((prev.yaw + dy * k) % 360) + 360) % 360 };
+  return { p, yaw: (((prev.yaw + dy * k) % 360) + 360) % 360, b: base };
 }
 /** a door an actor passed shuts this long after the last one is through */
 const DOOR_SHUT_S = 2;
@@ -353,7 +362,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   };
   const roomOfActor = (a: Actor, lvl: string | null): any | null => roomAt(a.pos(), lvl) ?? roomAt(a.pos()) ?? null;
   // measured head bone, low-passed (~1 s): the camera frames a seated / lying head, but does not bob with a nod
-  const headSmooth = new Map<string, { p: V3; yaw: number; t: number }>();
+  const headSmooth = new Map<string, { p: V3; yaw: number; t: number; b?: [number, number] }>();
   // own clock: dActors runs in the start-up probe, before `nowT` below exists
   let headT = 0;
   /** smoothed head point and face yaw (where the head looks, not the body: a seated Mama turns her head to Mirai) */
@@ -361,8 +370,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     const hp = headPose(a.group);
     if (!hp) return undefined;
     const prev = headSmooth.get(a.who);
-    const { p, yaw } = smoothHeadStep(prev, hp, prev ? headT - prev.t : 0);
-    headSmooth.set(a.who, { p, yaw, t: headT });
+    const { p, yaw, b } = smoothHeadStep(prev, hp, prev ? headT - prev.t : 0, a.pos());
+    headSmooth.set(a.who, { p, yaw, t: headT, b });
     return { p, yaw };
   };
   /** last known pose per actor (start/stage carry it): the line event passes it to clipForBeat (Н17 F2) */
