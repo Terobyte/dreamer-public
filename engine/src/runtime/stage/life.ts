@@ -47,7 +47,7 @@ export function createLife(root: Object3D, seed = ""): Life | null {
   const rootQ = new Quaternion(), boneQ = new Quaternion(), d = new Quaternion(), step = new Quaternion(), ax = new Vector3();
   let t = 0, w = 0, tw = 0;
   // gaze: held target (world point), smoothed angles, gaze strength
-  const GAZE_YAW = 60, GAZE_PITCH = 30, TAU = 0.3, HOLD = 1, SAME = 0.25;
+  const GAZE_YAW = 60, GAZE_PITCH = 30, TAU = 0.3, HOLD = 1, SAME = 0.25, BACK = 150;
   const tgt = new Vector3(), want = new Vector3(), dir = new Vector3(), hp = new Vector3();
   let hasTgt = false, tgtAt = -Infinity, gy = 0, gp = 0, gz = 0;
   const D = Math.PI / 180;
@@ -99,7 +99,11 @@ export function createLife(root: Object3D, seed = ""): Life | null {
         dir.copy(tgt).sub(hp);
         if (dir.length() > 1e-3) {
           dir.normalize();
-          wy = Math.max(-GAZE_YAW, Math.min(GAZE_YAW, Math.atan2(dir.dot(R), dir.dot(F)) / D));
+          let raw = Math.atan2(dir.dot(R), dir.dot(F)) / D;
+          // across the back line the head keeps its side: a target right behind that sways (f5: the sink behind
+          // Mirai) flipped the clamped gaze +60 / -60 deg every half second
+          if (Math.abs(raw) > BACK && Math.abs(gy) > 1 && Math.sign(raw) !== Math.sign(gy)) raw = Math.sign(gy) * GAZE_YAW;
+          wy = Math.max(-GAZE_YAW, Math.min(GAZE_YAW, raw));
           wp = -Math.max(-GAZE_PITCH, Math.min(GAZE_PITCH, Math.asin(Math.max(-1, Math.min(1, dir.dot(U)))) / D));
           wz = 1;
         }

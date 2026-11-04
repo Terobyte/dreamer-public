@@ -168,6 +168,24 @@ describe("animator: life layer gaze (look)", () => {
     expect(Math.abs(yaw)).toBeLessThan(62);
   });
 
+  // Koshakan bathroom f5: the sink right behind Mirai (she was spun to Mama) swayed across her back line with the
+  // clip; the clamped gaze flipped +60 / -60 deg and her face jumped 60..110 deg per half second. A target across
+  // the back line keeps the side the head is on.
+  it("a target swaying across the back line (175 / -175 deg) does not flip the head side to side", () => {
+    spyWarn();
+    const { root, bone } = rig();
+    const a = createAnimator(root, { stand: still() }, { seed: "B" });
+    const at = (deg: number): [number, number, number] => [Math.sin(deg * D) * 0.6, 1.75, Math.cos(deg * D) * 0.6];
+    feed(a, 2, at(175));
+    const side = Math.sign(yawPitch(root, bone("head")).yaw);
+    let worst = -Infinity;
+    for (let i = 0; i < 12; i++) {
+      for (let t = 0; t < 0.25; t += 1 / 30) a.update(1 / 30, { talking: false, look: at(i % 2 ? 175 : -175) });
+      worst = Math.max(worst, side * -yawPitch(root, bone("head")).yaw);
+    }
+    expect(worst).toBeLessThan(0);  // never crosses to the other side
+  });
+
   it("pitch stops at 30 deg", () => {
     spyWarn();
     const { root, bone } = rig();
