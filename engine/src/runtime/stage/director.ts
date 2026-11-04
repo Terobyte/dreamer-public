@@ -818,8 +818,13 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
 /** what the probe must see of an actor: the face and the eye (`DActor.eye`, where the film critic asks) both; without
  *  them the head point stands in (Squidward v7 21–25 s: the face point past a chair's scroll, the top of the box behind it) */
 function probePoints(a: DActor, head: V3): V3[] {
+  // lying, the head bone is in the pillow and hid Mirai from every camera (Koshakan k4 32.1 s, a line to her held
+  // Mama alone): the probe asks about her face over it
+  if (!a.face && a.lying) return [[head[0], head[1] + LYING_FACE_UP_M, head[2]]];
   return [a.face ?? head, ...(a.eye ? [a.eye] : [])];
 }
+/** a lying face is this far over the head bone (the probe's point for a lying actor without a face point) */
+const LYING_FACE_UP_M = 0.1;
 
 const MAX_TILT_DEG = 30, MIN_CAM_Y = 1.0;
 const HIDDEN_RECUT_S = 0.75;
