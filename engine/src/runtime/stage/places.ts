@@ -82,14 +82,41 @@ export function bedSitSpot(place: Place, from: V2, places: Place[], slot: number
  * where an actor starts on a place: `lie` = in the bed along the long side, BED_TUCK_M under the top;
  * `sit` on a bed = its edge beside the sleeper (bedSitSpot, `from` picks the side)
  */
-export function startSpot(place: Place, pose?: string, from?: V2, places?: Place[]): { at: V2; yaw: number; y: number } {
+export function startSpot(place: Place, pose?: string, from?: V2, places?: Place[], height?: number): { at: V2; yaw: number; y: number } {
   if (pose === "lie" && place.lie) return { at: place.lie.at, yaw: place.lie.yaw, y: Math.max(0, (place.top ?? 0) - BED_TUCK_M) };
   if (pose === "sit") {
     const s = bedSitSpot(place, from ?? place.at, places ?? [place], 0);
     if (s) return { at: s.at, yaw: s.yaw, y: 0 };
   }
+  // a child at a thing too high for her stands on the step in front of it (Koshakan bathroom: the sink's spot is an
+  // adult's, 0.8 m off the basin, Mirai stood behind the stool)
+  const step = !pose || pose === "stand_at" || pose === "stand" ? stepUp(place, places ?? [], height) : null;
+  if (step) return { at: step.stand_on!.at, yaw: yawTo(step.stand_on!.at, place.look!), y: step.top ?? 0 };
   // a stand place faces its thing (`look`), as a walk there does (resolveTouch): Squidward started back to his easel
   return { at: place.at, yaw: place.kind !== "sit" && place.look ? yawTo(place.at, place.look) : place.yaw, y: 0 };
+}
+
+/** a hand reaches this share of the body's height */
+const REACH_OF_HEIGHT = 0.75;
+/** a surface is worked at this share of its height (a basin's rim, a counter's top) */
+const WORK_OF_HEIGHT = 0.85;
+/** a step serves a thing when it stands this close to the thing's middle, m */
+const STEP_NEAR_M = 0.7;
+
+/** the step a short actor stands on to reach `place`: a place with a stand_on top in the same room, near the thing's
+ *  middle (its `look`), when the thing's working height is over her reach; null for an actor who reaches it */
+export function stepUp(place: Place, places: Place[], height?: number): Place | null {
+  if (!height || !place.look || !place.size?.h || place.kind === "sit") return null;
+  if (height * REACH_OF_HEIGHT >= place.size.h * WORK_OF_HEIGHT) return null;
+  const look = place.look;
+  let best: Place | null = null;
+  let bestD = STEP_NEAR_M;
+  for (const p of places) {
+    if (p === place || !p.stand_on || (p.room && place.room && p.room !== place.room)) continue;
+    const d = Math.hypot(p.stand_on.at[0] - look[0], p.stand_on.at[1] - look[1]);
+    if (d < bestD) (best = p), (bestD = d);
+  }
+  return best;
 }
 
 export type Claims = Record<string, string>;
@@ -288,6 +315,15 @@ export function nearActor(from: V2, target: V2, gap: number): V2 {
 export function hugSpot(mover: V2, anchor: V2, rMover: number, rAnchor: number): V2 | null {
   const d = rMover + rAnchor;
   return Math.hypot(mover[0] - anchor[0], mover[1] - anchor[1]) < d - 1e-3 ? nearActor(mover, anchor, d) : null;
+}
+
+/** how a staged hug plays, from the hugger's idle and her partner's: a child in the lap hugs from the lap and keeps
+ *  her clip ("keep"; full f1 meadow: hug_cling, a standing clip, took Mirai off Mama's lap onto the grass), a partner
+ *  holding a lap keeps the lap hold ("lap"), a pair standing apart plays the chest-to-chest hug ("chest") */
+export function hugMode(own: string | undefined, other: string | undefined): "keep" | "lap" | "chest" {
+  const lap = (s: string | undefined): boolean => !!s && /lap/i.test(s);
+  if (!lap(own) && !lap(other)) return "chest";
+  return lap(own) && !/hold/i.test(own!) ? "keep" : "lap";
 }
 
 /** how far short of another actor a walker stops (nearActor's `gap`): into a lap close in (0.12 m), otherwise the two

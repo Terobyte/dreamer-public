@@ -10,7 +10,7 @@ import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { approachGap, BED_TUCK_M, bedLift, floorAt, hugSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { approachGap, BED_TUCK_M, bedLift, floorAt, hugMode, hugSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate, yieldPace } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -279,7 +279,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
   for (const who of names) {
     const startName = stage.start?.[who];
     const sp = places.find((p) => p.name === startName) ?? fallback;
-    const spot = sp && sp.name === startName ? startSpot(sp, stage.start_pose?.[who], sp.at, places) : null;
+    const spot = sp && sp.name === startName ? startSpot(sp, stage.start_pose?.[who], sp.at, places, Number(cast[who].height_m ?? 1.7)) : null;
     const at: V2 = spot ? spot.at : sp ? sp.at : [c.geo.spawn.at[0], c.geo.spawn.at[1]];
     const url = new URL(String(cast[who].glb), castUrl).href;
     const clipUrls: Record<string, string> = {};
@@ -732,7 +732,10 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (d < best && d < a.radius() + b.radius() + 0.6) (best = d), (other = b);
     }
     if (!other) return sc;
-    if (/lap/i.test(other.idleName?.() ?? "")) return { idle: sc.idle };
+    // a child in the lap hugs from the lap (full f1 meadow: hug_cling took Mirai off the lap onto the grass)
+    const mode = hugMode(a.idleName?.(), other.idleName?.());
+    if (mode === "keep") return {};
+    if (mode === "lap") return { idle: sc.idle };
     const [mover, anchor] = a.radius() <= other.radius() ? [a, other] : [other, a];
     const at = hugSpot(mover.pos(), anchor.pos(), mover.radius(), anchor.radius());
     if (at) mover.teleport(at, yawTo(at, anchor.pos()), mover.act(), mover.y());
@@ -830,7 +833,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
           if (pl) {
             const pose = typeof it.pose === "string" ? it.pose : undefined;
             // lie / sit on a bed: the same spot and height as the stage.json start (startSpot), one rule for both
-            const ss = startSpot(pl, pose, a.pos(), places);
+            const ss = startSpot(pl, pose, a.pos(), places, heightOf(who));
             const spot = pose === "stand_on" && pl.stand_on ? pl.stand_on.at : ss.at;
             const yaw = ss.yaw;
             const act = pose === "sit" ? "sit" : "idle";
