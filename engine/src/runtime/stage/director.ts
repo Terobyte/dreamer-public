@@ -784,7 +784,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // line he walks, at its cut only
     // (v35 141.9–144 s: and off the path of everyone else walking, Squidward trudging after SpongeBob past the lens)
     if (curMove && !curMove.end && moveStart === clock && walkers.length) {
-      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline);
+      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name);
       if (q[0] !== curMove.cam[0] || q[1] !== curMove.cam[2]) curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
     }
     if (!curMove) return out;
@@ -823,6 +823,8 @@ const ORBIT_DRIFT_MS = 0.4;
 const WALK_CUT_S = 1.5;
 /** a still camera stands at least this far off the line a walking speaker walks */
 const PATH_CLEAR_M = 1.2;
+/** ... and this far off the line anyone else walks: a 1.8 m walker passing it whole in a 50° frame from 1.1 m up */
+const OTHER_PATH_CLEAR_M = 2.0;
 /** A held frame looks down at most 30° (Squidward, Nov 3, 16–21 s: the wide for SpongeBob entering stood 2.6 m high,
  *  2.3 m off his 0.57 m head — 41° down, the top of his head and the floor). The camera comes straight down (never under
  *  1 m over the floor), else backs off along the look line inside the room, else takes the lowest height over its spot
@@ -877,9 +879,11 @@ export function capTilt<T extends DirectorOut>(out: T, floorY: number, clear?: (
   return out;
 }
 
-/** A still camera point put at least PATH_CLEAR_M off the line every walker has left to walk (straight ahead,
- *  `walkLeft`): pushed out from the nearest point of a path it stands on, a few passes for paths that cross. */
-export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[]): V2 {
+/** A still camera point put off the line every walker has left to walk (straight ahead, `walkLeft`): PATH_CLEAR_M off
+ *  the one the frame holds (`held`), OTHER_PATH_CLEAR_M off anyone else (v36 141–143.5 s: Squidward trudging 1.2 m past
+ *  a 1.1 m high camera was a body filling the frame). Pushed out from the nearest point of a path it stands on, a few
+ *  passes for paths that cross. */
+export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string): V2 {
   let c = c0;
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
@@ -889,9 +893,10 @@ export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V
       const along = Math.max(0, Math.min(L, (c[0] - w.pos[0]) * f[0] + (c[1] - w.pos[1]) * f[1]));
       const near: V2 = [w.pos[0] + f[0] * along, w.pos[1] + f[1] * along];
       const off = Math.hypot(c[0] - near[0], c[1] - near[1]);
-      if (off >= PATH_CLEAR_M - 1e-9) continue;
+      const need = w.name === held ? PATH_CLEAR_M : OTHER_PATH_CLEAR_M;
+      if (off >= need - 1e-9) continue;
       const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
-      const p: V2 = [near[0] + n[0] * PATH_CLEAR_M * 1.001, near[1] + n[1] * PATH_CLEAR_M * 1.001];
+      const p: V2 = [near[0] + n[0] * need * 1.001, near[1] + n[1] * need * 1.001];
       c = outline.length >= 3 ? snap(outline, p, roomRect(outline), 0.25) : p;
       moved = true;
     }

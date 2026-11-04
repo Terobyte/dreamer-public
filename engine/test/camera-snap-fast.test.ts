@@ -59,13 +59,17 @@ describe("nearest legal camera point", () => {
     }
   });
 
-  it("a point just past the wall is snapped in well under a millisecond", () => {
+  // timed against the full grid on the same machine (an absolute budget failed under the whole suite's load)
+  it("a point just past the wall is snapped in at a fraction of the full grid's time", () => {
     const pts: V3[] = Array.from({ length: 200 }, (_, i) => [4.1 * Math.cos(i), 1.5, 4.1 * Math.sin(i)]);
     const law: CameraLaw = { outline: L, rect, height: 2.7 };
     legalCameraPoint(pts[0], law);
-    const t0 = performance.now();
+    let t0 = performance.now();
     for (const p of pts) legalCameraPoint(p, law);
-    const ms = (performance.now() - t0) / pts.length;
-    expect(ms).toBeLessThan(0.3);
+    const fast = performance.now() - t0;
+    t0 = performance.now();
+    for (const p of pts) bruteNearest(rect, [p[0], p[2]], (q) => insideInset(L, q));
+    const brute = performance.now() - t0;
+    expect(fast).toBeLessThan(brute / 4);
   });
 });
