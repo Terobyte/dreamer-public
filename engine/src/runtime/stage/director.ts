@@ -107,6 +107,8 @@ const BACK_AT = 0.75;
 const LONG_LINE = 7;
 /** a wide whose worst pair face is under this many degrees off the camera is kept square to the side */
 const WIDE_FACE_OK = 100;
+/** a body's radius (m, flat): a camera nearer stands in it; a head nearer the lens than LENS_HEAD fills the frame */
+const BODY_R = 0.3, LENS_HEAD = 0.4;
 /** off a spoken line: the camera stays within this many degrees of a standing subject's face */
 const NARRATION_FACE_OK = 120;
 /** a wide may swing within its 180° half-plane by up to this many degrees to see the faces */
@@ -735,6 +737,15 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
           };
           if (!inView(who, mv.cam, mv.look, mv.fov) || (mv.end && mv.lookEnd && !inView(who, mv.end, mv.lookEnd, mv.fovEnd ?? mv.fov))) return null;
           if (!faces(mv.cam) || (mv.end && !faces(mv.end))) return null;
+          // tried against its subjects, a move was never tried against who stands at the lens (k13 opening: a close on
+          // lying Mirai stood 0.27 m from Mama, the frame her dress)
+          const inBody = (c: V3, l: V3, f: number): boolean => crew.some((a) => {
+            if (a.offstage) return false;
+            if (Math.hypot(c[0] - a.pos[0], c[2] - a.pos[1]) < BODY_R) return true;
+            const p = ndcOf(headOf(a), c, l, f, inp.aspect ?? 16 / 9);
+            return p.depth > 0 && p.depth < LENS_HEAD && Math.abs(p.x) < 1.5 && Math.abs(p.y) < 1.5;
+          });
+          if (inBody(mv.cam, mv.look, mv.fov) || (mv.end && inBody(mv.end, mv.lookEnd ?? mv.look, mv.fovEnd ?? mv.fov))) return null;
           // an occluded move (moves.ts found no clear one) or a start the probe rejects is not kept: the next try or
           // the base frame takes over (Squidward, Nov 3: the close stood in the easel's canvas)
           if (r.warnings.includes("MOVE_OCCLUDED") || !seesAll(who, mv.cam)) return null;
