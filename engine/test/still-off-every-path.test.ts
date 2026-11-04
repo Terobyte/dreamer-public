@@ -35,6 +35,18 @@ describe("offWalkPaths", () => {
     const q = offWalkPaths([2, 1.2], [sq], snapInside, ROOM, "Squidward", fov);
     expect(off(q, sq)).toBeGreaterThanOrEqual(whole - 1e-6);
   });
+  // v42 146.5–147.5 s (user: "почему картинка становится оранжевой"): pushed 2.6 m off Squidward's path in the round
+  // pineapple, the camera stood behind its wall, the sight probe saw nobody, the frame was the wall for a second.
+  // The push goes only as far as the probe still sees; the farthest seen spot wins, else the camera stays.
+  it("the push stops where the sight probe stops seeing", () => {
+    const sq: DActor = { ...walker("Squidward", [0, 0], 90, 4), height: 1.9 };
+    const sees = (c: [number, number]): boolean => c[1] < 2; // a wall at z = 2
+    const q = offWalkPaths([2, 1.2], [sq], snapInside, ROOM, "Squidward", 45, sees);
+    expect(sees(q)).toBe(true);
+    expect(off(q, sq)).toBeGreaterThan(1.5); // as far as it can, not left on 1.2
+    const stuck = offWalkPaths([2, 1.2], [sq], snapInside, ROOM, "Squidward", 45, () => false);
+    expect(stuck).toEqual([2, 1.2]);
+  });
   it("a camera off every path stays where it is", () => {
     const bob = walker("SpongeBob", [0, 0], 90, 6);
     expect(offWalkPaths([3, 4], [bob], snapInside, ROOM, "SpongeBob")).toEqual([3, 4]);

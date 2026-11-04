@@ -786,7 +786,7 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     // line he walks, at its cut only
     // (v35 141.9–144 s: and off the path of everyone else walking, Squidward trudging after SpongeBob past the lens)
     if (curMove && !curMove.end && moveStart === clock && walkers.length) {
-      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name, curMove.fov);
+      const q = offWalkPaths([curMove.cam[0], curMove.cam[2]], walkers, snap, inp.room.outline, speaker.name, curMove.fov, inp.clear ? (c) => inp.clear!([c[0], curMove!.cam[1], c[1]], curMove!.look) : undefined);
       if (q[0] !== curMove.cam[0] || q[1] !== curMove.cam[2]) curMove = { ...curMove, cam: [q[0], curMove.cam[1], q[1]] };
     }
     if (!curMove) return out;
@@ -894,7 +894,7 @@ export function walkGoal(a: DActor): V2 {
   const L = a.walkLeft ?? 2;
   return [a.pos[0] + Math.sin(a.yaw * DEG) * L, a.pos[1] + Math.cos(a.yaw * DEG) * L];
 }
-export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string, fov?: number): V2 {
+export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V2[], held?: string, fov?: number, sees?: (c: V2) => boolean): V2 {
   let c = c0;
   for (let pass = 0; pass < 3; pass++) {
     let moved = false;
@@ -912,8 +912,18 @@ export function offWalkPaths(c0: V2, walkers: DActor[], snap: SnapFn, outline: V
       const need = Math.max(w.name === held ? PATH_CLEAR_M : OTHER_PATH_CLEAR_M, whole);
       if (off >= need - 1e-9) continue;
       const n: V2 = off > 1e-3 ? [(c[0] - near[0]) / off, (c[1] - near[1]) / off] : [f[1], -f[0]];
-      const p: V2 = [near[0] + n[0] * need * 1.001, near[1] + n[1] * need * 1.001];
-      c = outline.length >= 3 ? snap(outline, p, roomRect(outline), 0.25) : p;
+      // the farthest push the sight probe still sees from (v42 146.5 s: 2.6 m off Squidward's path the camera stood
+      // behind the pineapple's wall, the frame was the wall); nothing seen -> the camera stays
+      let to: V2 | null = null;
+      for (let k = 0; k <= 8 && !to; k++) {
+        const r = need - ((need - off) * k) / 8;
+        if (r <= off + 1e-6) break;
+        const p: V2 = [near[0] + n[0] * r * 1.001, near[1] + n[1] * r * 1.001];
+        const q = outline.length >= 3 ? snap(outline, p, roomRect(outline), 0.25) : p;
+        if (!sees || sees(q)) to = q;
+      }
+      if (!to) continue;
+      c = to;
       moved = true;
     }
     if (!moved) break;
