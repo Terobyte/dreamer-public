@@ -52,6 +52,9 @@ const timeOrigin = await page.evaluate(() => performance.timeOrigin).catch(() =>
 const facts = await page.evaluate(() => window.__critic ?? []).catch(() => []);
 for (const f of facts) f.t = Math.round((f.t + (timeOrigin - t0) / 1000) * 100) / 100;
 writeFileSync(`${outDir}/critic.jsonl`, facts.map((f) => JSON.stringify(f)).join("\n") + (facts.length ? "\n" : ""));
+// ?dirtape=1: the director's whole input tape (stage/index.ts), for an exact replay in a test
+const dirtape = await page.evaluate(() => window.__dirtape ?? []).catch(() => []);
+if (dirtape.length) writeFileSync(`${outDir}/dirtape.jsonl`, dirtape.map((f) => JSON.stringify(f)).join("\n") + "\n");
 // the stage's own warnings (Stage.warnings(): no shotplan, unknown place, pose fallback...) were never read
 const stageWarnings = await page.evaluate(() => window.__dreamer?.stageWarnings?.() ?? []).catch(() => []);
 writeFileSync(`${outDir}/stage_warnings.json`, JSON.stringify(stageWarnings, null, 1));

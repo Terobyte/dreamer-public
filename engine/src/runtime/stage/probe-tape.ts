@@ -24,3 +24,16 @@ export function replayProbe(blocked: number[][], tol = 0.01): Probe {
     return !blocked.some((b) => b.every((v, i) => Math.abs(v - q[i]) <= tol));
   };
 }
+
+/** the random draws of one director step on the tape (the page's rng is shared with the probe's own director, so a
+ *  replay without them drifts off the film; Koshakan f5's back-of-head frames did not replay from the cut windows) */
+export function tapeRng(rng: () => number): { rng: () => number; drawn: number[] } {
+  const drawn: number[] = [];
+  return { rng: () => { const v = rng(); drawn.push(v); return v; }, drawn };
+}
+
+/** the taped draws in order, then `rest` */
+export function replayRng(drawn: number[], rest: () => number): () => number {
+  let i = 0;
+  return () => (i < drawn.length ? drawn[i++]! : rest());
+}

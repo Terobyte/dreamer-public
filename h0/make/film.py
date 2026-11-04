@@ -32,7 +32,9 @@ END = ("book_end", "stop")
 def page_url(run_dir, static_port, sim_port, camera_style=None):
     # K2 director style id (storybook, spielberg, ozu...); empty = current default storybook, "legacy" = pre-K2 frames
     style = camera_style or os.environ.get("FILM_CAMERA_STYLE")
-    return static_url(run_dir, static_port, sim_port) + "&film=1" + (f"&camera_style={style}" if style else "")
+    # FILM_DIRTAPE=1: the page keeps every director input with its probe answers and random draws (dirtape.jsonl)
+    tape = "&dirtape=1" if os.environ.get("FILM_DIRTAPE") == "1" else ""
+    return static_url(run_dir, static_port, sim_port) + "&film=1" + (f"&camera_style={style}" if style else "") + tape
 
 
 def mux_cmd(video, events, sim_outdir, dst):

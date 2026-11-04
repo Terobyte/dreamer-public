@@ -1,3 +1,4 @@
+import os
 """make.film: the recorded page has no sound (Playwright never captures audio); every voiced event's wav is laid
 under the picture at the moment the page got it, the film ends just after book_end."""
 import tempfile
@@ -76,6 +77,15 @@ class Concat(unittest.TestCase):
 class PageUrl(unittest.TestCase):
     def test_film_flag_on_the_stage_page(self):
         self.assertTrue(film.page_url("runs/x", 9001, 9002).endswith("&film=1"))
+
+    def test_dirtape_env_asks_the_page_for_the_director_tape(self):
+        # Koshakan f5: a back of the head filled the frame and the cut windows (60 inputs) could not replay it
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"FILM_DIRTAPE": "1"}):
+            self.assertIn("&dirtape=1", film.page_url("runs/x", 9001, 9002))
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FILM_DIRTAPE", None)
+            self.assertNotIn("dirtape", film.page_url("runs/x", 9001, 9002))
 
 
 

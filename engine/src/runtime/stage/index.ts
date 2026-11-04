@@ -5,7 +5,7 @@ import type { HeldSpec } from "./held.js";
 import { aliasesOf, clipForBeat, fitStaged, idleAfterClip, idleForPose, stagedClips, startStaged } from "./anim.js";
 import { createActor, WALK_SPEED, type Actor } from "./actors.js";
 import { MOVES, SCHEMES, RECORDS, type MoveSubject } from "./moves.js";
-import { tapeProbe } from "./probe-tape.js";
+import { tapeProbe, tapeRng } from "./probe-tape.js";
 import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
@@ -1315,6 +1315,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     return true;
   };
   // the cut's inputs go on the first critic row after it only (the rows repeat the cut's record)
+  /** `?dirtape=1`: every director input with its probe "no"s and random draws (window.__dirtape -> dirtape.jsonl) */
+  const dirTape: unknown[] | null = typeof window !== "undefined" && typeof location !== "undefined" && /[?&]dirtape=1\b/.test(location.search) ? ((window as any).__dirtape = []) : null;
   const takeSaw = (): unknown => {
     const saw = dirCutSaw as { atCut?: { inputs?: unknown } } | null;
     if (!saw?.atCut?.inputs) return saw;
@@ -1525,11 +1527,12 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       stepBodies = camBodies();
       // the probe's "no"s ride with the inputs: a replay answers from them (probe-tape.ts)
       const tape = tapeProbe(seesPast);
+      const draws = dirTape ? tapeRng(rng) : null;
       const out = director.step({
         event: ev,
         actors: here,
         room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY },
-        rng,
+        rng: draws?.rng ?? rng,
         fov: directorFov ?? c.camera.fov,
         aspect: c.camera.aspect,
         clear: tape.clear,
@@ -1537,6 +1540,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       if (isLast) s = out;
       dirInputs.push({ ...(r3({ event: ev, actors: here, room: { outline: f.outline, ceiling: camHeight, open: isOpen(f.room), floorY }, fov: directorFov ?? c.camera.fov, aspect: c.camera.aspect }) as object), blocked: tape.blocked });
       if (dirInputs.length > 60) dirInputs.shift();
+      if (dirTape && draws) dirTape.push({ ...(dirInputs[dirInputs.length - 1] as object), rngs: draws.drawn, out: { cut: out.cut, plan: out.plan, move: out.move ?? null, cam: out.cam } });
       dirSaw = { ev: ev.kind, speaker: ev.speaker ?? null, tags: ev.tags ?? null, crew: here.map((d) => ({ n: d.name, lv: d.level, lie: !!d.lying, head: d.head?.map((x) => Math.round(x * 100) / 100) })), all: dActors(list).map((d) => [d.name, d.room, d.level]), focus: [f.room, lvl], warn: out.warnings ?? [] };
       if (out.cut !== dirCut) {
         dirSaw = { ...(dirSaw as object), atCut: { cam: out.cam.map((x) => Math.round(x * 100) / 100), look: out.look.map((x) => Math.round(x * 100) / 100), end: out.end ?? null, move: out.move ?? null, lookRef: out.lookRef ?? null, fov: out.fov ?? null, inputs: [...dirInputs] } };

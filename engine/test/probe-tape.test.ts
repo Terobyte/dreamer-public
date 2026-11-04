@@ -24,3 +24,17 @@ describe("probe tape", () => {
     expect(clear([1, 1, 1], [2, 2.02, 2])).toBe(true);
   });
 });
+
+// Koshakan f5: a back of the head filled the frame; replaying the cut windows lost the director's random draws
+describe("rng tape", () => {
+  it("records the draws a step takes and replays them in order, then falls back", async () => {
+    const { tapeRng, replayRng } = await import("../src/runtime/stage/probe-tape.js");
+    let s = 0;
+    const src = () => (s += 0.1);
+    const t = tapeRng(src);
+    const a = [t.rng(), t.rng(), t.rng()];
+    expect(t.drawn).toEqual(a);
+    const r = replayRng(t.drawn, () => 0.99);
+    expect([r(), r(), r(), r()]).toEqual([...a, 0.99]);
+  });
+});
