@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dreamer</title>
+<link rel="stylesheet" href="/static/home.css">
+</head>
+<body>
+<div id="home">
+  <header class="top">
+    <a class="mark" href="#book" aria-label="Dreamer home">Dreamer</a>
+    <p class="made">Directed by Muse Spark, painted by Muse Image, built with SAM 3D, heard by Meta ASR.</p>
+  </header>
+
+  <section class="lead">
+    <h1>Step inside a story.</h1>
+    <nav class="tabs" role="tablist" aria-label="Modes">
+      <a role="tab" id="tab-book" href="#book" data-tab="book">Book</a>
+      <a role="tab" id="tab-freestyle" href="#freestyle" data-tab="freestyle">Freestyle</a>
+      <a role="tab" id="tab-create" href="#create" data-tab="create">Create</a>
+    </nav>
+    <p class="mode-note" id="mode-note"></p>
+  </section>
+
+  <main>
+    <section class="shelf" id="shelf" aria-live="polite"></section>
+
+    <section class="create" id="create" hidden>
+      <div class="create-grid">
+        <div class="col">
+          <h2>Pick a world</h2>
+          <div class="worlds" id="worlds"></div>
+          <p class="aside" id="yard-hint"></p>
+        </div>
+        <div class="col">
+          <h2>What happens next?</h2>
+          <label class="field" for="idea">
+            <textarea id="idea" maxlength="600" rows="4"
+              placeholder="Mirai finds a lost kitten in the meadow and wants to keep it."></textarea>
+          </label>
+          <div class="field-row">
+            <button type="button" class="mic" id="mic" aria-pressed="false">
+              <span class="dot" aria-hidden="true"></span><span class="mic-label">Hold to talk</span>
+            </button>
+            <span class="count" id="count">0 / 600</span>
+          </div>
+          <p class="aside" id="mic-note">Muse Spark writes the chapter with this world's characters, then Dreamer stages it. Usually 2–4 minutes.</p>
+          <button type="button" class="primary" id="build" disabled>Write and stage it</button>
+          <ol class="stages" id="stages" hidden></ol>
+          <p class="build-msg" id="build-msg" role="status"></p>
+        </div>
+      </div>
+      <h2 class="mine-title">Your scenes</h2>
+      <div class="shelf mine" id="mine"></div>
+    </section>
+  </main>
+</div>
+
+<div id="stage" hidden>
+  <iframe id="frame" title="Dreamer scene" allow="autoplay; microphone; fullscreen; xr-spatial-tracking"></iframe>
+  <div class="stage-bar">
+    <button type="button" id="back">← Home</button>
+    <a id="newtab" href="#" target="_blank" rel="noopener">Open in a new tab</a>
+  </div>
+  <div class="stage-dead" id="dead" hidden>
+    <p>The scene stopped.</p>
+    <pre id="dead-log"></pre>
+    <button type="button" id="dead-back">← Home</button>
+  </div>
+</div>
+
+<div id="opening" hidden><div class="spinner" aria-hidden="true"></div><p id="opening-text">Opening the book…</p></div>
+<div id="toast" role="alert" hidden></div>
+
+<script type="module" src="/static/home.js"></script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+{
+  "scenes": [
+    {
+      "id": "koshakan-bedroom",
+      "title": "The word",
+      "subtitle": "Koshakan · chapter 1",
+      "book": "Koshakan by Moldir",
+      "blurb": "Early morning. Mama wakes her little lamb Mirai with a word that belongs only to them.",
+      "kind": "play",
+      "run": "../anymove/runs/koshakan/world/home/book/bedroom",
+      "modes": [
+        "book",
+        "freestyle"
+      ],
+      "cover": "covers/koshakan-bedroom.jpg",
+      "minutes": 2
+    },
+    {
+      "id": "koshakan-bathroom",
+      "title": "Warm tap water",
+      "subtitle": "Koshakan · chapter 1",
+      "book": "Koshakan by Moldir",
+      "blurb": "Washing up before the day starts — and a drippy, giggling Koshakan.",
+      "kind": "play",
+      "run": "../anymove/runs/koshakan/world/home/book/bathroom",
+      "modes": [
+        "book",
+        "freestyle"
+      ],
+      "cover": "covers/koshakan-bathroom.jpg",
+      "minutes": 2
+    },
+    {
+      "id": "koshakan-meadow",
+      "title": "The dandelion meadow",
+      "subtitle": "Koshakan · chapter 1",
+      "book": "Koshakan by Moldir",
+      "blurb": "Out among the dandelions, Mama tells Mirai what Koshakan really means.",
+      "kind": "play",
+      "run": "../anymove/runs/koshakan/world/home/book/meadow",
+      "modes": [
+        "book",
+        "freestyle"
+      ],
+      "cover": "covers/koshakan-meadow.jpg",
+      "minutes": 2
+    },
+    {
+      "id": "sherlock-221b",
+      "title": "221B Baker Street",
+      "subtitle": "A Study in Scarlet · chapter 2",
+      "book": "A Study in Scarlet by Arthur Conan Doyle",
+      "blurb": "Holmes and Watson in their sitting room: the brain-attic, the Book of Life, and a retired sergeant at the door.",
+      "kind": "play",
+      "run": "../meta-place/runs/sherlock_221b_cut",
+      "modes": [
+        "book",
+        "freestyle"
+      ],
+      "cover": "covers/sherlock-221b.jpg",
+      "minutes": 3
+    },
+    {
+      "id": "kozb7-yard",
+      "title": "Kozbagarov St. 7",
+      "subtitle": "A real yard in Semey, Kazakhstan",
+      "book": null,
+      "blurb": "Built from OpenStreetMap, satellite and Street View. Walk in, hold Space and say what should open here — a shop grows into the house in about 2.5 minutes.",
+      "kind": "place",
+      "run": "runs/yard-kozb7",
+      "modes": [
+        "freestyle"
+      ],
+      "cover": "covers/kozb7-yard.jpg",
+      "minutes": 5
+    }
+  ],
+  "worlds": [
+    {
+      "id": "koshakan-house",
+      "title": "Koshakan's house",
+      "blurb": "Mirai's bedroom, the bathroom and the dandelion meadow.",
+      "who": [
+        "Mama",
+        "Mirai"
+      ],
+      "dir": "../anymove/runs/koshakan/world/home/world_pic",
+      "book": "h0/dream/books/koshakan",
+      "cast": "../anymove/runs/koshakan/world/home/book/bedroom/cast",
+      "cover": "covers/koshakan-meadow.jpg"
+    },
+    {
+      "id": "baker-street",
+      "title": "221B Baker Street",
+      "blurb": "Holmes and Watson's sitting room, London, 1881.",
+      "who": [
+        "Holmes",
+        "Watson"
+      ],
+      "dir": "../meta-place/runs/sherlock_221b_world2",
+      "book": "h0/dream/books/sherlock",
+      "cast": "../meta-place/runs/sherlock_221b_cut/cast",
+      "cover": "covers/sherlock-221b.jpg"
+    }
+  ]
+}

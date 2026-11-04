@@ -137,7 +137,7 @@ const css = (el: HTMLElement, s: Partial<CSSStyleDeclaration>): HTMLElement => O
 function promptLine(doc: Document, post: Post, source: Source, onNote: (t: string) => void, style: Partial<CSSStyleDeclaration>) {
   const input = doc.createElement("input");
   input.type = "text";
-  input.placeholder = source === "operator" ? "команда режиссёру, Enter — отправить" : "режиссёру (Tab), Enter — отправить";
+  input.placeholder = source === "operator" ? "команда режиссёру, Enter — отправить" : "an idea for the director (Tab), Enter to send";
   input.dataset.source = source;
   css(input, { position: "fixed", zIndex: "20", font: "16px system-ui", padding: "10px 12px", background: "rgba(10,12,16,.85)", color: "#eee", border: "1px solid #556", borderRadius: "6px", ...style });
   let rev = 0;

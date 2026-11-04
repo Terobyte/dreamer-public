@@ -622,14 +622,14 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (btn) {
       btn.hidden = false;
       btn.classList.toggle("on", m === "freestyle");
-      btn.textContent = m === "freestyle" ? "⚡ фристайл: импровизируют" : "⚡ Фристайл [G]";
+      btn.textContent = m === "freestyle" ? "⚡ Freestyle: they improvise" : "⚡ Freestyle [G]";
     }
   };
   const goFree = (): void => {
     if (c.film || mode !== "book" || !c.sim || !btn) return;
     btn.textContent = "⚡ переключаю…";
     fetch(`${c.sim.replace(/\/$/, "")}/freestyle`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(
-      () => (btn.textContent = "⚡ Фристайл [G] (движок не ответил)"),
+      () => (btn.textContent = "⚡ Freestyle [G] (the engine did not answer)"),
     );
   };
   if (btn) {

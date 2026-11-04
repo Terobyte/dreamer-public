@@ -13,6 +13,18 @@ export function audioUrl(sim: string, live: string | null, audio: string): strin
   return `${sim.replace(/\/$/, "")}/out/${enc(live)}/${enc(audio)}`;
 }
 
+/** What the viewer reads: the voice's delivery marks are for TTS only ("[soft whisper]", "<emphasis>x</emphasis>",
+ *  "[[TOUCH:bed]]"), so they leave the text; the words inside a tag stay. */
+export function cleanSubtitle(text: string): string {
+  return text
+    .replace(/\[\[[^\]]*\]\]/g, " ")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/<\/?[a-zA-Z][^>]*>/g, "")
+    .replace(/\s+([,.!?;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function createSubs(sim: string | null, doc: Document | null = typeof document !== "undefined" ? document : null): Subs {
   // which run the sim plays: /api/status -> {"live": "<profile>/<run>"}; asked once, again if it was not live yet
   let live: string | null = null;
@@ -38,7 +50,7 @@ export function createSubs(sim: string | null, doc: Document | null = typeof doc
     if (box && doc) {
       const d = doc.createElement("div");
       d.className = cls;
-      d.textContent = text;
+      d.textContent = cleanSubtitle(text);
       if (cls === "narrator") d.style.fontStyle = "italic";
       box.replaceChildren(d);
     }

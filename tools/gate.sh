@@ -30,6 +30,9 @@ fi
    echo "$skip" | grep -qx "$f" && continue
    (cd "$(dirname "$f")" && python3 -m pytest -q -p no:cacheprovider "$(basename "$f")") || rc=1
  done
+ # Dreamer Home (the submission launcher): fake scenes and `make --fake`, no network
+ [ ! -f h0/home/test_home.py ] || echo "$skip" | grep -qx "h0/home/test_home.py" \
+   || (cd h0 && python3 -m unittest -q home.test_home) || rc=1
  echo $rc >"$logs/py.rc") >"$logs/py" 2>&1 &
 
 # engine vitest runs after the python suites and on at most 5 workers: browser and CLI tests
