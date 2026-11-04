@@ -10,7 +10,7 @@ import { BRIDGE_ONLY, STYLES } from "./styles.js";
 import { createDirector, createPendingQueue, inScene, initialYaws, smoothCam, type DActor, type DEvent } from "./director.js";
 import type { StageLevel } from "./path.js";
 import { interRoomDoorStep } from "./path.js";
-import { approachGap, BED_TUCK_M, bedLift, floorAt, groundLift, hugMode, hugSpot, lapHugSpot, lapSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
+import { approachGap, BED_TUCK_M, bedLift, floorAt, hugMode, hugSpot, lapHugSpot, lapSpot, nearActor, pillowShift, stageRegex, startSpot, yawTo, type Claims, type Place, type V2 } from "./places.js";
 import { createToucher } from "./touch.js";
 import { separate, yieldPace } from "./separate.js";
 import { createSubs } from "./subs.js";
@@ -725,34 +725,17 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     if (sc.idle) a.setIdle?.(sc.idle);
     if (sc.clip) playOnce(who, sc.clip);
     else if (sc.procedural) a.gesture();
-    // an idle sitting on the ground (Mama on the grass, contact 0.32 m under her root) is lifted out of it once its
-    // clip has played; a bed, a seat and a lap place their bodies themselves
-    if (sc.idle && !bedOf(who) && a.act() !== "sit" && !lapOf.has(who) && !lapHugging.has(who)) {
-      const want = groundLift(factOf(who, sc.idle));
-      if (sc.clip) pendingLift.set(who, { clip: sc.clip, want });
-      else liftTo(who, want);
-    }
   };
   /** actors whose clip this beat's staging named: the text pick of the same beat does not override it */
   const stagedClipWho = new Set<string>();
   /** clips that wait for the walk of their directive to end */
   const onArrive = new Map<string, { clip?: string; idle?: string }>();
-  const factOf = (who: string, clip: string | undefined): { contact_y?: number; lying?: boolean } | undefined =>
-    clip ? (clipfacts?.[who]?.[clip] as { contact_y?: number; lying?: boolean } | undefined) : undefined;
   /** child -> the holder whose lap she walks to (a lap clip in her directive); she sits in it on arrival */
   const lapOf = new Map<string, string>();
   /** children hugging from a lap: their partner's hug plays in place */
   const lapHugging = new Set<string>();
-  /** how far a body sitting on the ground is lifted out of it now (groundLift of its idle), and a lift waiting for the clip before it */
-  const groundLifted = new Map<string, number>();
-  const pendingLift = new Map<string, { clip: string; want: number }>();
-  const liftTo = (who: string, want: number): void => {
-    const a = actors.get(who);
-    const had = groundLifted.get(who) ?? 0;
-    if (!a || Math.abs(want - had) < 1e-3) return;
-    groundLifted.set(who, want);
-    a.teleport(a.pos(), a.yaw(), a.act(), a.y() + want - had);
-  };
+  /** in a lap: the child, or the holder of one; neither turns her body to whom she speaks */
+  const inLap = (who: string): boolean => lapOf.has(who) || lapHugging.has(who) || [...lapOf.values()].includes(who);
   /** actors that walked up to another one (a hug, a lap): the pair is never pushed apart until one of them moves on */
   const together = new Set<string>();
   let nearSeq = 0;
@@ -776,8 +759,7 @@ export async function startStage(c: StageCtx): Promise<Stage> {
     // hug_cling took Mirai off the lap onto the grass, f2: she kept lap_cloud and never hugged)
     const mode = hugMode(a.idleName?.(), other.idleName?.());
     if (mode === "lapHug") {
-      const fy = other.y() - (groundLifted.get(other.who) ?? 0);
-      const s = lapHugSpot(other.pos(), other.yaw(), fy, factOf(who, sc.idle ?? sc.clip)?.contact_y ?? 0);
+      const s = lapHugSpot(other.pos(), other.yaw(), other.y());
       a.teleport(s.at, s.yaw, a.act(), s.y);
       lapHugging.add(who);
       return sc;
@@ -798,19 +780,13 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       onArrive.delete(who);
       const holder = lapOf.has(who) ? actors.get(lapOf.get(who)!) : undefined;
       if (holder) {
-        const fy = holder.y() - (groundLifted.get(holder.who) ?? 0);
-        const s = lapSpot(holder.pos(), holder.yaw(), fy, factOf(who, sc.idle ?? sc.clip)?.contact_y ?? 0);
+        const s = lapSpot(holder.pos(), holder.yaw(), holder.y());
         a.teleport(s.at, s.yaw, a.act(), s.y);
       }
       actOut(who, sc);
     }
   };
   const settleAfterClips = (): void => {
-    for (const [who, pl] of pendingLift) {
-      if (actors.get(who)?.clip?.() === pl.clip) continue;
-      pendingLift.delete(who);
-      liftTo(who, pl.want);
-    }
     for (const [who, clip] of afterClip) {
       const a = actors.get(who);
       if (!a || a.clip?.() === clip) continue;
@@ -1071,7 +1047,8 @@ export async function startStage(c: StageCtx): Promise<Stage> {
       const roomOf = (x: Actor): unknown => roomOfActor(x, toucher.levelOf(x.who))?.room;
       const mates = sp ? [...actors.values()].filter((o) => o !== sp && !offstageActors.has(o.who) && roomOf(o) === roomOf(sp)) : [];
       const addressee = lookName ? (lookName !== who && !offstageActors.has(lookName) ? actors.get(lookName) : undefined) : mates.length === 1 ? mates[0] : undefined;
-      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving()) {
+      // a pair in a lap keeps its bodies (f3: Mama and Mirai turned to each other on every line, out of the lap)
+      if (sp && addressee && sp.act() !== "sit" && poseOf.get(who!) !== "lie" && !sp.moving() && !inLap(sp.who)) {
         const y = yawTo(sp.pos(), addressee.pos());
         if (Math.abs((((y - sp.yaw()) % 360) + 540) % 360 - 180) > 30) sp.turn(y);
       }
