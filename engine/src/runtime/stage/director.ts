@@ -1553,7 +1553,11 @@ function frame(plan: Plan, subj: DActor, other: DActor | undefined, crew: DActor
       return frame("two", subj, other, crew, walkers, inp, t, clock, cut, st, snap, gaze, closeAxis, false, closeOrigin);
     }
     case "two": {
-      const d = Math.max(3, span * 1.2 + 2.5);
+      // as far as the pair needs, not a fixed 3 m (Koshakan f7 meadow 67–240 s: the kneeling hug a quarter of the
+      // frame at the page's 70° for 94 s): the heads (a kneeling one too) and the pair's width fill ~70% of the frame
+      const tanV2 = Math.tan(vfov / 2), tanH2 = tanV2 * aspect;
+      const top = Math.max(...pair.map((a) => head(a)[1] - floorY)) + 0.25;
+      const d = Math.max(1.6, top / (0.7 * 2 * tanV2), (span + 1) / (0.7 * 2 * tanH2));
       const y = meanH * 0.8;
       return { plan: p, cut, cam: toSide(place(m[0] + sideDir[0] * d, m[1] + sideDir[1] * d, y), y, d), look: at(m, meanH * 0.6) };
     }
