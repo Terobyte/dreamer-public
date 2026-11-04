@@ -367,7 +367,9 @@ export function createDirector(defaultRng: () => number, opts: { snap?: SnapFn; 
     if (moveMode && ev.kind === "tick" && curMove && faceBase) {
       const a = crew.find((x) => x.name === faceBase!.name);
       const fd = a ? faceDir(a) : null;
-      if (a && fd) {
+      // a walker's face turns with every step and her walk is followed (Koshakan k9 24.3 s: Mama walking to the bed,
+      // a cut on every tick, 13 in 0.2 s)
+      if (a && fd && !a.walking) {
         const toCam: V2 = [curMove.cam[0] - a.pos[0], curMove.cam[2] - a.pos[1]];
         if (angleBetween(fd, faceBase.dir) > 30 || angleBetween(fd, toCam) > 90) forceCut = true;
       }

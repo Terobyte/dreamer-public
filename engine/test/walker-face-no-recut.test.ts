@@ -1,0 +1,26 @@
+/** Koshakan k9 24.3–25.8 s: Mama walked to the bed and the cut id went 5 -> 19 -> 49 -> 52 in a second and a half.
+ *  The rule "a face that turned more than 30° (or past 90° to the camera) ends the plan" cut on every tick while
+ *  she walked: her face turned with every step and each new frame had her back too. A walker's turning face does
+ *  not cut the frame (the walk is followed). Inputs: the k9 critic's recorded steps with the probe's answers. */
+import { readFileSync } from "node:fs";
+import { describe, it, expect } from "vitest";
+import { createDirector, type DirectorInput } from "../src/runtime/stage/director.js";
+import { replayProbe } from "../src/runtime/stage/probe-tape.js";
+
+type Taped = DirectorInput & { blocked?: number[][] };
+const IN: Taped[] = JSON.parse(readFileSync(new URL("./fixtures/kosh-walk-to-bed.json", import.meta.url), "utf8"));
+
+describe("a walker's turning face does not cut the frame", () => {
+  for (const seed of [0.1, 0.5, 0.9]) {
+    it(`rng ${seed}: the cut id grows by at most 4 in the 60 steps from Mama's walk`, () => {
+      const d = createDirector(() => seed, { style: "storybook" });
+      const cuts: number[] = [];
+      IN.forEach((i, k) => {
+        const o = d.step({ ...i, clear: replayProbe(i.blocked ?? []) });
+        if (k >= 180 && cuts[cuts.length - 1] !== o.cut) cuts.push(o.cut);
+      });
+      // the cut id counts every cut the director made, shown or swallowed; 13 in 0.2 s reset the once-per-cut recut
+      expect(Math.floor(cuts[cuts.length - 1]) - Math.floor(cuts[0]), JSON.stringify(cuts)).toBeLessThanOrEqual(4);
+    });
+  }
+});
