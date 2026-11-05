@@ -20,7 +20,8 @@ SKIP = ["**/__pycache__/**", "**/test_*.py", "**/out/**", "**/*.png", "**/*.jpg"
 
 image = (
     modal.Image.from_registry("node:22-bookworm-slim", add_python="3.12")
-    .pip_install("pillow", "numpy", "shapely", "requests", "opencv-python-headless")
+    .apt_install("ca-certificates")                    # B56: the slim base has no CA bundle, every https call failed
+    .pip_install("pillow", "numpy", "shapely", "requests", "opencv-python-headless", "modal==1.6.2")
     .env({"PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD": "1", "PYTHONUNBUFFERED": "1"})
     .add_local_file(META / "engine" / "package.json", "/root/engine/package.json", copy=True)
     .add_local_file(META / "engine" / "package-lock.json", "/root/engine/package-lock.json", copy=True)
@@ -41,6 +42,7 @@ image = (
         "pipe2.ledger, pipe2.engine, llm_http, keys, PIL, shapely, modal'",
         "cd /root/h0 && python -m place.semey --selftest /tmp/semey-selftest",
         "node -e 'const [a,b]=process.versions.node.split(\".\").map(Number); if (a<22||(a===22&&b<12)) process.exit(1)' && node --version",
+        "python -c \"import urllib.request as u, urllib.error as e; f = lambda: u.urlopen('https://api.meta.ai/', timeout=30); exec('try: f()\\\\nexcept e.HTTPError: pass')\"",
         "test -f /client/index.html && test -d /client/yard && test -d /client/shop2 && ! grep -q '%VITE_' /client/index.html",
     )
 )

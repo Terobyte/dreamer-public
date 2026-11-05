@@ -359,3 +359,15 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 - client: test/live_bugs3.test.mjs (B44–B48, B50), live_bugs4.test.mjs (B52, red on HEAD live.js via LIVE_JS) → green; tsc clean
 - B42: Warm.remove_later (hold drops at once, RPC + booking on their own thread); B41: PUBLIC_HOST is a comma list, Origin must match the Host used; B49: one byte range, 206/416, Accept-Ranges; B50: vite.config default + runtime '%' guard; B51: image runs imports, --selftest, node ≥ 22.12, client files and no '%VITE_' at build
 - not mine: test/film_bugs.test.mjs F2 red on the uncommitted film edits of demo.js (another session's work in progress)
+### B54 — my B47 edit put a `//` comment mid one-line api(): live.js stopped parsing, the client build failed; the slicing tests stayed green — CRIT — fixed
+- class: regression (syntax) · location: app/src/live.js api() · found-by: senior (worktree build)
+- lesson: structural/sliced tests never parse the whole module — a parse check of every client module + a real `vite build` with no leftover tokens belong in the client suite
+### B50 (re-opened, then fixed) — vite's %ENV% html replacement ignores a default set in vite.config: the literal still shipped; now the html carries __SEMEY_VIDEO__ and a transformIndexHtml plugin always fills it (VITE_VIDEO_URL or /video.mp4); verified in a real build
+### B55 — the image had no `modal` package (server's volume.commit / SAM3D warm import it in the subprocess) — MAJOR — fixed: caught red by the new B51 build check on the redeploy, green after pip modal==1.6.2
+### B56 — the node:22-bookworm-slim base has no ca-certificates: every https call from the container (Spark, Muse, ASR) fails CERTIFICATE_VERIFY_FAILED, so no build can pass — CRIT — fixed: apt ca-certificates + a build-time https probe to api.meta.ai (an HTTPError answer passes, an SSL/URL error fails the image); found by the gate-2 real build (failed in 7 s, why=URLError), reproduced inside the live container
+### gate 2 on Modal (19:08–19:11 ET): real build `wc8581e52ad44` "a small bakery with fresh bread" on a cold GPU, claim → built 184 s; Playwright on the public link: loaded, walked in and out with W, still there after reload, 0 responses ≥ 400 (scratchpad e2e/live_e2e.mjs)
+### B57 — inside a judge's built place the hint pill says "Walk up to a place on the ground floor…" (insideNow knows only shop2) — MINOR — reported
+- class: client UX · location: live.js hintFor / insideNow · found-by: senior (gate 2 frames)
+### B58 — Spark's wall tile prompt describes the room layout ("beige plaster, lower half pale green"); the tile repeats every 1.5 m so the walls come out in horizontal bands (the L187(3) class: a tile prompt must be one uniform surface) — MAJOR — reported
+- class: generation quality · location: semey.py WISH_PLACE "wall"/"floor" + fix_spec · found-by: senior (gate 2 frames)
+### parked: a white 0.6 m panel on the back wall inside wc8581e52ad44 — not in decals/props/lights of the scene; likely the block's own facade piece behind the 0.15 m gap; look after the deadline

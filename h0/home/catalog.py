@@ -6,6 +6,7 @@ only an id that this module maps to a path it checked.
 import json
 import re
 import time
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]          # meta/
@@ -16,7 +17,7 @@ CATALOG = Path(__file__).with_name("scenes.json")
 RUNS = ROOT / "runs"
 RUN_ID = re.compile(r"home-\d{8}-\d{6}")
 MODES = ("book", "freestyle")
-KINDS = ("play", "place")
+KINDS = ("play", "place", "link")
 
 
 def _under(p: Path, base: Path) -> bool:
@@ -88,6 +89,20 @@ def _check(e, root: Path):
     return run, None
 
 
+def link_ok(url):
+    """a live world on Modal: https, *.modal.run, no credentials/port/backslash/whitespace"""
+    if not isinstance(url, str) or "\\" in url or re.search(r"\s", url):
+        return False
+    try:
+        u = urllib.parse.urlparse(url)
+        port = u.port
+    except ValueError:
+        return False
+    h = u.hostname or ""
+    return (u.scheme == "https" and (h == "modal.run" or h.endswith(".modal.run")) and u.username is None
+            and u.password is None and port is None)
+
+
 def load(path: Path = CATALOG, root: Path = ROOT):
     """-> {"scenes": [...], "worlds": [...]}; a broken entry stays with ready=False and a reason."""
     data = json.loads(Path(path).read_text())
@@ -99,6 +114,14 @@ def load(path: Path = CATALOG, root: Path = ROOT):
             continue   # an id that could be confused with a path or a guest run is dropped, not shown
         if e.get("kind") not in KINDS:
             bad = "unknown kind"
+        if e.get("kind") == "link":                 # a door to a live world elsewhere: no run, never played here
+            e["modes"] = [m for m in e.get("modes") or [] if m in MODES] or ["freestyle"]
+            ok = link_ok(e.get("url"))
+            e.update(_cover=_cover(e.get("cover")), ready=ok, why=None if ok else "url must be https://*.modal.run")
+            if not ok:
+                e.pop("url", None)
+            scenes.append(e)
+            continue
         modes = [m for m in e.get("modes") or [] if m in MODES]
         if not modes:
             bad = bad or "no modes"

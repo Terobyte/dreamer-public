@@ -58,6 +58,7 @@ function toast(msg, log = []) {
 
 // ---------- shelf ----------
 function card(s, mode, extra = []) {
+  if (s.kind === "link") return linkCard(s, () => window.open(s.url, '_blank', 'noopener'));
   const act = s.kind === "place" ? { label: "Walk in", opening: "Opening the yard…" } : ACT[mode];
   const go = () => play(s.id, mode, act.opening);
   const cover = el("button", { class: "cover", type: "button", "aria-label": `${act.label}: ${s.title}`, onclick: go },
@@ -71,9 +72,22 @@ function card(s, mode, extra = []) {
     el("div", { class: "acts" }, el("button", { class: "primary", type: "button", onclick: go }, act.label), extra));
 }
 
+// a live shared world on Modal: opens in its own tab, never through /api/play
+function linkCard(s, go) {
+  const cover = el("button", { class: "cover", type: "button", "aria-label": `Open the live world: ${s.title}`, onclick: go },
+    s.cover_url ? el("img", { src: s.cover_url, alt: "", loading: "lazy" }) : el("div", { class: "plain" }, s.title),
+    el("span", { class: "len live" }, "live · shared world"));
+  return el("article", { class: "scene star", "data-id": s.id, "data-mode": "link" },
+    cover,
+    el("h3", {}, s.title),
+    s.subtitle ? el("p", { class: "sub" }, s.subtitle) : null,
+    s.blurb ? el("p", { class: "blurb" }, s.blurb) : null,
+    el("div", { class: "acts" }, el("button", { class: "primary", type: "button", onclick: go }, "Open the live world")));
+}
+
 function renderShelf() {
   const shelf = $("#shelf");
-  const list = data.scenes.filter((s) => (s.ready || debug) && s.modes.includes(tab));
+  const list = data.scenes.filter((s) => (s.ready || debug) && (s.kind === "link" || s.modes.includes(tab)));
   shelf.replaceChildren(...list.map((s) => card(s, tab)));
   if (!list.length) shelf.append(el("p", { class: "empty" }, "No scenes here yet."));
 }

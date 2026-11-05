@@ -302,6 +302,8 @@ def make_handler(home: Home):
                 mode = req.get("mode")
                 if e is None:
                     return self._json({"error": "unknown scene"}, 404)
+                if e.get("kind") == "link":
+                    return self._json({"error": "a live world opens in its own tab"}, 400)
                 if mode not in e["modes"]:
                     return self._json({"error": "this scene has no %s mode" % mode}, 400)
                 if not e["ready"]:
