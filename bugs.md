@@ -373,3 +373,6 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 ### parked: a white 0.6 m panel on the back wall inside wc8581e52ad44 — not in decals/props/lights of the scene; likely the block's own facade piece behind the 0.15 m gap; look after the deadline
 ### note on IDs: the 2026-11-04 semey hunts started at B11 while the 2026-10-31 hunt already used B11–B62 — semey IDs (B11–B58 under the "Hunt 2026-11-04" headings) are read within their sections; the next hunt starts at B63
 ### fix (B57, B58 of hunt c): hintFor checks the loaded judge rooms in their local frame; WISH_PLACE asks for one uniform material per tile and fix_spec appends TILE_RULE to wall/floor — red tests test_semey_bugs_d.py, live_bugs5.test.mjs → green
+### B59 — while a place builds, the progress sign (3D, 3.6 m) is cut by the top of the screen at the slot and the hint pill (top:18px) sits on top of it: the judge cannot read stage/% /time — MAJOR — fixed: pill at bottom:28px, the building hint carries stage · pct · m:ss; red test app/test/live_bugs6.test.mjs → green, client 08f9524, deployed
+- class: client UX · location: live.js #lv-hint css + hintFor 'building' · found-by: senior (recorded spare, frames 40–195 s)
+- fix plan: pill moves to the bottom of the screen; near a building place the pill itself carries stage · pct · m:ss
