@@ -376,3 +376,6 @@ python3 -m unittest -v test_llm.FallbackDiagnosticsTest test_memory.MemoryOpenBu
 ### B59 — while a place builds, the progress sign (3D, 3.6 m) is cut by the top of the screen at the slot and the hint pill (top:18px) sits on top of it: the judge cannot read stage/% /time — MAJOR — fixed: pill at bottom:28px, the building hint carries stage · pct · m:ss; red test app/test/live_bugs6.test.mjs → green, client 08f9524, deployed
 - class: client UX · location: live.js #lv-hint css + hintFor 'building' · found-by: senior (recorded spare, frames 40–195 s)
 - fix plan: pill moves to the bottom of the screen; near a building place the pill itself carries stage · pct · m:ss
+### B60 — a judge who steps back (> 3.2 m) to watch the place go up loses the progress: the pill falls back to "Walk up to a place…" — MINOR — reported
+- class: client UX · location: live.js hintFor (only nearest() d < 3.2 is checked) · found-by: senior (spare recording 2, 6 m back)
+- fix plan: a 'building' place within 12 m keeps its progress hint
