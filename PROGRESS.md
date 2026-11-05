@@ -20,6 +20,15 @@
 
 _Обновлено: 2026-11-04_
 
+## Семей live на Modal (Nov 4, Claude без tero)
+
+- **Ссылка:** https://highskilltero--semey-web.modal.run/?live (и region-хост `…semey-web.us-east.modal.run`), ключ судей `?k=` из `meta/.env SEMEY_JUDGE_KEY`. Админ: `cd h0 && python3 -m place.semey_admin <url> status|free N|reset|claims on|off`.
+- Деплой: `cd h0 && SEMEY_CLIENT=<dist собранный из коммита клиента, не из рабочей копии> modal deploy place/semey_modal.py`; образ сам проверяет импорты, selftest, Node ≥ 22.12, https до api.meta.ai, файлы клиента (B51/B56).
+- **Ворота 2 пройдены 19:11 ET:** настоящая стройка «a small bakery with fresh bread» на холодной GPU, claim → built 184 с, $0.50; Playwright по публичной ссылке: загрузилась, вход/выход ногами, после перезагрузки на месте, 0 ответов ≥ 400. GPU после стройки выключилась (warm 0).
+- Багхант (c) B41–B58: `bugs.md`. Главные: B56 (в образе не было CA-сертификатов — ни одна стройка не могла пройти), B54 (live.js не парсился), B50 (ссылка на видео — буквальный `%VITE_VIDEO_URL%`).
+- Home: первая карточка `kozb7-yard` = `kind: link` на живой мир (открывается в своей вкладке).
+- Открыто: видео-запаска `/video.mp4` и внешняя ссылка на него (Tero выкладывает сам), `reset` + `claims on` перед сабмитом, `spent_usd` записать сюда.
+
 ## Dreamer Home — витрина сабмита (Nov 4, Claude без tero)
 
 - `cd h0 && python3 -m home` → http://localhost:8800/ : Book / Freestyle / Create; `--fake` без сети. Спека `specs/2026-11-04-home-ui.md` 0.3, код `h0/home/`, README `h0/home/README.md`.

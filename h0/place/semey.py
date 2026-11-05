@@ -107,12 +107,14 @@ Return ONE JSON object, no prose:
  "sign": "exact sign text on the front (Kazakh or Russian, Cyrillic)",
  "board": "prompt for the sign board picture (a long horizontal board above the door): colours, lettering style, worn or lit",
  "window": "prompt for ONE shop window picture, straight-on: frame, glass, what is displayed behind it, a poster or price tag",
- "wall": "seamless texture prompt of the inside walls",
- "floor": "seamless texture prompt of the floor",
+ "wall": "seamless texture prompt of the inside walls: ONE uniform material that looks the same in every direction (it is tiled every 1.5 m) -- never two-tone, no lower or upper half, no stripes, panels or skirting",
+ "floor": "seamless texture prompt of the floor: ONE uniform material, never two-tone, no half, border or pattern that shows the room's layout",
  "objects": [{{"id": "snake_case", "prompt": "one object on a plain white background, whole, three-quarter view: what it is, material, what is on it",
               "w": m, "d": m, "h": m, "place": "back|left|right|centre"}}]
 }}
 3 to 5 objects that make the place readable from the door (counter, shelves, fridge, a table...). Sizes in metres, realistic."""
+
+TILE_RULE = "; one uniform surface that tiles the same in every direction, no two-tone, no bands, no upper or lower half"   # B58: walls came out striped
 
 FALLBACK_SPEC = {
     "label": "Дүкен", "sign": "ДҮКЕН",
@@ -142,7 +144,7 @@ def fix_spec(o):
         v = o.get(k)
         if not isinstance(v, str) or not clean_text(v):
             raise ValueError(f"{k} missing")
-        out[k] = clean_text(v)[:600]
+        out[k] = clean_text(v)[:600] + (TILE_RULE if k in ("wall", "floor") else "")
     objs = o.get("objects")
     if not isinstance(objs, list) or len(objs) < 3:
         raise ValueError("need 3-5 objects")
