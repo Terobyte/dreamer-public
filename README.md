@@ -1,5 +1,7 @@
 # Dreamer
 
+**Demo video (3.5 min):** https://youtu.be/5Wp3abt_9W8
+
 Give Dreamer a book, a sentence, or a real street address, and it builds a walkable 3D world and stages a living scene in it: characters with their own voices who either act the chapter as written or improvise, and a director who steers without pushing. The bet that made it work is a division of labour. **Code builds the space** (rooms in metres, doors, nav, placement). **Muse Image paints only surfaces** (seamless tiles and flat decals). **SAM 3D Objects makes the things** that stand in the room. Everything runs in parallel, so a world is minutes, not hours, and a wrong one can be rebuilt and compared against the reference.
 
 Built solo in 9 days (Oct 27 to Nov 4, 2026; 568 commits) for the Meta AI Developer Hackathon, Indie track. A hosted live build is linked in the submission.
